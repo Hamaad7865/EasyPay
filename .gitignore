@@ -1,78 +1,24 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Fresh-start greenfield (Neon). History kept in git; old tree stays deleted.
+.neon
+.env.local
+.env.*.local
+node_modules/
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+# web (Next.js back office)
+web/.next/
+web/out/
+web/build/
 
-# testing
-/coverage
+# android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.hprof
 
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
+# general
 .DS_Store
 *.pem
-
-# debug
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-# ...but the template carries no secrets and should be committed
-!.env.example
-
-# vercel
-.vercel
-
-# typescript
+coverage/
 *.tsbuildinfo
-next-env.d.ts
-
-# cloudflare / opennext
-.open-next/
-.wrangler/
-
-# Scratch state from tooling — a port number and a token, never source.
-.superpowers/
-
-# Isolated feature worktrees created by Codex/Superpowers.
-.worktrees/
-
-# Supabase CLI scratch — cached version strings, pooler URL, a token. The one
-# file worth keeping is the linked-project ref, which the plan reads to confirm
-# the target database before any DDL.
-supabase/.temp/*
-!supabase/.temp/linked-project.json
-
-# graphify's own working state — the codebase graph it builds, chunked and
-# cached JSON that can run past 15k lines for this repo alone. Regenerated on
-# demand; never source.
-graphify-out/
-
-# opencode's local config — supabase-auth.json is a credential, not source.
-.opencode/
-
-# Editor-local settings, not shared with the team.
-.vscode/
-
-# Node heap dumps from a debugging session.
-*.heapsnapshot
-
-# A stray local file that should never have been in a repo checkout — not
-# committed, not referenced by any code; delete it once you've confirmed
-# whether it holds anything real.
-kc_keystore_secrets.txt

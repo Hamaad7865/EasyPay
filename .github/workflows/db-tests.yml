@@ -1,0 +1,27 @@
+name: db-tests
+on:
+  push:
+  pull_request:
+jobs:
+  db:
+    runs-on: ubuntu-latest
+    env:
+      # Repo secret holding a *test-branch* unpooled URL (never production).
+      # All suites create throwaway tenants and clean up after themselves.
+      DATABASE_URL_UNPOOLED: ${{ secrets.NEON_TEST_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: node db/migrate.cjs
+      - run: node db/tests/isolation.test.cjs
+      - run: node db/tests/helpers.test.cjs
+      - run: node db/tests/push-policy.test.cjs
+      - run: node db/tests/fk-restrict.test.cjs
+      - run: node db/tests/phase2.test.cjs
+      - run: node db/tests/refund-snapshots.test.cjs
+      - run: node db/tests/receipt-deltas.test.cjs
+      - run: node db/tests/truncate.test.cjs
+      - run: node db/tests/signup-lock.test.cjs
