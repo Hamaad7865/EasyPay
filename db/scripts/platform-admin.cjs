@@ -13,6 +13,16 @@
 // the auth admin endpoints require, and adds it to platform.admins, which the
 // web admin area checks. A login that belongs to a restaurant is refused: keep
 // the admin login separate from any restaurant's login.
+//
+// Production: this script refuses to run there on purpose. For the first admin
+// on production, create the login (run `grant` with a branch's .env.local, or
+// have an existing admin exist first), then paste these two statements into
+// the Neon SQL editor on the production branch, with your own email:
+//
+//   update neon_auth."user" set role = 'admin' where lower(email) = 'you@example.com';
+//   insert into platform.admins (auth_user_id, email)
+//     select id, email from neon_auth."user" where lower(email) = 'you@example.com'
+//     on conflict (auth_user_id) do update set revoked_at = null;
 const readline = require('readline');
 const { Client } = require('pg');
 const devguard = require('../tests/require-dev.cjs');

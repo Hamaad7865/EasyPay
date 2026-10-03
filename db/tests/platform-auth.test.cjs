@@ -98,6 +98,9 @@ const cookiesOf = (res) => (res.headers.getSetCookie ? res.headers.getSetCookie(
     check('7 admin sets a new password', sp.status === 200, 'got ' + sp.status);
     check('7 the new password works', (await signIn(ownerEmail, pw2)).status === 200);
     check('7 the old password no longer works', (await signIn(ownerEmail, pw1)).status !== 200);
+    // reported, not asserted: does a reset also end sessions opened with the old password?
+    const stale = await fetch(authBase + '/token', { headers: { cookie: ownerCookie, origin: ORIGIN } });
+    console.log('INFO 7 a session opened before the reset ' + (stale.status === 200 ? 'STILL WORKS (a reset does not sign existing sessions out)' : 'is ended by the reset'));
 
     // 8. an ordinary login cannot use the admin endpoints; sign-up endpoint is gone
     const sneak = await authPost('/admin/create-user', { email: `pa-sneak-${stamp}@example.com`, password: pw1, name: 'X', role: 'user' }, ownerCookie);
