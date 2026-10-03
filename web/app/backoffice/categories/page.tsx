@@ -19,8 +19,9 @@ export default async function CategoriesPage() {
     c
       .query(
         `select c.id, c.name, c.sort_order,
-                (select count(*)::int from items i where i.category_id = c.id and i.deleted_at is null) as items
-           from categories c where c.deleted_at is null order by c.sort_order, c.name`,
+                (select count(*)::int from items i where i.category_id = c.id and i.tenant_id = c.tenant_id and i.deleted_at is null) as items
+           from categories c where c.deleted_at is null and c.tenant_id = $1 order by c.sort_order, c.name`,
+        [ctx.tenantId],
       )
       .then((r) => r.rows as { id: string; name: string; sort_order: number; items: number }[]),
   );

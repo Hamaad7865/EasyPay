@@ -38,7 +38,12 @@ async function saveItem(formData: FormData) {
   const available = formData.get("available") === "on";
   if (!id || price === null) return;
   await withTenant(ctx.tenantId, (c) =>
-    c.query(`update items set price = $1, is_available = $2 where id = $3`, [price, available, id]),
+    c.query(`update items set price = $1, is_available = $2 where id = $3 and tenant_id = $4`, [
+      price,
+      available,
+      id,
+      ctx.tenantId,
+    ]),
   );
   revalidatePath("/backoffice/items");
 }
@@ -52,18 +57,20 @@ export default async function ItemsPage({
   const sp = await searchParams;
   const cats = await withTenant(ctx.tenantId, (c) =>
     c
-      .query(`select id, name from categories where deleted_at is null order by sort_order, name`)
+      .query(`select id, name from categories where deleted_at is null and tenant_id = $1 order by sort_order, name`, [
+        ctx.tenantId,
+      ])
       .then((r) => r.rows as { id: string; name: string }[]),
   );
   const items = await withTenant(ctx.tenantId, (c) =>
     c
       .query(
         `select i.id, i.name, i.price, i.is_available, i.category_id, c.name as cat_name
-           from items i left join categories c on c.id = i.category_id
-          where i.deleted_at is null
+           from items i left join categories c on c.id = i.category_id and c.tenant_id = i.tenant_id
+          where i.deleted_at is null and i.tenant_id = $2
             and ($1::uuid is null or i.category_id = $1::uuid)
           order by i.name`,
-        [sp.cat || null],
+        [sp.cat || null, ctx.tenantId],
       )
       .then((r) => r.rows as ItemRow[]),
   );

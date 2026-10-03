@@ -17,8 +17,9 @@ export default async function ReceiptsPage() {
     c
       .query(
         `select id, number, type, total, needs_review, device_time
-           from receipts where deleted_at is null
+           from receipts where deleted_at is null and tenant_id = $1
            order by device_time desc nulls last, created_at desc limit 100`,
+        [ctx.tenantId],
       )
       .then((r) => r.rows as ReceiptRow[]),
   );

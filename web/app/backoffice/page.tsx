@@ -7,10 +7,11 @@ export default async function BackofficeHome() {
   const stats = await withTenant(ctx.tenantId, (c) =>
     c
       .query(
-        `select (select count(*)::int from receipts where deleted_at is null) as receipts,
-                (select count(*)::int from receipts where needs_review and deleted_at is null) as flagged,
-                (select count(*)::int from items where deleted_at is null) as items,
-                (select name from tenants limit 1) as tenant`,
+        `select (select count(*)::int from receipts where deleted_at is null and tenant_id = $1) as receipts,
+                (select count(*)::int from receipts where needs_review and deleted_at is null and tenant_id = $1) as flagged,
+                (select count(*)::int from items where deleted_at is null and tenant_id = $1) as items,
+                (select name from tenants where id = $1) as tenant`,
+        [ctx.tenantId, ctx.tenantId, ctx.tenantId, ctx.tenantId],
       )
       .then((r) => r.rows[0] as { receipts: number; flagged: number; items: number; tenant: string }),
   );

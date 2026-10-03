@@ -81,6 +81,39 @@ function check(name, cond, extra) {
     check(`${name}: mid-call throw rolls back`, threw && !after.some((r) => r.name === `Temp-${name}`));
   }
 
+  // T4: 50 interleaved calls across both tenants — no call ever sees the
+  // other tenant's rows even with pool multiplexing underneath.
+  for (const [name, helper, call] of [
+    ['asTenant', asTenant, (q) => q],
+    ['withTenant', withTenant, (c) => c.query.bind(c)],
+  ]) {
+    const jobs = [];
+    for (let i = 0; i < 50; i++) {
+      const T = i % 2 === 0 ? A : B;
+      const tag = i % 2 === 0 ? 'IA' : 'IB';
+      jobs.push((async () => {
+        const mine = `Mix-${name}-${tag}-${i}`;
+        await helper(T, async (ctx) => {
+          const q = call(ctx);
+          await q(`insert into categories (tenant_id, name) values ('${T}','${mine}')`);
+          return [];
+        });
+        const rows = await helper(T, (ctx) => call(ctx)(`select name from categories`).then((r) => r.rows));
+        const names = rows.map((r) => r.name);
+        if (!names.includes(mine)) throw new Error(`${name} lost own row ${mine}`);
+        const foreign = names.filter((n) => n.startsWith(`Mix-${name}-`) && !n.startsWith(`Mix-${name}-${tag}-`));
+        if (foreign.length) throw new Error(`${name} saw foreign rows ${foreign.slice(0, 3).join(',')}`);
+        return names.length;
+      })());
+    }
+    const counts = await Promise.all(jobs);
+    check(`${name}: 50 interleaved calls stay isolated`, counts.every((n) => n > 0));
+    const totalA = await helper(A, (ctx) => call(ctx)(`select count(*)::int n from categories`).then((r) => r.rows[0].n));
+    const totalB = await helper(B, (ctx) => call(ctx)(`select count(*)::int n from categories`).then((r) => r.rows[0].n));
+    // A holds Cat-A + Temp-free rows + 25 mixed; B holds Cat-B + 25 mixed
+    check(`${name}: final counts split by tenant`, totalA >= 25 && totalB >= 25, `A=${totalA} B=${totalB}`);
+  }
+
   for (const t of ['categories', 'tenants']) await admin.query(`delete from ${t} where tenant_id in ('${A}','${B}')`);
   await admin.end();
   console.log(failures === 0 ? 'HELPERS PASS' : `HELPERS FAIL (${failures})`);
