@@ -125,6 +125,38 @@ async function step(name, fn) {
   ]); });
   check('T8 over-refund rejected', r8[0].status === 'rejected' && r8[0].code === 'bad-qty', JSON.stringify(r8[0]));
 
+  // T9: flat modifier pro-rated by refunded qty; cumulative never exceeds paid.
+  // 2x Cari 38000 + rice 4000 flat: receipt sub 80000, VAT 10435, total 80000.
+  // Half refund: sub 38000+2000 = 40000 (no discount, VAT covered below).
+  const tk9 = crypto.randomUUID(), rc9 = crypto.randomUUID();
+  const rf9a = crypto.randomUUID(), rf9b = crypto.randomUUID();
+  await step('T9-setup', async () => { const s9 = await push([
+    op('ticket.create', { id: tk9, store_id: store }),
+    op('ticket.add_line', { id: crypto.randomUUID(), ticket_id: tk9, item_id: cp, qty: 2000, modifier_ids: [rice] }),
+    op('receipt.create', { id: rc9, ticket_id: tk9, store_id: store, device_id: dev, number: 'RFS1-T1-7', device_seq: 7,
+      payments: [{ payment_type_id: cash, amount: 80000 }] }),
+  ]);
+  check('T9-setup applied', s9.every((o) => o.status === 'applied'), JSON.stringify(s9)); });
+  const rl9 = (await c.query(`select id from receipt_lines where receipt_id='${rc9}'`)).rows[0].id;
+  let r9;
+  await step('T9-half1', async () => { r9 = await push([
+    op('refund.create', { id: rf9a, refund_of: rc9, store_id: store, device_id: dev, number: 'RFS1-T1-8', device_seq: 8,
+      reason: 't', lines: [{ receipt_line_id: rl9, qty: 1000 }],
+      payments: [{ payment_type_id: cash, amount: 40000 }] }),
+  ]); });
+  check('T9 half refund pro-rates the flat modifier', r9[0].status === 'applied', JSON.stringify(r9[0]));
+  const t9 = (await c.query(`select subtotal, total from receipts where id='${rf9a}'`)).rows[0];
+  check('T9 half totals 40000', t9.subtotal === '40000' && t9.total === '40000', JSON.stringify(t9));
+  await step('T9-half2', async () => { r9 = await push([
+    op('refund.create', { id: rf9b, refund_of: rc9, store_id: store, device_id: dev, number: 'RFS1-T1-9', device_seq: 9,
+      reason: 't', lines: [{ receipt_line_id: rl9, qty: 1000 }],
+      payments: [{ payment_type_id: cash, amount: 40000 }] }),
+  ]); });
+  check('T9 second half applies', r9[0].status === 'applied', JSON.stringify(r9[0]));
+  const cum = (await c.query(`select sum(total)::bigint s from receipts where refund_of='${rc9}'`)).rows[0].s;
+  const paid = (await c.query(`select total from receipts where id='${rc9}'`)).rows[0].total;
+  check('T9 cumulative equals paid, never exceeds', String(cum) === String(paid) && cum === '80000', `cum=${cum} paid=${paid}`);
+
   for (const t of ['sync_ops_applied','receipts','receipt_lines','receipt_line_modifiers','receipt_line_taxes','receipt_payments','receipt_discounts'])
     await c.query(`alter table ${t} disable trigger trg_no_update`);
   for (const t of ['receipt_discounts','receipt_payments','receipt_line_taxes','receipt_line_modifiers','receipt_lines','receipts','ticket_line_taxes','ticket_line_modifiers','ticket_lines','tickets','grid_page_items','grid_pages','store_item_overrides','item_taxes','item_modifier_groups','modifiers','modifier_groups','item_variants','items','taxes','discounts','dining_options','payment_types','employee_stores','employees','roles','categories','pos_devices','stores','sync_ops_applied','tenants'])
