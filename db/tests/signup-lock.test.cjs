@@ -25,10 +25,10 @@ async function statusOf(promise) {
   } catch (e) { return { status: 'FETCH-FAIL', body: e.message }; }
 }
 (async () => {
-  const env = loadEnv('.env.local');
-  const fileEnv = env;
-  const fnBase = process.env.NEON_FUNCTION_API_BASE_URL || fileEnv.NEON_FUNCTION_API_BASE_URL;
-  const authBase = process.env.NEON_AUTH_BASE_URL || fileEnv.NEON_AUTH_BASE_URL;
+  const fileEnv = (() => { try { return loadEnv('.env.local'); } catch { return {}; } })();
+  const pick = (k) => process.env[k] || fileEnv[k];
+  const fnBase = pick('NEON_FUNCTION_API_BASE_URL');
+  const authBase = pick('NEON_AUTH_BASE_URL');
   const httpTests = !!fnBase && !!authBase;
   if (!httpTests) console.log('SKIP http checks (NEON_FUNCTION_API_BASE_URL / NEON_AUTH_BASE_URL not set)');
 
@@ -49,7 +49,8 @@ async function statusOf(promise) {
   }
 
   // T3: app_user cannot run the seeder directly (42501)
-  const c = new Client({ connectionString: env.DATABASE_URL_UNPOOLED, ssl: { require: true } });
+  const stripCs = (v) => { v = String(v).trim(); if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1); return v; };
+  const c = new Client({ connectionString: stripCs(pick('DATABASE_URL_UNPOOLED') || pick('DATABASE_URL')), ssl: { require: true } });
   await c.connect();
   let denied = null;
   try {

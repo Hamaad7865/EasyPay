@@ -6,22 +6,40 @@ jobs:
   db:
     runs-on: ubuntu-latest
     env:
-      # Repo secret holding a *test-branch* unpooled URL (never production).
-      # All suites create throwaway tenants and clean up after themselves.
-      DATABASE_URL_UNPOOLED: ${{ secrets.NEON_TEST_DATABASE_URL }}
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: snowy-fire-89764432
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
       - run: npm ci --no-audit --no-fund
+      - run: npm i -g neon@latest --no-audit --no-fund
+      # Throwaway branch per job: copy-on-write from production, deleted
+      # afterwards. Suites must still clean up after themselves (they do),
+      # the branch is the second guard. Never run these against production.
+      - name: create throwaway branch
+        id: branch
+        run: |
+          NAME="ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          neon branches create --project-id "$NEON_PROJECT_ID" --name "$NAME"
+          CS="$(neon connection-string "$NAME" --project-id "$NEON_PROJECT_ID" --role-name neondb_owner | grep -o 'postgresql://[^ ]*' | head -1)"
+          if [ -z "$CS" ]; then echo "could not read branch connection string"; exit 1; fi
+          echo "DATABASE_URL_UNPOOLED=$CS" >> "$GITHUB_ENV"
       - run: node db/migrate.cjs
       - run: node db/tests/isolation.test.cjs
       - run: node db/tests/helpers.test.cjs
       - run: node db/tests/push-policy.test.cjs
-      - run: node db/tests/fk-restrict.test.cjs
+      - run: node db/tests/fk-setnull.test.cjs
       - run: node db/tests/phase2.test.cjs
       - run: node db/tests/refund-snapshots.test.cjs
       - run: node db/tests/receipt-deltas.test.cjs
       - run: node db/tests/truncate.test.cjs
       - run: node db/tests/signup-lock.test.cjs
+      - run: node db/tests/vat-included.test.cjs
+      - run: node db/tests/pull-pages.test.cjs
+      - run: node db/tests/api6.test.cjs
+      - name: delete throwaway branch
+        if: always()
+        run: neon branches delete "${{ steps.branch.outputs.name }}" --project-id "$NEON_PROJECT_ID"

@@ -1,8 +1,10 @@
 # Fresh-start greenfield (Neon). History kept in git; old tree stays deleted.
 .neon
-.env.local
-.env.*.local
 node_modules/
+
+# env files (the template carries no secrets and stays committed)
+.env*
+!.env.example
 
 # web (Next.js back office)
 web/.next/
@@ -22,3 +24,6 @@ android/local.properties
 npm-debug.log*
 coverage/
 *.tsbuildinfo
+
+# opencode's local config — credentials, not source.
+.opencode/
