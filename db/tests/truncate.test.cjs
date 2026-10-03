@@ -54,7 +54,10 @@ begin
     idents := idents || quote_ident(t) || ', ';
   end loop;
   idents := left(idents, length(idents) - 2);
-  execute 'truncate ' || idents;
+  -- receipt_reviews (0043) references receipts; Postgres refuses to truncate
+  -- a referenced table unless the referencing one is in the same statement.
+  -- It is not a synced table, so it gets no epoch.
+  execute 'truncate receipt_reviews, ' || idents;
   insert into sync_epoch (table_name, epoch)
     select unnest(p_tables), 2
     on conflict (table_name) do update set epoch = sync_epoch.epoch + 1;
