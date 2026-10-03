@@ -30,6 +30,7 @@ jobs:
       - name: write test env
         run: |
           printf 'DATABASE_URL_UNPOOLED=%s\nNEON_BRANCH=%s\n' "$DATABASE_URL_UNPOOLED" "${{ steps.branch.outputs.name }}" > .env.local
+      - run: node db/tests/guard.test.cjs
       - run: node db/migrate.cjs
       - run: node db/tests/isolation.test.cjs
       - run: node db/tests/helpers.test.cjs
