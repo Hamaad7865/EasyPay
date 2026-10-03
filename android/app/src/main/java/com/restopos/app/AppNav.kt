@@ -18,6 +18,7 @@ import com.restopos.feature.pay.PaymentScreen
 import com.restopos.feature.pay.ReceiptDoneScreen
 import com.restopos.feature.receipts.ReceiptsScreen
 import com.restopos.feature.sale.SaleScreen
+import com.restopos.feature.sync.RejectedScreen
 
 // Launch modes (spec 7/8): POS and KDS share this APK, chosen at device setup.
 // KDS screen lands in Phase 6; the route constant reserves it.
@@ -28,6 +29,8 @@ object Routes {
     const val PAY = "pay"
     const val DONE = "done/{receiptId}/{change}/{total}"
     const val RECEIPTS = "receipts"
+    const val REAUTH = "reauth"
+    const val REJECTED = "rejected"
     const val KDS = "kds"
 }
 
@@ -59,6 +62,8 @@ fun AppNav(session: SessionStore, onSignOut: () -> Unit) {
             SaleScreen(
                 onPay = { nav.navigate(Routes.PAY) },
                 onReceipts = { nav.navigate(Routes.RECEIPTS) },
+                onSignIn = { nav.navigate(Routes.REAUTH) },
+                onRejected = { nav.navigate(Routes.REJECTED) },
                 onSignOut = onSignOut,
             )
         }
@@ -80,6 +85,14 @@ fun AppNav(session: SessionStore, onSignOut: () -> Unit) {
         }
         composable(Routes.RECEIPTS) {
             ReceiptsScreen(onBack = { nav.popBackStack() })
+        }
+        // Signing in again on a tablet that is already set up: back to the
+        // till afterwards, with its orders and unsynced sales untouched.
+        composable(Routes.REAUTH) {
+            AuthScreen(reauth = true, onCancel = { nav.popBackStack() }, onSignedIn = { nav.popBackStack() })
+        }
+        composable(Routes.REJECTED) {
+            RejectedScreen(onBack = { nav.popBackStack() })
         }
     }
 }

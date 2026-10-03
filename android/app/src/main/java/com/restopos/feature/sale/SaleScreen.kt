@@ -21,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,7 +34,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -44,6 +47,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -58,7 +62,14 @@ import kotlinx.coroutines.launch
 // reuses the same entry; the ticket collapses into the Charge flow (7.9).
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SaleScreen(vm: SaleViewModel = hiltViewModel(), onPay: () -> Unit, onReceipts: () -> Unit, onSignOut: () -> Unit) {
+fun SaleScreen(
+    vm: SaleViewModel = hiltViewModel(),
+    onPay: () -> Unit,
+    onReceipts: () -> Unit,
+    onSignIn: () -> Unit,
+    onRejected: () -> Unit,
+    onSignOut: () -> Unit,
+) {
     val state by vm.state.collectAsState(SaleUiState.Ready(emptyList(), null))
     val paged = vm.items.collectAsLazyPagingItems()
     val toast by vm.toast.collectAsState()
@@ -68,6 +79,9 @@ fun SaleScreen(vm: SaleViewModel = hiltViewModel(), onPay: () -> Unit, onReceipt
     val discounts by vm.discounts.collectAsState()
     val discount by vm.discount.collectAsState()
     val sheet by vm.sheet.collectAsState()
+    val needsSignIn by vm.needsSignIn.collectAsState()
+    val pending by vm.pending.collectAsState()
+    val rejected by vm.rejected.collectAsState()
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -83,6 +97,11 @@ fun SaleScreen(vm: SaleViewModel = hiltViewModel(), onPay: () -> Unit, onReceipt
                 NavigationDrawerItem(label = { Text("Sale") }, selected = true, onClick = { scope.launch { drawer.close() } })
                 NavigationDrawerItem(label = { Text("Open tickets (Phase 3)") }, selected = false, onClick = {})
                 NavigationDrawerItem(label = { Text("Receipts") }, selected = false, onClick = { scope.launch { drawer.close() }; onReceipts() })
+                NavigationDrawerItem(
+                    label = { Text(if (rejected > 0) "Rejected changes ($rejected)" else "Rejected changes") },
+                    selected = false,
+                    onClick = { scope.launch { drawer.close() }; onRejected() },
+                )
                 NavigationDrawerItem(label = { Text("Sign out") }, selected = false, onClick = onSignOut)
             }
         },
@@ -90,14 +109,17 @@ fun SaleScreen(vm: SaleViewModel = hiltViewModel(), onPay: () -> Unit, onReceipt
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
-                TopAppBar(
-                    title = { Text("Sale") },
-                    navigationIcon = {
-                        IconButton(onClick = { scope.launch { drawer.open() } }) {
-                            Icon(Icons.Filled.Menu, contentDescription = "Menu")
-                        }
-                    },
-                )
+                Column {
+                    TopAppBar(
+                        title = { Text("Sale") },
+                        navigationIcon = {
+                            IconButton(onClick = { scope.launch { drawer.open() } }) {
+                                Icon(Icons.Filled.Menu, contentDescription = "Menu")
+                            }
+                        },
+                    )
+                    SyncStatus(needsSignIn, pending, rejected, onSignIn, onRejected)
+                }
             },
         ) { inner ->
             Row(Modifier.fillMaxSize().padding(inner)) {
@@ -148,11 +170,11 @@ fun SaleScreen(vm: SaleViewModel = hiltViewModel(), onPay: () -> Unit, onReceipt
                             val l = lu.line
                             Column(Modifier.padding(vertical = 6.dp)) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(l.name_snapshot, Modifier.weight(1f))
+                                    Text(l.name_snapshot + if (l.paid) " (paid)" else "", Modifier.weight(1f))
                                     Text(Money.format((l.unit_price * l.qty + 500) / 1000))
                                 }
                                 if (lu.mods.isNotBlank()) Text(lu.mods)
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (!l.paid) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     IconButton(onClick = {
                                         val q = l.qty - 1000
                                         if (q <= 0) voidTarget = l.id else vm.onAction(SaleAction.SetQty(l.id, q / 1000))
@@ -185,7 +207,7 @@ fun SaleScreen(vm: SaleViewModel = hiltViewModel(), onPay: () -> Unit, onReceipt
                     Text("Total ${Money.format(totals.total)}")
                     Button(
                         onClick = onPay,
-                        enabled = lines.isNotEmpty(),
+                        enabled = lines.any { !it.line.paid },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Charge · ${Money.format(totals.total)}") }
                 }
@@ -218,6 +240,34 @@ fun SaleScreen(vm: SaleViewModel = hiltViewModel(), onPay: () -> Unit, onReceipt
                 OutlinedButton(onClick = { voidTarget = null; voidReason = "" }) { Text("Cancel") }
             },
         )
+    }
+}
+
+// What the till needs someone to know about syncing, in one strip under the
+// title. Selling carries on in every one of these states.
+@Composable
+private fun SyncStatus(needsSignIn: Boolean, pending: Long, rejected: Long, onSignIn: () -> Unit, onRejected: () -> Unit) {
+    if (needsSignIn) {
+        Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (pending > 0) "Signed out. $pending changes are saved on this tablet and will sync after you sign in."
+                    else "Signed out. Sales are saved on this tablet and will sync after you sign in.",
+                    Modifier.weight(1f),
+                )
+                Button(onClick = onSignIn) { Text("Sign in") }
+            }
+        }
+    } else if (pending > 0) {
+        Text("$pending changes waiting to sync", Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+    }
+    if (rejected > 0) {
+        Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("$rejected changes were refused by the server", Modifier.weight(1f))
+                TextButton(onClick = onRejected) { Text("Review") }
+            }
+        }
     }
 }
 

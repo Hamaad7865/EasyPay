@@ -2,6 +2,9 @@ package com.restopos.feature.pay
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.restopos.core.common.Money
+import com.restopos.core.data.Calc
+import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.PayInput
 import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.PaymentTypeEntity
@@ -16,18 +19,23 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 // Payment (spec 7.5): cash quick amounts + tendered/change; wallet/QR take an
-// optional reference (manual record in v1). One receipt pays the amount due
-// in full; splitting a bill by item needs line selection, which is not built.
+// optional reference (manual record in v1). A bill is split by item: tick the
+// lines one guest pays for, take the payment, and the rest stays on the order
+// for the next receipt. Each receipt pays its lines in full (the server would
+// store a part payment, but flagged for review).
+data class PayLine(val id: String, val name: String, val amount: Long, val selected: Boolean)
+
 sealed interface PayUiState {
     data object Loading : PayUiState
     data class Ready(
-        val total: Long,
-        val remaining: Long,
+        val lines: List<PayLine>, // unpaid lines; the receipt covers the ticked ones
+        val due: Long, // total of the ticked lines, discount included
         val methods: List<PaymentTypeEntity>,
         val selected: PaymentTypeEntity?,
         val tenderedRs: String,
         val reference: String,
         val error: String?,
+        val notice: String? = null,
     ) : PayUiState
 
     data class Done(val receipt: ReceiptEntity, val change: Long) : PayUiState
@@ -41,39 +49,44 @@ class PaymentViewModel @Inject constructor(
 ) : ViewModel() {
     private val _state = MutableStateFlow<PayUiState>(PayUiState.Loading)
     val state: StateFlow<PayUiState> = _state
-    private var discount: com.restopos.core.data.DiscountPick? = null
+    private var discount: DiscountPick? = null
+    private var calc: Map<String, Calc.Line> = emptyMap()
 
-    init { reload() }
+    init { reload(notice = null) }
 
-    fun reload() = viewModelScope.launch {
-        val t = tickets.activeTicket()
-        if (t == null) return@launch
-        val lines = db.tickets().lines(t.id).first().filter { it.voided_at == null }
-        val calcLines = lines.map { l ->
-            val taxes = db.catalog().lineTaxes(l.id)
-            com.restopos.core.data.Calc.Line(
-                com.restopos.core.data.Calc.lineAmount(l.unit_price, l.qty) + db.tickets().modSum(l.id),
-                taxes.map { com.restopos.core.data.Calc.TaxRate(it.rate_bp, it.type) },
-            )
+    private fun dueFor(ids: Set<String>): Long {
+        val picked = calc.filterKeys { ids.contains(it) }.values.toList()
+        val d = discount
+        return Calc.totals(picked, listOfNotNull(d?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) })).total
+    }
+
+    // Loads what is still unpaid. Every line starts ticked: paying the whole
+    // bill is the common case, splitting is the exception.
+    private fun reload(notice: String?) = viewModelScope.launch {
+        val t = tickets.activeTicket() ?: return@launch
+        val unpaid = db.tickets().lines(t.id).first().filter { it.voided_at == null && !it.paid }
+        val amounts = HashMap<String, Long>()
+        calc = unpaid.associate { l ->
+            val base = Calc.lineAmount(l.unit_price, l.qty) + db.tickets().modSum(l.id)
+            amounts[l.id] = base
+            l.id to Calc.Line(base, db.catalog().lineTaxes(l.id).map { Calc.TaxRate(it.rate_bp, it.type) })
         }
         discount = session.pendingDiscount()?.let { id ->
-            db.catalog().discount(id)?.let {
-                com.restopos.core.data.DiscountPick(it.id, it.type, it.value, it.name)
-            }
+            db.catalog().discount(id)?.let { DiscountPick(it.id, it.type, it.value, it.name) }
         }
-        val totals = com.restopos.core.data.Calc.totals(
-            calcLines,
-            listOfNotNull(discount?.let {
-                com.restopos.core.data.Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value)
-            }),
-        )
-        val prior = db.receipts().paidForTicket(t.id)
         val methods = db.catalog().paymentTypes().first()
         val cur = _state.value as? PayUiState.Ready
+        val lines = unpaid.map { PayLine(it.id, it.name_snapshot, amounts[it.id] ?: 0, true) }
         _state.value = PayUiState.Ready(
-            totals.total, totals.total - prior, methods,
-            cur?.selected ?: methods.firstOrNull(), cur?.tenderedRs ?: "", cur?.reference ?: "", null,
+            lines, dueFor(lines.map { it.id }.toSet()), methods,
+            cur?.selected ?: methods.firstOrNull(), "", "", null, notice,
         )
+    }
+
+    fun toggle(lineId: String) {
+        val s = _state.value as? PayUiState.Ready ?: return
+        val lines = s.lines.map { if (it.id == lineId) it.copy(selected = !it.selected) else it }
+        _state.value = s.copy(lines = lines, due = dueFor(lines.filter { it.selected }.map { it.id }.toSet()), error = null)
     }
 
     fun select(m: PaymentTypeEntity) {
@@ -95,33 +108,38 @@ class PaymentViewModel @Inject constructor(
     // refused: a part payment would reach the server as a short receipt.
     fun takeCash() {
         val s = _state.value as? PayUiState.Ready ?: return
-        val tend = (s.tenderedRs.toLongOrNull() ?: (s.remaining + 99) / 100) * 100
-        if (s.remaining <= 0 || tend <= 0) { _state.value = s.copy(error = "Nothing to pay"); return }
-        if (tend >= s.remaining) payChunk(s.remaining, tend, tend - s.remaining, s, null)
+        if (s.lines.none { it.selected }) { _state.value = s.copy(error = "Tick at least one line"); return }
+        val tend = (s.tenderedRs.toLongOrNull() ?: (s.due + 99) / 100) * 100
+        if (tend >= s.due) payChunk(s.due, tend, tend - s.due, s, null)
         else _state.value = s.copy(error = "Tendered is less than the amount due")
     }
 
-    // Card/wallet/QR: full remaining in one chunk with optional reference.
+    // Card/wallet/QR: the amount due in one go, with an optional reference.
     fun takeMethod() {
         val s = _state.value as? PayUiState.Ready ?: return
-        val m = s.selected ?: return
-        if (s.remaining <= 0) { _state.value = s.copy(error = "Nothing to pay"); return }
-        payChunk(s.remaining, s.remaining, 0, s, s.reference.ifBlank { null })
+        if (s.lines.none { it.selected }) { _state.value = s.copy(error = "Tick at least one line"); return }
+        payChunk(s.due, s.due, 0, s, s.reference.ifBlank { null })
     }
 
     private fun payChunk(amount: Long, tendered: Long, change: Long, s: PayUiState.Ready, ref: String?) =
         viewModelScope.launch {
             val m = s.selected ?: return@launch
-            tickets.pay(
-                listOf(PayInput(m.id, amount, tendered, change, ref)),
-                listOfNotNull(discount),
-                0,
-            ).fold(
+            val covered = s.lines.filter { it.selected }.map { it.id }
+            // a zero total (fully discounted) is paid with no payment row
+            val payments = if (amount > 0) listOf(PayInput(m.id, amount, tendered, change, ref)) else emptyList()
+            tickets.pay(payments, listOfNotNull(discount), 0, covered).fold(
                 onSuccess = { receipt ->
-                    if (change > 0 || amount >= s.remaining) {
+                    val closed = tickets.activeTicket() == null
+                    if (closed) {
                         session.setPendingDiscount(null)
                         _state.value = PayUiState.Done(receipt, change)
-                    } else reload()
+                    } else {
+                        // an amount discount is given once, not on every guest's receipt
+                        if (discount?.type == "amount") session.setPendingDiscount(null)
+                        val left = s.lines.count { !it.selected }
+                        val paid = "Paid ${Money.format(amount)}" + if (change > 0) ", change ${Money.format(change)}" else ""
+                        reload("$paid. $left ${if (left == 1) "line" else "lines"} left to pay.")
+                    }
                 },
                 onFailure = { _state.value = s.copy(error = it.message) },
             )

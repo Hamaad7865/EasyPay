@@ -94,4 +94,17 @@ interface OutboxDao {
 
     @Query("SELECT COUNT(*) FROM outbox WHERE state = 'pending'")
     suspend fun pendingCount(): Long
+
+    @Query("SELECT COUNT(*) FROM outbox WHERE state = 'pending'")
+    fun pendingCountFlow(): Flow<Long>
+
+    // 'dead' = the server refused it (spec 5.4 dead-letter)
+    @Query("SELECT COUNT(*) FROM outbox WHERE state = 'dead'")
+    suspend fun deadCount(): Long
+
+    @Query("SELECT COUNT(*) FROM outbox WHERE state = 'dead'")
+    fun deadCountFlow(): Flow<Long>
+
+    @Query("SELECT * FROM outbox WHERE state = 'dead' ORDER BY created_at DESC")
+    fun deadFlow(): Flow<List<OutboxEntity>>
 }

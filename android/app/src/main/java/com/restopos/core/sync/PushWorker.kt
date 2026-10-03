@@ -30,14 +30,16 @@ internal const val PUSH_WORK = "push-now"
 //   rejected  a business refusal with a code                           -> dead-letter, data kept
 //   retry     transient; this op and every later one were not processed -> stay queued, in order
 // Network failures and 5xx retry with backoff. A 401 is handled inside
-// ApiClient (token refresh, one retry); if the session itself is gone the
-// worker stops until someone signs in. A pull follows every successful push.
+// ApiClient (token refresh, one retry). If the session itself is gone, the
+// rows stay queued and the tablet asks for a sign-in; signing in again pushes
+// them. A pull follows every successful push.
 @HiltWorker
 class PushWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted params: WorkerParameters,
     private val db: TillDatabase,
     private val api: ApiClient,
+    private val session: SessionStore,
 ) : CoroutineWorker(context, params) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -51,6 +53,7 @@ class PushWorker @AssistedInject constructor(
             val results = try {
                 api.push(ops)
             } catch (e: AuthRequired) {
+                session.setNeedsSignIn(true)
                 return Result.failure()
             } catch (e: IOException) {
                 return Result.retry()

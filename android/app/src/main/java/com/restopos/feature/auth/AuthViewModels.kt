@@ -11,6 +11,7 @@ import com.restopos.core.network.dto.RegisterDeviceRequest
 import com.restopos.core.network.dto.StoreDto
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.SyncScheduler
+import com.restopos.core.sync.pushNow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +36,9 @@ sealed interface AuthAction {
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val auth: AuthClient,
+    private val api: ApiClient,
+    private val session: SessionStore,
+    @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
     private val _state = MutableStateFlow<AuthUiState>(AuthUiState.Form)
     val state: StateFlow<AuthUiState> = _state
@@ -44,10 +48,29 @@ class AuthViewModel @Inject constructor(
         val r = when (a) {
             is AuthAction.SignIn -> auth.signIn(a.email.trim(), a.password)
         }
-        _state.value = r.fold(
-            onSuccess = { AuthUiState.SignedIn },
-            onFailure = { AuthUiState.Error(it.message ?: "Sign-in failed") },
-        )
+        if (r.isFailure) {
+            _state.value = AuthUiState.Error(r.exceptionOrNull()?.message ?: "Sign-in failed")
+            return@launch
+        }
+        // Signing in again on a tablet that is already set up (the session
+        // expired): the sales waiting on it belong to one restaurant, so only a
+        // login of that restaurant may resume. Then everything queued goes up.
+        val tenant = session.tenantId()
+        if (tenant != null) {
+            val me = runCatching { api.me() }.getOrElse {
+                _state.value = AuthUiState.Error(it.message ?: "Could not check this login")
+                return@launch
+            }
+            if (me.tenantId != tenant) {
+                auth.signOut()
+                _state.value = AuthUiState.Error("That login belongs to another restaurant. Use a login of the restaurant this tablet is set up for.")
+                return@launch
+            }
+            session.setNeedsSignIn(false)
+            pushNow(appContext)
+            SyncScheduler.pullNow(appContext)
+        }
+        _state.value = AuthUiState.SignedIn
     }
 }
 

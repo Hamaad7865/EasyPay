@@ -40,6 +40,12 @@ class MainActivity : ComponentActivity() {
                                 Toast.makeText(this@MainActivity, "$pending changes still to sync. Connect, then sign out.", Toast.LENGTH_LONG).show()
                                 return@launch
                             }
+                            // Refused changes exist only here until a manager has seen them.
+                            val refused = db.outbox().deadCount()
+                            if (refused > 0L) {
+                                Toast.makeText(this@MainActivity, "$refused rejected changes need a look first (menu, Rejected changes).", Toast.LENGTH_LONG).show()
+                                return@launch
+                            }
                             SyncScheduler.stop(this@MainActivity)
                             auth.signOut() // best effort on the server, always clears locally
                             session.clear()

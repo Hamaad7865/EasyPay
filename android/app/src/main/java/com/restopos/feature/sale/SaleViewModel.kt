@@ -22,10 +22,12 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -84,6 +86,14 @@ class SaleViewModel @Inject constructor(
     private val _sheet = MutableStateFlow<SheetData?>(null)
     val sheet: StateFlow<SheetData?> = _sheet
 
+    // Sync status for the bar under the title: signed out, waiting, rejected.
+    val needsSignIn: StateFlow<Boolean> = session.needsSignIn
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val pending: StateFlow<Long> = db.outbox().pendingCountFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val rejected: StateFlow<Long> = db.outbox().deadCountFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     val state: Flow<SaleUiState> = combine(repo.categories(), cat) { cats, sel -> SaleUiState.Ready(cats, sel) }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -105,7 +115,7 @@ class SaleViewModel @Inject constructor(
         val dao = db.tickets()
         val rows = dao.lines(t.id).first()
         _lines.value = rows.map { LineUi(it, dao.modText(it.id) ?: "") }
-        val calcLines = rows.filter { it.voided_at == null }.map { l ->
+        val calcLines = rows.filter { it.voided_at == null && !it.paid }.map { l ->
             val taxes = db.catalog().lineTaxes(l.id)
             val mods = dao.modSum(l.id)
             Calc.Line(Calc.lineAmount(l.unit_price, l.qty) + mods, taxes.map { Calc.TaxRate(it.rate_bp, it.type) })

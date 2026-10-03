@@ -1,6 +1,7 @@
 package com.restopos.core.sync
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -35,6 +36,7 @@ import com.restopos.core.network.ApiError
 import com.restopos.core.network.AuthRequired
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.JsonElement
@@ -88,7 +90,10 @@ class PullWorker @AssistedInject constructor(
             }
             Result.success()
         } catch (e: AuthRequired) {
-            Result.failure() // signed out: retrying cannot help until someone signs in
+            // The session is gone. Nothing is lost: the tablet shows a sign-in
+            // prompt, and signing in again resumes syncing.
+            session.setNeedsSignIn(true)
+            Result.failure()
         } catch (e: IOException) {
             Result.retry() // offline or flaky: WorkManager backs off and tries again
         } catch (e: ApiError) {
@@ -212,6 +217,7 @@ private val STORE = stringPreferencesKey("store_id")
 private val DEVICE = stringPreferencesKey("device_id")
 private val ACTIVE_TICKET = stringPreferencesKey("active_ticket")
 private val PENDING_DISCOUNT = stringPreferencesKey("pending_discount")
+private val NEEDS_SIGN_IN = booleanPreferencesKey("needs_sign_in")
 private val Context.sessionPrefs by preferencesDataStore("device")
 
 // Which tenant, store and device this tablet is. Set once at device setup and
@@ -227,6 +233,12 @@ class SessionStore(private val context: Context) {
     suspend fun deviceId(): String? = store.data.map { it[DEVICE] }.first()
     suspend fun tenantId(): String? = store.data.map { it[TENANT] }.first()
     suspend fun isSetUp(): Boolean = storeId() != null && deviceId() != null
+
+    // Set by the sync workers when the session has expired, cleared by a
+    // successful sign-in. While it is set the tablet keeps selling and keeps
+    // every sale in the outbox.
+    val needsSignIn: Flow<Boolean> = store.data.map { it[NEEDS_SIGN_IN] ?: false }
+    suspend fun setNeedsSignIn(value: Boolean) { store.edit { it[NEEDS_SIGN_IN] = value } }
     suspend fun activeTicket(): String? = store.data.map { it[ACTIVE_TICKET] }.first()
     suspend fun setActiveTicket(id: String) { store.edit { it[ACTIVE_TICKET] = id } }
     suspend fun clearActiveTicket() { store.edit { it.remove(ACTIVE_TICKET) } }

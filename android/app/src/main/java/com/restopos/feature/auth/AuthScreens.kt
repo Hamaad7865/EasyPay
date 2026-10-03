@@ -24,7 +24,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
-fun AuthScreen(vm: AuthViewModel = hiltViewModel(), onSignedIn: () -> Unit) {
+fun AuthScreen(
+    vm: AuthViewModel = hiltViewModel(),
+    reauth: Boolean = false,
+    onCancel: (() -> Unit)? = null,
+    onSignedIn: () -> Unit,
+) {
     val state by vm.state.collectAsStateWithLifecycle()
     // Navigation is a side effect of the state, run once when it becomes SignedIn.
     LaunchedEffect(state) { if (state is AuthUiState.SignedIn) onSignedIn() }
@@ -33,13 +38,17 @@ fun AuthScreen(vm: AuthViewModel = hiltViewModel(), onSignedIn: () -> Unit) {
     val busy = state == AuthUiState.Busy || state == AuthUiState.SignedIn
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("RestoPOS", style = MaterialTheme.typography.headlineLarge)
-        Text("Sign in with the login RestoPOS gave you. Staff PIN arrives in Phase 4.")
+        Text(
+            if (reauth) "Sign in again to sync. Everything sold on this tablet is saved and will go up once you are signed in."
+            else "Sign in with the login RestoPOS gave you. Staff PIN arrives in Phase 4.",
+        )
         OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), label = { Text("Email") }, singleLine = true)
         OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
         (state as? AuthUiState.Error)?.let { Text(it.message, color = MaterialTheme.colorScheme.error) }
         Button(onClick = { vm.onAction(AuthAction.SignIn(email, password)) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
             if (busy) CircularProgressIndicator() else Text("Sign in")
         }
+        onCancel?.let { TextButton(onClick = it, enabled = !busy) { Text("Back to the till") } }
     }
 }
 
