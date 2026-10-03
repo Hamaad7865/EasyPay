@@ -1,46 +1,61 @@
-# Android — RestoPOS till (Phase 1)
+# Android — RestoPOS till
 
-Kotlin + Compose + Hilt + Room + WorkManager + Ktor. Min SDK 26.
-Written spec-faithful; **not yet compiled here (no Android SDK in this
-environment)** — first `assembleDebug` on a dev machine is the gate.
+Kotlin + Compose + Hilt + Room + WorkManager + Ktor (OkHttp). Min SDK 26,
+compile SDK 36.
 
-## Setup
+Built: owner sign-in, store and device setup, the menu mirrored into Room by
+the pull worker, the sale grid, ticket building with modifiers and a discount,
+payment of the whole bill (cash with change, or card/wallet with a reference),
+the receipts list, and the outbox with its push worker.
 
-1. Install Android Studio (SDK 35) + JDK 17.
-2. Create `android/local.properties` (never committed):
+Not built yet: splitting a bill by item (the server supports it, the screen
+has no line selection), service charge and rounding settings, refunds, staff
+PIN, printing, the kitchen display.
+
+It compiles and its unit tests pass. It has not been run on a tablet yet; the
+three checks below are the first thing to do on one.
+
+## Build
+
+1. Android Studio (SDK 36) and JDK 17.
+2. Create `android/local.properties` (gitignored):
    ```
-   sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
-   functionUrl=https://br-...-api.compute.c-4.ap-southeast-1.aws.neon.tech/
-   authUrl=https://ep-....neonauth.c-4.ap-southeast-1.aws.neon.tech/
+   sdk.dir=C:/Users/<you>/AppData/Local/Android/Sdk
+   functionUrl=https://br-...-api.compute.c-4.ap-southeast-1.aws.neon.tech
+   authUrl=https://ep-....neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth
    ```
-   URLs come from root `.env.local` (`NEON_FUNCTION_API_BASE_URL`,
-   `NEON_AUTH_BASE_URL`). The two `*Url` lines become BuildConfig fields.
-3. `cd android && ./gradlew :app:assembleDebug` (wrapper jar not vendored;
-   use the Studio-managed Gradle or `gradle wrapper` once).
+   The URLs are `NEON_FUNCTION_API_BASE_URL` and `NEON_AUTH_BASE_URL` from the
+   root `.env.local`. They become `BuildConfig` fields; a trailing slash is
+   fine. Use the dev branch values unless you mean to point a build at
+   production.
+3. `cd android && ./gradlew :app:assembleDebug`
+   The APK lands in `app/build/outputs/apk/debug/`.
+4. `./gradlew :app:testDebugUnitTest` checks that the till's totals match the
+   figures the server stores for the same sales.
 
-## Verify on device (Phase 1 exit)
+## Check on a device (Phase 1 exit)
 
-1. Web: edit an item price → save.
-2. Tablet: sign in (owner email), pick store, register device, seed demo menu
-   if empty. Pull runs on start; grid updates within seconds.
-3. Airplane mode on, force-stop, reopen: menu still renders (Room).
+1. Web: edit an item price, save.
+2. Tablet: sign in with the owner email, pick the store, give the device a
+   code that no other till in the store uses, seed the demo menu if empty. The
+   pull runs on start; the grid updates within seconds.
+3. Airplane mode on, force-stop, reopen: the app opens straight on the menu
+   (a set-up tablet does not ask for sign-in again) and the menu still shows.
 
-## Phase 2 (sales vertical, in this tree, uncompiled)
+## How sync and sign-in behave
 
-- Room v2 (`MIGRATION_1_2`): tickets, lines, receipt snapshots, outbox.
-- `TicketRepository`: every mutation writes data + outbox in one txn, then an
-  immediate push when online. Receipt numbers `{store}-{device}-{seq}` resume
-  from the mirrored device row. Qty edits void + re-add with a reason.
-- `PushWorker`: batches of 50, applied/duplicate delete, rejected dead-letters,
-  401 refreshes JWT once, network retries with backoff.
-- UI: ticket panel, modifiers sheet, split payment (cash quick/change,
-  wallet/QR reference, partial chunks keep the ticket open), receipts list,
-  result screen.
-
-## Assumptions to confirm on device
-
-- Managed Auth REST paths in `core/network/AuthClient.kt`
-  (`/sign-in/email`, `/sign-up/email`, `/token`, `/get-session`).
-- First-sync progress UI is still a spinner (WorkManager progress comes later).
-- `requires_approval` discounts are selectable without a manager PIN
-  (Phase 4 gates them); live stock guard is availability-only (Phase 9).
+- **Pull:** pages until `has_more` is false, each page and its cursor in one
+  Room transaction. Network errors retry with backoff; a rewritten table on
+  the server (the `epochs` map changes) clears the mirror and pulls from 0.
+- **Session:** the auth cookies are stored on the device, and the API token is
+  refreshed from them shortly before it expires or when a call returns 401.
+  If the session itself is gone, the worker stops and the next sign-in resumes.
+- **Push:** outbox rows go up in order, 50 at a time. `applied` removes the
+  row, `rejected` moves it to the dead-letter state with the server's code,
+  `retry` leaves it queued. A line carries the price and modifier prices this
+  till charged, and a discount carries the amount it took off, so the server
+  stores the receipt as printed.
+- **Receipt numbers:** the sequence is kept on the device row and only moves
+  forward; a pull never lowers it.
+- **Sign-out:** refused while unsynced changes are in the outbox; otherwise it
+  clears the session and the local database, online or not.

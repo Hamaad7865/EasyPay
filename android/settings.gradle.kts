@@ -1,6 +1,5 @@
-# Android — Phase 0 skeleton (Kotlin + Compose, Min SDK 26)
-# Full modules per spec section 3 land in Phase 1+. Not built here (needs Android SDK + JDK).
-
+// RestoPOS till: Kotlin + Compose, min SDK 26. One :app module for now; the
+// module split in spec section 3 comes when the code is big enough to need it.
 pluginManagement {
     repositories { google(); mavenCentral(); gradlePluginPortal() }
 }

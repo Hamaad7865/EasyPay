@@ -2,7 +2,6 @@ package com.restopos.app
 
 import android.content.Context
 import androidx.room.Room
-import com.restopos.core.database.MIGRATION_1_2
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.network.ApiClient
 import com.restopos.core.network.AuthClient
@@ -17,20 +16,21 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
+    // Both clients normalise the base URL themselves (no trailing slash), so a
+    // slash in local.properties cannot double up in the request path.
     @Provides @Singleton
     fun authClient(@ApplicationContext ctx: Context): AuthClient =
-        AuthClient(ctx, com.restopos.app.BuildConfig.AUTH_URL.trimEnd('/') + "/")
+        AuthClient(ctx, BuildConfig.AUTH_URL)
 
     @Provides @Singleton
     fun apiClient(auth: AuthClient): ApiClient =
-        ApiClient(com.restopos.app.BuildConfig.FUNCTION_URL.trimEnd('/') + "/", auth)
+        ApiClient(BuildConfig.FUNCTION_URL, auth)
 
     @Provides @Singleton
     fun database(@ApplicationContext ctx: Context): TillDatabase =
         Room.databaseBuilder(ctx, TillDatabase::class.java, "till.db")
-            // No destructive fallback in release builds (spec 15). Every
-            // version bump ships an explicit Migration (see TillDatabase.kt).
-            .addMigrations(MIGRATION_1_2)
+            // No destructive fallback (spec 15): a version bump without its
+            // Migration fails loudly instead of wiping unsynced sales.
             .build()
 
     @Provides @Singleton

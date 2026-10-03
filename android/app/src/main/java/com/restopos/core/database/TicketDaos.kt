@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 data class LineWithMods(
@@ -25,13 +26,13 @@ interface TicketDao {
     @Query("SELECT group_concat(name_snapshot, ' · ') FROM ticket_line_modifiers WHERE line_id = :line")
     suspend fun modText(line: String): String?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertTicket(t: TicketEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertLines(rows: List<TicketLineEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertLineMods(rows: List<TicketLineModEntity>)
 
     @Query("UPDATE ticket_lines SET qty = :qty WHERE id = :id")
@@ -82,7 +83,7 @@ interface OutboxDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun enqueue(op: OutboxEntity)
 
-    @Query("SELECT * FROM outbox WHERE state = 'pending' ORDER BY created_at LIMIT 50")
+    @Query("SELECT * FROM outbox WHERE state = 'pending' ORDER BY created_at, rowid LIMIT :limit")
     suspend fun pending(limit: Int = 50): List<OutboxEntity>
 
     @Query("DELETE FROM outbox WHERE op_id = :id")

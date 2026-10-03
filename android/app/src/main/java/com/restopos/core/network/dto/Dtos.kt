@@ -20,6 +20,14 @@ data class SessionInfo(val token: String = "")
 @Serializable
 data class TokenResponse(val token: String = "")
 
+// { "message": "Invalid email or password", "code": "INVALID_EMAIL_OR_PASSWORD" }
+@Serializable
+data class AuthErrorBody(val message: String = "", val code: String = "")
+
+// Function API errors are { "error": "..." }.
+@Serializable
+data class ApiErrorBody(val error: String = "")
+
 // --- Function API (/me, /devices/register, /sync/pull, /signup) ---
 @Serializable
 data class StoreDto(val id: String, val name: String, val code: String)
@@ -53,15 +61,22 @@ data class SignupRequest(
 @Serializable
 data class SignupResponse(val tenantId: String, val storeId: String, val employeeId: String)
 
-// --- sync/pull: { changes: { table: [rows] }, next_cursor, has_more } ---
+// --- sync/pull: { changes: { table: [rows] }, next_cursor, has_more, epochs } ---
+// epochs: per-table counter the server bumps when it rewrites a table's
+// history; a change means the cursor is no longer valid.
 @Serializable
 data class PullResponse(
     val changes: Map<String, List<JsonElement>> = emptyMap(),
     @SerialName("next_cursor") val nextCursor: Long = 0,
     @SerialName("has_more") val hasMore: Boolean = false,
+    val epochs: Map<String, Long> = emptyMap(),
 )
 
-// --- sync/push: [{ op_id, type, payload }] -> [{ op_id, status, code?, data? }] ---
+// --- sync/push: { ops: [{ op_id, type, payload }] } -> [{ op_id, status, code?, data?, replayed? }] ---
+// status: applied | rejected | retry. replayed = the server had already seen this op_id.
+@Serializable
+data class PushRequest(val ops: List<OutboxOp>)
+
 @Serializable
 data class OutboxOp(
     @SerialName("op_id") val opId: String,
@@ -75,6 +90,7 @@ data class OpResult(
     val status: String,
     val code: String? = null,
     val data: JsonElement? = null,
+    val replayed: Boolean = false,
 )
 
 @Serializable

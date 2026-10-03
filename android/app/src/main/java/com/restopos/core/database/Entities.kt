@@ -1,12 +1,13 @@
 package com.restopos.core.database
 
 import androidx.room.Entity
-import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
 // Room mirrors the server tables one to one, same names and columns (spec 6).
 // Money: Long cents. serverSeq: pull ordering. deletedAt: soft delete.
+// No foreign keys between mirrored tables: a pull page can deliver an item
+// before its category, and the server already guarantees the references.
 
 @Entity(tableName = "stores")
 data class StoreEntity(
@@ -32,11 +33,6 @@ data class CategoryEntity(
 
 @Entity(
     tableName = "items",
-    foreignKeys = [ForeignKey(
-        entity = CategoryEntity::class,
-        parentColumns = ["id"], childColumns = ["category_id"],
-        onDelete = ForeignKey.SET_NULL,
-    )],
     indices = [Index("category_id"), Index("tenant_id")],
 )
 data class ItemEntity(
@@ -122,10 +118,13 @@ data class DeviceEntity(
 )
 
 // Pull cursor per store. Saved in the SAME txn as the page it came with (5.5).
+// epochs is the server's per-table epoch map as last seen; when it changes the
+// server rewrote history, so the mirror is cleared and pulled again from 0.
 @Entity(tableName = "sync_state")
 data class SyncStateEntity(
     @PrimaryKey val store_id: String,
     val cursor: Long = 0,
+    val epochs: String = "",
 )
 
 // Outbox lands in Phase 2 with ticket mutations. Table created now so the

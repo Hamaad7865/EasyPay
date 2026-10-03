@@ -15,9 +15,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-// Payment (spec 7.5): split across types as sequential chunks; cash quick
-// amounts + tendered/change; wallet/QR take an optional reference (manual
-// record in v1). Partial chunks keep the ticket open; full closes it.
+// Payment (spec 7.5): cash quick amounts + tendered/change; wallet/QR take an
+// optional reference (manual record in v1). One receipt pays the amount due
+// in full; splitting a bill by item needs line selection, which is not built.
 sealed interface PayUiState {
     data object Loading : PayUiState
     data class Ready(
@@ -91,14 +91,14 @@ class PaymentViewModel @Inject constructor(
         _state.value = s.copy(reference = v.take(64))
     }
 
-    // Cash: tendered >= remaining closes with change; smaller tendered pays a
-    // partial chunk (no change) and the screen reloads with the new remaining.
+    // Cash: tendered >= the amount due closes with change. Less than that is
+    // refused: a part payment would reach the server as a short receipt.
     fun takeCash() {
         val s = _state.value as? PayUiState.Ready ?: return
         val tend = (s.tenderedRs.toLongOrNull() ?: (s.remaining + 99) / 100) * 100
         if (s.remaining <= 0 || tend <= 0) { _state.value = s.copy(error = "Nothing to pay"); return }
         if (tend >= s.remaining) payChunk(s.remaining, tend, tend - s.remaining, s, null)
-        else payChunk(tend, tend, 0, s, null)
+        else _state.value = s.copy(error = "Tendered is less than the amount due")
     }
 
     // Card/wallet/QR: full remaining in one chunk with optional reference.

@@ -2,92 +2,89 @@ package com.restopos.core.sync
 
 import android.content.Context
 import androidx.hilt.work.HiltWorker
+import androidx.room.withTransaction
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import androidx.room.withTransaction
-import com.restopos.core.database.OutboxEntity
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.network.ApiClient
-import com.restopos.core.network.AuthClient
+import com.restopos.core.network.ApiError
+import com.restopos.core.network.AuthRequired
 import com.restopos.core.network.dto.OutboxOp
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-// Push (spec 5.4): outbox rows in creation order, batches of 50. applied and
-// duplicate delete the row (duplicate = the server already has it, e.g. the
-// app was killed mid-push, spec 14.3). rejected moves to dead-letter and
-// surfaces as a manager badge; local data is kept. Network failure retries
-// with exponential backoff; a 401 refreshes the JWT once and retries.
+internal const val PUSH_WORK = "push-now"
+
+// Push (spec 5.4): outbox rows in creation order, batches of 50, until the
+// outbox is empty. Per op the server answers:
+//   applied   done (also when it had already seen the op_id: replayed)  -> row removed
+//   rejected  a business refusal with a code                           -> dead-letter, data kept
+//   retry     transient; this op and every later one were not processed -> stay queued, in order
+// Network failures and 5xx retry with backoff. A 401 is handled inside
+// ApiClient (token refresh, one retry); if the session itself is gone the
+// worker stops until someone signs in. A pull follows every successful push.
 @HiltWorker
 class PushWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted params: WorkerParameters,
     private val db: TillDatabase,
     private val api: ApiClient,
-    private val auth: AuthClient,
 ) : CoroutineWorker(context, params) {
     private val json = Json { ignoreUnknownKeys = true }
 
     override suspend fun doWork(): Result {
-        val batch = db.outbox().pending(50)
-        if (batch.isEmpty()) return Result.success()
-        val ops = batch.map { row ->
-            OutboxOp(row.op_id, row.type, json.parseToJsonElement(row.payload))
-        }
-        val results = try {
-            api.push(ops)
-        } catch (e: io.ktor.client.plugins.ClientRequestException) {
-            if (e.response.status.value == 401 && auth.refreshJwt().isSuccess) {
-                try {
-                    return pushOnce(batch)
-                } catch (e2: Exception) {
-                    return if (e2 is java.io.IOException) Result.retry() else Result.failure()
+        var pushedAny = false
+        var mustRetry = false
+        while (!mustRetry) {
+            val batch = db.outbox().pending(BATCH)
+            if (batch.isEmpty()) break
+            val ops = batch.map { row -> OutboxOp(row.op_id, row.type, json.parseToJsonElement(row.payload)) }
+            val results = try {
+                api.push(ops)
+            } catch (e: AuthRequired) {
+                return Result.failure()
+            } catch (e: IOException) {
+                return Result.retry()
+            } catch (e: ApiError) {
+                return if (e.status >= 500) Result.retry() else Result.failure()
+            }
+            val byId = results.associateBy { it.opId }
+            var progressed = false
+            db.withTransaction {
+                batch.forEach { row ->
+                    val result = byId[row.op_id]
+                    when (result?.status) {
+                        "applied", "duplicate" -> { db.outbox().remove(row.op_id); progressed = true }
+                        "rejected" -> { db.outbox().dead(row.op_id, result.code ?: "rejected"); progressed = true }
+                        else -> mustRetry = true // "retry", or not answered: stays queued
+                    }
                 }
             }
-            return Result.retry()
-        } catch (e: java.io.IOException) {
-            return Result.retry()
-        } catch (e: Exception) {
-            return Result.failure()
+            pushedAny = pushedAny || progressed
+            if (!progressed) mustRetry = true
         }
-        return applyResults(batch, results)
+        if (pushedAny) SyncScheduler.pullNow(applicationContext)
+        return if (mustRetry) Result.retry() else Result.success()
     }
 
-    private suspend fun pushOnce(batch: List<OutboxEntity>): Result {
-        val ops = batch.map { row ->
-            OutboxOp(row.op_id, row.type, json.parseToJsonElement(row.payload))
-        }
-        return applyResults(batch, api.push(ops))
-    }
-
-    private suspend fun applyResults(batch: List<OutboxEntity>, results: List<com.restopos.core.network.dto.OpResult>): Result {
-        val byId = results.associateBy { it.opId }
-        db.withTransaction {
-            batch.forEach { row ->
-                when (byId[row.op_id]?.status) {
-                    "applied", "duplicate" -> db.outbox().remove(row.op_id)
-                    "rejected" -> db.outbox().dead(row.op_id, byId[row.op_id]?.code ?: "rejected")
-                    else -> Unit // server omitted it: leave pending for next run
-                }
-            }
-        }
-        return Result.success()
+    private companion object {
+        const val BATCH = 50
     }
 }
 
 fun pushNow(context: Context) {
     val req = OneTimeWorkRequestBuilder<PushWorker>()
-        .setConstraints(Constraints(requiredNetworkType = NetworkType.CONNECTED))
+        .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
         .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
         .build()
-    androidx.work.WorkManager.getInstance(context)
-        .enqueueUniqueWork("push-now", ExistingWorkPolicy.APPEND_OR_REPLACE, req)
+    WorkManager.getInstance(context).enqueueUniqueWork(PUSH_WORK, ExistingWorkPolicy.APPEND_OR_REPLACE, req)
 }

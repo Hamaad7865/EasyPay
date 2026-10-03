@@ -17,6 +17,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -115,7 +116,14 @@ class TicketRepository @Inject constructor(
                 return@runCatching
             }
             val lineId = Uuid7.next()
-            val modArr = buildJsonArray { mods.forEach { add(it.id) } }
+            // What this till charges goes with the line (price, name, each
+            // modifier's price), so the server stores the sale as issued even if
+            // the catalog changed while the tablet was offline.
+            val modArr = buildJsonArray {
+                mods.forEach { m ->
+                    add(buildJsonObject { put("modifier_id", m.id); put("price", m.price); put("name", m.name) })
+                }
+            }
             db.withTransaction {
                 db.tickets().upsertLines(listOf(
                     TicketLineEntity(lineId, tenant, t.id, itemId, null, item.name, item.price, qty, note),
@@ -124,7 +132,9 @@ class TicketRepository @Inject constructor(
                 db.catalog().upsertLineTaxes(taxes.map { TicketLineTaxEntity(lineId, it.id, it.rate_bp, it.type) })
                 db.outbox().enqueue(op("ticket.add_line", buildJsonObject {
                     put("id", lineId); put("ticket_id", t.id); put("item_id", itemId)
-                    put("qty", qty); note?.let { put("note", it) }; put("modifier_ids", modArr)
+                    put("qty", qty); note?.let { put("note", it) }
+                    put("unit_price", item.price); put("name_snapshot", item.name)
+                    put("modifiers", modArr)
                 }))
             }
             pushNow(context)
@@ -160,21 +170,22 @@ class TicketRepository @Inject constructor(
         db.tickets().lines(activeTicket()?.id ?: error("no ticket")).first()
 
     // Payment (spec 7.5): one Room txn creates receipt + lines + payments,
-    // closes the ticket, bumps the device receipt sequence, and queues the op.
-    // coverLineIds defaults to all unpaid non-void lines; partial chunks name
-    // their lines so paid flags stay exact.
+    // marks the covered lines paid, bumps the device receipt sequence, and
+    // queues the op. coverLineIds defaults to every unpaid line; a split bill
+    // names the lines each receipt covers. A receipt settles its lines in
+    // full: the server would store a part payment, but flagged for review.
     suspend fun pay(
         payments: List<PayInput>,
         discounts: List<DiscountPick>,
-        service: Long,
+        servicePct: Int = 0,
         coverLineIds: List<String>? = null,
     ): Result<ReceiptEntity> = runCatching {
         val t = activeTicket() ?: error("no ticket")
         val (tenant, store, deviceId) = ctx()
         val lines = currentLines().filter { it.voided_at == null }
         require(lines.isNotEmpty()) { "empty ticket" }
-        val covered = coverLineIds?.toSet() ?: lines.map { it.id }.toSet()
-        val payLines = lines.filter { covered.contains(it.id) }
+        val covered = coverLineIds?.toSet() ?: lines.filter { !it.paid }.map { it.id }.toSet()
+        val payLines = lines.filter { covered.contains(it.id) && !it.paid }
         require(payLines.isNotEmpty()) { "no lines covered" }
         val calcLines = payLines.map { l ->
             val taxes = db.catalog().lineTaxes(l.id)
@@ -192,13 +203,11 @@ class TicketRepository @Inject constructor(
                 Calc.Discount(if (d.type == "percent") d.value.toInt() else null, d.value)
             }
         }
-        val totals = Calc.totals(calcLines, discPicks, service, 0)
+        val totals = Calc.totals(calcLines, discPicks, servicePct, 0)
         val chunk = payments.sumOf { it.amount }
-        val prior = db.receipts().paidForTicket(t.id)
-        val remaining = totals.total - prior
-        require(chunk > 0 || totals.total == 0L) { "bad payment" }
-        require(chunk <= remaining) { "overpayment" }
-        val closing = chunk >= remaining
+        require(chunk == totals.total) { "Payment must equal the amount due" }
+        // the ticket closes when this receipt leaves no unpaid line behind
+        val closing = lines.none { !it.paid && !covered.contains(it.id) }
 
         val device = db.catalog().device(deviceId) ?: error("no device")
         val storeRow = db.catalog().store(store) ?: error("no store")
@@ -215,19 +224,20 @@ class TicketRepository @Inject constructor(
             }
         }
         val discArr = buildJsonArray {
-            discounts.forEach { d ->
+            discounts.forEachIndexed { i, d ->
                 add(buildJsonObject {
                     d.discountId?.let { put("discount_id", it) }
                     put("type", d.type); put("value", d.value); put("name", d.name)
+                    put("amount", totals.discountAmounts[i]) // as charged
                 })
             }
         }
-        val lineArr = buildJsonArray { covered.forEach { add(it) } }
+        val lineArr = buildJsonArray { payLines.forEach { add(it.id) } }
         db.withTransaction {
             db.receipts().insertReceipt(
                 ReceiptEntity(receiptId, tenant, store, deviceId, t.id, number,
                     subtotal = totals.subtotal, discount_total = totals.discount,
-                    tax_total = totals.tax, service_charge = service, total = totals.total),
+                    tax_total = totals.tax, service_charge = totals.service, total = totals.total),
             )
             db.receipts().insertLines(payLines.map {
                 ReceiptLineEntity(Uuid7.next(), tenant, receiptId, it.name_snapshot, it.unit_price, it.qty)
@@ -235,20 +245,21 @@ class TicketRepository @Inject constructor(
             db.receipts().insertPayments(payments.map {
                 ReceiptPaymentEntity(Uuid7.next(), tenant, receiptId, it.paymentTypeId, it.amount, it.tendered, it.change, it.reference)
             })
-            db.tickets().markPaid(covered.toList())
+            db.tickets().markPaid(payLines.map { it.id })
             if (closing) db.tickets().setStatus(t.id, "paid")
             db.catalog().upsertDevices(listOf(device.copy(last_receipt_seq = seq)))
             db.outbox().enqueue(op("receipt.create", buildJsonObject {
                 put("id", receiptId); put("ticket_id", t.id); put("store_id", store)
                 put("device_id", deviceId); put("number", number); put("device_seq", seq)
-                put("service_charge", service)
+                // the server derives the charge from the percentage; it refuses an amount
+                if (servicePct > 0) put("service_pct", servicePct)
                 put("payments", payArr); put("discounts", discArr); put("line_ids", lineArr)
             }))
         }
         if (closing) session.clearActiveTicket()
         pushNow(context)
-        return ReceiptEntity(receiptId, tenant, store, deviceId, t.id, number,
+        ReceiptEntity(receiptId, tenant, store, deviceId, t.id, number,
             subtotal = totals.subtotal, discount_total = totals.discount,
-            tax_total = totals.tax, service_charge = service, total = totals.total)
+            tax_total = totals.tax, service_charge = totals.service, total = totals.total)
     }
 }

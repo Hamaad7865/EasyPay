@@ -2,11 +2,12 @@ package com.restopos.core.database
 
 import androidx.paging.PagingSource
 import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Upsert
 
+// Pulled rows are written with @Upsert (insert, or update in place). REPLACE
+// deletes the old row first, which loses whatever hangs off it.
 @Dao
 interface CatalogDao {
     // Sale grid + search read from Room with paging (spec 7.3, 2,000 items).
@@ -21,31 +22,31 @@ interface CatalogDao {
     @Query("SELECT * FROM categories WHERE deleted_at IS NULL ORDER BY sort_order, name")
     fun categories(): kotlinx.coroutines.flow.Flow<List<CategoryEntity>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertCategories(rows: List<CategoryEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertItems(rows: List<ItemEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertGroups(rows: List<ModifierGroupEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertModifiers(rows: List<ModifierEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertTaxes(rows: List<TaxEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertDining(rows: List<DiningOptionEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertPayments(rows: List<PaymentTypeEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertStores(rows: List<StoreEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertDevices(rows: List<DeviceEntity>)
 
     @Query("SELECT * FROM items WHERE id = :id")
@@ -57,16 +58,16 @@ interface CatalogDao {
     @Query("SELECT * FROM stores WHERE id = :id")
     suspend fun store(id: String): StoreEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertItemTaxes(rows: List<ItemTaxCrossRef>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertItemModGroups(rows: List<ItemModGroupCrossRef>)
 
     @Query("SELECT t.* FROM taxes t JOIN item_taxes it ON it.tax_id = t.id WHERE it.item_id = :item AND t.deleted_at IS NULL")
     suspend fun taxesForItem(item: String): List<TaxEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertLineTaxes(rows: List<TicketLineTaxEntity>)
 
     @Query("SELECT * FROM ticket_line_taxes WHERE line_id = :line")
@@ -87,8 +88,28 @@ interface CatalogDao {
     @Query("SELECT * FROM discounts WHERE id = :id")
     suspend fun discount(id: String): DiscountEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertDiscounts(rows: List<DiscountEntity>)
+
+    @Query("DELETE FROM categories") suspend fun clearCategories()
+    @Query("DELETE FROM items") suspend fun clearItems()
+    @Query("DELETE FROM modifier_groups") suspend fun clearGroups()
+    @Query("DELETE FROM modifiers") suspend fun clearModifiers()
+    @Query("DELETE FROM taxes") suspend fun clearTaxes()
+    @Query("DELETE FROM dining_options") suspend fun clearDining()
+    @Query("DELETE FROM payment_types") suspend fun clearPayments()
+    @Query("DELETE FROM discounts") suspend fun clearDiscounts()
+    @Query("DELETE FROM item_taxes") suspend fun clearItemTaxes()
+    @Query("DELETE FROM item_modifier_groups") suspend fun clearItemModGroups()
+
+    // The catalog mirror only. Stores and devices stay: open tickets point at
+    // the store, and the device row carries this till's receipt sequence.
+    @Transaction
+    suspend fun clearCatalog() {
+        clearItemTaxes(); clearItemModGroups(); clearItems(); clearCategories()
+        clearModifiers(); clearGroups(); clearTaxes(); clearDining()
+        clearPayments(); clearDiscounts()
+    }
 }
 
 @Dao
@@ -96,6 +117,6 @@ interface SyncDao {
     @Query("SELECT * FROM sync_state WHERE store_id = :store")
     suspend fun cursor(store: String): SyncStateEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun saveCursor(state: SyncStateEntity)
 }

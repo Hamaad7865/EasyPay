@@ -1,6 +1,9 @@
 package com.restopos.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
@@ -32,7 +35,16 @@ object Routes {
 fun AppNav(session: SessionStore, onSignOut: () -> Unit) {
     val nav = rememberNavController()
     val context = LocalContext.current
-    NavHost(nav, startDestination = Routes.AUTH) {
+    // A tablet that has been set up opens on the menu, with or without a
+    // network: the menu is in Room. Sign-in is only the first-run path.
+    val start by produceState<String?>(initialValue = null) {
+        value = if (session.isSetUp()) Routes.SALE else Routes.AUTH
+    }
+    val startRoute = start ?: return
+    LaunchedEffect(startRoute) {
+        if (startRoute == Routes.SALE) SyncScheduler.startPeriodic(context)
+    }
+    NavHost(nav, startDestination = startRoute) {
         composable(Routes.AUTH) {
             val vm: AuthViewModel = hiltViewModel()
             AuthScreen(vm) { nav.navigate(Routes.DEVICE) { popUpTo(Routes.AUTH) { inclusive = true } } }

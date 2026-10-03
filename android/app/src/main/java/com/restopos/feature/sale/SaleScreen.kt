@@ -16,7 +16,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -49,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import com.restopos.core.common.Money
 import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.ModPick
@@ -60,7 +60,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun SaleScreen(vm: SaleViewModel = hiltViewModel(), onPay: () -> Unit, onReceipts: () -> Unit, onSignOut: () -> Unit) {
     val state by vm.state.collectAsState(SaleUiState.Ready(emptyList(), null))
-    val items = vm.items.collectAsLazyPagingItems()
+    val paged = vm.items.collectAsLazyPagingItems()
     val toast by vm.toast.collectAsState()
     val ticket by vm.ticket.collectAsState()
     val lines by vm.lines.collectAsState()
@@ -126,12 +126,12 @@ fun SaleScreen(vm: SaleViewModel = hiltViewModel(), onPay: () -> Unit, onReceipt
                         }
                     }
                     LazyVerticalGrid(GridCells.Adaptive(150.dp), Modifier.weight(1f), contentPadding = PaddingValues(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(items.itemCount, key = { i -> items[i]?.id ?: i }) { i ->
-                            val it = items[i] ?: return@items
-                            Card(onClick = { vm.onAction(SaleAction.TapItem(it)) }, enabled = it.is_available) {
+                        items(paged.itemCount, key = paged.itemKey { it.id }) { i ->
+                            val item = paged[i] ?: return@items
+                            Card(onClick = { vm.onAction(SaleAction.TapItem(item)) }, enabled = item.is_available) {
                                 Column(Modifier.padding(12.dp)) {
-                                    Text(it.name, minLines = 2)
-                                    Text(Money.format(it.price))
+                                    Text(item.name, minLines = 2)
+                                    Text(Money.format(item.price))
                                 }
                             }
                         }
@@ -156,7 +156,7 @@ fun SaleScreen(vm: SaleViewModel = hiltViewModel(), onPay: () -> Unit, onReceipt
                                     IconButton(onClick = {
                                         val q = l.qty - 1000
                                         if (q <= 0) voidTarget = l.id else vm.onAction(SaleAction.SetQty(l.id, q / 1000))
-                                    }) { Icon(Icons.Filled.Remove, contentDescription = "Less") }
+                                    }) { Text("\u2212") }
                                     Text("${l.qty / 1000}")
                                     IconButton(onClick = { vm.onAction(SaleAction.SetQty(l.id, l.qty / 1000 + 1)) }) {
                                         Icon(Icons.Filled.Add, contentDescription = "More")
@@ -247,7 +247,7 @@ fun ModsSheet(data: SheetData, onDismiss: () -> Unit, onConfirm: (Int, List<ModP
             }
             OutlinedTextField(note, { note = it }, Modifier.fillMaxWidth(), label = { Text("Kitchen note") })
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                IconButton(onClick = { qty = maxOf(1, qty - 1) }) { Icon(Icons.Filled.Remove, contentDescription = null) }
+                IconButton(onClick = { qty = maxOf(1, qty - 1) }) { Text("\u2212") }
                 Text("$qty")
                 IconButton(onClick = { qty++ }) { Icon(Icons.Filled.Add, contentDescription = null) }
                 Button(onClick = {

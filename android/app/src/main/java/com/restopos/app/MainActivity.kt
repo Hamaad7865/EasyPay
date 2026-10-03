@@ -1,20 +1,23 @@
 package com.restopos.app
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.sqlite.db.SimpleSQLiteQuery
 import com.restopos.core.network.AuthClient
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.SyncScheduler
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 // Single-activity app. Pull-on-start per spec 5.5; sign-out wipes Room and is
-// blocked while the outbox is non-empty (outbox writes land in Phase 2, the
-// guard is already here).
+// blocked while the outbox is non-empty.
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     @Inject lateinit var session: SessionStore
@@ -26,17 +29,24 @@ class MainActivity : ComponentActivity() {
         SyncScheduler.pullNow(this)
         setContent {
             val scope = rememberCoroutineScope()
-            AppNav(session) {
-                scope.launch {
-                    // Phase 2 fills the outbox; until then sign-out is direct.
-                    val pending = db.openHelper.readableDatabase
-                        .query(SimpleSQLiteQuery("SELECT COUNT(*) FROM outbox WHERE state = 'pending'"))
-                        .use { c -> c.moveToFirst(); c.getLong(0) }
-                    if (pending == 0L) {
-                        auth.signOut()
-                        session.clear()
-                        db.clearAllTables()
-                        recreate()
+            MaterialTheme {
+                Surface {
+                    AppNav(session) {
+                        scope.launch {
+                            // Unsynced sales exist only on this tablet: signing out
+                            // would wipe them, so it is refused until they are pushed.
+                            val pending = db.outbox().pendingCount()
+                            if (pending > 0L) {
+                                Toast.makeText(this@MainActivity, "$pending changes still to sync. Connect, then sign out.", Toast.LENGTH_LONG).show()
+                                return@launch
+                            }
+                            SyncScheduler.stop(this@MainActivity)
+                            auth.signOut() // best effort on the server, always clears locally
+                            session.clear()
+                            // clearAllTables() blocks; Room refuses it on the main thread.
+                            withContext(Dispatchers.IO) { db.clearAllTables() }
+                            recreate()
+                        }
                     }
                 }
             }

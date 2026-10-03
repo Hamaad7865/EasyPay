@@ -1,23 +1,30 @@
 package com.restopos.feature.auth
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Uuid7
 import com.restopos.core.network.ApiClient
+import com.restopos.core.network.ApiError
 import com.restopos.core.network.AuthClient
 import com.restopos.core.network.dto.RegisterDeviceRequest
+import com.restopos.core.network.dto.StoreDto
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.SyncScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 // --- Auth (spec 7.1 steps 1-2; PIN screen is Phase 4) ---
+// Every outcome is a state: the screen navigates on SignedIn, it never reads a
+// plain field that Compose cannot observe.
 sealed interface AuthUiState {
     data object Form : AuthUiState
     data object Busy : AuthUiState
+    data object SignedIn : AuthUiState
     data class Error(val message: String) : AuthUiState
 }
 
@@ -29,12 +36,9 @@ sealed interface AuthAction {
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val auth: AuthClient,
-    private val api: ApiClient,
 ) : ViewModel() {
     private val _state = MutableStateFlow<AuthUiState>(AuthUiState.Form)
     val state: StateFlow<AuthUiState> = _state
-    var signedIn = false
-        private set
 
     fun onAction(a: AuthAction) = viewModelScope.launch {
         _state.value = AuthUiState.Busy
@@ -42,63 +46,73 @@ class AuthViewModel @Inject constructor(
             is AuthAction.SignIn -> auth.signIn(a.email.trim(), a.password)
             is AuthAction.SignUp -> auth.signUp(a.name.trim(), a.email.trim(), a.password)
         }
-        r.onSuccess { signedIn = true; _state.value = AuthUiState.Form }
-            .onFailure { _state.value = AuthUiState.Error(it.message ?: "Sign-in failed") }
+        _state.value = r.fold(
+            onSuccess = { AuthUiState.SignedIn },
+            onFailure = { AuthUiState.Error(it.message ?: "Sign-in failed") },
+        )
     }
 }
 
 // --- Store + device selection (spec 7.1 step 2; Phase 1 exit needs this) ---
 sealed interface StoreDeviceUiState {
     data object Loading : StoreDeviceUiState
-    data class Pick(val stores: List<com.restopos.core.network.dto.StoreDto>, val error: String? = null) : StoreDeviceUiState
+    data class Pick(val stores: List<StoreDto>, val error: String? = null, val notice: String? = null) : StoreDeviceUiState
     data object Busy : StoreDeviceUiState
+    data object Ready : StoreDeviceUiState
     data class Error(val message: String) : StoreDeviceUiState
 }
 
 sealed interface StoreDeviceAction {
     data class Register(val storeId: String, val name: String, val code: String) : StoreDeviceAction
-    data class SeedDemo(val onDone: (String) -> Unit) : StoreDeviceAction
+    data object SeedDemo : StoreDeviceAction
 }
 
 @HiltViewModel
 class StoreDeviceViewModel @Inject constructor(
     private val api: ApiClient,
     private val session: SessionStore,
+    @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
     private val _state = MutableStateFlow<StoreDeviceUiState>(StoreDeviceUiState.Loading)
     val state: StateFlow<StoreDeviceUiState> = _state
-    var ready = false
-        private set
+    private var stores: List<StoreDto> = emptyList()
 
     init { refresh() }
 
     fun refresh() = viewModelScope.launch {
         _state.value = StoreDeviceUiState.Loading
         runCatching { api.me() }
-            .onSuccess { _state.value = StoreDeviceUiState.Pick(it.stores) }
-            .onFailure { _state.value = StoreDeviceUiState.Error(it.message ?: "Load failed") }
+            .onSuccess { stores = it.stores; _state.value = StoreDeviceUiState.Pick(stores) }
+            .onFailure { _state.value = StoreDeviceUiState.Error(it.message ?: "Could not load stores") }
     }
 
-    fun onAction(a: StoreDeviceAction, context: android.content.Context) = viewModelScope.launch {
+    fun onAction(a: StoreDeviceAction) = viewModelScope.launch {
         when (a) {
             is StoreDeviceAction.Register -> {
                 _state.value = StoreDeviceUiState.Busy
-                // Client-minted device id (spec 15); reinstall re-sends it via
-                // DataStore when present — here a fresh id per registration call.
+                // Client-minted device id (spec 15): reused if this tablet was
+                // registered before, so a reinstall resumes its receipt sequence.
                 val deviceId = session.deviceId() ?: Uuid7.next()
                 runCatching {
-                    api.registerDevice(RegisterDeviceRequest(a.storeId, deviceId, a.name, a.code.uppercase()))
-                }.onSuccess { res ->
+                    val res = api.registerDevice(RegisterDeviceRequest(a.storeId, deviceId, a.name.trim(), a.code.trim().uppercase()))
                     val me = api.me()
                     session.save(me.tenantId, a.storeId, res.deviceId)
-                    SyncScheduler.pullNow(context)
-                    ready = true
-                }.onFailure { _state.value = StoreDeviceUiState.Error(it.message ?: "Register failed") }
+                }.onSuccess {
+                    SyncScheduler.pullNow(appContext)
+                    _state.value = StoreDeviceUiState.Ready
+                }.onFailure {
+                    val message = if (it is ApiError && it.status == 409) {
+                        "Device code ${a.code.trim().uppercase()} is already used in this store. Pick another."
+                    } else {
+                        it.message ?: "Could not register this device"
+                    }
+                    _state.value = StoreDeviceUiState.Pick(stores, error = message)
+                }
             }
-            is StoreDeviceAction.SeedDemo -> {
+            StoreDeviceAction.SeedDemo -> {
                 runCatching { api.seedDemo() }
-                    .onSuccess { a.onDone("Demo menu seeded — pulling") }
-                    .onFailure { a.onDone(it.message ?: "Seed failed (Manager only)") }
+                    .onSuccess { _state.value = StoreDeviceUiState.Pick(stores, notice = "Demo menu added") }
+                    .onFailure { _state.value = StoreDeviceUiState.Pick(stores, error = it.message ?: "Could not add the demo menu") }
             }
         }
     }
