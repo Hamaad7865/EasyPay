@@ -28,6 +28,35 @@ function check(name, cond, extra) {
   await c.query(`insert into stores (tenant_id, name, code) values ('${tid}','Main','TRS1')`);
   const store = (await c.query(`select id from stores where tenant_id='${tid}'`)).rows[0].id;
   await c.query(`select seed_demo_catalog('${tid}')`);
+  // test-only truncate helper (removed from migrations in 0036): session-
+  // local in pg_temp, created as owner, dropped in cleanup below.
+  await c.query(`create or replace function pg_temp.sync_truncate_test(p_tables text[]) returns void
+language plpgsql security definer set search_path = public as $fn$
+declare
+  allowed text[] := array[
+    'categories','items','item_variants','modifier_groups','modifiers',
+    'item_modifier_groups','item_taxes','taxes','discounts','dining_options',
+    'payment_types','employee_stores','store_item_overrides',
+    'grid_pages','grid_page_items','pos_devices',
+    'tickets','ticket_lines','ticket_line_modifiers','ticket_line_taxes',
+    'receipts','receipt_lines','receipt_line_modifiers','receipt_line_taxes',
+    'receipt_payments','receipt_discounts'];
+  t text;
+  idents text := '';
+begin
+  if p_tables is null or array_length(p_tables, 1) is null then
+    raise exception 'bad-payload';
+  end if;
+  foreach t in array p_tables loop
+    if not (t = any (allowed)) then raise exception 'bad-table'; end if;
+    idents := idents || quote_ident(t) || ', ';
+  end loop;
+  idents := left(idents, length(idents) - 2);
+  execute 'truncate ' || idents;
+  insert into sync_epoch (table_name, epoch)
+    select unnest(p_tables), 2
+    on conflict (table_name) do update set epoch = sync_epoch.epoch + 1;
+end $fn$;`);
 
   async function pullAsApp(cursor) {
     await c.query('BEGIN');
@@ -60,7 +89,7 @@ function check(name, cond, extra) {
     'tickets','ticket_lines','ticket_line_modifiers','ticket_line_taxes',
     'receipts','receipt_lines','receipt_line_modifiers','receipt_line_taxes',
     'receipt_payments','receipt_discounts'];
-  await c.query(`select sync_truncate($1::text[])`, ['{' + ALL.join(',') + '}']);
+  await c.query(`select pg_temp.sync_truncate_test($1::text[])`, ['{' + ALL.join(',') + '}']);
   await c.query(`select setval('sync_seq', 1, false)`);
   await c.query(`select seed_demo_catalog('${tid}')`);
 
@@ -72,7 +101,8 @@ function check(name, cond, extra) {
   const p2 = await pullAsApp(0);
   check('fresh pull sees reseeded rows', p2.changes.items.length === 43, 'n=' + p2.changes.items.length);
 
-  // cleanup (owner; disable insert-only guards)
+  // cleanup (owner; disable insert-only guards) + drop the test helper
+  await c.query(`drop function if exists pg_temp.sync_truncate_test(text[])`);
   for (const t of ['sync_ops_applied','receipts','receipt_lines','receipt_line_modifiers','receipt_line_taxes','receipt_payments','receipt_discounts'])
     await c.query(`alter table ${t} disable trigger trg_no_update`).catch(() => {});
   for (const t of ['receipt_discounts','receipt_payments','receipt_line_taxes','receipt_line_modifiers','receipt_lines','receipts','ticket_line_taxes','ticket_line_modifiers','ticket_lines','tickets','grid_page_items','grid_pages','store_item_overrides','item_taxes','item_modifier_groups','modifiers','modifier_groups','item_variants','items','taxes','discounts','dining_options','payment_types','employee_stores','employees','roles','categories','pos_devices','stores','sync_ops_applied','tenants'])
