@@ -37,15 +37,30 @@ function check(name, cond, extra) {
   await c.query(`insert into modifiers (tenant_id, group_id, name, price)
     select '${tid}', '${grp}', 'mod-' || g, 10 from generate_series(1, 30) g`);
 
-  async function pull(cursor) {
+  async function pullAs(cursor, tenant, storeId) {
     await c.query('BEGIN');
     await c.query('SET ROLE app_user');
-    await c.query(`SET LOCAL app.tenant_id = '${tid}'`);
-    const r = (await c.query(`select sync_pull('${store}', ${cursor}, 200) as r`)).rows[0].r;
+    await c.query(`SET LOCAL app.tenant_id = '${tenant}'`);
+    const r = (await c.query(`select sync_pull('${storeId}', ${cursor}, 200) as r`)).rows[0].r;
     await c.query('COMMIT');
     await c.query('RESET ROLE');
     return r;
   }
+  async function pull(cursor) { return pullAs(cursor, tid, store); }
+
+  // small catalog: nothing cut off -> next_cursor is the highest sequence
+  const tidS = crypto.randomUUID();
+  await c.query(`insert into tenants (id, tenant_id, name) values ('${tidS}','${tidS}','PG-Small')`);
+  await c.query(`insert into stores (tenant_id, name, code) values ('${tidS}','Main','PGSS')`);
+  const storeS = (await c.query(`select id from stores where tenant_id='${tidS}'`)).rows[0].id;
+  await c.query(`select seed_demo_catalog('${tidS}')`);
+  const q0 = await pullAs(0, tidS, storeS);
+  let max0 = 0;
+  for (const rows of Object.values(q0.changes)) for (const r of rows) max0 = Math.max(max0, r.server_seq || 0);
+  check('untruncated pull settles at global max', q0.next_cursor === max0 && !q0.has_more,
+    `cursor=${q0.next_cursor} max=${max0} more=${q0.has_more}`);
+  for (const t of ['grid_page_items','grid_pages','store_item_overrides','item_taxes','item_modifier_groups','modifiers','modifier_groups','item_variants','items','taxes','discounts','dining_options','payment_types','stores','tenants'])
+    await c.query(`delete from ${t} where tenant_id='${tidS}'`);
 
   const items = new Set(), mods = new Set();
   let cursor = 0, rounds = 0, more = true;
