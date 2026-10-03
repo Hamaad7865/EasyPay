@@ -1,5 +1,5 @@
 import { revalidatePath } from "next/cache";
-import { tenantContext } from "@/lib/tenant";
+import { requirePerm, tenantContext } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
 import { fmtRs, parseRs } from "@/lib/money";
 
@@ -14,7 +14,7 @@ type ItemRow = {
 
 async function addItem(formData: FormData) {
   "use server";
-  const ctx = await tenantContext();
+  const ctx = await requirePerm("items.edit");
   const name = String(formData.get("name") ?? "").trim();
   const price = parseRs(String(formData.get("price") ?? ""));
   const categoryId = String(formData.get("category") ?? "") || null;
@@ -32,7 +32,7 @@ async function addItem(formData: FormData) {
 
 async function saveItem(formData: FormData) {
   "use server";
-  const ctx = await tenantContext();
+  const ctx = await requirePerm("items.edit");
   const id = String(formData.get("id") ?? "");
   const price = parseRs(String(formData.get("price") ?? ""));
   const available = formData.get("available") === "on";

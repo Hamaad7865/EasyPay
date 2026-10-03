@@ -33,3 +33,12 @@ export async function bearerToken(): Promise<string | null> {
   const { data } = await auth.token();
   return data?.token ?? null;
 }
+
+// Server-action guard: the caller's employee must hold the permission.
+// Throws (never returns false) so failures cannot be ignored by callers.
+export async function requirePerm(perm: string): Promise<TenantContext> {
+  const ctx = await tenantContext();
+  const allowed = await db().query(`select has_perm($1, $2) as ok`, [ctx.employeeId, perm]);
+  if (!allowed.rows[0]?.ok) throw new Error(`Forbidden: ${perm} required`);
+  return ctx;
+}

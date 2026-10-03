@@ -1,6 +1,7 @@
-// fk-restrict.test.cjs — composite FKs must be RESTRICT, never SET NULL:
-// deleting a parent with referencing rows must fail loudly, never null
-// any tenant_id (which would break RLS + touch_row).
+// fk-setnull.test.cjs — composite FKs null ONLY the named column (PG15+
+// set-null(column)), never tenant_id. Deleting a referenced parent succeeds;
+// children keep their tenant and lose just the association. Insert-only
+// tables use NO ACTION. Surrogate id PKs allow duplicate pairs.
 const fs = require('fs');
 const crypto = require('crypto');
 const { Client } = require('pg');
@@ -23,12 +24,16 @@ function check(name, cond, extra) {
   const c = new Client({ connectionString: env.DATABASE_URL_UNPOOLED, ssl: { require: true } });
   await c.connect();
 
-  const leftovers = await c.query(
-    `select c.conname, cl.relname as tbl from pg_constraint c
+  // plain whole-row SET NULL has no column list; the named form does.
+  // confdeltype cannot tell them apart, so match the rendered definition.
+  const bad = await c.query(
+    `select cl.relname as tbl, c.conname from pg_constraint c
      join pg_class cl on cl.oid = c.conrelid join pg_namespace n on n.oid = cl.relnamespace
-     where c.contype = 'f' and c.confdeltype = 'n' and n.nspname = 'public'`);
-  check('no composite SET NULL constraints remain', leftovers.rows.length === 0,
-    JSON.stringify(leftovers.rows.map((r) => r.tbl + '.' + r.conname)));
+     where c.contype = 'f' and n.nspname = 'public'
+       and pg_get_constraintdef(c.oid) like '%ON DELETE SET NULL'
+       and pg_get_constraintdef(c.oid) not like '%ON DELETE SET NULL (%'`);
+  check('no whole-row SET NULL constraints remain', bad.rows.length === 0,
+    JSON.stringify(bad.rows.map((r) => r.tbl + '.' + r.conname)));
 
   const tid = crypto.randomUUID();
   await c.query(`insert into tenants (id, tenant_id, name) values ('${tid}','${tid}','FK-Probe')`);
@@ -39,20 +44,18 @@ function check(name, cond, extra) {
   const cat = (await c.query(`select id from categories where tenant_id='${tid}'`)).rows[0].id;
   await c.query(`insert into items (tenant_id, category_id, name, price) values ('${tid}','${cat}','I', 100)`);
 
-  const refused = (e, fkey) =>
-    e !== null && String(e.code).startsWith('23') && String(e.message).includes('RESTRICT') && String(e.message).includes(fkey);
-  let roleErr = null;
-  try { await c.query(`delete from roles where tenant_id='${tid}'`); } catch (e) { roleErr = e; }
-  check('deleting a referenced role is refused', refused(roleErr, 'employees_tenant_id_role_id_fkey'), roleErr && (roleErr.code + ' :: ' + roleErr.message));
-  let catErr = null;
-  try { await c.query(`delete from categories where tenant_id='${tid}'`); } catch (e) { catErr = e; }
-  check('deleting a referenced category is refused', refused(catErr, 'items_tenant_id_category_id_fkey'), catErr && (catErr.code + ' :: ' + catErr.message));
-  const intact = await c.query(`select (select tenant_id from employees where tenant_id='${tid}' limit 1) as e, (select tenant_id from items where tenant_id='${tid}' limit 1) as i`);
-  check('tenant_ids intact after refused deletes', intact.rows[0].e === tid && intact.rows[0].i === tid);
+  await c.query(`delete from roles where tenant_id='${tid}'`);
+  const emp = (await c.query(`select tenant_id, role_id from employees where tenant_id='${tid}'`)).rows[0];
+  check('role delete succeeds, only role_id nulled', emp.tenant_id === tid && emp.role_id === null, JSON.stringify(emp));
+  await c.query(`delete from categories where tenant_id='${tid}'`);
+  const item = (await c.query(`select tenant_id, category_id from items where tenant_id='${tid}'`)).rows[0];
+  check('category delete succeeds, only category_id nulled', item.tenant_id === tid && item.category_id === null, JSON.stringify(item));
+  const nullTenant = await c.query(`select count(*)::int n from items where tenant_id is null`);
+  check('no nulled tenant_id anywhere', nullTenant.rows[0].n === 0);
 
   for (const t of ['items','employees','roles','categories','tenants'])
     await c.query(`delete from ${t} where tenant_id='${tid}'`);
-  console.log(failures === 0 ? 'FK-RESTRICT PASS' : `FK-RESTRICT FAIL (${failures})`);
+  console.log(failures === 0 ? 'FK-SETNULL PASS' : `FK-SETNULL FAIL (${failures})`);
   await c.end();
   process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error('TEST_FAILED:' + e.message); process.exit(1); });

@@ -68,7 +68,7 @@ export async function asTenant<T>(tenantId: string, fn: (q: (text: string, param
 
 const app = new Hono();
 
-app.get("/health", (c) => c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown" }));
+app.get("/health", (c) => c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "item6-0033" }));
 
 // Self-serve signup (spec 1: selling within ten minutes).
 // Requires a verified Neon Auth JWT; identity comes ONLY from its sub (spec
@@ -105,7 +105,7 @@ app.post("/signup", async (c) => {
       );
       if (dupe.rowCount) {
         await client.query("ROLLBACK");
-        return c.json({ error: "account already has a tenant", tenantId: dupe.rows[0].tenant_id }, 409);
+        return c.json({ error: "account already has a tenant" }, 409);
       }
     }
     const t = await client.query(`insert into tenants (name) values ($1) returning id`, [tenantName]);
@@ -128,7 +128,8 @@ app.post("/signup", async (c) => {
     return c.json({ tenantId, storeId: s.rows[0].id, employeeId: e.rows[0].id }, 201);
   } catch (err) {
     try { await client.query("ROLLBACK"); } catch { /* ignore */ }
-    return c.json({ error: "signup failed", detail: (err as Error).message }, 500);
+    console.error("signup failed:", (err as Error).message);
+    return c.json({ error: "signup failed" }, 500);
   } finally {
     client.release();
   }
@@ -148,7 +149,8 @@ app.get("/me", async (c) => {
 });
 
 // Seeds the Le Flamboyant demo catalog into the caller's tenant (Phase 1).
-// Owner/Manager only. Refuses if the tenant already has categories.
+// Requires items.edit (checked in SQL, not by role name). Refuses if the
+// tenant already has categories.
 app.post("/seed-demo", async (c) => {
   let auth: Authed;
   try {
@@ -156,21 +158,19 @@ app.post("/seed-demo", async (c) => {
   } catch (res) {
     return res as Response;
   }
-  const role = await pool.query(
-    `select r.name from employees e join roles r on r.id = e.role_id where e.id = $1`,
-    [auth.employeeId],
-  );
-  const roleName = role.rows[0]?.name;
-  if (roleName !== "Owner" && roleName !== "Manager") {
-    return c.json({ error: "Manager access only" }, 403);
+  const allowed = await pool.query(`select has_perm($1, 'items.edit') as ok`, [auth.employeeId]);
+  if (!allowed.rows[0]?.ok) {
+    return c.json({ error: "Forbidden" }, 403);
   }
   const seeded = await pool.query(`select seed_demo_catalog($1) as r`, [auth.tenantId]);
   return c.json(seeded.rows[0].r);
 });
 
 // Device registration for store/device selection (Phase 1).
-// Find-or-create by (store, code); touches last_seen. Receipt sequence
-// lives on the row so reinstalls resume instead of restarting (spec 5.7).
+// Upsert on the client-minted device id (spec 15, required). A code already
+// held by ANOTHER device in the store is 409 (two tills on the default T1
+// must never merge into one row and share a receipt sequence). Receipt
+// sequence lives on the row so reinstalls resume (spec 5.7).
 app.post("/devices/register", async (c) => {
   let auth: Authed;
   try {
@@ -185,32 +185,30 @@ app.post("/devices/register", async (c) => {
   const code = (body.code ?? "T1").trim().toUpperCase();
   if (!/^[0-9a-f-]{36}$/i.test(storeId)) return c.json({ error: "storeId required" }, 400);
   if (!name || !/^[A-Z0-9]{1,12}$/.test(code)) return c.json({ error: "name and code (A-Z0-9, 1-12) required" }, 400);
-  // Client-generated IDs only (spec 15): the device mints its UUIDv7 once and
-  // re-sends it on reinstall; omitting it keeps the legacy server-minted path.
-  const deviceId = body.deviceId && /^[0-9a-f-]{36}$/i.test(body.deviceId) ? body.deviceId : null;
+  if (!body.deviceId || !/^[0-9a-f-]{36}$/i.test(body.deviceId)) {
+    return c.json({ error: "deviceId required (client-minted UUID)" }, 400);
+  }
+  const deviceId = body.deviceId;
   try {
     const rows = await asTenant<{ id: string; last_receipt_seq: string }>(auth.tenantId, (q) =>
-      deviceId
-        ? q(
-            `insert into pos_devices (id, tenant_id, store_id, name, code, app_version, last_seen_at)
-               values ($1, $2, $3, $4, $5, $6, now())
-             on conflict (tenant_id, store_id, code) do update
-               set name = excluded.name, app_version = excluded.app_version, last_seen_at = now()
-             returning id, last_receipt_seq`,
-            [deviceId, auth.tenantId, storeId, name, code, body.appVersion ?? null],
-          ).then((r) => r.rows)
-        : q(
-        `insert into pos_devices (tenant_id, store_id, name, code, app_version, last_seen_at)
-           values ($1, $2, $3, $4, $5, now())
-         on conflict (tenant_id, store_id, code) do update
-           set name = excluded.name, app_version = excluded.app_version, last_seen_at = now()
+      q(
+        `insert into pos_devices (id, tenant_id, store_id, name, code, app_version, last_seen_at)
+           values ($1, $2, $3, $4, $5, $6, now())
+         on conflict (id) do update
+           set name = excluded.name, code = excluded.code, app_version = excluded.app_version,
+             last_seen_at = now()
          returning id, last_receipt_seq`,
-        [auth.tenantId, storeId, name, code, body.appVersion ?? null],
+        [deviceId, auth.tenantId, storeId, name, code, body.appVersion ?? null],
       ).then((r) => r.rows),
     );
     return c.json({ deviceId: rows[0].id, lastReceiptSeq: Number(rows[0].last_receipt_seq) });
   } catch (err) {
-    return c.json({ error: "register failed", detail: (err as Error).message }, 400);
+    const msg = (err as Error).message;
+    console.error("register failed:", msg);
+    if (msg.includes("pos_devices_tenant_id_store_id_code_key")) {
+      return c.json({ error: "device code already registered in this store" }, 409);
+    }
+    return c.json({ error: "register failed" }, 400);
   }
 });
 
@@ -234,7 +232,8 @@ app.post("/sync/push", async (c) => {
     );
     return c.json(out[0].r);
   } catch (err) {
-    return c.json({ error: "push failed", detail: (err as Error).message }, 400);
+    console.error("push failed:", (err as Error).message);
+    return c.json({ error: "push failed" }, 400);
   }
 });
 
@@ -256,7 +255,8 @@ app.get("/sync/pull", async (c) => {
     );
     return c.json(out[0].r);
   } catch (err) {
-    return c.json({ error: "pull failed", detail: (err as Error).message }, 400);
+    console.error("pull failed:", (err as Error).message);
+    return c.json({ error: "pull failed" }, 400);
   }
 });
 

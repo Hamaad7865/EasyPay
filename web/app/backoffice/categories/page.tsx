@@ -1,10 +1,10 @@
 import { revalidatePath } from "next/cache";
-import { tenantContext } from "@/lib/tenant";
+import { requirePerm, tenantContext } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
 
 async function addCategory(formData: FormData) {
   "use server";
-  const ctx = await tenantContext();
+  const ctx = await requirePerm("items.edit");
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
   await withTenant(ctx.tenantId, (c) =>
