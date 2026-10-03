@@ -82,7 +82,17 @@ const TABLES = ['receipt_discounts','receipt_payments','receipt_line_taxes','rec
     pay(rc2, tk2, 'OPS1-T1-2', 2, { payments: [{ payment_type_id: cash, amount: 6000 }] })]); });
   check('T2 override price applies unflagged', r2[2].status === 'applied' && r2[2].data.needs_review === false, JSON.stringify(r2[2]));
 
-  // T3: override exists but till sends catalog price -> flagged (stale till).
+  // T4: variant + override both present -> variant wins (most specific).
+  // Override 6000 on the item, variant Large 7000: line stamps 7000, clean.
+  const tk4 = crypto.randomUUID(), rc4 = crypto.randomUUID();
+  let r4;
+  await step('T4-sale', async () => { r4 = await push([
+    op('ticket.create', { id: tk4, store_id: store }),
+    op('ticket.add_line', { id: crypto.randomUUID(), ticket_id: tk4, item_id: dp.id, variant_id: vr, qty: 1000 }),
+    pay(rc4, tk4, 'OPS1-T1-4', 4, { payments: [{ payment_type_id: cash, amount: 7000 }] })]); });
+  check('T4 variant beats override', r4[2].status === 'applied', JSON.stringify(r4[2]));
+  check('T4 variant price stamped, unflagged',
+    r4[2].status === 'applied' && r4[2].data.needs_review === false, JSON.stringify(r4[2].data));
   const tk3 = crypto.randomUUID(), rc3 = crypto.randomUUID();
   let r3;
   await step('T3-sale', async () => { r3 = await push([
