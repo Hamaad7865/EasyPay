@@ -72,7 +72,34 @@ async function cleanupTenant(client, tenantId) {
   }
 }
 
-module.exports = { loadEnv, envMap, requireDev, cleanupTenant, CHILD_FIRST, GUARDS };
+// A tenant made the way the platform admin makes one (migration 0044), for
+// suites that need a real login linked to it. The admin row is a throwaway.
+async function createTenantAsAdmin(client, { name, storeCode, ownerName, ownerAuth }) {
+  const adminId = require('crypto').randomUUID();
+  await client.query(`insert into platform.admins (auth_user_id, email) values ($1, $2)`,
+    [adminId, `test-admin-${adminId}@example.com`]);
+  const made = (await client.query(`select platform.create_tenant($1, $2, 'Main', $3, $4, $5, 'standard') as r`,
+    [adminId, name, storeCode, ownerName, ownerAuth])).rows[0].r;
+  return { tid: made.tenant_id, storeId: made.store_id, employeeId: made.employee_id, adminId };
+}
+
+// Removes a throwaway admin and the audit rows it produced (the audit log is
+// insert-only, so its guard is lifted inside the same transaction).
+async function cleanupPlatform(client, adminId, tenantId) {
+  await client.query('BEGIN');
+  try {
+    await client.query('alter table platform.audit disable trigger trg_no_update');
+    await client.query('delete from platform.audit where admin_auth_user_id = $1 or tenant_id = $2', [adminId, tenantId]);
+    await client.query('alter table platform.audit enable trigger trg_no_update');
+    await client.query('delete from platform.admins where auth_user_id = $1', [adminId]);
+    await client.query('COMMIT');
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    throw new Error('cleanup platform:' + e.message);
+  }
+}
+
+module.exports = { loadEnv, envMap, requireDev, cleanupTenant, createTenantAsAdmin, cleanupPlatform, CHILD_FIRST, GUARDS };
 
 // Checked on require, so a test is refused before it opens any connection.
 requireDev(envMap());

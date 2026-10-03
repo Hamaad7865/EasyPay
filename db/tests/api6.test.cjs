@@ -1,4 +1,4 @@
-// api6.test.cjs — Item 6: 409 without tenantId, no DB detail leaks,
+// api6.test.cjs — Item 6: sign-up endpoint gone, no DB detail leaks,
 // seed-demo by permission, devices/register code conflicts, FK null-column.
 const fs = require('fs');
 const crypto = require('crypto');
@@ -51,30 +51,26 @@ async function authedUser(authBase, tag) {
   const post = (path, jwt, body) => statusOf(fetch(fnBase + path, { method: 'POST', headers: H(jwt), body: JSON.stringify(body) }));
 
   // owner user + tenant (HTTP mode) or direct SQL setup (DB-only mode)
-  let tid, storeId;
+  let tid, storeId, adminId, owner, cashier;
   if (httpTests) {
-  const owner = await authedUser(authBase, 'own');
-  const sg = JSON.parse((await post('/signup', owner.jwt, { tenantName: 'API6', storeName: 'Main', storeCode: 'A6S1', ownerName: 'O' })).body);
-  tid = sg.tenantId; storeId = sg.storeId;
+  owner = await authedUser(authBase, 'own');
+  // tenants are created by the platform admin; there is no self-serve sign-up
+  const made = await devguard.createTenantAsAdmin(c, { name: 'API6', storeCode: 'A6S1', ownerName: 'O', ownerAuth: owner.sub });
+  tid = made.tid; storeId = made.storeId; adminId = made.adminId;
   const noDetail = (r) => !r.body.includes('"detail"');
 
-  // T0: no token -> 401 (never a tenant); garbage token -> 401
+  // T0/T1: the sign-up endpoint is gone, with or without a valid token
   const t0 = await post('/signup', undefined, { tenantName: 'NoAuth', storeName: 'X', storeCode: 'NX', ownerName: 'X' });
-  check('T0 signup without token is 401', t0.status === 401, 'got ' + t0.status);
-  const t0b = await post('/signup', 'garbage', { tenantName: 'BadAuth', storeName: 'X', storeCode: 'BX', ownerName: 'X' });
-  check('T0 garbage token is 401', t0b.status === 401, 'got ' + t0b.status);
-
-  // T1: duplicate signup 409 carries no tenantId
+  check('T0 signup without token is gone (404)', t0.status === 404, 'got ' + t0.status);
   const dup = await post('/signup', owner.jwt, { tenantName: 'Again', storeName: 'X', storeCode: 'AX', ownerName: 'X' });
-  const dupBody = JSON.parse(dup.body);
-  check('T1 409 without tenantId', dup.status === 409 && dupBody.tenantId === undefined, dup.status + ' ' + dup.body.slice(0, 120));
+  check('T1 signup with a valid token is gone (404)', dup.status === 404, 'got ' + dup.status);
 
   // T2: error responses carry no database detail
   const bad = await post('/devices/register', owner.jwt, { storeId: crypto.randomUUID(), name: 'X', code: 'T9', deviceId: crypto.randomUUID() });
   check('T2 no detail leak', bad.status === 400 && noDetail({ body: bad.body }), bad.status + ' ' + bad.body.slice(0, 160));
 
   // T3 seeds (owner seed removed: cashier proves the permission gate)
-  const cashier = await authedUser(authBase, 'csh');
+  cashier = await authedUser(authBase, 'csh');
   const cashRole = (await c.query(`insert into roles (tenant_id, name, permissions) values ('${tid}','CashierX','["sale.create","items.edit"]') returning id`)).rows[0].id;
   await c.query(`insert into employees (tenant_id, name, role_id, auth_user_id) values ('${tid}','CX','${cashRole}','${cashier.sub}')`);
   const seed = await post('/seed-demo', cashier.jwt, {});
@@ -121,7 +117,8 @@ async function authedUser(authBase, tag) {
 
   // cleanup tenant + probe auth users as owner
   await devguard.cleanupTenant(c, tid);
-  if (typeof owner !== 'undefined' && typeof cashier !== 'undefined') {
+  if (adminId) await devguard.cleanupPlatform(c, adminId, tid);
+  if (owner && cashier) {
     await c.query(`delete from neon_auth."user" where email in ('${owner.email}','${cashier.email}')`);
   }
   await c.end();

@@ -1,6 +1,7 @@
-// signup-lock.test.cjs — Item 6: /signup needs a verified JWT (no body
-// identity), PUBLIC cannot execute seed_demo_catalog, and /sync/push runs
-// with the employee from the token. Ends with a real user end-to-end.
+// signup-lock.test.cjs — there is no self-serve sign-up: /signup is gone and
+// an unlinked login is refused. PUBLIC cannot execute seed_demo_catalog, and
+// /sync/push runs with the employee from the token. Ends with a real user
+// linked to a tenant the way the platform admin does it.
 const fs = require('fs');
 const crypto = require('crypto');
 const { Client } = require('pg');
@@ -39,14 +40,14 @@ async function statusOf(promise) {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ tenantName: 'NoAuth', storeName: 'X', storeCode: 'NX', ownerName: 'X' }),
   }));
-  check('T1 signup without token is 401', t1.status === 401, 'got ' + t1.status);
+  check('T1 signup without token is gone (404)', t1.status === 404, 'got ' + t1.status);
 
   // T2: garbage token -> 401
   const t2 = await statusOf(fetch(fnBase + '/signup', {
     method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer garbage' },
     body: JSON.stringify({ tenantName: 'BadAuth', storeName: 'X', storeCode: 'BX', ownerName: 'X' }),
   }));
-  check('T2 signup with garbage token is 401', t2.status === 401, 'got ' + t2.status);
+  check('T2 signup with garbage token is gone (404)', t2.status === 404, 'got ' + t2.status);
   }
 
   // T3: app_user cannot run the seeder directly (42501)
@@ -78,12 +79,17 @@ async function statusOf(promise) {
   const tj = await fetch(authBase + '/token', { headers: { cookie, origin: 'http://localhost:3112' } });
   const jwt = (await tj.json()).token;
   check('T4 JWT minted', typeof jwt === 'string' && jwt.length > 50);
+  // a valid login cannot create its own tenant any more
   const sg = await statusOf(fetch(fnBase + '/signup', {
     method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${jwt}` },
     body: JSON.stringify({ tenantName: 'T4 Tenant', storeName: 'Main', storeCode: 'T4S1', ownerName: 'T4' }),
   }));
-  const sgBody = JSON.parse(sg.body);
-  check('T4 authed signup creates tenant', sg.status === 201 && !!sgBody.tenantId, sg.status + ' ' + sg.body.slice(0, 120));
+  check('T4 a valid login cannot sign itself up (404)', sg.status === 404, 'got ' + sg.status);
+  const unlinked = await statusOf(fetch(fnBase + '/me', { headers: { authorization: `Bearer ${jwt}` } }));
+  check('T4 a login with no tenant is refused (403)', unlinked.status === 403, 'got ' + unlinked.status);
+  // the platform admin links it to a tenant
+  const made = await devguard.createTenantAsAdmin(c, { name: 'T4 Tenant', storeCode: 'T4S1', ownerName: 'T4', ownerAuth: sub });
+  const sgBody = { tenantId: made.tid, storeId: made.storeId };
   const me = await statusOf(fetch(fnBase + '/me', { headers: { authorization: `Bearer ${jwt}` } }));
   const meBody = JSON.parse(me.body);
   check('T4 /me sees own tenant', me.status === 200 && meBody.tenantId === sgBody.tenantId, me.status + ' ' + me.body.slice(0, 120));
@@ -100,6 +106,7 @@ async function statusOf(promise) {
   const tid = sgBody.tenantId;
   await c.query(`delete from neon_auth."user" where email='${email}'`);
   await devguard.cleanupTenant(c, tid);
+  await devguard.cleanupPlatform(c, made.adminId, tid);
   } // end httpTests (T4)
   await c.end();
   console.log(failures === 0 ? 'SIGNUP-LOCK PASS' : `SIGNUP-LOCK FAIL (${failures})`);

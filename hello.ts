@@ -3,11 +3,15 @@ import { Pool } from "pg";
 import { attachDatabasePool } from "@neon/functions";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
-// Phase 0 API (Neon Functions). Contract enforced:
+// Till API (Neon Functions). Contract enforced:
 // - JWT comes from Neon Auth (Better Auth). No custom claims.
-// - After verify, employees.auth_user_id -> tenant_id lookup stamps the txn:
-//   SET ROLE app_user (owner has BYPASSRLS) + SET LOCAL app.tenant_id.
+// - After verify, employees.auth_user_id -> tenant lookup; every tenant query
+//   then runs in one transaction as app_user with app.tenant_id set (asTenant).
 // - tenant_id is never trusted from the payload (spec 4.2.3, 15).
+// - Tenants are created by the platform admin in the web admin area. There is
+//   no sign-up here: a login that is not linked to a tenant gets 403.
+// - A suspended tenant keeps syncing (spec 4.4: never trap their data) but
+//   cannot register devices or change its catalog.
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5 });
 attachDatabasePool(pool);
@@ -21,7 +25,7 @@ function issuer(): string {
   return new URL(process.env.NEON_AUTH_BASE_URL!).origin;
 }
 
-type Authed = { authUserId: string; tenantId: string; employeeId: string };
+type Authed = { authUserId: string; tenantId: string; employeeId: string; status: string };
 
 async function requireAuth(req: Request): Promise<Authed> {
   const h = req.headers.get("authorization") ?? "";
@@ -36,11 +40,18 @@ async function requireAuth(req: Request): Promise<Authed> {
   }
   // Lookup runs as owner (BYPASSRLS) — scoping happens below via SET ROLE + GUC.
   const found = await pool.query(
-    `select id, tenant_id from employees where auth_user_id = $1 and deleted_at is null and is_active`,
+    `select e.id, e.tenant_id, t.status
+       from employees e join tenants t on t.id = e.tenant_id
+      where e.auth_user_id = $1 and e.deleted_at is null and e.is_active`,
     [sub],
   );
   if (found.rowCount !== 1) throw new Response("Forbidden: no tenant linked", { status: 403 });
-  return { authUserId: sub, tenantId: found.rows[0].tenant_id, employeeId: found.rows[0].id };
+  return { authUserId: sub, tenantId: found.rows[0].tenant_id, employeeId: found.rows[0].id, status: found.rows[0].status };
+}
+
+const SUSPENDED = { error: "This account is suspended. Sales already made still sync; contact RestoPOS to reactivate." };
+function suspended(auth: Authed): boolean {
+  return auth.status !== "active";
 }
 
 // Runs fn on one pooled client with the tenant context stamped for the txn.
@@ -68,72 +79,7 @@ export async function asTenant<T>(tenantId: string, fn: (q: (text: string, param
 
 const app = new Hono();
 
-app.get("/health", (c) => c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "item6-0033" }));
-
-// Self-serve signup (spec 1: selling within ten minutes).
-// Requires a verified Neon Auth JWT; identity comes ONLY from its sub (spec
-// 15 — no body identity). Runs as owner in one txn; one account owns one
-// tenant in v1 (409 when the sub is already linked).
-app.post("/signup", async (c) => {
-  type SignupBody = { tenantName?: string; storeName?: string; storeCode?: string; ownerName?: string };
-  const body: SignupBody = await c.req.json<SignupBody>().catch((): SignupBody => ({}));
-  const tenantName = (body.tenantName ?? "").trim();
-  const storeName = (body.storeName ?? "Main store").trim();
-  const storeCode = (body.storeCode ?? "S1").trim().toUpperCase();
-  const ownerName = (body.ownerName ?? "Owner").trim();
-  if (!tenantName) return c.json({ error: "tenantName required" }, 400);
-  if (!/^[A-Z0-9]{1,12}$/.test(storeCode)) return c.json({ error: "storeCode must be 1-12 chars A-Z0-9" }, 400);
-  const h = c.req.header("authorization") ?? "";
-  if (!h.toLowerCase().startsWith("bearer ")) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
-  let authUserId: string;
-  try {
-    const { payload } = await jwtVerify(h.slice(7), getJwks(), { issuer: issuer() });
-    if (typeof payload.sub !== "string" || !payload.sub) throw new Error("no sub");
-    authUserId = payload.sub;
-  } catch {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    if (authUserId) {
-      const dupe = await client.query(
-        `select tenant_id from employees where auth_user_id = $1 and deleted_at is null limit 1`,
-        [authUserId],
-      );
-      if (dupe.rowCount) {
-        await client.query("ROLLBACK");
-        return c.json({ error: "account already has a tenant" }, 409);
-      }
-    }
-    const t = await client.query(`insert into tenants (name) values ($1) returning id`, [tenantName]);
-    const tenantId: string = t.rows[0].id;
-    await client.query(`SET LOCAL app.tenant_id = '${tenantId}'`);
-    const s = await client.query(`insert into stores (tenant_id, name, code) values ($1,$2,$3) returning id`, [tenantId, storeName, storeCode]);
-    const r = await client.query(
-      `insert into roles (tenant_id, name, permissions) values ($1,'Owner',$2) returning id`,
-      [tenantId, JSON.stringify(["*"])],
-    );
-    const e = await client.query(
-      `insert into employees (tenant_id, name, role_id, auth_user_id) values ($1,$2,$3,$4) returning id`,
-      [tenantId, ownerName, r.rows[0].id, authUserId],
-    );
-    await client.query(
-      `insert into employee_stores (tenant_id, employee_id, store_id) values ($1,$2,$3) on conflict do nothing`,
-      [tenantId, e.rows[0].id, s.rows[0].id],
-    );
-    await client.query("COMMIT");
-    return c.json({ tenantId, storeId: s.rows[0].id, employeeId: e.rows[0].id }, 201);
-  } catch (err) {
-    try { await client.query("ROLLBACK"); } catch { /* ignore */ }
-    console.error("signup failed:", (err as Error).message);
-    return c.json({ error: "signup failed" }, 500);
-  } finally {
-    client.release();
-  }
-});
+app.get("/health", (c) => c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "admin-0044" }));
 
 // Tenant-scoped self check: only ever returns the caller's own rows.
 app.get("/me", async (c) => {
@@ -145,7 +91,7 @@ app.get("/me", async (c) => {
   }
   const tenants = await asTenant<{ id: string; name: string }>(auth.tenantId, (q) => q(`select id, name from tenants`).then((r) => r.rows));
   const stores = await asTenant<{ id: string; name: string; code: string }>(auth.tenantId, (q) => q(`select id, name, code from stores order by name`).then((r) => r.rows));
-  return c.json({ tenantId: auth.tenantId, tenants, stores });
+  return c.json({ tenantId: auth.tenantId, status: auth.status, tenants, stores });
 });
 
 // Seeds the Le Flamboyant demo catalog into the caller's tenant (Phase 1).
@@ -158,6 +104,7 @@ app.post("/seed-demo", async (c) => {
   } catch (res) {
     return res as Response;
   }
+  if (suspended(auth)) return c.json(SUSPENDED, 403);
   const allowed = await pool.query(`select has_perm($1, 'items.edit') as ok`, [auth.employeeId]);
   if (!allowed.rows[0]?.ok) {
     return c.json({ error: "Forbidden" }, 403);
@@ -178,6 +125,7 @@ app.post("/devices/register", async (c) => {
   } catch (res) {
     return res as Response;
   }
+  if (suspended(auth)) return c.json(SUSPENDED, 403);
   type DeviceBody = { storeId?: string; deviceId?: string; name?: string; code?: string; appVersion?: string };
   const body: DeviceBody = await c.req.json<DeviceBody>().catch((): DeviceBody => ({}));
   const storeId = body.storeId ?? "";
