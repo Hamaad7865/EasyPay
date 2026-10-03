@@ -40,6 +40,10 @@ jobs:
       - run: node db/tests/refund-snapshots.test.cjs
       - run: node db/tests/refund-shares.test.cjs
       - run: node db/tests/receipt-deltas.test.cjs
+      - run: node db/tests/offline-price.test.cjs
+      - run: node db/tests/receipt-accept.test.cjs
+      - run: node db/tests/review-reasons.test.cjs
+      - run: node db/tests/truncate-lock.test.cjs
       - run: node db/tests/truncate.test.cjs
       - run: node db/tests/signup-lock.test.cjs
       - run: node db/tests/vat-included.test.cjs
