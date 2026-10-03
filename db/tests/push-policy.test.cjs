@@ -19,6 +19,9 @@ function check(name, cond, extra) {
   if (!cond) failures++;
 }
 const op = (type, payload, op_id) => ({ op_id: op_id || crypto.randomUUID(), type, payload });
+async function step(name, fn) {
+  try { await fn(); } catch (e) { console.log('STEPFAIL ' + name + ': ' + e.message); throw e; }
+}
 (async () => {
   const env = loadEnv('.env.local');
   const c = new Client({ connectionString: env.DATABASE_URL_UNPOOLED, ssl: { require: true } });
@@ -31,6 +34,7 @@ const op = (type, payload, op_id) => ({ op_id: op_id || crypto.randomUUID(), typ
   const role = (await c.query(`select id from roles where tenant_id='${tid}'`)).rows[0].id;
   await c.query(`insert into employees (tenant_id, name, role_id) values ('${tid}','B','${role}')`);
   const emp = (await c.query(`select id from employees where tenant_id='${tid}'`)).rows[0].id;
+  const devT = (await c.query(`insert into pos_devices (tenant_id, store_id, name, code) values ('${tid}','${store}','T1','T1') returning id`)).rows[0].id;
 
   async function pushRaw(ops, commit = true) {
     await c.query('BEGIN');
@@ -53,7 +57,8 @@ const op = (type, payload, op_id) => ({ op_id: op_id || crypto.randomUUID(), typ
   let r1 = await pushRaw(bad);
   check('T1 first: rejected/bad-item', r1[0].status === 'rejected', JSON.stringify(r1[0]));
   let r2 = await pushRaw(bad);
-  check('T1 replay keeps original rejected status', r2[0].status === 'rejected' && r2[0].code === r1[0].code, JSON.stringify(r2[0]));
+  check('T1 replay keeps original status + replayed flag',
+    r2[0].status === 'rejected' && r2[0].code === r1[0].code && r2[0].replayed === true, JSON.stringify(r2[0]));
 
   // T2: applied replay keeps ORIGINAL applied status
   const tk = crypto.randomUUID();
@@ -61,24 +66,62 @@ const op = (type, payload, op_id) => ({ op_id: op_id || crypto.randomUUID(), typ
   const g1 = await pushRaw(good);
   check('T2 first: applied', g1[0].status === 'applied');
   const g2 = await pushRaw(good);
-  check('T2 replay keeps original applied status', g2[0].status === 'applied', JSON.stringify(g2[0]));
+  check('T2 replay keeps original applied status + replayed flag',
+    g2[0].status === 'applied' && g2[0].replayed === true, JSON.stringify(g2[0]));
 
-  // T3: unexpected system error re-raises, persists nothing
+  // T3: unexpected system error persists as rejected/'error' with server detail,
+  // and the batch CONTINUES past it (only transients stop the batch)
   const tk3 = crypto.randomUUID();
   const sysId = crypto.randomUUID();
+  const afterId = crypto.randomUUID();
   const sys = [op('ticket.create', { id: tk3, store_id: store }),
-    { op_id: sysId, type: 'ticket.add_line', payload: { id: crypto.randomUUID(), ticket_id: tk, item_id: crypto.randomUUID(), qty: 99999999999 } }];
-  let raised = null;
-  try { await pushRaw(sys); } catch (e) { raised = e; }
-  check('T3 unexpected error re-raised', raised !== null && !/bad-|unknown|conflict|forbidden|overpayment|lines-required|empty-ticket|already-refunded/.test(raised.message), raised && raised.message);
+    { op_id: sysId, type: 'ticket.add_line', payload: { id: crypto.randomUUID(), ticket_id: tk, item_id: crypto.randomUUID(), qty: 99999999999 } },
+    op('ticket.create', { id: afterId, store_id: store })];
+  await step('T3-push', async () => { r = await pushRaw(sys); });
+  check('T3 unexpected persists as error, batch continues',
+    r[0].status === 'applied' && r[1].status === 'rejected' && r[1].code === 'error' && r[2].status === 'applied',
+    JSON.stringify(r.map((o) => o.status + ':' + (o.code || ''))));
   const logged = (await c.query(`select result from sync_ops_applied where op_id='${sysId}'`)).rows;
-  check('T3 nothing persisted for unexpected error', logged.length === 0, JSON.stringify(logged));
-  const rolledBack = (await c.query(`select count(*)::int n from tickets where id='${tk3}'`)).rows[0].n;
-  check('T3 batch rolled back with the raise', rolledBack === 0, 'n=' + rolledBack);
+  check('T3 error row persisted', logged.length === 1 && logged[0].result.code === 'error');
+
+  // T4: lock contention (55P03) stops the batch with retry envelopes.
+  // Holder session keeps the ticket lock open; pusher session has a lock
+  // timeout backstop so the pre-fix blocking lock cannot hang the suite.
+  const tk4 = crypto.randomUUID();
+  await step('T4-setup', async () => { await pushRaw([op('ticket.create', { id: tk4, store_id: store })]); });
+  const rB = { op_id: crypto.randomUUID(), type: 'receipt.create',
+    payload: { id: crypto.randomUUID(), ticket_id: tk4, store_id: store, device_id: devT, number: 'PP-T4', device_seq: 1, payments: [] } };
+  const rC = op('ticket.create', { id: crypto.randomUUID(), store_id: store });
+  await c.query('BEGIN');
+  await c.query('SET ROLE app_user');
+  await c.query(`SET LOCAL app.tenant_id = '${tid}'`);
+  await c.query(`select pg_advisory_xact_lock(hashtextextended('receipt:' || '${tk4}', 0))`);
+  const { Client: Client2 } = require('pg');
+  const strip = (v) => { v = String(v).trim(); if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1); return v; };
+  const c2 = new Client2({ connectionString: strip(process.env.DATABASE_URL_UNPOOLED || loadEnv('.env.local').DATABASE_URL_UNPOOLED), ssl: { require: true } });
+  await c2.connect();
+  await c2.query('BEGIN');
+  await c2.query('SET ROLE app_user');
+  await c2.query(`SET LOCAL app.tenant_id = '${tid}'`);
+  await c2.query(`SET LOCAL lock_timeout = '3s'`);
+  const empRow = (await c.query(`select id from employees where tenant_id='${tid}' limit 1`)).rows[0].id;
+  let r4;
+  await step('T4-push', async () => {
+    r4 = (await c2.query('select sync_push($1, $2::jsonb) as r', [empRow, JSON.stringify([rB, rC])])).rows[0].r;
+  });
+  await c2.query('COMMIT');
+  await c2.query('RESET ROLE');
+  await c2.end();
+  await c.query('COMMIT');
+  await c.query('RESET ROLE');
+  check('T4 contention stops batch with retry',
+    r4[0].status === 'retry' && r4[1].status === 'retry', JSON.stringify(r4));
+  const t4logged = (await c.query(`select count(*)::int n from sync_ops_applied where op_id in ('${rB.op_id}','${rC.op_id}')`)).rows[0].n;
+  check('T4 transient persists nothing', t4logged === 0, 'n=' + t4logged);
 
   await c.query(`alter table sync_ops_applied disable trigger trg_no_update`);
   // children before parents: composite FKs are RESTRICT since 0019
-  for (const t of ['sync_ops_applied','tickets','stores','employees','roles','tenants'])
+  for (const t of ['sync_ops_applied','tickets','pos_devices','stores','employees','roles','tenants'])
     await c.query(`delete from ${t} where tenant_id='${tid}'`);
   await c.query(`alter table sync_ops_applied enable trigger trg_no_update`);
   console.log(failures === 0 ? 'PUSH-POLICY PASS' : `PUSH-POLICY FAIL (${failures})`);

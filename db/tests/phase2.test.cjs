@@ -80,7 +80,8 @@ const TABLES = ['receipt_discounts','receipt_payments','receipt_line_taxes','rec
   const rc = (await c.query(`select subtotal, tax_total, total, needs_review from receipts where id='${rc1}'`)).rows[0];
   check('T1 totals 15000+2250=17250', rc.subtotal === '15000' && rc.tax_total === '2250' && rc.total === '17250' && rc.needs_review === false);
   await step('T1-repush', async () => { r = await push(empO, batch1); });
-  check('T1 replay keeps original applied status', status(r).every((s) => s === 'applied'));
+  check('T1 replay keeps original applied status + replayed flag',
+    status(r).every((s) => s === 'applied') && r.every((o) => o.replayed === true));
   const nRc = (await c.query(`select count(*)::int n from receipts where ticket_id='${tk1}'`)).rows[0].n;
   check('T1 triple-push creates receipt once', nRc === 1, 'n=' + nRc);
 
