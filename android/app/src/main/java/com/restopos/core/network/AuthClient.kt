@@ -97,6 +97,7 @@ private class PersistentCookies(private val context: Context) : CookiesStorage {
 // Neon Auth (Better Auth) over REST. Cookies hold the session; the JWT for the
 // Function API comes from /token and is cached until shortly before it expires.
 // Paths are the ones db/tests/signup-lock.test.cjs exercises against the branch.
+// There is no sign-up: logins are created by the platform admin.
 class AuthClient(private val context: Context, baseUrl: String) {
     private val authUrl = baseUrl.trimEnd('/')
     private val json = Json { ignoreUnknownKeys = true }
@@ -112,16 +113,6 @@ class AuthClient(private val context: Context, baseUrl: String) {
             setBody(AuthRequest(email, password))
         }
         if (!res.status.isSuccess()) error(failure(res, "Sign-in failed"))
-        refreshJwt()
-        Unit
-    }
-
-    suspend fun signUp(name: String, email: String, password: String): Result<Unit> = runCatching {
-        val res = http.post("$authUrl/sign-up/email") {
-            contentType(ContentType.Application.Json)
-            setBody(AuthRequest(email, password, name))
-        }
-        if (!res.status.isSuccess()) error(failure(res, "Sign-up failed"))
         refreshJwt()
         Unit
     }

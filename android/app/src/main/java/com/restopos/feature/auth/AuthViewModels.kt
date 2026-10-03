@@ -30,7 +30,6 @@ sealed interface AuthUiState {
 
 sealed interface AuthAction {
     data class SignIn(val email: String, val password: String) : AuthAction
-    data class SignUp(val name: String, val email: String, val password: String) : AuthAction
 }
 
 @HiltViewModel
@@ -44,7 +43,6 @@ class AuthViewModel @Inject constructor(
         _state.value = AuthUiState.Busy
         val r = when (a) {
             is AuthAction.SignIn -> auth.signIn(a.email.trim(), a.password)
-            is AuthAction.SignUp -> auth.signUp(a.name.trim(), a.email.trim(), a.password)
         }
         _state.value = r.fold(
             onSuccess = { AuthUiState.SignedIn },

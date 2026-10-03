@@ -8,8 +8,6 @@ import com.restopos.core.network.dto.PullResponse
 import com.restopos.core.network.dto.PushRequest
 import com.restopos.core.network.dto.RegisterDeviceRequest
 import com.restopos.core.network.dto.RegisterDeviceResponse
-import com.restopos.core.network.dto.SignupRequest
-import com.restopos.core.network.dto.SignupResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
@@ -85,15 +83,6 @@ class ApiClient(baseUrl: String, private val auth: AuthClient) {
                 bearerAuth(token)
                 contentType(ContentType.Application.Json)
                 setBody(PushRequest(ops))
-            }
-        }.body()
-
-    suspend fun signup(req: SignupRequest): SignupResponse =
-        authed { token ->
-            http.post("$functionUrl/signup") {
-                bearerAuth(token)
-                contentType(ContentType.Application.Json)
-                setBody(req)
             }
         }.body()
 

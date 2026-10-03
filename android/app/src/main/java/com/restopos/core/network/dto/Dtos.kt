@@ -28,12 +28,19 @@ data class AuthErrorBody(val message: String = "", val code: String = "")
 @Serializable
 data class ApiErrorBody(val error: String = "")
 
-// --- Function API (/me, /devices/register, /sync/pull, /signup) ---
+// --- Function API (/me, /devices/register, /sync/pull, /sync/push) ---
 @Serializable
 data class StoreDto(val id: String, val name: String, val code: String)
 
+// status: active | suspended. A suspended restaurant still syncs; it cannot
+// register a till.
 @Serializable
-data class MeResponse(val tenantId: String, val tenants: List<TenantDto>, val stores: List<StoreDto>)
+data class MeResponse(
+    val tenantId: String,
+    val tenants: List<TenantDto>,
+    val stores: List<StoreDto>,
+    val status: String = "active",
+)
 
 @Serializable
 data class TenantDto(val id: String, val name: String)
@@ -49,17 +56,6 @@ data class RegisterDeviceRequest(
 
 @Serializable
 data class RegisterDeviceResponse(val deviceId: String, val lastReceiptSeq: Long = 0)
-
-@Serializable
-data class SignupRequest(
-    val tenantName: String,
-    val storeName: String = "Main store",
-    val storeCode: String = "S1",
-    val ownerName: String = "Owner",
-)
-
-@Serializable
-data class SignupResponse(val tenantId: String, val storeId: String, val employeeId: String)
 
 // --- sync/pull: { changes: { table: [rows] }, next_cursor, has_more, epochs } ---
 // epochs: per-table counter the server bumps when it rewrites a table's

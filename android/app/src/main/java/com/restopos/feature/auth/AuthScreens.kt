@@ -33,7 +33,7 @@ fun AuthScreen(vm: AuthViewModel = hiltViewModel(), onSignedIn: () -> Unit) {
     val busy = state == AuthUiState.Busy || state == AuthUiState.SignedIn
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("RestoPOS", style = MaterialTheme.typography.headlineLarge)
-        Text("Owner sign-in. Staff PIN arrives in Phase 4.")
+        Text("Sign in with the login RestoPOS gave you. Staff PIN arrives in Phase 4.")
         OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), label = { Text("Email") }, singleLine = true)
         OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
         (state as? AuthUiState.Error)?.let { Text(it.message, color = MaterialTheme.colorScheme.error) }
