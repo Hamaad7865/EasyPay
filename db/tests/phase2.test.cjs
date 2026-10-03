@@ -72,13 +72,13 @@ const TABLES = ['receipt_discounts','receipt_payments','receipt_line_taxes','rec
     op('ticket.add_line', { id: crypto.randomUUID(), ticket_id: tk1, item_id: dp.id, qty: 2000 }),
     op('ticket.add_line', { id: crypto.randomUUID(), ticket_id: tk1, item_id: dp.id, qty: 1000 }),
     op('receipt.create', { id: rc1, ticket_id: tk1, store_id: store, device_id: dev, number: P(1), device_seq: 1,
-      payments: [{ payment_type_id: cash.id, amount: 17250, tendered: 20000, change: 2750 }] }),
+      payments: [{ payment_type_id: cash.id, amount: 15000, tendered: 20000, change: 5000 }] }),
   ];
   let r;
   await step('T1-push', async () => { r = await push(empO, batch1); });
   check('T1 all applied', status(r).every((s) => s === 'applied'));
   const rc = (await c.query(`select subtotal, tax_total, total, needs_review from receipts where id='${rc1}'`)).rows[0];
-  check('T1 totals 15000+2250=17250', rc.subtotal === '15000' && rc.tax_total === '2250' && rc.total === '17250' && rc.needs_review === false);
+  check('T1 totals 15000 incl, VAT 1956', rc.subtotal === '15000' && rc.tax_total === '1956' && rc.total === '15000' && rc.needs_review === false);
   await step('T1-repush', async () => { r = await push(empO, batch1); });
   check('T1 replay keeps original applied status + replayed flag',
     status(r).every((s) => s === 'applied') && r.every((o) => o.replayed === true));
@@ -103,9 +103,9 @@ const TABLES = ['receipt_discounts','receipt_payments','receipt_line_taxes','rec
   await step('T4-setup', async () => { await push(empO, [op('ticket.create', { id: tk4, store_id: store }),
     op('ticket.add_line', { id: crypto.randomUUID(), ticket_id: tk4, item_id: dp.id, qty: 2000 })]); });
   await step('T4-pay1', async () => { await push(empO, [op('receipt.create', { id: rc4a, ticket_id: tk4, store_id: store, device_id: dev, number: P(4), device_seq: 2,
-    payments: [{ payment_type_id: cash.id, amount: 11500 }] })]); });
+    payments: [{ payment_type_id: cash.id, amount: 10000 }] })]); });
   await step('T4-pay2', async () => { r = await push(empW, [op('receipt.create', { id: rc4b, ticket_id: tk4, store_id: store, device_id: dev, number: P(5), device_seq: 3,
-    payments: [{ payment_type_id: cash.id, amount: 11500 }] })]); });
+    payments: [{ payment_type_id: cash.id, amount: 10000 }] })]); });
   const flags = (await c.query(`select needs_review from receipts where ticket_id='${tk4}' order by created_at`)).rows;
   check('T4 both payments stored, second flagged', flags.length === 2 && flags[0].needs_review === false && flags[1].needs_review === true);
 
@@ -118,10 +118,13 @@ const TABLES = ['receipt_discounts','receipt_payments','receipt_line_taxes','rec
   await step('T6-setup', async () => { await push(empO, [op('ticket.create', { id: tk6, store_id: store }),
     op('ticket.add_line', { id: crypto.randomUUID(), ticket_id: tk6, item_id: cp.id, qty: 2000 })]); });
   await step('T6-pay', async () => { await push(empO, [op('receipt.create', { id: rc6, ticket_id: tk6, store_id: store, device_id: dev, number: P(6), device_seq: 4,
-    discounts: [{ discount_id: loy.id }], payments: [{ payment_type_id: cash.id, amount: 78660, tendered: 78660, change: 0 }] })]); });
+    discounts: [{ discount_id: loy.id }], payments: [{ payment_type_id: cash.id, amount: 68400, tendered: 68400, change: 0 }] })]); });
   const t6 = (await c.query(`select subtotal, discount_total, tax_total, service_charge, rounding, total from receipts where id='${rc6}'`)).rows[0];
-  const calc = Number(t6.subtotal) + Number(t6.tax_total) + Number(t6.service_charge) + Number(t6.rounding) - Number(t6.discount_total);
-  check('T6 invariant holds, total 78660', calc === Number(t6.total) && t6.total === '78660', JSON.stringify(t6));
+  // included VAT: total = sub - disc + service + rounding; tax_total is the extracted portion
+  const t6ok = t6.subtotal === '76000' && t6.discount_total === '7600' && t6.tax_total === '8922'
+    && t6.service_charge === '0' && t6.rounding === '0' && t6.total === '68400'
+    && Number(t6.subtotal) - Number(t6.discount_total) === Number(t6.total);
+  check('T6 invariant holds, total 68400', t6ok, JSON.stringify(t6));
   const pay6 = (await c.query(`select amount, change from receipt_payments where receipt_id='${rc6}'`)).rows[0];
   check('T6 payments-change=total', Number(pay6.amount) - Number(pay6.change) === Number(t6.total));
 
@@ -129,11 +132,12 @@ const TABLES = ['receipt_discounts','receipt_payments','receipt_line_taxes','rec
   await step('T7-waiter', async () => { r = await push(empW, [op('refund.create', { id: rf1, refund_of: rc1, store_id: store, device_id: dev, number: P(7), device_seq: 5, reason: 't' })]); });
   check('T7 waiter refund forbidden', r[0].status === 'rejected' && r[0].code === 'forbidden');
   await step('T7-manager', async () => { r = await push(empO, [op('refund.create', { id: rf1, refund_of: rc1, store_id: store, device_id: dev, number: P(7), device_seq: 5, reason: 't',
-    payments: [{ payment_type_id: cash.id, amount: 17250 }] })]); });
+    payments: [{ payment_type_id: cash.id, amount: 15000 }] })]); });
   const rf = (await c.query(`select type, total from receipts where id='${rf1}'`)).rows[0];
-  check('T7 manager refund mirrors total', r[0].status === 'applied' && rf.type === 'refund' && rf.total === '17250');
-  await step('T7-double', async () => { r = await push(empO, [op('refund.create', { id: rf2, refund_of: rc1, store_id: store, device_id: dev, number: P(8), device_seq: 6, reason: 'x' })]); });
-  check('T7 second refund rejected', r[0].status === 'rejected' && r[0].code === 'already-refunded');
+  check('T7 manager refund mirrors total', r[0].status === 'applied' && rf.type === 'refund' && rf.total === '15000');
+  await step('T7-double', async () => { r = await push(empO, [op('refund.create', { id: rf2, refund_of: rc1, store_id: store, device_id: dev, number: P(8), device_seq: 6, reason: 'x',
+    payments: [{ payment_type_id: cash.id, amount: 15000 }] })]); });
+  check('T7 second full refund rejected', r[0].status === 'rejected' && r[0].code === 'bad-qty');
 
   await step('cleanup', async () => {
     for (const t of GUARDS) await c.query(`alter table ${t} disable trigger trg_no_update`);
@@ -144,3 +148,4 @@ const TABLES = ['receipt_discounts','receipt_payments','receipt_line_taxes','rec
   await c.end();
   process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error('TEST_FAILED:' + e.message); process.exit(1); });
+
