@@ -38,6 +38,7 @@ jobs:
       - run: node db/tests/fk-setnull.test.cjs
       - run: node db/tests/phase2.test.cjs
       - run: node db/tests/refund-snapshots.test.cjs
+      - run: node db/tests/refund-shares.test.cjs
       - run: node db/tests/receipt-deltas.test.cjs
       - run: node db/tests/truncate.test.cjs
       - run: node db/tests/signup-lock.test.cjs
