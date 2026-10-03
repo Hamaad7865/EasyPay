@@ -116,6 +116,19 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     check('T4 modifier_ids still accepted, unflagged', (await reasons(legacy)).length === 0 && (await q1(`select total from receipts where id='${legacy}'`)).total === '7500');
   }
 
+  // T4b a modifier the item does not offer (Extra rice belongs to curries, not to Dholl puri)
+  {
+    const rice = (await q1(`select m.id from modifiers m join modifier_groups g on g.id = m.group_id
+      where m.tenant_id='${tid}' and g.name='Curry add-ons' and m.name='Extra rice'`)).id;
+    const { t } = await ticketWith({ unit_price: 5000, modifiers: [{ modifier_id: rice, price: 4000 }] });
+    const odd = crypto.randomUUID();
+    const r = await push([rcOp(odd, t, { payments: pay(9000) })]);
+    const d = (await reasons(odd)).includes('price-drift') ? await detail(odd, 'price-drift') : { items: [] };
+    check('T4b the sale is stored at what the till charged', tag(r[0]) === 'applied' && (await q1(`select total from receipts where id='${odd}'`)).total === '9000');
+    check('T4b and flagged: modifier not offered on this item',
+      d.items.length === 1 && d.items[0].kind === 'modifier-unlinked' && d.items[0].modifier_id === rice, JSON.stringify(d));
+  }
+
   // T5 (E) discount amount as charged: catalog says 10% of 5000 = 500, the till took 400
   const disc = crypto.randomUUID();
   {

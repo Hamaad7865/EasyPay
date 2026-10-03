@@ -1,4 +1,4 @@
-// platform.test.cjs — the platform admin's database side (migration 0044).
+// platform.test.cjs — the platform admin's database side (migrations 0044, 0045).
 //   - the tenant role cannot see the platform schema or call its functions
 //   - only a live platform admin can create a tenant; the tenant comes with
 //     its store, the four roles and the owner's login row
@@ -118,6 +118,27 @@ function check(name, cond, extra) {
     await c.query(`select platform.set_tenant_plan($1,$2,'premium')`, [admin, tid]);
     check('T6 plan changed', (await one(`select plan from tenants where id = $1`, [tid])).plan === 'premium');
 
+    // T10 stores, business details and tills (migration 0045)
+    const store2 = (await one(`select platform.add_store($1,$2,'Grand Baie','gb1') as id`, [admin, tid])).id;
+    const access = await one(`select count(*)::int n from employee_stores where store_id = $1`, [store2]);
+    const code2 = (await one(`select code from stores where id = $1`, [store2])).code;
+    check('T10 a second store is added, and both logins can use it', access.n === 2 && code2 === 'GB1', JSON.stringify({ access, code2 }));
+    e = await failsWith(`select platform.add_store($1,$2,'Again','PL1')`, [admin, tid]);
+    check('T10 a store code cannot be used twice', e && e.message === 'store-code-taken', e ? e.message : 'no error');
+    await c.query(`select platform.set_tenant_details($1,$2,'Chez Test Ltd','C12345678','VAT20123456')`, [admin, tid]);
+    const det = await one(`select name, brn, vat_number from tenants where id = $1`, [tid]);
+    check('T10 name, BRN and VAT number are saved', det.name === 'Chez Test Ltd' && det.brn === 'C12345678' && det.vat_number === 'VAT20123456', JSON.stringify(det));
+    const till = (await one(`insert into pos_devices (tenant_id, store_id, name, code) values ($1,$2,'Till 1','T1') returning id`, [tid, storeId])).id;
+    await c.query(`select platform.set_device_active($1,$2,false)`, [admin, till]);
+    const off = await one(`select deleted_at is not null as off from pos_devices where id = $1`, [till]);
+    await c.query(`select platform.set_device_active($1,$2,true)`, [admin, till]);
+    const on = await one(`select deleted_at is null as on from pos_devices where id = $1`, [till]);
+    check('T10 a till is deactivated and reactivated', off.off === true && on.on === true);
+    e = await failsWith(`select platform.add_login($1,$2,'Me','Manager',$1)`, [admin, tid]);
+    check('T10 a platform admin cannot be made a restaurant login', e && e.message === 'login-is-platform-admin', e ? e.message : 'no error');
+    e = await failsWith(`select platform.create_tenant($1,'Mine','Main','S1','Me',$1,'standard')`, [admin]);
+    check('T10 nor the owner of one', e && e.message === 'login-is-platform-admin', e ? e.message : 'no error');
+
     // T7 switching one login off stops that login, nobody else
     await c.query(`select platform.set_login_active($1,$2,false)`, [admin, cashier]);
     let blocked = null;
@@ -136,7 +157,8 @@ function check(name, cond, extra) {
 
     // T9 everything was logged, and the log is insert-only
     const actions = (await c.query(`select action from platform.audit where tenant_id = $1 order by created_at, id`, [tid])).rows.map((r) => r.action);
-    const expected = ['tenant.create', 'login.add', 'tenant.suspended', 'tenant.active', 'tenant.plan', 'login.disable', 'login.enable'];
+    const expected = ['tenant.create', 'login.add', 'tenant.suspended', 'tenant.active', 'tenant.plan', 'store.add',
+      'tenant.details', 'till.deactivate', 'till.activate', 'login.disable', 'login.enable'];
     check('T9 every action is in the audit log', expected.every((a) => actions.includes(a)) && actions.length === expected.length, JSON.stringify(actions));
     const secrets = await one(`select count(*)::int n from platform.audit where tenant_id = $1 and detail::text ilike '%password%'`, [tid]);
     check('T9 the log holds no password', secrets.n === 0);

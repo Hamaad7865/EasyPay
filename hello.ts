@@ -79,7 +79,7 @@ export async function asTenant<T>(tenantId: string, fn: (q: (text: string, param
 
 const app = new Hono();
 
-app.get("/health", (c) => c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "admin-0044" }));
+app.get("/health", (c) => c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "admin-0046" }));
 
 // Tenant-scoped self check: only ever returns the caller's own rows.
 app.get("/me", async (c) => {
@@ -138,6 +138,14 @@ app.post("/devices/register", async (c) => {
   }
   const deviceId = body.deviceId;
   try {
+    // A till the platform admin deactivated stays deactivated: registering
+    // again must not quietly bring it back. Its unsynced sales still push.
+    const known = await asTenant<{ deactivated: boolean }>(auth.tenantId, (q) =>
+      q(`select deleted_at is not null as deactivated from pos_devices where id = $1 and tenant_id = $2`, [deviceId, auth.tenantId]).then((r) => r.rows),
+    );
+    if (known[0]?.deactivated) {
+      return c.json({ error: "This till was deactivated. Contact RestoPOS to reactivate it." }, 403);
+    }
     const rows = await asTenant<{ id: string; last_receipt_seq: string }>(auth.tenantId, (q) =>
       q(
         `insert into pos_devices (id, tenant_id, store_id, name, code, app_version, last_seen_at)

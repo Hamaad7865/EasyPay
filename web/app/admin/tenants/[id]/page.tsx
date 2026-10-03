@@ -3,18 +3,30 @@ import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { PLANS, adminMessage, requirePlatformAdmin } from "@/lib/platform";
-import { createLogin, passwordProblem, removeLogin, setLoginPassword } from "@/lib/platform-auth";
+import { loginForRestaurant, passwordProblem, removeLogin, setLoginPassword } from "@/lib/platform-auth";
 
 type Tenant = {
   id: string;
   name: string;
+  brn: string | null;
+  vat_number: string | null;
   plan: string;
   status: string;
   status_reason: string | null;
   status_changed_at: string | null;
   created_at: string;
 };
-type Store = { id: string; name: string; code: string; devices: number };
+type Store = { id: string; name: string; code: string };
+type Till = {
+  id: string;
+  store_id: string;
+  name: string;
+  code: string;
+  app_version: string | null;
+  last_seen_at: string | null;
+  last_receipt_seq: string;
+  active: boolean;
+};
 type Login = { id: string; name: string; role: string | null; is_active: boolean; email: string | null };
 type Audit = { action: string; detail: Record<string, unknown>; created_at: string; admin: string | null };
 
@@ -75,17 +87,23 @@ async function addLogin(formData: FormData) {
   const weak = passwordProblem(password);
   if (weak) back(tenantId, "error", weak);
 
-  const login = await createLogin({ email, password, name });
+  const login = await loginForRestaurant({ email, password, name });
   if (!login.ok) back(tenantId, "error", login.message);
-  const userId = (login as { userId: string }).userId;
+  const { userId, created } = login as { userId: string; created: boolean };
   try {
     await db().query(`select platform.add_login($1, $2, $3, $4, $5)`, [adminId, tenantId, name, role, userId]);
   } catch (e) {
-    await removeLogin(userId);
+    if (created) await removeLogin(userId);
     back(tenantId, "error", adminMessage(e));
   }
   revalidatePath(`/admin/tenants/${tenantId}`);
-  back(tenantId, "notice", "Login created. Give them the password.");
+  back(
+    tenantId,
+    "notice",
+    created
+      ? "Login created. Give them the password."
+      : "That email already had a login: it is now linked here, with the password you typed.",
+  );
 }
 
 async function setPassword(formData: FormData) {
@@ -114,6 +132,58 @@ async function setPassword(formData: FormData) {
   back(tenantId, "notice", "Password changed. Give them the new one.");
 }
 
+async function setDetails(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  try {
+    await db().query(`select platform.set_tenant_details($1, $2, $3, $4, $5)`, [
+      adminId,
+      tenantId,
+      String(formData.get("name") ?? ""),
+      String(formData.get("brn") ?? ""),
+      String(formData.get("vat") ?? ""),
+    ]);
+  } catch (e) {
+    back(tenantId, "error", adminMessage(e));
+  }
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  back(tenantId, "notice", "Details saved.");
+}
+
+async function addStore(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  try {
+    await db().query(`select platform.add_store($1, $2, $3, $4)`, [
+      adminId,
+      tenantId,
+      String(formData.get("name") ?? ""),
+      String(formData.get("code") ?? ""),
+    ]);
+  } catch (e) {
+    back(tenantId, "error", adminMessage(e));
+  }
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  back(tenantId, "notice", "Store added. Every login of this restaurant can use it.");
+}
+
+async function setTillActive(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  const deviceId = String(formData.get("device") ?? "");
+  const active = formData.get("active") === "true";
+  if (!UUID.test(deviceId)) notFound();
+  const owned = await db().query(`select 1 from pos_devices where id = $1 and tenant_id = $2`, [deviceId, tenantId]);
+  if (!owned.rowCount) back(tenantId, "error", "That till does not exist.");
+  try {
+    await db().query(`select platform.set_device_active($1, $2, $3)`, [adminId, deviceId, active]);
+  } catch (e) {
+    back(tenantId, "error", adminMessage(e));
+  }
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  back(tenantId, "notice", active ? "Till reactivated." : "Till deactivated. Sales it already made still sync.");
+}
+
 async function setActive(formData: FormData) {
   "use server";
   const { adminId, tenantId } = await tenantOf(formData);
@@ -140,6 +210,10 @@ const ACTIONS: Record<string, string> = {
   "login.disable": "Login switched off",
   "login.enable": "Login switched on",
   "login.password": "Password changed",
+  "store.add": "Store added",
+  "tenant.details": "Details changed",
+  "till.deactivate": "Till deactivated",
+  "till.activate": "Till reactivated",
 };
 
 function auditNote(a: Audit): string {
@@ -147,6 +221,8 @@ function auditNote(a: Audit): string {
   if (a.action === "tenant.plan") return `${String(d.from)} to ${String(d.to)}`;
   if (a.action === "tenant.suspended") return String(d.reason ?? "");
   if (a.action === "login.add") return `${String(d.name)} as ${String(d.role)}`;
+  if (a.action === "store.add") return `${String(d.name)} (${String(d.code)})`;
+  if (a.action === "till.deactivate" || a.action === "till.activate") return String(d.code ?? "");
   return "";
 }
 
@@ -164,21 +240,28 @@ export default async function TenantPage({
   const pool = db();
   const tenant = (
     await pool.query(
-      `select id, name, plan, status, status_reason, status_changed_at, created_at
+      `select id, name, brn, vat_number, plan, status, status_reason, status_changed_at, created_at
          from tenants where id = $1 and deleted_at is null`,
       [id],
     )
   ).rows[0] as Tenant | undefined;
   if (!tenant) notFound();
-  const [stores, logins, roles, audit] = await Promise.all([
+  const [stores, tills, logins, roles, audit] = await Promise.all([
     pool
       .query(
-        `select s.id, s.name, s.code,
-                (select count(*)::int from pos_devices d where d.store_id = s.id and d.deleted_at is null) as devices
+        `select s.id, s.name, s.code
            from stores s where s.tenant_id = $1 and s.deleted_at is null order by s.created_at`,
         [id],
       )
       .then((r) => r.rows as Store[]),
+    pool
+      .query(
+        `select d.id, d.store_id, d.name, d.code, d.app_version, d.last_seen_at, d.last_receipt_seq,
+                d.deleted_at is null as active
+           from pos_devices d where d.tenant_id = $1 order by d.created_at`,
+        [id],
+      )
+      .then((r) => r.rows as Till[]),
     pool
       .query(
         `select e.id, e.name, r.name as role, e.is_active, u.email
@@ -219,6 +302,15 @@ export default async function TenantPage({
         {new Date(tenant.created_at).toLocaleDateString()}
       </p>
 
+      <h2>Details</h2>
+      <form action={setDetails} style={field}>
+        <input type="hidden" name="tenant" value={tenant.id} />
+        <input name="name" defaultValue={tenant.name} placeholder="Restaurant name" required />
+        <input name="brn" defaultValue={tenant.brn ?? ""} placeholder="BRN" />
+        <input name="vat" defaultValue={tenant.vat_number ?? ""} placeholder="VAT number" />
+        <button type="submit">Save details</button>
+      </form>
+
       <h2>Plan and status</h2>
       <form action={setPlan} style={{ marginBottom: 12 }}>
         <input type="hidden" name="tenant" value={tenant.id} />
@@ -250,14 +342,59 @@ export default async function TenantPage({
         </form>
       )}
 
-      <h2>Stores</h2>
-      <ul>
-        {stores.map((s) => (
-          <li key={s.id}>
-            {s.name} ({s.code}), {s.devices} {s.devices === 1 ? "till" : "tills"}
-          </li>
-        ))}
-      </ul>
+      <h2>Stores and tills</h2>
+      {stores.map((st) => {
+        const here = tills.filter((d) => d.store_id === st.id);
+        return (
+          <div key={st.id} style={{ marginBottom: 12 }}>
+            <strong>
+              {st.name} ({st.code})
+            </strong>
+            {here.length === 0 && <div>No tills registered yet.</div>}
+            {here.length > 0 && (
+              <table cellPadding={6} style={{ borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
+                    <th>Till</th>
+                    <th>Code</th>
+                    <th>Last seen</th>
+                    <th>App</th>
+                    <th>Receipts</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {here.map((d) => (
+                    <tr key={d.id} style={{ borderBottom: "1px solid #eee" }}>
+                      <td>{d.name}</td>
+                      <td>{d.code}</td>
+                      <td>{d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : "never"}</td>
+                      <td>{d.app_version ?? "unknown"}</td>
+                      <td>{d.last_receipt_seq}</td>
+                      <td>
+                        <form action={setTillActive}>
+                          <input type="hidden" name="tenant" value={tenant.id} />
+                          <input type="hidden" name="device" value={d.id} />
+                          <input type="hidden" name="active" value={d.active ? "false" : "true"} />
+                          {d.active ? "active" : "deactivated"}{" "}
+                          <button type="submit">{d.active ? "Deactivate" : "Reactivate"}</button>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        );
+      })}
+      <h3>Add a store</h3>
+      <form action={addStore} style={field}>
+        <input type="hidden" name="tenant" value={tenant.id} />
+        <input name="name" placeholder="Store name" required />
+        <input name="code" placeholder="Store code, e.g. S2" required />
+        <button type="submit">Add store</button>
+      </form>
 
       <h2>Logins</h2>
       <table cellPadding={6} style={{ borderCollapse: "collapse" }}>

@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { PLANS, adminMessage, requirePlatformAdmin } from "@/lib/platform";
-import { createLogin, passwordProblem, removeLogin } from "@/lib/platform-auth";
+import { loginForRestaurant, passwordProblem, removeLogin } from "@/lib/platform-auth";
 
 type TenantRow = {
   id: string;
@@ -20,8 +20,9 @@ type TenantRow = {
 
 const fail = (message: string): never => redirect(`/admin?error=${encodeURIComponent(message)}`);
 
-// Creates the owner's login, then the restaurant around it. If the second step
-// fails the login is removed again, so the form can simply be submitted again.
+// Creates the owner's login (or takes over one that exists for that email and
+// belongs to nobody), then the restaurant around it. If the second step fails,
+// a login created here is removed again, so the form can simply be resubmitted.
 async function createTenant(formData: FormData) {
   "use server";
   const admin = await requirePlatformAdmin();
@@ -41,9 +42,9 @@ async function createTenant(formData: FormData) {
   const weak = passwordProblem(password);
   if (weak) fail(weak);
 
-  const login = await createLogin({ email, password, name: ownerName });
+  const login = await loginForRestaurant({ email, password, name: ownerName });
   if (!login.ok) fail(login.message);
-  const userId = (login as { userId: string }).userId;
+  const { userId, created } = login as { userId: string; created: boolean };
 
   let tenantId = "";
   try {
@@ -58,12 +59,16 @@ async function createTenant(formData: FormData) {
     ]);
     tenantId = made.rows[0].r.tenant_id as string;
   } catch (e) {
-    await removeLogin(userId);
+    if (created) await removeLogin(userId);
     fail(adminMessage(e));
   }
   revalidatePath("/admin");
   // no email or password in the URL: it ends up in history and logs
-  redirect(`/admin/tenants/${tenantId}?notice=${encodeURIComponent("Restaurant created. Give the owner their password.")}`);
+  redirect(`/admin/tenants/${tenantId}?notice=${encodeURIComponent(
+      created
+        ? "Restaurant created. Give the owner their password."
+        : "Restaurant created. That email already had a login: it is now the owner, with the password you typed.",
+    )}`);
 }
 
 export default async function AdminHome({

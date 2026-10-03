@@ -42,6 +42,8 @@ function describe(v: Review): string {
         .map((i) =>
           i.kind === "unavailable"
             ? `item sold at ${rs(i.till)} is no longer available`
+            : i.kind === "modifier-unlinked"
+              ? `a modifier (${rs(i.till)}) that this item does not offer`
             : `${i.kind === "discount" ? `discount ${i.name ?? ""}`.trim() : (i.kind ?? "item")} charged ${rs(i.till)}, catalog ${rs(i.catalog)}`,
         )
         .join("; ");
