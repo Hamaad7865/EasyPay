@@ -6,6 +6,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const { Client } = require('pg');
+const devguard = require('./require-dev.cjs');
 function loadEnv(file) {
   const env = {};
   const strip = (v) => { v = v.trim(); if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1); return v; };
@@ -32,6 +33,7 @@ const TABLES = ['receipt_discounts','receipt_payments','receipt_line_taxes','rec
   const strip2 = (v) => { v = String(v).trim(); if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1); return v; };
   const c = new Client({ connectionString: strip2(cs), ssl: { require: true } });
   await c.connect();
+  devguard.requireDev(devguard.envMap());
   const tid = crypto.randomUUID();
   const P = (n) => `P2-${n}`;
 
@@ -140,9 +142,7 @@ const TABLES = ['receipt_discounts','receipt_payments','receipt_line_taxes','rec
   check('T7 second full refund rejected', r[0].status === 'rejected' && r[0].code === 'bad-qty');
 
   await step('cleanup', async () => {
-    for (const t of GUARDS) await c.query(`alter table ${t} disable trigger trg_no_update`);
-    for (const t of TABLES) await c.query(`delete from ${t} where tenant_id='${tid}'`);
-    for (const t of GUARDS) await c.query(`alter table ${t} enable trigger trg_no_update`);
+    await devguard.cleanupTenant(c, tid);
   });
   console.log(failures === 0 ? 'PHASE2 PASS' : `PHASE2 FAIL (${failures})`);
   await c.end();

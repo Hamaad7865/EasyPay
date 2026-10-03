@@ -5,6 +5,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const { Client } = require('pg');
+const devguard = require('./require-dev.cjs');
 function loadEnv(file) {
   const env = {};
   const strip = (v) => { v = v.trim(); if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1); return v; };
@@ -23,6 +24,7 @@ function check(name, cond, extra) {
   const env = loadEnv('.env.local');
   const c = new Client({ connectionString: env.DATABASE_URL_UNPOOLED, ssl: { require: true } });
   await c.connect();
+  devguard.requireDev(devguard.envMap());
 
   // plain whole-row SET NULL has no column list; the named form does.
   // confdeltype cannot tell them apart, so match the rendered definition.

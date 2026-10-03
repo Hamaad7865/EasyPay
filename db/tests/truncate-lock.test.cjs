@@ -4,6 +4,7 @@
 // migration artifact.
 const fs = require('fs');
 const { Client } = require('pg');
+const devguard = require('./require-dev.cjs');
 function loadEnv(file) {
   const env = {};
   const strip = (v) => { v = v.trim(); if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1); return v; };
@@ -22,6 +23,7 @@ function check(name, cond, extra) {
   const env = loadEnv('.env.local');
   const c = new Client({ connectionString: env.DATABASE_URL_UNPOOLED, ssl: { require: true } });
   await c.connect();
+  devguard.requireDev(devguard.envMap());
   await c.query('BEGIN');
   await c.query('SET ROLE app_user');
   await c.query(`SET LOCAL app.tenant_id = '00000000-0000-0000-0000-000000000000'`);

@@ -4,6 +4,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const { Client } = require('pg');
+const devguard = require('./require-dev.cjs');
 function loadEnv(file) {
   const env = {};
   const strip = (v) => { v = v.trim(); if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1); return v; };
@@ -23,6 +24,7 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
   const env = loadEnv('.env.local');
   const c = new Client({ connectionString: env.DATABASE_URL_UNPOOLED, ssl: { require: true } });
   await c.connect();
+  devguard.requireDev(devguard.envMap());
   const tid = crypto.randomUUID();
   await c.query(`insert into tenants (id, tenant_id, name) values ('${tid}','${tid}','VI-Probe')`);
   await c.query(`insert into stores (tenant_id, name, code) values ('${tid}','Main','VIS1')`);
@@ -57,12 +59,7 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
   check('total equals subtotal (VAT inside)', got.subtotal === '10000' && got.total === '10000', JSON.stringify(got));
   check('tax_total extracts the VAT portion', got.tax_total === '1304', 'got ' + got.tax_total);
 
-  for (const t of ['sync_ops_applied','receipts','receipt_lines','receipt_line_modifiers','receipt_line_taxes','receipt_payments','receipt_discounts'])
-    await c.query(`alter table ${t} disable trigger trg_no_update`);
-  for (const t of ['receipt_discounts','receipt_payments','receipt_line_taxes','receipt_line_modifiers','receipt_lines','receipts','ticket_line_taxes','ticket_line_modifiers','ticket_lines','tickets','grid_page_items','grid_pages','store_item_overrides','item_taxes','item_modifier_groups','modifiers','modifier_groups','item_variants','items','taxes','discounts','dining_options','payment_types','employee_stores','employees','roles','categories','pos_devices','stores','sync_ops_applied','tenants'])
-    await c.query(`delete from ${t} where tenant_id='${tid}'`);
-  for (const t of ['sync_ops_applied','receipts','receipt_lines','receipt_line_modifiers','receipt_line_taxes','receipt_payments','receipt_discounts'])
-    await c.query(`alter table ${t} enable trigger trg_no_update`);
+  await devguard.cleanupTenant(c, tid);
   console.log(failures === 0 ? 'VAT-INCLUDED PASS' : `VAT-INCLUDED FAIL (${failures})`);
   await c.end();
   process.exit(failures ? 1 : 0);

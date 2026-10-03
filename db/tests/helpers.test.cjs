@@ -41,10 +41,12 @@ function check(name, cond, extra) {
   if (typeof asTenant !== 'function' || typeof withTenant !== 'function') throw new Error('helpers did not export');
 
   const { Client } = require('pg');
+  const devguard = require('./require-dev.cjs');
   const strip2 = (v) => { v = v.trim(); if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1); return v; };
   const cs = strip2(String(process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL));
   const admin = new Client({ connectionString: cs, ssl: { require: true } });
   await admin.connect();
+  devguard.requireDev(devguard.envMap());
   const A = crypto.randomUUID(), B = crypto.randomUUID();
   await admin.query(`insert into tenants (id, tenant_id, name) values ('${A}','${A}','H-A'), ('${B}','${B}','H-B')`);
 

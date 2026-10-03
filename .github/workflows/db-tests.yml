@@ -27,6 +27,9 @@ jobs:
           CS="$(neon connection-string "$NAME" --project-id "$NEON_PROJECT_ID" --role-name neondb_owner | grep -o 'postgresql://[^ ]*' | head -1)"
           if [ -z "$CS" ]; then echo "could not read branch connection string"; exit 1; fi
           echo "DATABASE_URL_UNPOOLED=$CS" >> "$GITHUB_ENV"
+      - name: write test env
+        run: |
+          printf 'DATABASE_URL_UNPOOLED=%s\nNEON_BRANCH=%s\n' "$DATABASE_URL_UNPOOLED" "${{ steps.branch.outputs.name }}" > .env.local
       - run: node db/migrate.cjs
       - run: node db/tests/isolation.test.cjs
       - run: node db/tests/helpers.test.cjs

@@ -3,6 +3,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const { Client } = require('pg');
+const devguard = require('./require-dev.cjs');
 function loadEnv(file) {
   const env = {};
   const strip = (v) => { v = v.trim(); if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1); return v; };
@@ -45,6 +46,7 @@ async function authedUser(authBase, tag) {
   if (!httpTests) console.log('SKIP http checks T0-T4 (function/auth URLs not set)');
   const c = new Client({ connectionString: stripCs(pick('DATABASE_URL_UNPOOLED') || pick('DATABASE_URL')), ssl: { require: true } });
   await c.connect();
+  devguard.requireDev(devguard.envMap());
   const H = (jwt) => ({ 'content-type': 'application/json', ...(jwt ? { authorization: `Bearer ${jwt}` } : {}) });
   const post = (path, jwt, body) => statusOf(fetch(fnBase + path, { method: 'POST', headers: H(jwt), body: JSON.stringify(body) }));
 
@@ -118,12 +120,7 @@ async function authedUser(authBase, tag) {
   check('T6 duplicate modifier pair inserts', dupOk);
 
   // cleanup tenant + probe auth users as owner
-  for (const t of ['sync_ops_applied','receipts','receipt_lines','receipt_line_modifiers','receipt_line_taxes','receipt_payments','receipt_discounts'])
-    await c.query(`alter table ${t} disable trigger trg_no_update`).catch(() => {});
-  for (const t of ['receipt_discounts','receipt_payments','receipt_line_taxes','receipt_line_modifiers','receipt_lines','receipts','ticket_line_taxes','ticket_line_modifiers','ticket_lines','tickets','grid_page_items','grid_pages','store_item_overrides','item_taxes','item_modifier_groups','modifiers','modifier_groups','item_variants','items','taxes','discounts','dining_options','payment_types','employee_stores','employees','roles','categories','pos_devices','stores','sync_ops_applied','tenants'])
-    await c.query(`delete from ${t} where tenant_id='${tid}'`);
-  for (const t of ['sync_ops_applied','receipts','receipt_lines','receipt_line_modifiers','receipt_line_taxes','receipt_payments','receipt_discounts'])
-    await c.query(`alter table ${t} enable trigger trg_no_update`).catch(() => {});
+  await devguard.cleanupTenant(c, tid);
   if (typeof owner !== 'undefined' && typeof cashier !== 'undefined') {
     await c.query(`delete from neon_auth."user" where email in ('${owner.email}','${cashier.email}')`);
   }

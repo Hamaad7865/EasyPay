@@ -4,6 +4,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const { Client } = require('pg');
+const devguard = require('./require-dev.cjs');
 function loadEnv(file) {
   const env = {};
   const strip = (v) => { v = v.trim(); if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1); return v; };
@@ -22,6 +23,7 @@ function check(name, cond, extra) {
   const env = loadEnv('.env.local');
   const c = new Client({ connectionString: env.DATABASE_URL_UNPOOLED, ssl: { require: true } });
   await c.connect();
+  devguard.requireDev(devguard.envMap());
   const tid = crypto.randomUUID();
   await c.query(`insert into tenants (id, tenant_id, name) values ('${tid}','${tid}','PG-Probe')`);
   await c.query(`insert into stores (tenant_id, name, code) values ('${tid}','Main','PGS1')`);

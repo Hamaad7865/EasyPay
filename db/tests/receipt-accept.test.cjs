@@ -6,6 +6,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const { Client } = require('pg');
+const devguard = require('./require-dev.cjs');
 function loadEnv(file) {
   const env = {};
   const strip = (v) => { v = v.trim(); if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1); return v; };
@@ -32,6 +33,7 @@ const TABLES = ['receipt_discounts','receipt_payments','receipt_line_taxes','rec
   const strip2 = (v) => { v = String(v).trim(); if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1); return v; };
   const c = new Client({ connectionString: strip2(cs), ssl: { require: true } });
   await c.connect();
+  devguard.requireDev(devguard.envMap());
   const tid = crypto.randomUUID();
   await c.query(`insert into tenants (id, tenant_id, name) values ('${tid}','${tid}','RA-Probe')`);
   await c.query(`insert into stores (tenant_id, name, code) values ('${tid}','Main','RAS1')`);
@@ -125,13 +127,7 @@ const TABLES = ['receipt_discounts','receipt_payments','receipt_line_taxes','rec
   check('T4 both figures kept', t4.total === '5000' && String(p4.s) === '6000', JSON.stringify([t4, p4]));
 
   await step('cleanup', async () => {
-    for (const t of GUARDS) await c.query(`alter table ${t} disable trigger trg_no_update`);
-    await c.query('BEGIN');
-    try {
-      for (const t of TABLES) await c.query(`delete from ${t} where tenant_id='${tid}'`);
-      for (const t of GUARDS) await c.query(`alter table ${t} enable trigger trg_no_update`);
-      await c.query('COMMIT');
-    } catch (e) { await c.query('ROLLBACK'); throw e; }
+    await devguard.cleanupTenant(c, tid);
   });
   console.log(failures === 0 ? 'RECEIPT-ACCEPT PASS' : `RECEIPT-ACCEPT FAIL (${failures})`);
   await c.end();

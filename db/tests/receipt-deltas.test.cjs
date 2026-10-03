@@ -4,6 +4,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const { Client } = require('pg');
+const devguard = require('./require-dev.cjs');
 function loadEnv(file) {
   const env = {};
   const strip = (v) => { v = v.trim(); if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1); return v; };
@@ -27,6 +28,7 @@ const INSERT_ONLY = ['receipt_discounts','receipt_payments','receipt_line_taxes'
   const env = loadEnv('.env.local');
   const c = new Client({ connectionString: env.DATABASE_URL_UNPOOLED, ssl: { require: true } });
   await c.connect();
+  devguard.requireDev(devguard.envMap());
   const tid = crypto.randomUUID();
   await c.query(`insert into tenants (id, tenant_id, name) values ('${tid}','${tid}','RD-Probe')`);
   await c.query(`insert into stores (tenant_id, name, code) values ('${tid}','Main','RDS1')`);
@@ -181,10 +183,7 @@ const INSERT_ONLY = ['receipt_discounts','receipt_payments','receipt_line_taxes'
   check('T9 merge paid ticket refused', r9[0].status === 'rejected' && r9[0].code === 'paid-line', JSON.stringify(r9[0]));
 
   await step('cleanup', async () => {
-    for (const t of INSERT_ONLY) await c.query(`alter table ${t} disable trigger trg_no_update`);
-    for (const t of ['receipt_discounts','receipt_payments','receipt_line_taxes','receipt_line_modifiers','receipt_lines','receipts','ticket_line_taxes','ticket_line_modifiers','ticket_lines','tickets','grid_page_items','grid_pages','store_item_overrides','item_taxes','item_modifier_groups','modifiers','modifier_groups','item_variants','items','taxes','discounts','dining_options','payment_types','employee_stores','employees','roles','categories','pos_devices','stores','sync_ops_applied','tenants'])
-      await c.query(`delete from ${t} where tenant_id='${tid}'`);
-    for (const t of INSERT_ONLY) await c.query(`alter table ${t} enable trigger trg_no_update`);
+    await devguard.cleanupTenant(c, tid);
   });
   console.log(failures === 0 ? 'RECEIPT-DELTAS PASS' : `RECEIPT-DELTAS FAIL (${failures})`);
   await c.end();

@@ -4,6 +4,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const { Client } = require('pg');
+const devguard = require('./require-dev.cjs');
 function loadEnv(file) {
   const env = {};
   const strip = (v) => { v = v.trim(); if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1); return v; };
@@ -26,6 +27,7 @@ async function step(name, fn) {
   const env = loadEnv('.env.local');
   const c = new Client({ connectionString: env.DATABASE_URL_UNPOOLED, ssl: { require: true } });
   await c.connect();
+  devguard.requireDev(devguard.envMap());
   const tid = crypto.randomUUID();
   await c.query(`insert into tenants (id, tenant_id, name) values ('${tid}','${tid}','PP-Probe')`);
   await c.query(`insert into stores (tenant_id, name, code) values ('${tid}','Main','PPS1')`);
@@ -127,11 +129,7 @@ async function step(name, fn) {
   ]); });
   check('T5 unknown-item keeps its code', r[1].status === 'rejected' && r[1].code === 'unknown-item', JSON.stringify(r[1]));
 
-  await c.query(`alter table sync_ops_applied disable trigger trg_no_update`);
-  // children before parents: composite FKs are RESTRICT since 0019
-  for (const t of ['sync_ops_applied','tickets','pos_devices','stores','employees','roles','tenants'])
-    await c.query(`delete from ${t} where tenant_id='${tid}'`);
-  await c.query(`alter table sync_ops_applied enable trigger trg_no_update`);
+  await devguard.cleanupTenant(c, tid);
   console.log(failures === 0 ? 'PUSH-POLICY PASS' : `PUSH-POLICY FAIL (${failures})`);
   await c.end();
   process.exit(failures ? 1 : 0);

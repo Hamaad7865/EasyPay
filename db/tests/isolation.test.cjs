@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { Client } = require('pg');
+const devguard = require('./require-dev.cjs');
 
 function loadEnv(file) {
   const env = {};
@@ -31,6 +32,7 @@ async function main() {
   if (!cs) throw new Error('missing DATABASE_URL (env or .env.local)');
   const c = new Client({ connectionString: cs, ssl: { require: true } });
   await c.connect();
+  devguard.requireDev({ NEON_BRANCH: process.env.NEON_BRANCH || fileEnv.NEON_BRANCH });
   // Runtime least-privilege: owner has BYPASSRLS, so drop into app_user.
   await c.query('SET ROLE app_user');
 
@@ -95,27 +97,10 @@ async function main() {
   check('rls coverage: every table has RLS+force+policy+touch', cov.rows.length === 0);
   if (cov.rows.length) console.log(JSON.stringify(cov.rows, null, 2));
 
-  // Cleanup test rows (as each tenant, delete own soft? hard delete own test rows is allowed for test hygiene).
-  await c.query('BEGIN');
-  await c.query(`SET LOCAL app.tenant_id = '${a}'`);
-  await c.query(`delete from categories where tenant_id='${a}'`);
-  await c.query(`delete from stores where tenant_id='${a}'`);
-  await c.query(`delete from employees where tenant_id='${a}'`);
-  await c.query(`delete from employee_stores where tenant_id='${a}'`);
-  await c.query(`delete from roles where tenant_id='${a}'`);
-  await c.query(`delete from sync_ops_applied where tenant_id='${a}'`);
-  await c.query(`delete from tenants where id='${a}'`);
-  await c.query('COMMIT');
-  await c.query('BEGIN');
-  await c.query(`SET LOCAL app.tenant_id = '${b}'`);
-  await c.query(`delete from categories where tenant_id='${b}'`);
-  await c.query(`delete from stores where tenant_id='${b}'`);
-  await c.query(`delete from employees where tenant_id='${b}'`);
-  await c.query(`delete from employee_stores where tenant_id='${b}'`);
-  await c.query(`delete from roles where tenant_id='${b}'`);
-  await c.query(`delete from sync_ops_applied where tenant_id='${b}'`);
-  await c.query(`delete from tenants where id='${b}'`);
-  await c.query('COMMIT');
+  // Cleanup as owner through the shared one-transaction helper.
+  await c.query('RESET ROLE');
+  await devguard.cleanupTenant(c, a);
+  await devguard.cleanupTenant(c, b);
 
   await c.end();
   console.log(failures === 0 ? 'ISOLATION PASS' : `ISOLATION FAIL (${failures})`);
