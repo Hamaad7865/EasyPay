@@ -19,6 +19,9 @@ function check(name, cond, extra) {
   if (!cond) failures++;
 }
 const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
+async function step(name, fn) {
+  try { await fn(); } catch (e) { console.log('STEPFAIL ' + name + ': ' + e.message); throw e; }
+}
 (async () => {
   const env = loadEnv('.env.local');
   const c = new Client({ connectionString: env.DATABASE_URL_UNPOOLED, ssl: { require: true } });
@@ -62,12 +65,13 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
   // change VAT after the sale: refund must use the 1500 snapshot, not 2000
   await c.query(`update taxes set rate_bp = 2000 where tenant_id='${tid}' and name='VAT'`);
 
-  // partial refund: the single line, full qty
+  // partial refund: the single line, full qty (with payment recorded)
   const rline = (await c.query(`select id, qty from receipt_lines where receipt_id='${rc}'`)).rows[0];
   const rf = crypto.randomUUID();
   const res = await push([
     op('refund.create', { id: rf, refund_of: rc, store_id: store, device_id: dev, number: 'RFS1-T1-2', device_seq: 2,
-      reason: 't', lines: [{ receipt_line_id: rline.id, qty: rline.qty }] }),
+      reason: 't', lines: [{ receipt_line_id: rline.id, qty: rline.qty }],
+      payments: [{ payment_type_id: cash, amount: 43470 }] }),
   ]);
   check('partial refund applied', res[0].status === 'applied', JSON.stringify(res[0]));
   const got = (await c.query(`select subtotal, discount_total, tax_total, total from receipts where id='${rf}'`)).rows[0];
@@ -81,6 +85,45 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
   check('refund copies modifier snapshots', modRows === 1, 'n=' + modRows);
   const taxRows = (await c.query(`select count(*)::int n from receipt_line_taxes where receipt_line_id in (select id from receipt_lines where receipt_id='${rf}')`)).rows[0].n;
   check('refund copies tax snapshots', taxRows === 1, 'n=' + taxRows);
+  const payRows = (await c.query(`select amount from receipt_payments where receipt_id='${rf}'`)).rows;
+  check('refund records payment rows summing to total',
+    payRows.length === 1 && Number(payRows[0].amount) === 43470, JSON.stringify(payRows));
+
+  // T8: several partial refunds against one 2-unit line, cumulative cap enforced.
+  // NOTE: VAT is 2000bp here (changed above): sub 18000, tax 3600, total 21600.
+  const tk8 = crypto.randomUUID(), rc8 = crypto.randomUUID();
+  const cntItems = await c.query(`select count(*)::int n from items where tenant_id='${tid}'`);
+  const aloRows = await c.query(`select id from items where tenant_id='${tid}' and name='Alouda'`);
+  const alo = aloRows.rows[0].id;
+  await step('T8-setup', async () => { const s8 = await push([
+    op('ticket.create', { id: tk8, store_id: store }),
+    op('ticket.add_line', { id: crypto.randomUUID(), ticket_id: tk8, item_id: alo, qty: 2000 }),
+    op('receipt.create', { id: rc8, ticket_id: tk8, store_id: store, device_id: dev, number: 'RFS1-T1-3', device_seq: 3,
+      payments: [{ payment_type_id: cash, amount: 21600 }] }),
+  ]);
+  check('T8-setup applied', s8.every((o) => o.status === 'applied'), JSON.stringify(s8)); });
+  const rl8 = (await c.query(`select id from receipt_lines where receipt_id='${rc8}'`)).rows[0].id;
+  const rf8a = crypto.randomUUID(), rf8b = crypto.randomUUID(), rf8c = crypto.randomUUID();
+  let r8;
+  // half qty: sub 9000, tax 1350, total 10350
+  await step('T8-part1', async () => { r8 = await push([
+    op('refund.create', { id: rf8a, refund_of: rc8, store_id: store, device_id: dev, number: 'RFS1-T1-4', device_seq: 4,
+      reason: 't', lines: [{ receipt_line_id: rl8, qty: 1000 }],
+      payments: [{ payment_type_id: cash, amount: 10800 }] }),
+  ]); });
+  check('T8 first partial applies', r8[0].status === 'applied', JSON.stringify(r8[0]));
+  await step('T8-part2', async () => { r8 = await push([
+    op('refund.create', { id: rf8b, refund_of: rc8, store_id: store, device_id: dev, number: 'RFS1-T1-5', device_seq: 5,
+      reason: 't', lines: [{ receipt_line_id: rl8, qty: 1000 }],
+      payments: [{ payment_type_id: cash, amount: 10800 }] }),
+  ]); });
+  check('T8 second partial applies (cumulative respected)', r8[0].status === 'applied', JSON.stringify(r8[0]));
+  await step('T8-over', async () => { r8 = await push([
+    op('refund.create', { id: rf8c, refund_of: rc8, store_id: store, device_id: dev, number: 'RFS1-T1-6', device_seq: 6,
+      reason: 't', lines: [{ receipt_line_id: rl8, qty: 1000 }],
+      payments: [{ payment_type_id: cash, amount: 10800 }] }),
+  ]); });
+  check('T8 over-refund rejected', r8[0].status === 'rejected' && r8[0].code === 'bad-qty', JSON.stringify(r8[0]));
 
   for (const t of ['sync_ops_applied','receipts','receipt_lines','receipt_line_modifiers','receipt_line_taxes','receipt_payments','receipt_discounts'])
     await c.query(`alter table ${t} disable trigger trg_no_update`);
@@ -91,4 +134,4 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
   console.log(failures === 0 ? 'REFUND-SNAPSHOT PASS' : `REFUND-SNAPSHOT FAIL (${failures})`);
   await c.end();
   process.exit(failures ? 1 : 0);
-})().catch((e) => { console.error('TEST_FAILED:' + e.message); process.exit(1); });
+})().catch((e) => { console.error('TEST_FAILED:' + (e.stack || e.message)); process.exit(1); });

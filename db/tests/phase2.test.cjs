@@ -128,7 +128,8 @@ const TABLES = ['receipt_discounts','receipt_payments','receipt_line_taxes','rec
   const rf1 = crypto.randomUUID(), rf2 = crypto.randomUUID();
   await step('T7-waiter', async () => { r = await push(empW, [op('refund.create', { id: rf1, refund_of: rc1, store_id: store, device_id: dev, number: P(7), device_seq: 5, reason: 't' })]); });
   check('T7 waiter refund forbidden', r[0].status === 'rejected' && r[0].code === 'forbidden');
-  await step('T7-manager', async () => { r = await push(empO, [op('refund.create', { id: rf1, refund_of: rc1, store_id: store, device_id: dev, number: P(7), device_seq: 5, reason: 't' })]); });
+  await step('T7-manager', async () => { r = await push(empO, [op('refund.create', { id: rf1, refund_of: rc1, store_id: store, device_id: dev, number: P(7), device_seq: 5, reason: 't',
+    payments: [{ payment_type_id: cash.id, amount: 17250 }] })]); });
   const rf = (await c.query(`select type, total from receipts where id='${rf1}'`)).rows[0];
   check('T7 manager refund mirrors total', r[0].status === 'applied' && rf.type === 'refund' && rf.total === '17250');
   await step('T7-double', async () => { r = await push(empO, [op('refund.create', { id: rf2, refund_of: rc1, store_id: store, device_id: dev, number: P(8), device_seq: 6, reason: 'x' })]); });
