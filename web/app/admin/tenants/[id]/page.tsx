@@ -181,7 +181,13 @@ async function setTillActive(formData: FormData) {
     back(tenantId, "error", adminMessage(e));
   }
   revalidatePath(`/admin/tenants/${tenantId}`);
-  back(tenantId, "notice", active ? "Till reactivated." : "Till deactivated. Sales it already made still sync.");
+  back(
+    tenantId,
+    "notice",
+    active
+      ? "Till reactivated."
+      : "Till deactivated: it cannot register again. A till that is still signed in keeps selling and syncing; switch its login off to stop that.",
+  );
 }
 
 async function setActive(formData: FormData) {
@@ -388,6 +394,12 @@ export default async function TenantPage({
           </div>
         );
       })}
+      <p>
+        <small>
+          Deactivating stops a till from registering again. It does not stop a till that is still signed in: that
+          till keeps selling and syncing until its login is switched off.
+        </small>
+      </p>
       <h3>Add a store</h3>
       <form action={addStore} style={field}>
         <input type="hidden" name="tenant" value={tenant.id} />

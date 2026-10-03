@@ -58,6 +58,9 @@ class PushWorker @AssistedInject constructor(
             } catch (e: IOException) {
                 return Result.retry()
             } catch (e: ApiError) {
+                // 403: this login was switched off. The rows stay queued; another
+                // login of the restaurant can sign in and push them.
+                if (e.status == 403) session.setNeedsSignIn(true)
                 return if (e.status >= 500) Result.retry() else Result.failure()
             }
             val byId = results.associateBy { it.opId }

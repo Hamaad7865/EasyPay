@@ -97,6 +97,9 @@ class PullWorker @AssistedInject constructor(
         } catch (e: IOException) {
             Result.retry() // offline or flaky: WorkManager backs off and tries again
         } catch (e: ApiError) {
+            // 403 on a sync call means this login is no longer linked to the
+            // restaurant (switched off). Same remedy as a lost session.
+            if (e.status == 403) session.setNeedsSignIn(true)
             if (e.status >= 500) Result.retry() else Result.failure()
         }
     }

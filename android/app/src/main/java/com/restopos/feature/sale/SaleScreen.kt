@@ -251,8 +251,9 @@ private fun SyncStatus(needsSignIn: Boolean, pending: Long, rejected: Long, onSi
         Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (pending > 0) "Signed out. $pending changes are saved on this tablet and will sync after you sign in."
-                    else "Signed out. Sales are saved on this tablet and will sync after you sign in.",
+                    "This tablet cannot sync: its login was signed out or switched off. " +
+                        (if (pending > 0) "$pending changes are saved here. " else "Sales are saved here. ") +
+                        "Sign in with a login of this restaurant to send them.",
                     Modifier.weight(1f),
                 )
                 Button(onClick = onSignIn) { Text("Sign in") }

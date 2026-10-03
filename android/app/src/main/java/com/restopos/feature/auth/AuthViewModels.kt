@@ -58,7 +58,12 @@ class AuthViewModel @Inject constructor(
         val tenant = session.tenantId()
         if (tenant != null) {
             val me = runCatching { api.me() }.getOrElse {
-                _state.value = AuthUiState.Error(it.message ?: "Could not check this login")
+                if (it is ApiError && it.status == 403) {
+                    auth.signOut()
+                    _state.value = AuthUiState.Error("That login is not linked to a restaurant, or it was switched off. Use another login of this restaurant.")
+                } else {
+                    _state.value = AuthUiState.Error(it.message ?: "Could not check this login")
+                }
                 return@launch
             }
             if (me.tenantId != tenant) {
