@@ -119,6 +119,14 @@ async function step(name, fn) {
   const t4logged = (await c.query(`select count(*)::int n from sync_ops_applied where op_id in ('${rB.op_id}','${rC.op_id}')`)).rows[0].n;
   check('T4 transient persists nothing', t4logged === 0, 'n=' + t4logged);
 
+  // T5: genuine business rejections keep their own codes (not 'error')
+  const tk5 = crypto.randomUUID();
+  await step('T5-push', async () => { r = await pushRaw([
+    op('ticket.create', { id: tk5, store_id: store }),
+    op('ticket.add_line', { id: crypto.randomUUID(), ticket_id: tk5, item_id: crypto.randomUUID(), qty: 1000 }),
+  ]); });
+  check('T5 unknown-item keeps its code', r[1].status === 'rejected' && r[1].code === 'unknown-item', JSON.stringify(r[1]));
+
   await c.query(`alter table sync_ops_applied disable trigger trg_no_update`);
   // children before parents: composite FKs are RESTRICT since 0019
   for (const t of ['sync_ops_applied','tickets','pos_devices','stores','employees','roles','tenants'])
