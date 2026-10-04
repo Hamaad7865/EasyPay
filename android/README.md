@@ -70,13 +70,14 @@ pull worker, a start screen, and the screens behind the top bar:
   an age: green, amber from 30 minutes, red from an hour.
 - **Receipts:** the receipts issued on this tablet.
 - **Settings:** a menu down the left, the chosen page on the right.
-  - This till: who is signed in, the cash drawer's four actions, and the
-    state of the sync, the shift, the printers and the network.
+  - This till: who is signed in, Cash in, Cash out, Open drawer and Close
+    shift, and the state of the sync, the shift, the printers and the network.
   - Notifications: what needs attention for as long as it is true (sign-in
     needed, refused changes, no receipt printer, failed print jobs) and what
     the printers reported while nobody was looking.
-  - Cash drawer: Cash in, Cash out, Open drawer, Close drawer (the blind count
-    that ends the shift), the shift's cash and its cash in and out. What the
+  - Cash drawer: Cash in, Cash out, Open drawer, Close shift (the blind count;
+    there is no count that leaves the shift open), the shift's cash and its
+    cash in and out. What the
     drawer should hold is only shown with `shift.view_report`.
   - Reports (`shift.view_report`): the shift, the day so far (also by
     category and by staff) with Close the day, and closed shifts and day

@@ -323,7 +323,7 @@ fun SettingsScreen(
         open = { more.openDrawer() },
         close = {
             when {
-                shift == null -> vm.say("No shift is open, so there is no drawer to close.")
+                shift == null -> vm.say("No shift is open.")
                 !vm.can("shift.open_close") -> vm.say(ASK)
                 else -> onClosePeriod()
             }
@@ -499,7 +499,7 @@ private fun CashPage(vm: SettingsViewModel, more: MoreViewModel, keys: CashKeys)
     val reports = vm.can("shift.view_report")
 
     CashActions(keys)
-    Note("Cash in and cash out each print a slip for the drawer. Close drawer counts the cash and ends the shift; the day is closed under Reports.")
+    Note("Cash in and cash out each print a slip for the drawer. Close shift counts the cash in the drawer and ends the shift: selling stops until the next one is opened. The day is closed under Reports.")
     Heading("This shift")
     Panel {
         if (open == null) {
@@ -846,7 +846,7 @@ private val HELP = listOf(
     "Taking an item off" to "Tap the line on the order. Before it has gone to the kitchen it is simply removed. After that it is a void: the kitchen gets a void ticket, and it needs someone allowed to void.",
     "A refund, or the wrong payment type" to "Under Receipts, tap the receipt. Refund gives the whole receipt back. Change corrects how it was paid without changing the amount.",
     "Cash in and cash out" to "Settings, Cash drawer. Type the amount and what it is for. A slip prints for the drawer and it shows on the shift report.",
-    "Ending the day" to "Take payment for every open order. Tap Close drawer and count the cash: that ends the shift. Then Reports, Day so far, Close the day and print.",
+    "Ending the day" to "Take payment for every open order. Under Settings, Cash drawer, tap Close shift and count the cash. Then Reports, Day so far, Close the day and print.",
     "A printer does not print" to "Settings, Printers. Check the printer says Connected and try a test print. A failed receipt or report has Try again next to it. A kitchen ticket goes again when you open the order and tap Save.",
     "No internet" to "Keep selling. Everything is saved on the tablet and sent by itself when the connection is back. Printing does not need the internet, only the local network.",
 )
@@ -910,7 +910,7 @@ private fun CashActions(keys: CashKeys) {
         Action("Cash in", onClick = keys.cashIn)
         Action("Cash out", onClick = keys.cashOut)
         Action("Open drawer", onClick = keys.open)
-        Action("Close drawer", primary = true, onClick = keys.close)
+        Action("Close shift", primary = true, onClick = keys.close)
     }
 }
 
