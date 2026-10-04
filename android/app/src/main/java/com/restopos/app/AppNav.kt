@@ -40,7 +40,7 @@ object Routes {
 }
 
 @Composable
-fun AppNav(session: SessionStore, onSignOut: () -> Unit) {
+fun AppNav(session: SessionStore, signedIn: () -> Boolean, onSignOut: () -> Unit) {
     val nav = rememberNavController()
     val context = LocalContext.current
     // A tablet that has been set up opens on the start screen, with or
@@ -52,6 +52,18 @@ fun AppNav(session: SessionStore, onSignOut: () -> Unit) {
     val startRoute = start ?: return
     LaunchedEffect(startRoute) {
         if (startRoute == Routes.START) SyncScheduler.startPeriodic(context)
+    }
+    // Who is at the register is kept in memory only. If Android killed the
+    // app in the background and brings back the screen that was open (the
+    // register, the pay screen, a cash count), nobody is signed in to it any
+    // more: go back to the start screen rather than let it be used unsigned.
+    LaunchedEffect(Unit) {
+        val at = nav.currentDestination?.route
+        if (startRoute == Routes.START && !signedIn() && at != null &&
+            at !in setOf(Routes.START, Routes.CLOCK, Routes.REAUTH)
+        ) {
+            nav.navigate(Routes.START) { popUpTo(0) { inclusive = true } }
+        }
     }
     NavHost(nav, startDestination = startRoute) {
         composable(Routes.AUTH) {
