@@ -15,7 +15,7 @@ type Shift = {
   counts: { counted: number; expected: number; at: string; who: string | null }[];
 };
 
-// A shift is one cashier's time on a till: from the float they started with
+// A sales period (a row of shifts) is one stretch of selling on a till: from the float it started with
 // to the count at the end. Its window is what happened on that till between
 // opening and closing.
 const WINDOW = `r.tenant_id = sh.tenant_id and r.device_id = sh.device_id and r.deleted_at is null
@@ -69,7 +69,7 @@ export default async function ShiftReport({ searchParams }: { searchParams: Sear
       shifts: (await c.query(SQL, [ctx.tenantId, f.from, f.to, f.employee])).rows as Shift[],
     };
   });
-  const head = <PageHead title="Shifts" lede="Each cashier's shift on a till: the float they started with, what they took, the cash put in and taken out, and how the drawer counted at the end." />;
+  const head = <PageHead title="Sales periods" lede="Each sales period on a till: the float it started with, what was taken, the cash put in and taken out, and how the drawer counted at the end." />;
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;
   const m = (v: string | number | null) => money(Number(v ?? 0), d.s.decimals);
   const at = clock(d.l.tz);
@@ -77,7 +77,7 @@ export default async function ShiftReport({ searchParams }: { searchParams: Sear
     <div>
       {head}
       <ReportFilters path="/backoffice/reports/shifts" f={d.f} l={d.l} show={["employee"]} />
-      {d.shifts.length === 0 && <Empty icon={Timer} title="No shift was opened in these days">Pick other dates.</Empty>}
+      {d.shifts.length === 0 && <Empty icon={Timer} title="No sales period was opened in these days">Pick other dates.</Empty>}
       {d.shifts.map((sh) => {
         const cashTaken = sh.payments.filter((p) => p.kind === "cash").reduce((a, p) => a + Number(p.amount), 0);
         const expected = sh.closed_at && sh.expected_cash !== null ? Number(sh.expected_cash) : Number(sh.opening_float) + cashTaken + Number(sh.cash.in) - Number(sh.cash.out);
@@ -144,7 +144,7 @@ export default async function ShiftReport({ searchParams }: { searchParams: Sear
               )}
               {sh.counts.length > 0 && (
                 <table style={{ marginTop: 18, marginBottom: 0 }}>
-                  <thead><tr><th>Drawer counted during the shift</th><th>By</th><th className="num">Expected</th><th className="num">Counted</th><th className="num">Difference</th></tr></thead>
+                  <thead><tr><th>Drawer counted during the sales period</th><th>By</th><th className="num">Expected</th><th className="num">Counted</th><th className="num">Difference</th></tr></thead>
                   <tbody>
                     {sh.counts.map((x, i) => {
                       const off = Number(x.counted) - Number(x.expected);

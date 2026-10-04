@@ -35,14 +35,14 @@ const GROUPS: { title: string; perms: [string, string][] }[] = [
     perms: [
       ["drawer.open_no_sale", "Open the cash drawer without a sale"],
       ["cash.pay_in_out", "Put cash in and take cash out"],
-      ["shift.open_close", "Open and close a shift, close the day"],
-      ["shift.view_report", "See the shift report"],
+      ["shift.open_close", "Open and close a sales period, count the drawer, close the day"],
+      ["shift.view_report", "See the sales period and day figures on the till"],
     ],
   },
   {
     title: "Receipts",
     perms: [
-      ["receipts.view_all", "See all receipts"],
+      ["receipts.view_all", "See all receipts and the day’s payments"],
       ["receipts.reprint", "Reprint receipts, bills and kitchen orders"],
     ],
   },
@@ -53,7 +53,7 @@ const GROUPS: { title: string; perms: [string, string][] }[] = [
       ["reports.view", "See reports"],
       ["items.edit", "Edit the menu, taxes and stock"],
       ["employees.edit", "Manage staff and roles"],
-      ["settings.device", "Change settings, printers and tables"],
+      ["settings.device", "Change settings, printers and tables; change how a till is set up and sign it out"],
     ],
   },
 ];

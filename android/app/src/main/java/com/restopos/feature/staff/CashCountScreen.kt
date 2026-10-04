@@ -71,12 +71,12 @@ fun CashCountScreen(closing: Boolean, counting: Boolean = false, vm: StaffViewMo
 
     Box(Modifier.fillMaxSize().background(Pos.Bg)) {
         Column(Modifier.fillMaxSize()) {
-            StaffTopBar(if (counting) "Count the drawer" else if (closing) "Close shift" else "Cash count for cash drawer", if (result == null) onBack else null)
+            StaffTopBar(if (counting) "Count the drawer" else if (closing) "Close sales period" else "Cash count for cash drawer", if (result == null) onBack else null)
             Row(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 28.dp), horizontalArrangement = Arrangement.spacedBy(64.dp)) {
                 Column(Modifier.weight(1f).fillMaxHeight()) {
                     val done = result
                     if (done != null) {
-                        Text(if (counting) "Drawer counted. The shift stays open." else "Shift closed.", color = Pos.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text(if (counting) "Drawer counted. The sales period stays open." else "Sales period closed.", color = Pos.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                         Text("How the drawer compares with what it should hold.", Modifier.padding(top = 10.dp, bottom = 18.dp), color = Pos.Text, fontSize = 14.sp)
                         Line("Opening amount", Money.format(done.float))
                         Line("Cash taken, with cash in and out", Money.format(done.cash))
@@ -97,7 +97,7 @@ fun CashCountScreen(closing: Boolean, counting: Boolean = false, vm: StaffViewMo
                         // because the next sign-in opens a new shift.
                         if (!counting) {
                             Text(
-                                dayNote ?: "Is this the last shift of the day? Closing the day fixes the day's figures and prints the closing report.",
+                                dayNote ?: "Is this the last sales period of the day? Closing the day fixes the day's figures and prints the closing report.",
                                 Modifier.padding(bottom = 10.dp), color = if (dayNote != null) Pos.Text else Pos.Text3, fontSize = 13.sp,
                             )
                             if (!dayClosed) {
@@ -112,14 +112,14 @@ fun CashCountScreen(closing: Boolean, counting: Boolean = false, vm: StaffViewMo
                     } else {
                         Text(if (blind) "Count the cash." else "Confirm cash amount.", color = Pos.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                         Text(
-                            if (counting) "Count the cash in this till's drawer and enter the amount. You will see how it compares after you confirm. A slip prints for the handover, and the shift stays open."
+                            if (counting) "Count the cash in this till's drawer and enter the amount. You will see how it compares after you confirm. A slip prints for the handover, and the sales period stays open."
                             else if (closing) "Count the cash in this till's drawer and enter the amount. You will see how it compares after you confirm."
                             else "Enter the cash that is in this till's drawer now. Each till has its own amount.",
                             Modifier.padding(top = 10.dp, bottom = 18.dp), color = Pos.Text, fontSize = 14.sp,
                         )
                         Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(3.dp)).background(Pos.Panel).padding(14.dp), contentAlignment = Alignment.Center) {
                             Text(
-                                if (blind) "Open since ${shift?.let { now.format(Date(it.opened_at)) } ?: "—"}" else "Shift starts ${now.format(Date())}",
+                                if (blind) "Open since ${shift?.let { now.format(Date(it.opened_at)) } ?: "—"}" else "Sales period starts ${now.format(Date())}",
                                 color = GREEN, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                             )
                         }
@@ -138,7 +138,7 @@ fun CashCountScreen(closing: Boolean, counting: Boolean = false, vm: StaffViewMo
                         }
                         if (closing && openOrders > 0) {
                             Text(
-                                "$openOrders ${if (openOrders == 1L) "order is" else "orders are"} still open. They stay open for the next shift.",
+                                "$openOrders ${if (openOrders == 1L) "order is" else "orders are"} still open. They stay open for the next sales period.",
                                 Modifier.padding(top = 14.dp), color = Pos.Pink, fontSize = 13.sp,
                             )
                         }

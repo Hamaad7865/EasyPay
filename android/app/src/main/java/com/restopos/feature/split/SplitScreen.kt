@@ -288,7 +288,7 @@ fun SplitScreen(vm: SplitViewModel = hiltViewModel(), onBack: () -> Unit, onPay:
                         (1..line.units).chunked(4).forEach { row ->
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 row.forEach { u ->
-                                    Key(if (u == line.units) "All $u" else "$u", if (u == line.units) Pos.TabOn else Pos.Key, Color.White, Modifier.weight(1f), true) { vm.move(lineId, check, u) }
+                                    Key(if (u == line.units) "All $u" else "$u", if (u == line.units) Pos.TabOn else Pos.Key, if (u == line.units) Color.White else Pos.Text, Modifier.weight(1f), true) { vm.move(lineId, check, u) }
                                 }
                                 repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                             }

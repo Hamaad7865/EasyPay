@@ -285,7 +285,7 @@ object Docs {
         p.bold(true).tall(true).row("COUNTED", "Rs " + n(d.counted)).tall(false).bold(false)
         val diff = d.counted - d.expected
         p.bold(true).row(if (diff == 0L) "Difference" else if (diff < 0) "SHORT" else "OVER", n(diff)).bold(false)
-        p.line("The shift stays open.")
+        p.line("The sales period stays open.")
         p.feed(2)
         p.line("Handed over: " + "_".repeat((paper.columns - 13).coerceAtLeast(4)))
         p.feed(1)
@@ -299,7 +299,7 @@ object Docs {
         val p = EscPos(paper.columns)
         val n = { c: Long -> num(c, decimals) }
         if (shop.name.isNotBlank()) p.center(shop.name)
-        p.align(EscPos.Align.Center).bold(true).line("SHIFT REPORT").bold(false).align(EscPos.Align.Left)
+        p.align(EscPos.Align.Center).bold(true).line("SALES PERIOD REPORT").bold(false).align(EscPos.Align.Left)
         p.rule()
         p.row("Till", d.till)
         p.row("Cashier", d.openedBy ?: "")
@@ -322,7 +322,7 @@ object Docs {
         p.row("Cash out", off(d.cashOut, decimals))
         d.moves.forEach { m -> p.row("  ${if (m.type == "in") "In" else "Out"}: ${m.reason ?: ""}", n(m.amount)) }
         if (d.counts.isNotEmpty()) {
-            p.line("Counted during the shift:")
+            p.line("Counted during the sales period:")
             d.counts.forEach { c ->
                 val diff = c.counted - c.expected
                 p.row("  ${stamp(c.time).substringAfter(' ')} ${c.user ?: ""}".take(paper.columns - 12), n(c.counted))

@@ -17,6 +17,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.core.view.WindowCompat
 import com.restopos.core.network.AuthClient
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.SyncScheduler
@@ -70,6 +71,14 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(awake) {
                 if (awake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+            // Light or dark (Settings, Display): the colours follow, and so do the clock and
+            // battery along the top, which are dark on a light screen.
+            val light by session.lightMode.collectAsState(initial = false)
+            LaunchedEffect(light) {
+                Pos.light = light
+                WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = light
+                WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = light
             }
             PosTheme {
                 // clear of the status bar and the gesture bar

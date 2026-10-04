@@ -253,7 +253,7 @@ fun RegisterScreen(
                                 // height: the tiles flatten a little to fit. Three columns when
                                 // the screen is too short for that.
                                 val need = ((maxWidth - 4.dp) / 2) / ((maxHeight - 10.dp) / 3)
-                                val columns = if (need <= TILE_RATIO * 1.2f) 2 else 3
+                                val columns = if (need <= TILE_RATIO * 1.45f) 2 else 3
                                 val ratio = if (columns == 2) maxOf(TILE_RATIO, need) else TILE_RATIO
                                 val grid = rememberLazyGridState()
                                 val scope = rememberCoroutineScope()
@@ -286,7 +286,7 @@ fun RegisterScreen(
                         // away; Split Check divides it; Pay opens the payment screen.
                         Row(Modifier.fillMaxWidth().height(52.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             val unsent = lines.any { !it.line.paid && it.line.sent_to_kitchen_at == null }
-                            BarKey(if (saving) "Sending…" else "Send", if (unsent && !saving) Pos.Green else Pos.Key, if (lines.isNotEmpty()) Color.White else Pos.Text3, Modifier.weight(1f), lines.isNotEmpty() && !saving) {
+                            BarKey(if (saving) "Sending…" else "Send", if (unsent && !saving) Pos.Green else Pos.Key, if (unsent && !saving) Color.White else if (lines.isNotEmpty()) Pos.Text else Pos.Text3, Modifier.weight(1f), lines.isNotEmpty() && !saving) {
                                 vm.onAction(SaleAction.Save)
                             }
                             BarKey("Split Check", Pos.Key, if (canPay) Pos.Text else Pos.Text3, Modifier.weight(1f), canPay, onSplit)
@@ -607,7 +607,7 @@ private fun DiscountDialog(onDismiss: () -> Unit, onPick: (DiscountPick) -> Unit
                             Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(4.dp)).background(if (percent == isPercent) Pos.TabOn else Pos.Key)
                                 .clickable { percent = isPercent; typed = ""; problem = null },
                             contentAlignment = Alignment.Center,
-                        ) { Text(label, color = Color.White, fontSize = 14.sp) }
+                        ) { Text(label, color = if (percent == isPercent) Color.White else Pos.Text, fontSize = 14.sp) }
                     }
                 }
                 Text(

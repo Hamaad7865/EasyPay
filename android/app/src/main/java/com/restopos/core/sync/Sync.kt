@@ -377,6 +377,7 @@ private val PERIOD_SEQ = intPreferencesKey("period_seq")
 private val PAY_CHECK = intPreferencesKey("pay_check")
 private val LEFT_HANDED = booleanPreferencesKey("left_handed")
 private val KEEP_AWAKE = booleanPreferencesKey("keep_awake")
+private val LIGHT = booleanPreferencesKey("light_mode")
 private val LAST_PULL = longPreferencesKey("last_pull")
 private val Context.sessionPrefs by preferencesDataStore("device")
 
@@ -437,6 +438,8 @@ class SessionStore(private val context: Context) {
     suspend fun setLeftHanded(on: Boolean) { store.edit { it[LEFT_HANDED] = on } }
     val keepAwake: Flow<Boolean> = store.data.map { it[KEEP_AWAKE] ?: true }
     suspend fun setKeepAwake(on: Boolean) { store.edit { it[KEEP_AWAKE] = on } }
+    val lightMode: Flow<Boolean> = store.data.map { it[LIGHT] ?: false }
+    suspend fun setLightMode(on: Boolean) { store.edit { it[LIGHT] = on } }
     // When this tablet last heard from the server.
     val lastPull: Flow<Long?> = store.data.map { it[LAST_PULL] }
     suspend fun setLastPull(at: Long) { store.edit { it[LAST_PULL] = at } }

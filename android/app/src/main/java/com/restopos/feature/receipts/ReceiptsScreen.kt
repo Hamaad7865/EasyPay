@@ -311,7 +311,7 @@ private fun TypeGrid(types: List<PaymentTypeEntity>, selected: String?, onPick: 
                     Box(
                         Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(4.dp)).background(if (t.id == selected) Pos.TabOn else Pos.Key).clickable { onPick(t.id) },
                         contentAlignment = Alignment.Center,
-                    ) { Text(t.name, color = Color.White, fontSize = 13.sp, maxLines = 1) }
+                    ) { Text(t.name, color = if (t.id == selected) Color.White else Pos.Text, fontSize = 13.sp, maxLines = 1) }
                 }
                 repeat(3 - row.size) { Box(Modifier.weight(1f)) }
             }

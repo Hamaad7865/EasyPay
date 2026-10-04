@@ -68,6 +68,8 @@ fun RoleBadge(role: String?) {
     )
 }
 
+private val PIN_TEXT = Color(0xFFF3F4F6)
+
 // "Please enter your PIN code": four dots and a number pad over a dimmed
 // screen. Checks itself on the fourth digit.
 @Composable
@@ -95,14 +97,14 @@ fun PinPad(member: StaffMember, check: suspend (String) -> PinCheck, onOk: () ->
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Color(0xE6000000)), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Please enter your PIN code", color = Pos.Text, fontSize = 17.sp)
-                Text(member.employee.name, Modifier.padding(top = 4.dp), color = Pos.Text2, fontSize = 14.sp)
+                Text("Please enter your PIN code", color = PIN_TEXT, fontSize = 17.sp)
+                Text(member.employee.name, Modifier.padding(top = 4.dp), color = PIN_TEXT.copy(alpha = 0.7f), fontSize = 14.sp)
                 Row(Modifier.padding(top = 22.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                     repeat(4) { i ->
-                        Box(Modifier.size(18.dp).clip(CircleShape).background(if (i < entered.length) Pos.Text else Color(0xFF55585F)))
+                        Box(Modifier.size(18.dp).clip(CircleShape).background(if (i < entered.length) PIN_TEXT else Color(0xFF55585F)))
                     }
                 }
-                Text(note ?: " ", Modifier.height(22.dp), color = Pos.Pink, fontSize = 13.sp, textAlign = TextAlign.Center)
+                Text(note ?: " ", Modifier.height(22.dp), color = Color(0xFFE2587A), fontSize = 13.sp, textAlign = TextAlign.Center)
                 listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("", "0", "back")).forEach { row ->
                     Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         row.forEach { k ->
@@ -112,13 +114,13 @@ fun PinPad(member: StaffMember, check: suspend (String) -> PinCheck, onOk: () ->
                                     .border(1.dp, Color(0xFFB9BCC4), RoundedCornerShape(8.dp)).clickable { press(k) },
                                 contentAlignment = Alignment.Center,
                             ) {
-                                if (k == "back") Text("‹", color = Pos.Text, fontSize = 28.sp)
-                                else Text(k, color = Pos.Text, fontSize = 24.sp)
+                                if (k == "back") Text("‹", color = PIN_TEXT, fontSize = 28.sp)
+                                else Text(k, color = PIN_TEXT, fontSize = 24.sp)
                             }
                         }
                     }
                 }
-                Text("Cancel", Modifier.padding(top = 18.dp).clickable(onClick = onDismiss).padding(10.dp), color = Pos.NavOn, fontSize = 15.sp)
+                Text("Cancel", Modifier.padding(top = 18.dp).clickable(onClick = onDismiss).padding(10.dp), color = Color(0xFF8FA6FF), fontSize = 15.sp)
             }
         }
     }

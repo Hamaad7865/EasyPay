@@ -144,6 +144,7 @@ class SettingsViewModel @Inject constructor(
     val lastPull = session.lastPull.held(null)
     val leftHanded = session.leftHanded.held(false)
     val keepAwake = session.keepAwake.held(true)
+    val lightMode = session.lightMode.held(false)
     val jobs: StateFlow<List<PrintJob>> = printing.jobs
     val notices: StateFlow<List<Notice>> = printing.notices
 
@@ -237,7 +238,7 @@ class SettingsViewModel @Inject constructor(
     fun clearJobs() = printing.clearJobs()
     fun clearNotices() = printing.clearNotices()
 
-    fun printShift(s: ShiftEntity) = run { cash.printShift(s).fold({ "Shift report sent to the printer." }, { it.message }) }
+    fun printShift(s: ShiftEntity) = run { cash.printShift(s).fold({ "Sales period report sent to the printer." }, { it.message }) }
     fun printDay(row: DayCloseEntity) = run { cash.printZOf(row).fold({ "Day closing no. ${row.number} sent to the printer." }, { it.message }) }
 
     // Sends what is waiting and fetches what changed in the back office.
@@ -250,6 +251,7 @@ class SettingsViewModel @Inject constructor(
 
     fun setLeftHanded(on: Boolean) = viewModelScope.launch { session.setLeftHanded(on) }
     fun setKeepAwake(on: Boolean) = viewModelScope.launch { session.setKeepAwake(on) }
+    fun setLightMode(on: Boolean) = viewModelScope.launch { session.setLightMode(on) }
 }
 
 private enum class Page(val label: String) {
@@ -329,8 +331,8 @@ fun SettingsScreen(
         cashIn = { sheet = "in" },
         cashOut = { sheet = "out" },
         open = { more.openDrawer() },
-        count = { if (shift == null) vm.say("No shift is open.") else onCountDrawer() },
-        close = { if (shift == null) vm.say("No shift is open.") else onClosePeriod() },
+        count = { if (shift == null) vm.say("No sales period is open.") else onCountDrawer() },
+        close = { if (shift == null) vm.say("No sales period is open.") else onClosePeriod() },
     )
     val failed = jobs.count { it.error != null }
     val standing = buildList {
@@ -450,9 +452,9 @@ private fun TillPage(vm: SettingsViewModel, keys: CashKeys, network: String, onS
     }
     if (rejected > 0) StatusRow(Icons.Filled.Warning, "Refused changes", "$rejected changes were refused by the server and need a look", Pos.Pink, "Review", onRejected)
     StatusRow(
-        PosIcons.Clock, "Shift",
+        PosIcons.Clock, "Sales period",
         shift?.let { "Open since ${stamp.format(Date(it.opened_at))}, opened with ${Money.format(it.opening_float)} in the drawer" }
-            ?: "No shift is open. One opens when someone clocks in and counts the drawer.",
+            ?: "No sales period is open. One opens when someone clocks in and counts the drawer.",
         button = "Cash drawer",
     ) { onGo(Page.Cash) }
     val list = printers
@@ -502,11 +504,11 @@ private fun CashPage(vm: SettingsViewModel, more: MoreViewModel, keys: CashKeys)
     val reports = vm.can("shift.view_report")
 
     CashActions(keys)
-    Note("Cash in and cash out each print a slip for the drawer. Count drawer is for a handover: it records what is in the drawer and how that compares, prints a slip to sign, and the shift stays open. Close shift is the same count and ends the shift. The day is closed under Reports.")
-    Heading("This shift")
+    Note("Cash in and cash out each print a slip for the drawer. Count drawer is for a handover: it records what is in the drawer and how that compares, prints a slip to sign, and the sales period stays open. Close sales period is the same count and ends the sales period. The day is closed under Reports.")
+    Heading("This sales period")
     Panel {
         if (open == null) {
-            Text("No shift is open. One opens when someone clocks in and counts the drawer.", color = Pos.Text, fontSize = 14.sp)
+            Text("No sales period is open. One opens when someone clocks in and counts the drawer.", color = Pos.Text, fontSize = 14.sp)
         } else {
             val d = open.second
             Text("${d.openedBy ?: "This till"}, since ${stamp.format(Date(d.openedAt))}", Modifier.padding(bottom = 6.dp), color = Pos.Text2, fontSize = 13.sp)
@@ -524,7 +526,7 @@ private fun CashPage(vm: SettingsViewModel, more: MoreViewModel, keys: CashKeys)
     }
     val counts = open?.second?.counts.orEmpty()
     if (counts.isNotEmpty()) {
-        Heading("Drawer counts this shift")
+        Heading("Drawer counts this sales period")
         Panel {
             counts.forEach { c ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -538,7 +540,7 @@ private fun CashPage(vm: SettingsViewModel, more: MoreViewModel, keys: CashKeys)
             }
         }
     }
-    Heading("Cash in and out this shift")
+    Heading("Cash in and out this sales period")
     Panel {
         val moves = open?.second?.moves.orEmpty()
         if (moves.isEmpty()) Note("None.")
@@ -574,12 +576,12 @@ private fun ReportsPage(vm: SettingsViewModel, more: MoreViewModel, onCloseShift
     val pastShifts by vm.pastShifts.collectAsState()
     val pastDays by vm.pastDays.collectAsState()
 
-    Seg(listOf("Shift", "Day so far", "Closed"), tab) { tab = it }
+    Seg(listOf("Sales period", "Day so far", "Closed"), tab) { tab = it }
     when (tab) {
         0 -> {
             val s = last
             if (s == null) {
-                Panel { Text("No shift has been opened on this till yet.", color = Pos.Text, fontSize = 14.sp) }
+                Panel { Text("No sales period has been opened on this till yet.", color = Pos.Text, fontSize = 14.sp) }
             } else {
                 val (row, d) = s
                 Panel {
@@ -611,7 +613,7 @@ private fun ReportsPage(vm: SettingsViewModel, more: MoreViewModel, onCloseShift
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Action(if (busy) "Printing…" else "Print report") { more.printShift() }
-                    if (row.closed_at == null) Action("Close shift", primary = true, onClick = onCloseShift)
+                    if (row.closed_at == null) Action("Close sales period", primary = true, onClick = onCloseShift)
                 }
             }
         }
@@ -645,13 +647,13 @@ private fun ReportsPage(vm: SettingsViewModel, more: MoreViewModel, onCloseShift
                     Panel { staffSales.forEach { Figure("${it.name} (${it.count} ${if (it.count == 1) "receipt" else "receipts"})", Money.format(it.amount)) } }
                 }
                 Row(Modifier.fillMaxWidth()) { Action("Close the day and print", primary = true, onClick = onCloseDay) }
-                Note("Closing the day fixes these figures, prints the report and starts a new day. The shift has to be closed first, and every order paid.")
+                Note("Closing the day fixes these figures, prints the report and starts a new day. The sales period has to be closed first, and every order paid.")
             }
         }
         else -> {
-            Heading("Shifts")
+            Heading("Sales periods")
             Panel {
-                if (pastShifts.isEmpty()) Note("No shift has been closed on this till yet.")
+                if (pastShifts.isEmpty()) Note("No sales period has been closed on this till yet.")
                 pastShifts.forEach { p ->
                     val s = p.shift
                     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -822,7 +824,9 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel) {
 private fun DisplayPage(vm: SettingsViewModel) {
     val leftHanded by vm.leftHanded.collectAsState()
     val keepAwake by vm.keepAwake.collectAsState()
+    val lightMode by vm.lightMode.collectAsState()
     val change = "change how this till is set up"
+    Toggle("Light mode", "A pale screen with dark text, for a bright room or a terrace. Off is the dark screen.", lightMode) { vm.guard("settings.device", change) { vm.setLightMode(it) } }
     Toggle("Left-handed register", "The order and the keypad move to the right, the menu to the left.", leftHanded) { vm.guard("settings.device", change) { vm.setLeftHanded(it) } }
     Toggle("Keep the screen on", "The tablet does not go to sleep while RestoPOS is open.", keepAwake) { vm.guard("settings.device", change) { vm.setKeepAwake(it) } }
     Note("These are for this tablet only.")
@@ -866,16 +870,16 @@ private fun SupportPage(vm: SettingsViewModel, network: String, onSignIn: () -> 
 }
 
 private val HELP = listOf(
-    "Starting the day" to "Tap Clock in/out, pick your name and enter your PIN. If no shift is open you count the cash in the drawer first; that opens the shift.",
+    "Starting the day" to "Tap Clock in/out, pick your name and enter your PIN. If no sales period is open you count the cash in the drawer first; that opens the sales period.",
     "Taking an order" to "Tap New order and choose the order type. Pick the table if it asks for one, then tap the items. Save sends what is new to the kitchen and puts the order away; it is back under Orders or on its table.",
     "Taking payment" to "Open the order and tap Pay. Pick how it is paid. For cash, type what the guest gave to see the change. The receipt prints and the order closes.",
     "Splitting the bill" to "Split check moves items onto separate checks, and each check is paid on its own. To share one bill evenly, tap Pay and choose how many guests are paying.",
     "Taking an item off" to "Tap the line on the order. Before it has gone to the kitchen it is simply removed. After that it is a void: the kitchen gets a void ticket, and it needs someone allowed to void.",
     "A refund, or the wrong payment type" to "Under Receipts, tap the receipt. Refund gives the whole receipt back. Change corrects how it was paid without changing the amount.",
     "When you are not allowed to" to "A refund, a void after the kitchen has it, opening the drawer and the like may need a manager. The till asks who approves: they tap their name and enter their own PIN, and it is done in your name with their approval on record.",
-    "Handing the drawer to someone else" to "Settings, Cash drawer, Count drawer. Count the cash and enter it: the till shows how it compares, prints a slip for both of you to sign, and the shift carries on.",
-    "Cash in and cash out" to "Settings, Cash drawer. Type the amount and what it is for. A slip prints for the drawer and it shows on the shift report.",
-    "Ending the day" to "Take payment for every open order. Under Settings, Cash drawer, tap Close shift and count the cash. Then Reports, Day so far, Close the day and print.",
+    "Handing the drawer to someone else" to "Settings, Cash drawer, Count drawer. Count the cash and enter it: the till shows how it compares, prints a slip for both of you to sign, and the sales period carries on.",
+    "Cash in and cash out" to "Settings, Cash drawer. Type the amount and what it is for. A slip prints for the drawer and it shows on the sales period report.",
+    "Ending the day" to "Take payment for every open order. Under Settings, Cash drawer, tap Close sales period and count the cash. Then Reports, Day so far, Close the day and print.",
     "A printer does not print" to "Settings, Printers. Check the printer says Connected and try a test print. A failed receipt or report has Try again next to it. A kitchen ticket goes again when you open the order and tap Save.",
     "No internet" to "Keep selling. Everything is saved on the tablet and sent by itself when the connection is back. Printing does not need the internet, only the local network.",
 )
@@ -942,7 +946,7 @@ private fun CashActions(keys: CashKeys) {
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Action("Count drawer", onClick = keys.count)
-        Action("Close shift", primary = true, onClick = keys.close)
+        Action("Close sales period", primary = true, onClick = keys.close)
     }
 }
 

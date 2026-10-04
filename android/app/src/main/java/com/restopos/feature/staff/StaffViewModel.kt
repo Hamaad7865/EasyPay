@@ -137,7 +137,7 @@ class StaffViewModel @Inject constructor(
                 when {
                     open != null -> { session.setPendingDiscount(null); staffSession.signIn(member); toRegister() }
                     member.can("shift.open_close") -> { session.setPendingDiscount(null); staffSession.signIn(member); toCashCount() }
-                    else -> _message.value = "${member.employee.name} is clocked in. The shift is closed: someone allowed to open it has to clock in."
+                    else -> _message.value = "${member.employee.name} is clocked in. The sales period is closed: someone allowed to open it has to clock in."
                 }
             },
             onFailure = { _message.value = it.message },

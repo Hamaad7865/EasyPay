@@ -91,8 +91,8 @@ fun StartScreen(
             )
             active.isEmpty() -> Closed(
                 vm,
-                title = if (shift == null) "The shift is closed" else "No one is clocked in",
-                text = if (shift == null) "Clock in below to open a shift." else "Clock in below to use the register.",
+                title = if (shift == null) "The sales period is closed" else "No one is clocked in",
+                text = if (shift == null) "Clock in below to open a sales period." else "Clock in below to use the register.",
                 button = "Clock in/out", note = null, onButton = onClock, onSignIn = onSignIn,
             )
             else -> Users(vm, active, shiftOpen = shift != null, openedAt = shift?.opened_at, onPick = { pinFor = it }, onClock = onClock)
@@ -116,7 +116,7 @@ fun StartScreen(
                 when {
                     shift != null -> vm.signIn(member, onOpen)
                     member.can("shift.open_close") -> vm.signIn(member, onCashCount)
-                    else -> vm.say("The shift is closed. Someone allowed to open it has to sign in first.")
+                    else -> vm.say("The sales period is closed. Someone allowed to open it has to sign in first.")
                 }
             },
             onDismiss = { pinFor = null },
@@ -198,11 +198,11 @@ private fun Users(vm: StaffViewModel, active: List<StaffMember>, shiftOpen: Bool
     Row(Modifier.fillMaxSize()) {
         InfoPanel(vm)
         Column(Modifier.weight(1f).fillMaxHeight().padding(start = 40.dp, end = 40.dp, top = 36.dp, bottom = 28.dp)) {
-            Text(if (shiftOpen) "Who is at the till?" else "The shift is closed", color = Pos.Text, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text(if (shiftOpen) "Who is at the till?" else "The sales period is closed", color = Pos.Text, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (shiftOpen) "Tap your name and enter your PIN. New on shift? Clock in below."
-                    else "Tap your name to open the shift, or clock in below.",
+                    if (shiftOpen) "Tap your name and enter your PIN. Just arrived? Clock in below."
+                    else "Tap your name to open the sales period, or clock in below.",
                     Modifier.weight(1f), color = Pos.Text, fontSize = 14.sp,
                 )
                 Text("Sort by", Modifier.padding(end = 12.dp), color = Pos.Text, fontSize = 14.sp)
@@ -228,7 +228,7 @@ private fun Users(vm: StaffViewModel, active: List<StaffMember>, shiftOpen: Bool
             }
             if (openedAt != null) {
                 Text(
-                    "Shift open since ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(openedAt))}",
+                    "Sales period open since ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(openedAt))}",
                     Modifier.padding(bottom = 12.dp), color = Pos.Text3, fontSize = 13.sp,
                 )
             }

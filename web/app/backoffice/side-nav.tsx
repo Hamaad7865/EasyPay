@@ -38,7 +38,7 @@ const SECTIONS: { title: string | null; links: { href: string; label: string; ic
       { href: "/backoffice/reports/items", label: "Item sales", icon: ListOrdered },
       { href: "/backoffice/reports/orders", label: "Order details", icon: ClipboardList },
       { href: "/backoffice/reports/tax", label: "Tax", icon: Percent },
-      { href: "/backoffice/reports/shifts", label: "Shifts", icon: Timer },
+      { href: "/backoffice/reports/shifts", label: "Sales periods", icon: Timer },
       { href: "/backoffice/reports/day-close", label: "Day closing", icon: CalendarCheck },
       { href: "/backoffice/receipts", label: "Receipts", icon: Receipt },
     ],

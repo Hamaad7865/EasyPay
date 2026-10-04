@@ -50,7 +50,7 @@ pull worker, a start screen, and the screens behind the top bar:
     cash in the drawer (the cash count) and that opens it.
 - **Clock in/out:** two columns, each name needs its PIN. A punch is one row,
   never changed; "clocked in" is "the last punch was in".
-- **Sales period:** one per till. Closed from Settings with a blind count;
+- **Sales period:** one per till (the code and the server call it a shift). Closed from Settings with a blind count;
   the till then shows opening amount, cash taken, expected, counted and the
   difference. The server works out the same expected figure.
 - **Who did it:** every outbox op carries the signed-in member of staff, and

@@ -2,7 +2,11 @@ package com.restopos.core.ui
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -10,36 +14,42 @@ import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 import com.restopos.core.common.CssColor
 
-// The till's look: near-black screens with dark grey panels, blue categories,
-// blue and green action keys. One place for every colour so screens never
-// hard-code one.
+// The till's look, in two lights. Dark: near-black screens with dark grey
+// panels. Light: a pale grey screen with white panels. Blue categories and
+// blue and green action keys in both. One place for every colour so screens
+// never hard-code one, and one switch (Settings, Display) that every colour
+// reads: a screen follows it the moment it changes.
 object Pos {
-    val Bg = Color(0xFF1B1C1F)
-    val BarTop = Color(0xFF2B2C30)
-    val BarBottom = Color(0xFF2B2C30)
-    val Panel = Color(0xFF2B2C30)
-    val PanelDeep = Color(0xFF232427)
-    val Key = Color(0xFF333438)
-    val Line = Color(0xFF17181A)
-    val Stroke = Color(0xFF36383E) // the hairline around a card and between its rows
-    val Tile = Color(0xFF3B3C41)
-    val TileEdge = Color(0xFF3D6BFF)
-    val Blue = Color(0xFF4C6FF5)
-    val Green = Color(0xFF4E9A62)
-    val Pink = Color(0xFFE2587A)
-    val Violet = Color(0xFF8A92F7)
-    val Text = Color(0xFFF3F4F6)
-    val Text2 = Color(0xFFA9AFBC)
-    val Text3 = Color(0xFF7C8291)
-    val Selected = Color(0xFF46474D)
-    val NavOn = Color(0xFF6C8BFF)
-    val Danger = Color(0xFF8E2B40)
-    val CategoryDefault = Color(0xFF1740E0)
-    val Link = Color(0xFFAEB8F8) // text you can tap: Log out, New order, the sorted column
-    val TabOn = Color(0xFF1740E0)
-    val ChipOpen = Color(0xFFB4BDF7)
-    val Ok = Color(0xFF45A85A)
-    val Warn = Color(0xFFE6B23C)
+    var light by mutableStateOf(false)
+    private fun of(dark: Long, bright: Long) = Color(if (light) bright else dark)
+
+    val Bg: Color get() = of(0xFF1B1C1F, 0xFFEEF0F4)
+    val BarTop: Color get() = of(0xFF2B2C30, 0xFFFFFFFF)
+    val BarBottom: Color get() = of(0xFF2B2C30, 0xFFFFFFFF)
+    val Panel: Color get() = of(0xFF2B2C30, 0xFFFFFFFF)
+    val PanelDeep: Color get() = of(0xFF232427, 0xFFF5F6F9)
+    val Key: Color get() = of(0xFF333438, 0xFFE4E7ED)
+    val Line: Color get() = of(0xFF17181A, 0xFFC8CCD6)
+    val Stroke: Color get() = of(0xFF36383E, 0xFFD9DCE4) // the hairline around a card and between its rows
+    val Tile: Color get() = of(0xFF3B3C41, 0xFFFFFFFF)
+    val TileEdge: Color get() = of(0xFF3D6BFF, 0xFF3D6BFF)
+    val Blue: Color get() = of(0xFF4C6FF5, 0xFF3F62F0)
+    val Green: Color get() = of(0xFF4E9A62, 0xFF3E8E55)
+    val Pink: Color get() = of(0xFFE2587A, 0xFFC92F5B)
+    val Violet: Color get() = of(0xFF8A92F7, 0xFF5B63E0)
+    val Text: Color get() = of(0xFFF3F4F6, 0xFF1A1C21)
+    val Text2: Color get() = of(0xFFA9AFBC, 0xFF4B5261)
+    val Text3: Color get() = of(0xFF7C8291, 0xFF7A8191)
+    val Selected: Color get() = of(0xFF46474D, 0xFFD9E1FB)
+    val NavOn: Color get() = of(0xFF6C8BFF, 0xFF2F55E0)
+    // behind text in the screen's own text colour: the void keys, the sync notices
+    val Danger: Color get() = of(0xFF8E2B40, 0xFFF7C6D1)
+    val CategoryDefault: Color get() = of(0xFF1740E0, 0xFF1740E0)
+    val Link: Color get() = of(0xFFAEB8F8, 0xFF2F55E0) // text you can tap: Log out, New order, the sorted column
+    val TabOn: Color get() = of(0xFF1740E0, 0xFF1740E0)
+    val ChipOpen: Color get() = of(0xFFB4BDF7, 0xFF2F55E0)
+    val Ok: Color get() = of(0xFF45A85A, 0xFF2B8A45)
+    val Warn: Color get() = of(0xFFE6B23C, 0xFFA87300)
 
     // A category's or item's own colour, as set in the back office.
     fun css(value: String?, fallback: Color): Color = CssColor.argb(value)?.let { Color(it) } ?: fallback
@@ -47,8 +57,31 @@ object Pos {
 
 @Composable
 fun PosTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = darkColorScheme(
+    val scheme = if (Pos.light) {
+        lightColorScheme(
+            primary = Pos.Blue,
+            onPrimary = Color.White,
+            secondary = Pos.Green,
+            onSecondary = Color.White,
+            background = Pos.Bg,
+            onBackground = Pos.Text,
+            surface = Pos.Panel,
+            onSurface = Pos.Text,
+            surfaceVariant = Pos.Key,
+            onSurfaceVariant = Pos.Text2,
+            surfaceContainer = Pos.Panel,
+            surfaceContainerHigh = Pos.Panel,
+            surfaceContainerHighest = Pos.Key,
+            surfaceContainerLow = Pos.PanelDeep,
+            outline = Pos.Text3,
+            outlineVariant = Pos.Stroke,
+            error = Pos.Pink,
+            onError = Color.White,
+            errorContainer = Pos.Danger,
+            onErrorContainer = Pos.Text,
+        )
+    } else {
+        darkColorScheme(
             primary = Pos.Blue,
             onPrimary = Color.White,
             secondary = Pos.Green,
@@ -69,9 +102,9 @@ fun PosTheme(content: @Composable () -> Unit) {
             onError = Color.White,
             errorContainer = Pos.Danger,
             onErrorContainer = Pos.Text,
-        ),
-        content = content,
-    )
+        )
+    }
+    MaterialTheme(colorScheme = scheme, content = content)
 }
 
 // The icons the core icon set lacks (Material Symbols outlines, 24dp).

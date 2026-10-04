@@ -153,7 +153,7 @@ class StaffRepository @Inject constructor(
 
     suspend fun open(float: Long): Result<ShiftEntity> = runCatching {
         val who = staffSession.current.value ?: error("Sign in first")
-        require(who.can("shift.open_close")) { "${who.employee.name} is not allowed to open a shift" }
+        require(who.can("shift.open_close")) { "${who.employee.name} is not allowed to open a sales period" }
         require(float >= 0) { "bad amount" }
         val store = session.storeId() ?: error("no store")
         val tenant = session.tenantId() ?: error("no tenant")
@@ -179,10 +179,10 @@ class StaffRepository @Inject constructor(
 
     suspend fun close(counted: Long, approver: StaffMember? = null): Result<ShiftEntity> = runCatching {
         val who = staffSession.current.value ?: error("Sign in first")
-        staffSession.allow("shift.open_close", "close the shift", approver)
+        staffSession.allow("shift.open_close", "close the sales period", approver)
         require(counted >= 0) { "bad amount" }
         val device = session.deviceId() ?: error("no device")
-        val open = db.staff().openShift(device) ?: error("No shift is open")
+        val open = db.staff().openShift(device) ?: error("No sales period is open")
         val now = System.currentTimeMillis()
         val closed = open.copy(closed_by = who.employee.id, closed_at = now, counted_cash = counted, expected_cash = expectedCash(open))
         db.withTransaction {

@@ -79,7 +79,7 @@ export default async function DataPage({ searchParams }: { searchParams: Search 
           <p className="muted">Nothing to switch on: it is always running. For a copy that is yours to keep, use the manual backup.</p>
         </Card>
         <Card title="Manual backup">
-          <p>Download everything this restaurant has in RestoPOS as one file: the menu, staff, orders, receipts, shifts and stock.</p>
+          <p>Download everything this restaurant has in RestoPOS as one file: the menu, staff, orders, receipts, sales periods and stock.</p>
           <a href="/backoffice/data/export" className="btn" download>
             <Download aria-hidden="true" />
             Download a backup
@@ -93,7 +93,7 @@ export default async function DataPage({ searchParams }: { searchParams: Search 
       {!d.owner && <div className="note warn">You are not signed in as the owner, so the two actions below are switched off.</div>}
       <div className="grid-2">
         <Card title="Delete all transactions" lede={`${d.counts.receipts} receipts and ${d.counts.orders} orders today.`}>
-          <p>Removes every order, receipt, refund, shift, clock-in, cash movement and day closing. The menu, staff, tables, printers and settings stay. A till carries on from its own last bill number unless it is signed out and set up again.</p>
+          <p>Removes every order, receipt, refund, sales period, clock-in, cash movement and day closing. The menu, staff, tables, printers and settings stay. A till carries on from its own last bill number unless it is signed out and set up again.</p>
           <p className="flag">Receipts are tax records. Do not delete them once the restaurant is trading for real.</p>
           <form action={deleteTransactions}>
             <label className="field">

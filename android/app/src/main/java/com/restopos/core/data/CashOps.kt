@@ -103,7 +103,7 @@ class CashOps @Inject constructor(
         val tenant = session.tenantId() ?: error("no tenant")
         val store = session.storeId() ?: error("no store")
         val device = session.deviceId() ?: error("no device")
-        val shift = db.staff().openShift(device) ?: error("No shift is open")
+        val shift = db.staff().openShift(device) ?: error("No sales period is open")
         val now = System.currentTimeMillis()
         val row = DrawerCountEntity(Uuid7.next(), tenant, store, device, shift.id, staff.id(), counted, expectedCash(shift, now), now)
         db.withTransaction {
@@ -197,13 +197,13 @@ class CashOps @Inject constructor(
 
     suspend fun printShift(shift: ShiftEntity): Result<Unit> = runCatching {
         val p = printing.receiptPrinter() ?: throw PrintError("No receipt printer is set up. Add one in the back office, under Printers.")
-        printing.send(p, Docs.shift(shiftDoc(shift), printing.shop(), printing.paper(p), printing.settings().decimals), "Shift report").getOrThrow()
+        printing.send(p, Docs.shift(shiftDoc(shift), printing.shop(), printing.paper(p), printing.settings().decimals), "Sales period report").getOrThrow()
     }
 
     // After a shift is closed: its report, without holding the till up.
     fun printShiftBehind(shift: ShiftEntity) {
         printing.scope.launch {
-            if (printing.receiptPrinter() != null) printShift(shift).onFailure { printing.report(it.message ?: "The shift report did not print") }
+            if (printing.receiptPrinter() != null) printShift(shift).onFailure { printing.report(it.message ?: "The sales period report did not print") }
         }
     }
 
@@ -257,7 +257,7 @@ class CashOps @Inject constructor(
         val tenant = session.tenantId() ?: error("no tenant")
         val store = session.storeId() ?: error("no store")
         val device = session.deviceId() ?: error("no device")
-        require(db.staff().openShift(device) == null) { "Close the shift first: the drawer has to be counted before the day is closed." }
+        require(db.staff().openShift(device) == null) { "Close the sales period first: the drawer has to be counted before the day is closed." }
         require(db.tickets().unpaidOrderCount() == 0L) { "There are still unpaid orders. Take payment for them, or void them, before closing the day." }
         val now = System.currentTimeMillis()
         val last = db.ops().lastDayClose(device)

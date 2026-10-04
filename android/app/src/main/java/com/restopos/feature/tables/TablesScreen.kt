@@ -295,7 +295,7 @@ private fun Seats(seats: Int, guests: Int) {
     }
     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
         repeat(seats) { i ->
-            Box(Modifier.size(9.dp).clip(CircleShape).background(if (i < guests) Color.White else Color(0xFF6B6F7A)))
+            Box(Modifier.size(9.dp).clip(CircleShape).background(if (i < guests) Pos.Text else Pos.Text3.copy(alpha = 0.6f)))
         }
     }
 }
