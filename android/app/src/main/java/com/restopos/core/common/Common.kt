@@ -6,8 +6,32 @@ import java.util.UUID
 // MUR integer cents. No Float/Double for money or quantities, ever (spec 15).
 // Quantities are Int thousandths: 1.5 kg = 1500, 2 burgers = 2000.
 object Money {
-    fun format(cents: Long): String =
-        "Rs " + "%,d".format(cents / 100) + if (cents % 100 == 0L) "" else ".%02d".format(cents % 100)
+    // How many decimals the restaurant shows and prints: 0, 1 or 2. Set from
+    // the settings the back office sends (POS settings > Decimals).
+    @Volatile var decimals: Int = 2
+
+    fun format(cents: Long): String = (if (cents < 0) "-" else "") + "Rs " + plain(Math.abs(cents))
+
+    // the number alone, for the columns of a receipt
+    fun plain(cents: Long, places: Int = decimals): String {
+        val neg = cents < 0
+        val v = Math.abs(cents)
+        val body = when (places) {
+            0 -> "%,d".format(java.util.Locale.US, (v + 50) / 100)
+            1 -> "%,d.%d".format(java.util.Locale.US, (v + 5) / 100, ((v + 5) % 100) / 10)
+            else -> "%,d.%02d".format(java.util.Locale.US, v / 100, v % 100)
+        }
+        return (if (neg) "-" else "") + body
+    }
+
+    // What a total is rounded by so it can be paid with the decimals shown:
+    // to the rupee with none, to ten cents with one, not at all with two.
+    fun roundingFor(total: Long, places: Int = decimals): Long {
+        val unit = when (places) { 0 -> 100L; 1 -> 10L; else -> 1L }
+        if (unit == 1L) return 0
+        val rounded = (total + unit / 2) / unit * unit
+        return rounded - total
+    }
 
     fun parseRs(input: String): Long? {
         val v = input.replace(",", "").trim().toDoubleOrNull() ?: return null

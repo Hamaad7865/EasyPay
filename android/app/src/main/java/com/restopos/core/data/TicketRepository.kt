@@ -52,6 +52,7 @@ class TicketRepository @Inject constructor(
     private val db: TillDatabase,
     private val session: SessionStore,
     private val staff: StaffSession,
+    private val docs: DocBuilder,
     @ApplicationContext private val context: Context,
 ) {
     private suspend fun ctx(): Triple<String, String, String> {
@@ -77,14 +78,18 @@ class TicketRepository @Inject constructor(
         // the table picked on the floor plan, if this order is for one
         val table = session.pendingTable()
         val covers = session.pendingCovers()
+        // and the order type picked when it was started (Dine in, Take away)
+        val dining = session.pendingDining()?.takeIf { db.ops().dining(it)?.deleted_at == null && db.ops().dining(it) != null }
         db.withTransaction {
-            db.tickets().upsertTicket(TicketEntity(id, tenant, store, table_id = table, covers = covers, opened_by = staff.id()))
+            db.tickets().upsertTicket(TicketEntity(id, tenant, store, table_id = table, dining_option_id = dining, covers = covers, opened_by = staff.id()))
             db.outbox().enqueue(op("ticket.create", buildJsonObject {
                 put("id", id); put("store_id", store); table?.let { put("table_id", it) }; covers?.let { put("covers", it) }
+                dining?.let { put("dining_option_id", it) }
             }))
         }
         session.setActiveTicket(id)
         session.setPendingTable(null)
+        session.setPendingDining(null)
         pushNow(context)
         return db.tickets().ticket(id)!!
     }
@@ -94,6 +99,14 @@ class TicketRepository @Inject constructor(
     suspend fun newTicket() {
         session.clearActiveTicket()
         session.setPendingTable(null)
+        session.setPendingDining(null)
+    }
+
+    // A new order of a given type: the register is left empty and the type is
+    // remembered for when the first item creates the order.
+    suspend fun startOrder(diningId: String?) {
+        newTicket()
+        session.setPendingDining(diningId)
     }
 
     // Brings a parked order back onto the register.
@@ -153,6 +166,26 @@ class TicketRepository @Inject constructor(
     }
     suspend fun setCovers(guests: Int) = updateMeta({ it.copy(covers = guests) }) { put("covers", guests) }
     suspend fun setDining(optionId: String) = updateMeta({ it.copy(dining_option_id = optionId) }) { put("dining_option_id", optionId) }
+    // a remark for the kitchen and the receipt ("no onions", "collect at 7")
+    suspend fun setNote(note: String) = updateMeta({ it.copy(note = note.ifBlank { null }) }) { put("note", note) }
+    // hands the order to another waiter
+    suspend fun setWaiter(employeeId: String) = updateMeta({ it.copy(opened_by = employeeId) }) { put("opened_by", employeeId) }
+
+    // The discount picked on the register and waiting for the payment: one of
+    // the back office's, or one typed in ("custom:percent:10").
+    suspend fun pendingDiscount(): DiscountPick? {
+        val v = session.pendingDiscount() ?: return null
+        if (v.startsWith("custom:")) {
+            val parts = v.split(':')
+            val value = parts.getOrNull(2)?.toLongOrNull() ?: return null
+            val percent = parts.getOrNull(1) == "percent"
+            return DiscountPick(null, if (percent) "percent" else "amount", value, if (percent) "$value%" else com.restopos.core.common.Money.format(value))
+        }
+        return db.catalog().discount(v)?.takeIf { it.deleted_at == null }?.let { DiscountPick(it.id, it.type, it.value, it.name) }
+    }
+    suspend fun setPendingDiscount(d: DiscountPick?) {
+        session.setPendingDiscount(d?.let { it.discountId ?: "custom:${it.type}:${it.value}" })
+    }
 
     fun openTickets(store: String): Flow<List<TicketEntity>> = db.tickets().openTickets(store)
     fun ticketLines(ticket: String) = db.tickets().lines(ticket)
@@ -211,7 +244,6 @@ class TicketRepository @Inject constructor(
         }
 
     suspend fun setQty(lineId: String, qty: Int, reason: String): Result<Unit> = runCatching {
-        require(reason.isNotBlank()) { "reason required" }
         val lines = currentLines()
         val line = lines.firstOrNull { it.id == lineId } ?: error("bad line")
         voidLine(lineId, reason).getOrThrow()
@@ -224,13 +256,14 @@ class TicketRepository @Inject constructor(
         }
     }
 
+    // No reason is asked for: "void" stands in when none is given.
     suspend fun voidLine(lineId: String, reason: String): Result<Unit> = runCatching {
-        require(reason.isNotBlank()) { "reason required" }
+        val why = reason.ifBlank { "void" }
         val at = java.time.Instant.now().toString()
         db.withTransaction {
-            db.tickets().voidLine(lineId, at, reason)
+            db.tickets().voidLine(lineId, at, why)
             db.outbox().enqueue(op("ticket.void_line", buildJsonObject {
-                put("line_id", lineId); put("reason", reason)
+                put("line_id", lineId); put("reason", why)
             }))
         }
         pushNow(context)
@@ -283,7 +316,7 @@ class TicketRepository @Inject constructor(
                 Calc.Discount(if (d.type == "percent") d.value.toInt() else null, d.value)
             }
         }
-        val totals = Calc.totals(calcLines, discPicks, servicePct, 0)
+        val totals = Calc.totalsRounded(calcLines, discPicks, servicePct)
         val chunk = payments.sumOf { it.amount }
         require(chunk == totals.total) { "Payment must equal the amount due" }
         // the ticket closes when this receipt leaves no unpaid line behind
@@ -292,9 +325,26 @@ class TicketRepository @Inject constructor(
         val device = db.catalog().device(deviceId) ?: error("no device")
         val storeRow = db.catalog().store(store) ?: error("no store")
         val seq = device.last_receipt_seq + 1
-        val number = "${storeRow.code}-${device.code}-${seq.toString().padStart(6, '0')}"
+        // "Start again each day": the bill is numbered within its day closing,
+        // with the closing's number in front so no two bills ever share one.
+        val settings = PosSettings.parse(db.ops().settings())
+        val daySeq = session.periodSeq() + 1
+        val number = if (settings.billReset) {
+            val closing = (db.ops().lastDayClose(deviceId)?.number ?: 0) + 1
+            "${storeRow.code}-${device.code}-${closing.toString().padStart(4, '0')}-${daySeq.toString().padStart(4, '0')}"
+        } else {
+            "${storeRow.code}-${device.code}-${seq.toString().padStart(6, '0')}"
+        }
         val receiptId = Uuid7.next()
         val now = System.currentTimeMillis()
+        val types = db.ops().allPaymentTypes().associateBy { it.id }
+        // what the receipt prints, kept with it so a reprint is the same paper
+        val doc = docs.encode(docs.receipt(
+            "receipt", t, payLines, totals,
+            discounts.mapIndexed { i, d -> com.restopos.core.print.DocAmount(d.name, totals.discountAmounts[i]) }.filter { it.amount > 0 },
+            payments.map { com.restopos.core.print.DocPayment(types[it.paymentTypeId]?.name ?: "Paid", it.amount, it.tendered, it.change, it.reference) },
+            number, now,
+        ))
         val payArr = buildJsonArray {
             payments.forEach { p ->
                 add(buildJsonObject {
@@ -319,7 +369,8 @@ class TicketRepository @Inject constructor(
             db.receipts().insertReceipt(
                 ReceiptEntity(receiptId, tenant, store, deviceId, t.id, number,
                     subtotal = totals.subtotal, discount_total = totals.discount,
-                    tax_total = totals.tax, service_charge = totals.service, total = totals.total, device_time = now),
+                    tax_total = totals.tax, service_charge = totals.service, rounding = totals.rounding, total = totals.total,
+                    device_time = now, doc = doc),
             )
             db.receipts().insertLines(payLines.map {
                 ReceiptLineEntity(Uuid7.next(), tenant, receiptId, it.name_snapshot, it.unit_price, it.qty)
@@ -338,13 +389,16 @@ class TicketRepository @Inject constructor(
                 put("device_time", java.time.Instant.ofEpochMilli(now).toString())
                 // the server derives the charge from the percentage; it refuses an amount
                 if (servicePct > 0) put("service_pct", servicePct)
+                if (totals.rounding != 0L) put("rounding", totals.rounding)
                 put("payments", payArr); put("discounts", discArr); put("line_ids", lineArr)
             }))
         }
+        session.setPeriodSeq(daySeq)
         if (closing) session.clearActiveTicket()
         pushNow(context)
         ReceiptEntity(receiptId, tenant, store, deviceId, t.id, number,
             subtotal = totals.subtotal, discount_total = totals.discount,
-            tax_total = totals.tax, service_charge = totals.service, total = totals.total, device_time = now)
+            tax_total = totals.tax, service_charge = totals.service, rounding = totals.rounding, total = totals.total,
+            device_time = now, doc = doc)
     }
 }

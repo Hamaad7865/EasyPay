@@ -18,7 +18,9 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.restopos.core.database.CashMoveEntity
 import com.restopos.core.database.CategoryEntity
+import com.restopos.core.database.DayCloseEntity
 import com.restopos.core.database.DeviceEntity
 import com.restopos.core.database.DiningOptionEntity
 import com.restopos.core.database.DiscountEntity
@@ -30,8 +32,10 @@ import com.restopos.core.database.ItemTaxCrossRef
 import com.restopos.core.database.ModifierEntity
 import com.restopos.core.database.ModifierGroupEntity
 import com.restopos.core.database.PaymentTypeEntity
+import com.restopos.core.database.PrinterEntity
 import com.restopos.core.database.PunchEntity
 import com.restopos.core.database.RoleEntity
+import com.restopos.core.database.SettingsEntity
 import com.restopos.core.database.ShiftEntity
 import com.restopos.core.database.StoreEntity
 import com.restopos.core.database.SyncStateEntity
@@ -126,7 +130,11 @@ class PullWorker @AssistedInject constructor(
         db.withTransaction {
             changes["categories"]?.let { rows ->
                 dao.upsertCategories(rows.map {
-                    CategoryEntity(id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", str(it, "color"), (lng(it, "sort_order") ?: 0).toInt(), str(it, "deleted_at"), lng(it, "server_seq"))
+                    CategoryEntity(
+                        id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", str(it, "color"), (lng(it, "sort_order") ?: 0).toInt(), str(it, "deleted_at"), lng(it, "server_seq"),
+                        printer_ids = it.jsonObject["printer_ids"]?.takeIf { v -> v is kotlinx.serialization.json.JsonArray }?.toString() ?: "[]",
+                        is_stock = bool(it, "is_stock", false),
+                    )
                 })
             }
             changes["items"]?.let { rows ->
@@ -156,12 +164,18 @@ class PullWorker @AssistedInject constructor(
             }
             changes["dining_options"]?.let { rows ->
                 dao.upsertDining(rows.map {
-                    DiningOptionEntity(id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", bool(it, "is_default", false), (lng(it, "sort_order") ?: 0).toInt(), str(it, "deleted_at"), lng(it, "server_seq"))
+                    DiningOptionEntity(
+                        id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", bool(it, "is_default", false), (lng(it, "sort_order") ?: 0).toInt(), str(it, "deleted_at"), lng(it, "server_seq"),
+                        needs_table = bool(it, "needs_table", false), kitchen = str(it, "kitchen") ?: "save",
+                    )
                 })
             }
             changes["payment_types"]?.let { rows ->
                 dao.upsertPayments(rows.map {
-                    PaymentTypeEntity(id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", str(it, "kind") ?: "other", bool(it, "is_active", true), (lng(it, "sort_order") ?: 0).toInt(), str(it, "deleted_at"), lng(it, "server_seq"))
+                    PaymentTypeEntity(
+                        id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", str(it, "kind") ?: "other", bool(it, "is_active", true), (lng(it, "sort_order") ?: 0).toInt(), str(it, "deleted_at"), lng(it, "server_seq"),
+                        opens_drawer = bool(it, "opens_drawer", false),
+                    )
                 })
             }
             changes["stores"]?.let { rows ->
@@ -178,18 +192,66 @@ class PullWorker @AssistedInject constructor(
                     DeviceEntity(id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: "", str(it, "name") ?: "", str(it, "code") ?: "", maxOf(local, lng(it, "last_receipt_seq") ?: 0), str(it, "deleted_at"), lng(it, "server_seq"))
                 })
             }
+            val ops = db.ops()
+            // a link taken off in the back office (an item's tax changed, an
+            // add-on group unticked) is taken off here too
             changes["item_taxes"]?.let { rows ->
+                rows.forEach {
+                    val item = str(it, "item_id")
+                    val tax = str(it, "tax_id")
+                    if (item != null && tax != null && str(it, "deleted_at") != null) ops.unlinkTax(item, tax)
+                }
                 dao.upsertItemTaxes(rows.mapNotNull {
                     val item = str(it, "item_id")
                     val tax = str(it, "tax_id")
-                    if (item == null || tax == null) null else ItemTaxCrossRef(item, tax)
+                    if (item == null || tax == null || str(it, "deleted_at") != null) null else ItemTaxCrossRef(item, tax)
                 })
             }
             changes["item_modifier_groups"]?.let { rows ->
+                rows.forEach {
+                    val item = str(it, "item_id")
+                    val group = str(it, "group_id")
+                    if (item != null && group != null && str(it, "deleted_at") != null) ops.unlinkGroup(item, group)
+                }
                 dao.upsertItemModGroups(rows.mapNotNull {
                     val item = str(it, "item_id")
                     val group = str(it, "group_id")
-                    if (item == null || group == null) null else ItemModGroupCrossRef(item, group)
+                    if (item == null || group == null || str(it, "deleted_at") != null) null else ItemModGroupCrossRef(item, group)
+                })
+            }
+            changes["printers"]?.let { rows ->
+                ops.upsertPrinters(rows.map {
+                    PrinterEntity(
+                        id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "name") ?: "", str(it, "kind") ?: "network", str(it, "address"),
+                        (lng(it, "paper_mm") ?: 80).toInt(), bool(it, "is_receipt", false), (lng(it, "feed_lines") ?: 3).toInt(), bool(it, "cut", true),
+                        bool(it, "is_active", true), (lng(it, "sort_order") ?: 0).toInt(), str(it, "deleted_at"), lng(it, "server_seq"),
+                    )
+                })
+            }
+            changes["pos_settings"]?.lastOrNull()?.let {
+                val data = it.jsonObject["data"]?.toString() ?: "{}"
+                ops.upsertSettings(SettingsEntity(str(it, "tenant_id") ?: "", data))
+                com.restopos.core.common.Money.decimals = com.restopos.core.data.PosSettings.parse(data).decimals
+            }
+            // Cash movements and day closings are made on this till. The copies
+            // that come back only matter after a reinstall; one made here and
+            // not sent yet is never touched by the pull.
+            changes["cash_movements"]?.let { rows ->
+                ops.upsertCashMoves(rows.mapNotNull {
+                    val at = time(it, "device_time") ?: time(it, "created_at") ?: return@mapNotNull null
+                    CashMoveEntity(
+                        id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "device_id") ?: "", str(it, "shift_id"), str(it, "employee_id"),
+                        str(it, "type") ?: "out", lng(it, "amount") ?: 0, str(it, "reason"), at, str(it, "deleted_at"), lng(it, "server_seq"),
+                    )
+                })
+            }
+            changes["day_closes"]?.let { rows ->
+                ops.upsertDayCloses(rows.mapNotNull {
+                    val at = time(it, "closed_at") ?: return@mapNotNull null
+                    DayCloseEntity(
+                        id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "device_id") ?: "", (lng(it, "number") ?: 0).toInt(),
+                        str(it, "closed_by"), time(it, "from_time"), at, str(it, "deleted_at"), lng(it, "server_seq"),
+                    )
                 })
             }
             changes["tables"]?.let { rows ->
@@ -289,6 +351,8 @@ private val NEEDS_SIGN_IN = booleanPreferencesKey("needs_sign_in")
 private val BUSINESS = stringPreferencesKey("business_name")
 private val PENDING_TABLE = stringPreferencesKey("pending_table")
 private val PENDING_COVERS = intPreferencesKey("pending_covers")
+private val PENDING_DINING = stringPreferencesKey("pending_dining")
+private val PERIOD_SEQ = intPreferencesKey("period_seq")
 private val Context.sessionPrefs by preferencesDataStore("device")
 
 // Which tenant, store and device this tablet is. Set once at device setup and
@@ -330,5 +394,14 @@ class SessionStore(private val context: Context) {
     suspend fun setPendingDiscount(id: String?) {
         store.edit { if (id == null) it.remove(PENDING_DISCOUNT) else it[PENDING_DISCOUNT] = id }
     }
+    // The order type picked when the order was started (Dine in, Take away);
+    // used when the first item creates the order.
+    suspend fun pendingDining(): String? = store.data.map { it[PENDING_DINING] }.first()
+    suspend fun setPendingDining(id: String?) {
+        store.edit { if (id == null) it.remove(PENDING_DINING) else it[PENDING_DINING] = id }
+    }
+    // Bills issued since the last day closing, for "start again each day".
+    suspend fun periodSeq(): Int = store.data.map { it[PERIOD_SEQ] ?: 0 }.first()
+    suspend fun setPeriodSeq(n: Int) { store.edit { it[PERIOD_SEQ] = n } }
     suspend fun clear() { store.edit { it.clear() } }
 }

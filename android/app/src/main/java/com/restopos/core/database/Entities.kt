@@ -29,6 +29,9 @@ data class CategoryEntity(
     val sort_order: Int = 0,
     val deleted_at: String? = null,
     val server_seq: Long? = null,
+    // the printers its items go to when an order is sent, as a JSON array of ids
+    val printer_ids: String = "[]",
+    val is_stock: Boolean = false,
 )
 
 @Entity(
@@ -91,6 +94,10 @@ data class DiningOptionEntity(
     val sort_order: Int = 0,
     val deleted_at: String? = null,
     val server_seq: Long? = null,
+    // an order of this type opens the floor plan first
+    val needs_table: Boolean = false,
+    // when its items go to the kitchen: save | pay | off
+    val kitchen: String = "save",
 )
 
 @Entity(tableName = "payment_types")
@@ -103,6 +110,7 @@ data class PaymentTypeEntity(
     val sort_order: Int = 0,
     val deleted_at: String? = null,
     val server_seq: Long? = null,
+    val opens_drawer: Boolean = false,
 )
 
 @Entity(tableName = "pos_devices")

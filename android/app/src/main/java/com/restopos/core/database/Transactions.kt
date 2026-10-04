@@ -120,6 +120,8 @@ data class ReceiptEntity(
     val device_time: Long = System.currentTimeMillis(),
     val deleted_at: String? = null,
     val server_seq: Long? = null,
+    // what was printed, as JSON (ReceiptDoc): a reprint prints this again
+    val doc: String? = null,
 )
 
 @Entity(tableName = "receipt_payments")

@@ -37,4 +37,26 @@ object Migrations {
             db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
         }
     }
+
+    // 3 -> 4: printing, settings, cash movements and day closings.
+    val V3_V4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `printers` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `name` TEXT NOT NULL, `kind` TEXT NOT NULL, `address` TEXT, `paper_mm` INTEGER NOT NULL, `is_receipt` INTEGER NOT NULL, `feed_lines` INTEGER NOT NULL, `cut` INTEGER NOT NULL, `is_active` INTEGER NOT NULL, `sort_order` INTEGER NOT NULL, `deleted_at` TEXT, `server_seq` INTEGER, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_printers_store_id` ON `printers` (`store_id`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `pos_settings` (`tenant_id` TEXT NOT NULL, `data` TEXT NOT NULL, PRIMARY KEY(`tenant_id`))")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `cash_movements` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `device_id` TEXT NOT NULL, `shift_id` TEXT, `employee_id` TEXT, `type` TEXT NOT NULL, `amount` INTEGER NOT NULL, `reason` TEXT, `device_time` INTEGER NOT NULL, `deleted_at` TEXT, `server_seq` INTEGER, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_cash_movements_device_id` ON `cash_movements` (`device_id`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `day_closes` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `device_id` TEXT NOT NULL, `number` INTEGER NOT NULL, `closed_by` TEXT, `from_time` INTEGER, `closed_at` INTEGER NOT NULL, `deleted_at` TEXT, `server_seq` INTEGER, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_day_closes_device_id` ON `day_closes` (`device_id`)")
+            db.execSQL("ALTER TABLE `categories` ADD COLUMN `printer_ids` TEXT NOT NULL DEFAULT '[]'")
+            db.execSQL("ALTER TABLE `categories` ADD COLUMN `is_stock` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `dining_options` ADD COLUMN `needs_table` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `dining_options` ADD COLUMN `kitchen` TEXT NOT NULL DEFAULT 'save'")
+            db.execSQL("ALTER TABLE `payment_types` ADD COLUMN `opens_drawer` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `receipts` ADD COLUMN `doc` TEXT")
+            // The server has been sending these all along; pull again from the
+            // start so they arrive with their new columns.
+            db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
+        }
+    }
 }

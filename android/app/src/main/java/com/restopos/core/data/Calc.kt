@@ -28,6 +28,7 @@ object Calc {
         // what each discount took off, in the order given (sent to the server
         // as charged, so its receipt matches the printed one)
         val discountAmounts: List<Long> = emptyList(),
+        val rounding: Long = 0,
     )
 
     fun totals(lines: List<Line>, discounts: List<Discount>, servicePct: Int = 0, rounding: Long = 0): Totals {
@@ -54,6 +55,15 @@ object Calc {
             }
         }
         val service = ((sub - disc) * servicePct + 5000) / 10000
-        return Totals(sub, disc, taxAdded + taxIncluded, sub - disc + taxAdded + service + rounding, service, amounts)
+        return Totals(sub, disc, taxAdded + taxIncluded, sub - disc + taxAdded + service + rounding, service, amounts, rounding)
+    }
+
+    // The same totals, rounded to what can be paid with the decimals the
+    // restaurant shows (to the rupee with none). The server keeps the
+    // rounding as its own figure on the receipt.
+    fun totalsRounded(lines: List<Line>, discounts: List<Discount>, servicePct: Int = 0): Totals {
+        val t = totals(lines, discounts, servicePct, 0)
+        val r = com.restopos.core.common.Money.roundingFor(t.total)
+        return if (r == 0L) t else totals(lines, discounts, servicePct, r)
     }
 }

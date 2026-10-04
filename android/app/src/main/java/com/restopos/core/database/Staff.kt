@@ -121,12 +121,12 @@ interface StaffDao {
     suspend fun lastClosedShift(device: String): ShiftEntity?
 
     // Cash this till took since a moment (a sales period's opening): what
-    // went into the drawer, change already taken off.
+    // went into the drawer, change already taken off, refunds paid out of it.
     @Query(
-        """SELECT COALESCE(SUM(p.amount), 0) FROM receipt_payments p
+        """SELECT COALESCE(SUM(CASE WHEN r.type = 'refund' THEN -p.amount ELSE p.amount END), 0) FROM receipt_payments p
            JOIN receipts r ON r.id = p.receipt_id
            JOIN payment_types t ON t.id = p.payment_type_id
-           WHERE r.device_id = :device AND r.type = 'sale' AND r.deleted_at IS NULL
+           WHERE r.device_id = :device AND r.deleted_at IS NULL
            AND t.kind = 'cash' AND r.device_time >= :since""",
     )
     suspend fun cashSince(device: String, since: Long): Long

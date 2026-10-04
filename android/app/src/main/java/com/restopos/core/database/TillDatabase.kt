@@ -9,6 +9,9 @@ import androidx.room.RoomDatabase
 // Version 2 adds staff (roles, employees, their stores), sales periods
 // (shifts), clock punches, and who made each outbox op.
 // Version 3 adds the floor plan's tables and who opened each order.
+// Version 4 adds printers, the restaurant's settings, cash movements, day
+// closings, where a category prints, when an order type goes to the kitchen,
+// which payment types open the drawer, and what each receipt printed.
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -21,8 +24,9 @@ import androidx.room.RoomDatabase
         ItemModGroupCrossRef::class, DiscountEntity::class,
         RoleEntity::class, EmployeeEntity::class, EmployeeStoreEntity::class,
         ShiftEntity::class, PunchEntity::class, TableEntity::class,
+        PrinterEntity::class, SettingsEntity::class, CashMoveEntity::class, DayCloseEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
@@ -33,4 +37,5 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun outbox(): OutboxDao
     abstract fun staff(): StaffDao
     abstract fun tables(): TableDao
+    abstract fun ops(): OpsDao
 }

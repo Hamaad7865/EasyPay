@@ -60,6 +60,20 @@ interface TicketDao {
     @Query("UPDATE ticket_lines SET paid = 1 WHERE id IN (:ids)")
     suspend fun markPaid(ids: List<String>)
 
+    // the kitchen has these lines on paper
+    @Query("UPDATE ticket_lines SET sent_to_kitchen_at = :at WHERE id IN (:ids)")
+    suspend fun markSent(ids: List<String>, at: String)
+
+    @Query("SELECT * FROM ticket_lines WHERE id = :id")
+    suspend fun line(id: String): TicketLineEntity?
+
+    // every line of an order, voided ones too
+    @Query("SELECT * FROM ticket_lines WHERE ticket_id = :ticket AND deleted_at IS NULL ORDER BY rowid")
+    suspend fun allLines(ticket: String): List<TicketLineEntity>
+
+    @Query("SELECT name_snapshot FROM ticket_line_modifiers WHERE line_id = :line")
+    suspend fun modNames(line: String): List<String>
+
     // Open orders that still have something to pay. They live on this tablet
     // only (the pull does not bring tickets back), so sign-out checks this.
     @Query(
@@ -86,6 +100,9 @@ interface ReceiptDao {
 
     @Query("SELECT * FROM receipt_payments WHERE receipt_id = :receipt")
     suspend fun payments(receipt: String): List<ReceiptPaymentEntity>
+
+    @Query("SELECT * FROM receipt_lines WHERE receipt_id = :receipt ORDER BY rowid")
+    suspend fun lines(receipt: String): List<ReceiptLineEntity>
 
     @Query("SELECT COALESCE(SUM(total), 0) FROM receipts WHERE ticket_id = :ticket AND type = 'sale'")
     suspend fun paidForTicket(ticket: String): Long

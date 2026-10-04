@@ -68,6 +68,7 @@ class StaffRepository @Inject constructor(
     private val db: TillDatabase,
     private val session: SessionStore,
     private val staffSession: StaffSession,
+    private val cash: CashOps,
     @ApplicationContext private val context: Context,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -143,8 +144,8 @@ class StaffRepository @Inject constructor(
 
     // What should be in the drawer: the opening amount plus the cash this
     // till has taken since. The server works out the same figure on close.
-    suspend fun expectedCash(shift: ShiftEntity): Long =
-        shift.opening_float + db.staff().cashSince(shift.device_id, shift.opened_at)
+    // Refunds paid in cash come off; cash put in and taken out counts.
+    suspend fun expectedCash(shift: ShiftEntity): Long = cash.expectedCash(shift)
 
     suspend fun close(counted: Long): Result<ShiftEntity> = runCatching {
         val who = staffSession.current.value ?: error("Sign in first")

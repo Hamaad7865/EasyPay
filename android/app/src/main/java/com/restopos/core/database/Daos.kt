@@ -73,10 +73,10 @@ interface CatalogDao {
     @Query("SELECT * FROM ticket_line_taxes WHERE line_id = :line")
     suspend fun lineTaxes(line: String): List<TicketLineTaxEntity>
 
-    @Query("SELECT * FROM modifiers WHERE group_id IN (SELECT group_id FROM item_modifier_groups WHERE item_id = :item)")
+    @Query("SELECT * FROM modifiers WHERE deleted_at IS NULL AND group_id IN (SELECT group_id FROM item_modifier_groups WHERE item_id = :item)")
     suspend fun modifiersForItem(item: String): List<ModifierEntity>
 
-    @Query("SELECT * FROM modifier_groups WHERE id IN (SELECT group_id FROM item_modifier_groups WHERE item_id = :item)")
+    @Query("SELECT * FROM modifier_groups WHERE deleted_at IS NULL AND id IN (SELECT group_id FROM item_modifier_groups WHERE item_id = :item)")
     suspend fun groupsForItem(item: String): List<ModifierGroupEntity>
 
     @Query("SELECT * FROM dining_options WHERE deleted_at IS NULL ORDER BY sort_order, name")
