@@ -20,9 +20,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.restopos.app.BuildConfig
+import com.restopos.core.common.Money
+import com.restopos.core.data.StaffMember
+import com.restopos.core.database.ShiftEntity
 import com.restopos.core.sync.SyncScheduler
 import com.restopos.core.sync.pushNow
 import com.restopos.core.ui.Pos
+import java.text.DateFormat
+import java.util.Date
 
 // This till, the state of its sync, and signing out.
 @Composable
@@ -31,8 +36,11 @@ fun SettingsScreen(
     needsSignIn: Boolean,
     pending: Long,
     rejected: Long,
+    user: StaffMember?,
+    shift: ShiftEntity?,
     onSignIn: () -> Unit,
     onRejected: () -> Unit,
+    onClosePeriod: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -43,6 +51,25 @@ fun SettingsScreen(
         Section("This till") {
             Text(till.ifBlank { "Not set up" }, color = Pos.Text, fontSize = 16.sp)
             Text("RestoPOS ${BuildConfig.VERSION_NAME}", color = Pos.Text3, fontSize = 12.sp)
+        }
+        // only on a till where staff sign in with a PIN
+        if (user != null) {
+            Section("Sales period") {
+                if (shift == null) {
+                    Text("No sales period is open on this till.", color = Pos.Text, fontSize = 14.sp)
+                } else {
+                    Text(
+                        "Open since ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(shift.opened_at))}, " +
+                            "opened with ${Money.format(shift.opening_float)} in the drawer.",
+                        color = Pos.Text, fontSize = 14.sp,
+                    )
+                    if (user.can("shift.open_close")) {
+                        Button(onClick = onClosePeriod) { Text("Close sales period") }
+                    } else {
+                        Text("${user.employee.name} is not allowed to close it.", color = Pos.Text3, fontSize = 13.sp)
+                    }
+                }
+            }
         }
         Section("Sync") {
             Text(

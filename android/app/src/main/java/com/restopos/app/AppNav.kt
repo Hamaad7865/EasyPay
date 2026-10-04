@@ -17,6 +17,8 @@ import com.restopos.feature.auth.StoreDeviceScreen
 import com.restopos.feature.pay.PaymentScreen
 import com.restopos.feature.pay.ReceiptDoneScreen
 import com.restopos.feature.main.MainShell
+import com.restopos.feature.staff.CashCountScreen
+import com.restopos.feature.staff.ClockScreen
 import com.restopos.feature.start.StartScreen
 import com.restopos.feature.sync.RejectedScreen
 
@@ -26,6 +28,9 @@ object Routes {
     const val AUTH = "auth"
     const val DEVICE = "device"
     const val START = "start"
+    const val CLOCK = "clock"
+    const val CASH_OPEN = "cash-open"
+    const val CASH_CLOSE = "cash-close"
     const val SALE = "sale"
     const val PAY = "pay"
     const val DONE = "done/{receiptId}/{change}/{total}"
@@ -63,7 +68,28 @@ fun AppNav(session: SessionStore, onSignOut: () -> Unit) {
         composable(Routes.START) {
             StartScreen(
                 onOpen = { nav.navigate(Routes.SALE) { launchSingleTop = true } },
+                onClock = { nav.navigate(Routes.CLOCK) },
+                onCashCount = { nav.navigate(Routes.CASH_OPEN) },
                 onSignIn = { nav.navigate(Routes.REAUTH) },
+            )
+        }
+        composable(Routes.CLOCK) {
+            ClockScreen(onBack = { nav.popBackStack() })
+        }
+        // Opening a sales period: confirm the drawer, then on to the register.
+        composable(Routes.CASH_OPEN) {
+            CashCountScreen(
+                closing = false,
+                onBack = { nav.popBackStack() },
+                onDone = { nav.navigate(Routes.SALE) { popUpTo(Routes.START) } },
+            )
+        }
+        // Closing it: count, see the result, and back to the start screen.
+        composable(Routes.CASH_CLOSE) {
+            CashCountScreen(
+                closing = true,
+                onBack = { nav.popBackStack() },
+                onDone = { nav.popBackStack(Routes.START, inclusive = false) },
             )
         }
         composable(Routes.SALE) {
@@ -74,6 +100,7 @@ fun AppNav(session: SessionStore, onSignOut: () -> Unit) {
                 onSignIn = { nav.navigate(Routes.REAUTH) },
                 onRejected = { nav.navigate(Routes.REJECTED) },
                 onLock = { nav.popBackStack(Routes.START, inclusive = false) },
+                onClosePeriod = { nav.navigate(Routes.CASH_CLOSE) },
                 onSignOut = onSignOut,
             )
         }

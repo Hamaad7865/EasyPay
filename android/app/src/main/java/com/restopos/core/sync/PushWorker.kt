@@ -49,7 +49,7 @@ class PushWorker @AssistedInject constructor(
         while (!mustRetry) {
             val batch = db.outbox().pending(BATCH)
             if (batch.isEmpty()) break
-            val ops = batch.map { row -> OutboxOp(row.op_id, row.type, json.parseToJsonElement(row.payload)) }
+            val ops = batch.map { row -> OutboxOp(row.op_id, row.type, json.parseToJsonElement(row.payload), row.employee_id) }
             val results = try {
                 api.push(ops)
             } catch (e: AuthRequired) {

@@ -138,4 +138,7 @@ data class OutboxEntity(
     val attempts: Int = 0,
     val state: String = "pending",
     val last_error: String? = null,
+    // the member of staff signed in at the till when this was done; null on a
+    // till with no staff PINs (the server then uses the till's own login)
+    val employee_id: String? = null,
 )

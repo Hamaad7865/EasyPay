@@ -60,9 +60,12 @@ fun MainShell(
     onSignIn: () -> Unit,
     onRejected: () -> Unit,
     onLock: () -> Unit,
+    onClosePeriod: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     val vm: SaleViewModel = hiltViewModel()
+    val user by vm.user.collectAsState()
+    val shift by vm.shift.collectAsState()
     val till by vm.till.collectAsState()
     val needsSignIn by vm.needsSignIn.collectAsState()
     val pending by vm.pending.collectAsState()
@@ -78,12 +81,12 @@ fun MainShell(
         ) {
             // back to the start screen; signing the tablet out is under Settings
             Text(
-                "Lock",
+                if (user != null) "Log out" else "Lock",
                 Modifier.align(Alignment.CenterStart).clickable(onClick = onLock).padding(horizontal = 16.dp, vertical = 14.dp),
                 color = Pos.Pink, fontSize = 14.sp,
             )
             Text(
-                till.ifBlank { "RestoPOS" }, Modifier.align(Alignment.Center).padding(horizontal = 140.dp),
+                user?.employee?.name ?: till.ifBlank { "RestoPOS" }, Modifier.align(Alignment.Center).padding(horizontal = 140.dp),
                 color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Row(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -100,10 +103,10 @@ fun MainShell(
         SyncNotices(needsSignIn, pending, rejected, onSignIn, onRejected)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (tab) {
-                Tab.Register -> RegisterScreen(vm, searching, closeSearch, onPay, onPaid)
+                Tab.Register -> RegisterScreen(vm, searching, closeSearch, { if (vm.mayPay()) onPay() }, onPaid)
                 Tab.Orders -> OrdersScreen(onOpen = { tab = Tab.Register })
                 Tab.Receipts -> ReceiptsScreen()
-                Tab.Settings -> SettingsScreen(till, needsSignIn, pending, rejected, onSignIn, onRejected) { confirmSignOut = true }
+                Tab.Settings -> SettingsScreen(till, needsSignIn, pending, rejected, user, shift, onSignIn, onRejected, onClosePeriod) { confirmSignOut = true }
             }
         }
         Row(Modifier.fillMaxWidth().height(52.dp).background(Pos.Panel)) {

@@ -50,6 +50,7 @@ data class ModPick(val id: String, val name: String, val price: Long)
 class TicketRepository @Inject constructor(
     private val db: TillDatabase,
     private val session: SessionStore,
+    private val staff: StaffSession,
     @ApplicationContext private val context: Context,
 ) {
     private suspend fun ctx(): Triple<String, String, String> {
@@ -59,8 +60,9 @@ class TicketRepository @Inject constructor(
         return Triple(tenant, store, device)
     }
 
+    // every op carries who was signed in at the till when it was made
     private fun op(type: String, payload: JsonObject) =
-        com.restopos.core.database.OutboxEntity(Uuid7.next(), type, payload.toString())
+        com.restopos.core.database.OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
 
     suspend fun activeTicket(): TicketEntity? {
         val id = session.activeTicket() ?: return null
@@ -202,6 +204,10 @@ class TicketRepository @Inject constructor(
         servicePct: Int = 0,
         coverLineIds: List<String>? = null,
     ): Result<ReceiptEntity> = runCatching {
+        // What the server would refuse is refused here, before any money is
+        // recorded: a receipt it rejects would leave a payment stranded.
+        require(staff.can("payment.take")) { "You are not allowed to take payment" }
+        require(discounts.isEmpty() || staff.can("sale.apply_discount")) { "You are not allowed to give a discount" }
         val t = activeTicket() ?: error("no ticket")
         val (tenant, store, deviceId) = ctx()
         val lines = currentLines().filter { it.voided_at == null }
@@ -217,9 +223,15 @@ class TicketRepository @Inject constructor(
                 taxes.map { Calc.TaxRate(it.rate_bp, it.type) },
             )
         }
+        val restricted = HashSet<String>()
         val discPicks = discounts.map { d ->
             if (d.discountId != null) {
                 val row = db.catalog().discount(d.discountId) ?: error("bad discount")
+                if (row.requires_approval) {
+                    // only someone allowed to give it, and they are named on the receipt
+                    require(staff.id() != null && staff.can("sale.apply_restricted_discount")) { "${row.name} needs a manager" }
+                    restricted.add(row.id)
+                }
                 Calc.Discount(if (row.type == "percent") row.value.toInt() else null, row.value)
             } else {
                 Calc.Discount(if (d.type == "percent") d.value.toInt() else null, d.value)
@@ -236,6 +248,7 @@ class TicketRepository @Inject constructor(
         val seq = device.last_receipt_seq + 1
         val number = "${storeRow.code}-${device.code}-${seq.toString().padStart(6, '0')}"
         val receiptId = Uuid7.next()
+        val now = System.currentTimeMillis()
         val payArr = buildJsonArray {
             payments.forEach { p ->
                 add(buildJsonObject {
@@ -251,6 +264,7 @@ class TicketRepository @Inject constructor(
                     d.discountId?.let { put("discount_id", it) }
                     put("type", d.type); put("value", d.value); put("name", d.name)
                     put("amount", totals.discountAmounts[i]) // as charged
+                    if (restricted.contains(d.discountId)) staff.id()?.let { put("approved_by", it) }
                 })
             }
         }
@@ -259,7 +273,7 @@ class TicketRepository @Inject constructor(
             db.receipts().insertReceipt(
                 ReceiptEntity(receiptId, tenant, store, deviceId, t.id, number,
                     subtotal = totals.subtotal, discount_total = totals.discount,
-                    tax_total = totals.tax, service_charge = totals.service, total = totals.total),
+                    tax_total = totals.tax, service_charge = totals.service, total = totals.total, device_time = now),
             )
             db.receipts().insertLines(payLines.map {
                 ReceiptLineEntity(Uuid7.next(), tenant, receiptId, it.name_snapshot, it.unit_price, it.qty)
@@ -273,6 +287,9 @@ class TicketRepository @Inject constructor(
             db.outbox().enqueue(op("receipt.create", buildJsonObject {
                 put("id", receiptId); put("ticket_id", t.id); put("store_id", store)
                 put("device_id", deviceId); put("number", number); put("device_seq", seq)
+                // when it was sold, by this till's clock; without it the server
+                // would date an offline sale by when it arrived
+                put("device_time", java.time.Instant.ofEpochMilli(now).toString())
                 // the server derives the charge from the percentage; it refuses an amount
                 if (servicePct > 0) put("service_pct", servicePct)
                 put("payments", payArr); put("discounts", discArr); put("line_ids", lineArr)
@@ -282,6 +299,6 @@ class TicketRepository @Inject constructor(
         pushNow(context)
         ReceiptEntity(receiptId, tenant, store, deviceId, t.id, number,
             subtotal = totals.subtotal, discount_total = totals.discount,
-            tax_total = totals.tax, service_charge = totals.service, total = totals.total)
+            tax_total = totals.tax, service_charge = totals.service, total = totals.total, device_time = now)
     }
 }

@@ -12,19 +12,28 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,68 +41,100 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import com.restopos.app.BuildConfig
-import com.restopos.core.database.TillDatabase
-import com.restopos.core.network.ApiClient
-import com.restopos.core.sync.SessionStore
+import com.restopos.core.data.StaffMember
 import com.restopos.core.ui.Pos
-import dagger.hilt.android.lifecycle.HiltViewModel
+import com.restopos.feature.staff.PinPad
+import com.restopos.feature.staff.RoleBadge
+import com.restopos.feature.staff.StaffTopBar
+import com.restopos.feature.staff.StaffViewModel
+import com.restopos.feature.staff.TillInfo
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import java.net.Inet4Address
-import javax.inject.Inject
+import java.text.DateFormat
+import java.util.Date
 
-data class TillInfo(val business: String? = null, val store: String? = null, val device: String? = null)
+// What the tablet shows when the app opens, and after Log out. Three states:
+//   - nobody here has a PIN yet: the register opens with one tap, as it
+//     always has, so an update never locks a restaurant out;
+//   - staff use PINs and nobody is clocked in: clock in first;
+//   - someone is clocked in: tap your name and enter your PIN.
+@Composable
+fun StartScreen(
+    vm: StaffViewModel = hiltViewModel(),
+    onOpen: () -> Unit,
+    onClock: () -> Unit,
+    onCashCount: () -> Unit,
+    onSignIn: () -> Unit,
+) {
+    val staff by vm.staff.collectAsState()
+    val shift by vm.shift.collectAsState()
+    val message by vm.message.collectAsState()
+    var pinFor by remember { mutableStateOf<StaffMember?>(null) }
+    // Back on this screen means nobody is at the register.
+    LaunchedEffect(Unit) { vm.signOut() }
+    message?.let { m -> LaunchedEffect(m) { delay(4000); vm.messageShown() } }
 
-@HiltViewModel
-class StartViewModel @Inject constructor(
-    private val session: SessionStore,
-    private val db: TillDatabase,
-    private val api: ApiClient,
-) : ViewModel() {
-    private val _info = MutableStateFlow(TillInfo())
-    val info: StateFlow<TillInfo> = _info
-
-    val needsSignIn: StateFlow<Boolean> = session.needsSignIn
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val pending: StateFlow<Long> = db.outbox().pendingCountFlow()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-
-    init {
-        viewModelScope.launch {
-            val store = session.storeId()?.let { db.catalog().store(it) }
-            val device = session.deviceId()?.let { db.catalog().device(it) }
-            _info.value = TillInfo(
-                business = session.businessName(),
-                store = store?.name,
-                device = device?.let { if (it.name == it.code) it.code else "${it.name} (${it.code})" },
+    val all = staff
+    val active = all?.filter { it.clockedInAt != null }.orEmpty()
+    Box(Modifier.fillMaxSize().background(Pos.Bg)) {
+        when {
+            all == null -> Unit // still reading the tablet's own data
+            all.none { it.hasPin } -> Closed(
+                vm, title = "Register is locked", text = "Open the register to take orders.", button = "Open register",
+                note = "Staff PINs are not set up. Add them in the back office, under Staff, to have staff clock in and sign in here.",
+                onButton = onOpen, onSignIn = onSignIn,
             )
-            // A till set up before the name was kept: ask once, when online.
-            if (_info.value.business == null) {
-                runCatching { api.me() }.onSuccess { me ->
-                    me.tenants.firstOrNull { it.id == me.tenantId }?.name?.let { name ->
-                        session.setBusinessName(name)
-                        _info.value = _info.value.copy(business = name)
-                    }
-                }
-            }
+            active.isEmpty() -> Closed(
+                vm,
+                title = if (shift == null) "Sales period is closed" else "No one is clocked in",
+                text = if (shift == null) "Clock in below to open a sales period." else "Clock in below to use the register.",
+                button = "Clock in/out", note = null, onButton = onClock, onSignIn = onSignIn,
+            )
+            else -> Users(active, shiftOpen = shift != null, openedAt = shift?.opened_at, onPick = { pinFor = it }, onClock = onClock)
         }
+        message?.let { m ->
+            Text(
+                m,
+                Modifier.align(Alignment.BottomCenter).padding(16.dp).clip(RoundedCornerShape(6.dp))
+                    .background(Pos.Text).padding(horizontal = 16.dp, vertical = 10.dp),
+                color = Pos.Bg, fontSize = 14.sp,
+            )
+        }
+    }
+
+    pinFor?.let { member ->
+        PinPad(
+            member,
+            check = { vm.checkPin(member, it) },
+            onOk = {
+                pinFor = null
+                when {
+                    shift != null -> vm.signIn(member, onOpen)
+                    member.can("shift.open_close") -> vm.signIn(member, onCashCount)
+                    else -> vm.say("The sales period is closed. Someone allowed to open it has to sign in first.")
+                }
+            },
+            onDismiss = { pinFor = null },
+        )
     }
 }
 
-// What the tablet shows when the app opens, and when the register is locked:
-// which till this is on the left, and the way in on the right.
+// The till's details on the left, one way in on the right.
 @Composable
-fun StartScreen(vm: StartViewModel = hiltViewModel(), onOpen: () -> Unit, onSignIn: () -> Unit) {
+private fun Closed(
+    vm: StaffViewModel,
+    title: String,
+    text: String,
+    button: String,
+    note: String?,
+    onButton: () -> Unit,
+    onSignIn: () -> Unit,
+) {
     val info by vm.info.collectAsState()
     val needsSignIn by vm.needsSignIn.collectAsState()
     val pending by vm.pending.collectAsState()
@@ -101,31 +142,18 @@ fun StartScreen(vm: StartViewModel = hiltViewModel(), onOpen: () -> Unit, onSign
     val network by produceState(initialValue = network(context)) {
         while (true) { delay(5000); value = network(context) }
     }
-    Row(Modifier.fillMaxSize().background(Pos.Bg)) {
+    Row(Modifier.fillMaxSize()) {
         Column(
             Modifier.width(300.dp).fillMaxHeight().background(Pos.Panel).padding(horizontal = 28.dp),
             verticalArrangement = Arrangement.Center,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).background(Pos.Blue), contentAlignment = Alignment.Center) {
-                    Text("R", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                }
-                Text("RestoPOS", Modifier.padding(start = 10.dp), color = Pos.Text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            }
+            Wordmark()
             Spacer(Modifier.height(28.dp))
-            Fact("Business name", info.business ?: "—")
-            Fact("Store", info.store ?: "—")
-            Fact("Device info", info.device ?: "—")
-            Fact("Software version", "RestoPOS ${BuildConfig.VERSION_NAME}")
-            Fact("Network", network)
-            Fact(
-                "Sync",
-                when {
-                    needsSignIn -> "Sign-in needed"
-                    pending > 0 -> "$pending changes waiting"
-                    else -> "Everything sent"
-                },
-            )
+            Facts(info, network, when {
+                needsSignIn -> "Sign-in needed"
+                pending > 0 -> "$pending changes waiting"
+                else -> "Everything sent"
+            })
         }
         Column(
             Modifier.weight(1f).fillMaxHeight().padding(24.dp),
@@ -136,16 +164,13 @@ fun StartScreen(vm: StartViewModel = hiltViewModel(), onOpen: () -> Unit, onSign
                 Icon(Icons.Filled.ShoppingCart, contentDescription = null, tint = Pos.NavOn, modifier = Modifier.size(64.dp))
             }
             Spacer(Modifier.height(28.dp))
-            Text("Register is locked", color = Pos.Text, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Text(
-                "Open the register to take orders.",
-                Modifier.padding(top = 10.dp), color = Pos.Text, fontSize = 15.sp, textAlign = TextAlign.Center,
-            )
+            Text(title, color = Pos.Text, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text(text, Modifier.padding(top = 10.dp), color = Pos.Text, fontSize = 15.sp, textAlign = TextAlign.Center)
             Spacer(Modifier.height(32.dp))
-            Box(
-                Modifier.width(340.dp).height(54.dp).clip(RoundedCornerShape(4.dp)).background(Pos.Blue).clickable(onClick = onOpen),
-                contentAlignment = Alignment.Center,
-            ) { Text("Open register", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+            BigButton(button, Modifier.width(340.dp), onButton)
+            if (note != null) {
+                Text(note, Modifier.padding(top = 18.dp).width(380.dp), color = Pos.Text3, fontSize = 13.sp, textAlign = TextAlign.Center)
+            }
             if (needsSignIn) {
                 Text(
                     "This tablet cannot sync until someone signs in. Sales are saved here in the meantime.",
@@ -155,6 +180,89 @@ fun StartScreen(vm: StartViewModel = hiltViewModel(), onOpen: () -> Unit, onSign
             }
         }
     }
+}
+
+// Everyone who is clocked in, as tiles: tap your name, then enter your PIN.
+@Composable
+private fun Users(active: List<StaffMember>, shiftOpen: Boolean, openedAt: Long?, onPick: (StaffMember) -> Unit, onClock: () -> Unit) {
+    var byTime by rememberSaveable { mutableStateOf(false) }
+    val shown = if (byTime) active.sortedBy { it.clockedInAt } else active
+    Column(Modifier.fillMaxSize()) {
+        StaffTopBar("RestoPOS")
+        Column(Modifier.weight(1f).fillMaxWidth().padding(start = 64.dp, end = 64.dp, top = 28.dp, bottom = 28.dp)) {
+            Wordmark()
+            Row(Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (shiftOpen) "Welcome! Tap your name, or clock in/out."
+                    else "Welcome! The sales period is closed. Tap your name to open it, or clock in/out.",
+                    Modifier.weight(1f), color = Pos.Text, fontSize = 14.sp,
+                )
+                Text("Sort by", Modifier.padding(end = 12.dp), color = Pos.Text, fontSize = 14.sp)
+                Row(Modifier.clip(RoundedCornerShape(4.dp))) {
+                    SortKey("A–Z", !byTime) { byTime = false }
+                    SortKey("Clocked in", byTime) { byTime = true }
+                }
+            }
+            LazyVerticalGrid(
+                GridCells.Adaptive(190.dp), Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                items(shown, key = { it.employee.id }) { m ->
+                    Column(
+                        Modifier.height(74.dp).clip(RoundedCornerShape(3.dp)).background(Pos.Tile.copy(alpha = 0.75f))
+                            .clickable { onPick(m) }.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(m.employee.name, color = Pos.Text, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        RoleBadge(m.role)
+                    }
+                }
+            }
+            if (openedAt != null) {
+                Text(
+                    "Sales period open since ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(openedAt))}",
+                    Modifier.padding(bottom = 12.dp), color = Pos.Text3, fontSize = 13.sp,
+                )
+            }
+            BigButton("Clock in/out", Modifier.width(280.dp), onClock)
+        }
+    }
+}
+
+@Composable
+private fun SortKey(label: String, on: Boolean, onClick: () -> Unit) {
+    Text(
+        label, Modifier.background(if (on) Pos.Blue else Pos.Key).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 9.dp),
+        color = if (on) Color.White else Pos.Text2, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+    )
+}
+
+@Composable
+private fun Wordmark() {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).background(Pos.Blue), contentAlignment = Alignment.Center) {
+            Text("R", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+        }
+        Text("RestoPOS", Modifier.padding(start = 10.dp), color = Pos.Text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun BigButton(label: String, modifier: Modifier, onClick: () -> Unit) {
+    Box(
+        modifier.height(54.dp).clip(RoundedCornerShape(4.dp)).background(Pos.Blue).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(label, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+}
+
+@Composable
+private fun Facts(info: TillInfo, network: String, sync: String) {
+    Fact("Business name", info.business ?: "—")
+    Fact("Store", info.store ?: "—")
+    Fact("Device info", info.device ?: "—")
+    Fact("Software version", "RestoPOS ${BuildConfig.VERSION_NAME}")
+    Fact("Network", network)
+    Fact("Sync", sync)
 }
 
 @Composable

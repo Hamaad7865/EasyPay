@@ -10,6 +10,8 @@ import com.restopos.core.data.CatalogRepository
 import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.ModPick
 import com.restopos.core.data.PayInput
+import com.restopos.core.data.StaffMember
+import com.restopos.core.data.StaffSession
 import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.DiningOptionEntity
@@ -17,6 +19,7 @@ import com.restopos.core.database.DiscountEntity
 import com.restopos.core.database.ItemEntity
 import com.restopos.core.database.ModifierEntity
 import com.restopos.core.database.ModifierGroupEntity
+import com.restopos.core.database.ShiftEntity
 import com.restopos.core.database.TicketEntity
 import com.restopos.core.database.TicketLineEntity
 import com.restopos.core.database.TillDatabase
@@ -29,6 +32,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
@@ -82,6 +87,7 @@ class SaleViewModel @Inject constructor(
     private val tickets: TicketRepository,
     private val db: TillDatabase,
     private val session: SessionStore,
+    private val staff: StaffSession,
 ) : ViewModel() {
     private val cat = MutableStateFlow<String?>(null)
     private val query = MutableStateFlow("")
@@ -125,6 +131,15 @@ class SaleViewModel @Inject constructor(
     private val _till = MutableStateFlow("")
     val till: StateFlow<String> = _till
 
+    // Who is at the register (null on a till with no staff PINs), and this
+    // till's open sales period.
+    val user: StateFlow<StaffMember?> = staff.current
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val shift: StateFlow<ShiftEntity?> = flow { emit(session.deviceId()) }
+        .flatMapLatest { d -> if (d == null) emptyFlow() else db.staff().openShiftFlow(d) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     val needsSignIn: StateFlow<Boolean> = session.needsSignIn
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     val pending: StateFlow<Long> = db.outbox().pendingCountFlow()
@@ -163,7 +178,12 @@ class SaleViewModel @Inject constructor(
         val before = _ticket.value?.id
         _ticket.value = tickets.activeTicket()
         if (_ticket.value?.id != before) { _selected.value = null; _buffer.value = "" }
-        _discounts.value = db.catalog().discounts()
+        // only the discounts this person may give: one the server would refuse
+        // must never reach a paid receipt
+        _discounts.value = db.catalog().discounts().filter {
+            staff.can("sale.apply_discount") &&
+                (!it.requires_approval || (staff.id() != null && staff.can("sale.apply_restricted_discount")))
+        }
         _dining.value = db.catalog().diningOptions()
         // the discount the pay screen will apply, so both show the same total
         _discount.value = session.pendingDiscount()?.let { id ->
@@ -337,5 +357,12 @@ class SaleViewModel @Inject constructor(
         }
     }
     fun toastShown() { _toast.value = null }
+
+    // Asked before the pay screen opens; says why not when the answer is no.
+    fun mayPay(): Boolean {
+        if (staff.can("payment.take")) return true
+        _toast.value = "You are not allowed to take payment. Ask someone who is."
+        return false
+    }
     fun paidShown() { _paid.value = null }
 }

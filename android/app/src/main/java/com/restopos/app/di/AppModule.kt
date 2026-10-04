@@ -2,6 +2,7 @@ package com.restopos.app
 
 import android.content.Context
 import androidx.room.Room
+import com.restopos.core.database.Migrations
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.network.ApiClient
 import com.restopos.core.network.AuthClient
@@ -31,6 +32,7 @@ object AppModule {
         Room.databaseBuilder(ctx, TillDatabase::class.java, "till.db")
             // No destructive fallback (spec 15): a version bump without its
             // Migration fails loudly instead of wiping unsynced sales.
+            .addMigrations(Migrations.V1_V2)
             .build()
 
     @Provides @Singleton

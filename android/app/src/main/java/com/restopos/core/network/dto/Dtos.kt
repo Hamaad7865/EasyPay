@@ -78,6 +78,8 @@ data class OutboxOp(
     @SerialName("op_id") val opId: String,
     val type: String,
     val payload: JsonElement,
+    // the member of staff signed in at the till; absent on a till with no PINs
+    @SerialName("employee_id") val employeeId: String? = null,
 )
 
 @Serializable

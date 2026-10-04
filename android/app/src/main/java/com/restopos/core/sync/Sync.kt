@@ -21,12 +21,17 @@ import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.DeviceEntity
 import com.restopos.core.database.DiningOptionEntity
 import com.restopos.core.database.DiscountEntity
+import com.restopos.core.database.EmployeeEntity
+import com.restopos.core.database.EmployeeStoreEntity
 import com.restopos.core.database.ItemEntity
 import com.restopos.core.database.ItemModGroupCrossRef
 import com.restopos.core.database.ItemTaxCrossRef
 import com.restopos.core.database.ModifierEntity
 import com.restopos.core.database.ModifierGroupEntity
 import com.restopos.core.database.PaymentTypeEntity
+import com.restopos.core.database.PunchEntity
+import com.restopos.core.database.RoleEntity
+import com.restopos.core.database.ShiftEntity
 import com.restopos.core.database.StoreEntity
 import com.restopos.core.database.SyncStateEntity
 import com.restopos.core.database.TaxEntity
@@ -46,6 +51,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import java.io.IOException
+import java.time.OffsetDateTime
 import java.util.concurrent.TimeUnit
 
 // Pull (spec 5.5): page -> one Room txn incl. next_cursor -> repeat while
@@ -77,6 +83,7 @@ class PullWorker @AssistedInject constructor(
                     // nothing now. Drop the catalog mirror and pull from the start.
                     db.withTransaction {
                         db.catalog().clearCatalog()
+                        db.staff().clearStaff()
                         db.sync().saveCursor(SyncStateEntity(store, 0, pageEpochs))
                     }
                     cursor = 0
@@ -110,6 +117,9 @@ class PullWorker @AssistedInject constructor(
         fun str(e: JsonElement, k: String) = e.jsonObject[k]?.jsonPrimitive?.contentOrNull
         fun lng(e: JsonElement, k: String) = e.jsonObject[k]?.jsonPrimitive?.longOrNull
         fun bool(e: JsonElement, k: String, d: Boolean) = e.jsonObject[k]?.jsonPrimitive?.booleanOrNull ?: d
+        // a server timestamp ("2026-10-04T08:27:15.278+00:00") as epoch millis
+        fun time(e: JsonElement, k: String): Long? =
+            str(e, k)?.let { runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() }
         db.withTransaction {
             changes["categories"]?.let { rows ->
                 dao.upsertCategories(rows.map {
@@ -177,6 +187,48 @@ class PullWorker @AssistedInject constructor(
                     val item = str(it, "item_id")
                     val group = str(it, "group_id")
                     if (item == null || group == null) null else ItemModGroupCrossRef(item, group)
+                })
+            }
+            val staff = db.staff()
+            changes["roles"]?.let { rows ->
+                staff.upsertRoles(rows.map {
+                    RoleEntity(id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", it.jsonObject["permissions"]?.toString() ?: "[]", str(it, "deleted_at"), lng(it, "server_seq"))
+                })
+            }
+            changes["employees"]?.let { rows ->
+                staff.upsertEmployees(rows.map {
+                    EmployeeEntity(id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", str(it, "pin_hash"), str(it, "role_id"), bool(it, "is_active", true), str(it, "deleted_at"), lng(it, "server_seq"))
+                })
+            }
+            changes["employee_stores"]?.let { rows ->
+                staff.upsertEmployeeStores(rows.mapNotNull {
+                    val employee = str(it, "employee_id")
+                    val at = str(it, "store_id")
+                    if (employee == null || at == null) null
+                    else EmployeeStoreEntity(employee, at, str(it, "tenant_id") ?: "", str(it, "deleted_at"), lng(it, "server_seq"))
+                })
+            }
+            changes["timeclock_punches"]?.let { rows ->
+                staff.upsertPunches(rows.mapNotNull {
+                    val employee = str(it, "employee_id")
+                    val at = time(it, "device_time")
+                    if (employee == null || at == null) null
+                    else PunchEntity(id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "device_id"), employee, str(it, "kind") ?: "in", at, str(it, "deleted_at"), lng(it, "server_seq"))
+                })
+            }
+            changes["shifts"]?.let { rows ->
+                staff.upsertShifts(rows.mapNotNull {
+                    val opened = time(it, "opened_at") ?: return@mapNotNull null
+                    val pulled = ShiftEntity(
+                        id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "device_id") ?: "",
+                        str(it, "opened_by"), opened, lng(it, "opening_float") ?: 0, str(it, "closed_by"), time(it, "closed_at"),
+                        lng(it, "expected_cash"), lng(it, "counted_cash"), str(it, "deleted_at"), lng(it, "server_seq"),
+                    )
+                    // A period closed on this tablet stays closed. Until the
+                    // close has been sent, the server still has it open, and
+                    // taking its copy would reopen it here.
+                    val local = staff.shift(pulled.id)
+                    if (local?.closed_at != null && pulled.closed_at == null) null else pulled
                 })
             }
             db.sync().saveCursor(SyncStateEntity(store, next, epochs))

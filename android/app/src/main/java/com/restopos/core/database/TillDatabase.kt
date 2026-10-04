@@ -5,7 +5,9 @@ import androidx.room.RoomDatabase
 
 // Version 1 is the first schema that was ever built: catalog, devices, sync
 // state, tickets, receipts and the outbox. From here on every schema change
-// ships a Migration + test, never a destructive fallback (spec 15).
+// ships a Migration, never a destructive fallback (spec 15).
+// Version 2 adds staff (roles, employees, their stores), sales periods
+// (shifts), clock punches, and who made each outbox op.
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -16,8 +18,10 @@ import androidx.room.RoomDatabase
         ReceiptEntity::class, ReceiptPaymentEntity::class, ReceiptLineEntity::class,
         ItemTaxCrossRef::class, TicketLineTaxEntity::class,
         ItemModGroupCrossRef::class, DiscountEntity::class,
+        RoleEntity::class, EmployeeEntity::class, EmployeeStoreEntity::class,
+        ShiftEntity::class, PunchEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
@@ -26,4 +30,5 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun tickets(): TicketDao
     abstract fun receipts(): ReceiptDao
     abstract fun outbox(): OutboxDao
+    abstract fun staff(): StaffDao
 }
