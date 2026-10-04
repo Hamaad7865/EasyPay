@@ -68,7 +68,7 @@ class CashOps @Inject constructor(
     suspend fun openDrawer(): Result<Unit> = runCatching {
         require(staff.can("drawer.open_no_sale")) { "You are not allowed to open the drawer without a sale. Ask a manager." }
         val p = printing.receiptPrinter() ?: throw PrintError("The drawer opens through the receipt printer, and none is set up.")
-        printing.send(p, EscPos(EscPos.columnsFor(p.paper_mm)).drawer().bytes()).getOrThrow()
+        printing.send(p, EscPos(EscPos.columnsFor(p.paper_mm)).drawer().bytes(), "Open cash drawer", again = null).getOrThrow()
         record("drawer", 0, null)
     }
 
@@ -83,7 +83,7 @@ class CashOps @Inject constructor(
         val p = printing.receiptPrinter() ?: return@runCatching "Recorded. No receipt printer is set up, so no slip was printed."
         val s = printing.settings()
         val slip = CashSlipDoc(type, amount, row.reason, row.device_time, staff.current.value?.employee?.name, till())
-        printing.send(p, Docs.cashSlip(slip, printing.shop(), printing.paper(p), s.decimals)).fold({ null }, { "Recorded, but the slip did not print: ${it.message}" })
+        printing.send(p, Docs.cashSlip(slip, printing.shop(), printing.paper(p), s.decimals), if (type == "in") "Cash in slip" else "Cash out slip").fold({ null }, { "Recorded, but the slip did not print: ${it.message}" })
     }
 
     // ---- the figures of a period on this till ----
@@ -156,7 +156,7 @@ class CashOps @Inject constructor(
 
     suspend fun printShift(shift: ShiftEntity): Result<Unit> = runCatching {
         val p = printing.receiptPrinter() ?: throw PrintError("No receipt printer is set up. Add one in the back office, under Printers.")
-        printing.send(p, Docs.shift(shiftDoc(shift), printing.shop(), printing.paper(p), printing.settings().decimals)).getOrThrow()
+        printing.send(p, Docs.shift(shiftDoc(shift), printing.shop(), printing.paper(p), printing.settings().decimals), "Shift report").getOrThrow()
     }
 
     // After a shift is closed: its report, without holding the till up.
@@ -167,6 +167,9 @@ class CashOps @Inject constructor(
     }
 
     suspend fun currentShift(): ShiftEntity? = session.deviceId()?.let { db.staff().openShift(it) }
+    suspend fun closedShifts(): List<ShiftEntity> = session.deviceId()?.let { db.staff().closedShifts(it) } ?: emptyList()
+    suspend fun dayCloses(): List<DayCloseEntity> = session.deviceId()?.let { db.ops().dayCloses(it) } ?: emptyList()
+    suspend fun employeeName(id: String?): String? = name(id)
     suspend fun lastShift(): ShiftEntity? = session.deviceId()?.let { db.staff().openShift(it) ?: db.staff().lastClosedShift(it) }
 
     // The day so far: everything since the last day closing.
@@ -179,6 +182,30 @@ class CashOps @Inject constructor(
             p.sales, p.gross, p.refunds, p.refunded, p.discounts, p.tax, p.payments, p.categories, p.taxes,
             p.cashIn, p.cashOut, p.moves, p.first, p.last,
         )
+    }
+
+    // A day closing already made, as it was: the same period, the same number.
+    suspend fun dayDocOf(row: DayCloseEntity): ZDoc {
+        val p = period(row.device_id, row.from_time ?: 0, row.closed_at)
+        return ZDoc(
+            row.number, till(), row.from_time, row.closed_at, name(row.closed_by),
+            p.sales, p.gross, p.refunds, p.refunded, p.discounts, p.tax, p.payments, p.categories, p.taxes,
+            p.cashIn, p.cashOut, p.moves, p.first, p.last,
+        )
+    }
+
+    suspend fun printZOf(row: DayCloseEntity): Result<Unit> = printZ(dayDocOf(row))
+
+    // The day so far, by who took the payment.
+    suspend fun staffSales(): List<DocAmount> {
+        val device = session.deviceId() ?: return emptyList()
+        val out = LinkedHashMap<String, DocAmount>()
+        db.ops().receiptsBetween(device, db.ops().lastDayClose(device)?.closed_at ?: 0, System.currentTimeMillis()).forEach { r ->
+            val who = docs.decode(r.doc)?.cashier ?: "No name"
+            val cur = out[who]
+            out[who] = DocAmount(who, (cur?.amount ?: 0) + (if (r.type == "refund") -r.total else r.total), (cur?.count ?: 0) + if (r.type == "sale") 1 else 0)
+        }
+        return out.values.sortedByDescending { it.amount }
     }
 
     // Closing the day: the shift must be closed first (the drawer counted),
@@ -214,6 +241,6 @@ class CashOps @Inject constructor(
     suspend fun printZ(z: ZDoc): Result<Unit> = runCatching {
         val p = printing.receiptPrinter() ?: throw PrintError("No receipt printer is set up, so the closing report was not printed. It is in the back office, under Day closing.")
         val s = printing.settings()
-        printing.send(p, Docs.z(z, printing.shop(), printing.paper(p), s.decimals, s.dayCloseDetailed)).getOrThrow()
+        printing.send(p, Docs.z(z, printing.shop(), printing.paper(p), s.decimals, s.dayCloseDetailed), "Day closing no. ${z.number}").getOrThrow()
     }
 }

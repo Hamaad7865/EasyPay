@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.hilt.work.HiltWorker
@@ -104,6 +105,7 @@ class PullWorker @AssistedInject constructor(
                 cursor = page.nextCursor
                 if (!page.hasMore) break
             }
+            session.setLastPull(System.currentTimeMillis())
             Result.success()
         } catch (e: AuthRequired) {
             // The session is gone. Nothing is lost: the tablet shows a sign-in
@@ -356,6 +358,9 @@ private val PENDING_COVERS = intPreferencesKey("pending_covers")
 private val PENDING_DINING = stringPreferencesKey("pending_dining")
 private val PERIOD_SEQ = intPreferencesKey("period_seq")
 private val PAY_CHECK = intPreferencesKey("pay_check")
+private val LEFT_HANDED = booleanPreferencesKey("left_handed")
+private val KEEP_AWAKE = booleanPreferencesKey("keep_awake")
+private val LAST_PULL = longPreferencesKey("last_pull")
 private val Context.sessionPrefs by preferencesDataStore("device")
 
 // Which tenant, store and device this tablet is. Set once at device setup and
@@ -410,5 +415,13 @@ class SessionStore(private val context: Context) {
     // once by the payment screen and cleared.
     suspend fun payCheck(): Int? = store.data.map { it[PAY_CHECK] }.first()
     suspend fun setPayCheck(n: Int?) { store.edit { if (n == null) it.remove(PAY_CHECK) else it[PAY_CHECK] = n } }
+    // How this tablet is set up for the people using it (Settings, Display).
+    val leftHanded: Flow<Boolean> = store.data.map { it[LEFT_HANDED] ?: false }
+    suspend fun setLeftHanded(on: Boolean) { store.edit { it[LEFT_HANDED] = on } }
+    val keepAwake: Flow<Boolean> = store.data.map { it[KEEP_AWAKE] ?: true }
+    suspend fun setKeepAwake(on: Boolean) { store.edit { it[KEEP_AWAKE] = on } }
+    // When this tablet last heard from the server.
+    val lastPull: Flow<Long?> = store.data.map { it[LAST_PULL] }
+    suspend fun setLastPull(at: Long) { store.edit { it[LAST_PULL] = at } }
     suspend fun clear() { store.edit { it.clear() } }
 }

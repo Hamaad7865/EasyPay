@@ -120,6 +120,9 @@ interface StaffDao {
     @Query("SELECT * FROM shifts WHERE device_id = :device AND closed_at IS NOT NULL AND deleted_at IS NULL ORDER BY closed_at DESC LIMIT 1")
     suspend fun lastClosedShift(device: String): ShiftEntity?
 
+    @Query("SELECT * FROM shifts WHERE device_id = :device AND closed_at IS NOT NULL AND deleted_at IS NULL ORDER BY closed_at DESC LIMIT :limit")
+    suspend fun closedShifts(device: String, limit: Int = 10): List<ShiftEntity>
+
     // Cash this till took since a moment (a sales period's opening): what
     // went into the drawer, change already taken off, refunds paid out of it.
     @Query(

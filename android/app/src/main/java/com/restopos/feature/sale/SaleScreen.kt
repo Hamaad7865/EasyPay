@@ -51,6 +51,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -76,6 +77,8 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -100,6 +103,10 @@ import kotlinx.coroutines.launch
 
 private const val TILE_RATIO = 1.45f // a tile's width over its height
 
+// Inside a row laid out right to left, its columns still read left to right.
+@Composable
+private fun Ltr(content: @Composable () -> Unit) = CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr, content = content)
+
 // The register, tablet landscape: the order and keypad on the left, the
 // categories two across in the middle, the open category's items on the right.
 @Composable
@@ -115,6 +122,7 @@ fun RegisterScreen(
     onSplit: () -> Unit,
 ) {
     val tableName by vm.tableName.collectAsState()
+    val leftHanded by vm.leftHanded.collectAsState()
     val byCourse by vm.byCourse.collectAsState()
     val course by vm.course.collectAsState()
     val courses by vm.courses.collectAsState()
@@ -155,98 +163,107 @@ fun RegisterScreen(
     }
 
     Box(Modifier.fillMaxSize().background(Pos.Bg)) {
-        Row(Modifier.fillMaxSize().padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            BoxWithConstraints(Modifier.weight(3.75f).fillMaxHeight()) {
-                val keyHeight = ((maxHeight * 0.48f - 40.dp) / 5).coerceIn(34.dp, 60.dp)
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    OrderPanel(
-                        Modifier.weight(1f).fillMaxWidth(), ticket, tableName, lines, totals, selected, dining, discounts, discount,
-                        byCourse, course, courses, waiters,
-                        onAction = { vm.onAction(it) },
-                        onMoveTable = onMoveTable,
-                        onDiscount = { vm.setDiscount(it) },
-                        onVoid = { vm.onAction(SaleAction.RemoveLine(it)) },
-                    )
-                    Keypad(
-                        keyHeight, buffer,
-                        onKey = { vm.onAction(if (it == Keys.TIMES) SaleAction.ApplyQty else SaleAction.Key(it)) },
-                        onName = { naming = true },
-                        // a table's name typed first opens that table; otherwise the floor plan
-                        onTables = { if (buffer.isEmpty()) onTables() else vm.onAction(SaleAction.OpenTable) },
-                        onCash = { vm.onAction(SaleAction.QuickPay("cash")) },
-                        onCard = { vm.onAction(SaleAction.QuickPay("card")) },
-                    )
+        // Left-handed (Settings, Display): the same three columns the other way round.
+        CompositionLocalProvider(LocalLayoutDirection provides if (leftHanded) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+            Row(Modifier.fillMaxSize().padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Ltr {
+                    BoxWithConstraints(Modifier.weight(3.75f).fillMaxHeight()) {
+                        val keyHeight = ((maxHeight * 0.48f - 40.dp) / 5).coerceIn(34.dp, 60.dp)
+                        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            OrderPanel(
+                                Modifier.weight(1f).fillMaxWidth(), ticket, tableName, lines, totals, selected, dining, discounts, discount,
+                                byCourse, course, courses, waiters,
+                                onAction = { vm.onAction(it) },
+                                onMoveTable = onMoveTable,
+                                onDiscount = { vm.setDiscount(it) },
+                                onVoid = { vm.onAction(SaleAction.RemoveLine(it)) },
+                            )
+                            Keypad(
+                                keyHeight, buffer,
+                                onKey = { vm.onAction(if (it == Keys.TIMES) SaleAction.ApplyQty else SaleAction.Key(it)) },
+                                onName = { naming = true },
+                                // a table's name typed first opens that table; otherwise the floor plan
+                                onTables = { if (buffer.isEmpty()) onTables() else vm.onAction(SaleAction.OpenTable) },
+                                onCash = { vm.onAction(SaleAction.QuickPay("cash")) },
+                                onCard = { vm.onAction(SaleAction.QuickPay("card")) },
+                            )
+                        }
+                    }
                 }
-            }
-            CategoryStrip(Modifier.weight(1.75f).fillMaxHeight(), ready.categories, ready.selectedCat) {
-                vm.onAction(SaleAction.SelectCategory(it))
-            }
-            Column(Modifier.weight(4.5f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                ItemsHeader(
-                    title = ready.categories.firstOrNull { it.id == ready.selectedCat }?.name ?: "Menu",
-                    searching = searching,
-                    onQuery = { typed = it; vm.onAction(SaleAction.Search(it)) },
-                    onSearchDone = onSearchDone,
-                )
-                if (paged.itemCount == 0) {
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Text(
-                            when {
-                                searching -> "No item matches that search."
-                                ready.categories.isEmpty() -> "The menu has not been downloaded yet. Connect this tablet to the internet."
-                                else -> "No items in this category."
-                            },
-                            color = Pos.Text3, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(24.dp),
+                Ltr {
+                    CategoryStrip(Modifier.weight(1.75f).fillMaxHeight(), ready.categories, ready.selectedCat) {
+                        vm.onAction(SaleAction.SelectCategory(it))
+                    }
+                }
+                Ltr {
+                    Column(Modifier.weight(4.5f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        ItemsHeader(
+                            title = ready.categories.firstOrNull { it.id == ready.selectedCat }?.name ?: "Menu",
+                            searching = searching,
+                            onQuery = { typed = it; vm.onAction(SaleAction.Search(it)) },
+                            onSearchDone = onSearchDone,
                         )
-                    }
-                } else {
-                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                        // two columns as designed, with three rows of them filling the
-                        // height: the tiles flatten a little to fit. Three columns when
-                        // the screen is too short for that.
-                        val need = ((maxWidth - 4.dp) / 2) / ((maxHeight - 10.dp) / 3)
-                        val columns = if (need <= TILE_RATIO * 1.2f) 2 else 3
-                        val ratio = if (columns == 2) maxOf(TILE_RATIO, need) else TILE_RATIO
-                        val grid = rememberLazyGridState()
-                        val scope = rememberCoroutineScope()
-                        // a new category or search starts at the top. The tiles are
-                        // placed by position (no item keys): with keys the grid would
-                        // keep the first visible item in view and open part-way down.
-                        LaunchedEffect(ready.selectedCat, searching, typed) { grid.scrollToItem(0) }
-                        Column(Modifier.fillMaxSize()) {
-                            LazyVerticalGrid(
-                                GridCells.Fixed(columns), Modifier.weight(1f).fillMaxWidth(), state = grid,
-                                verticalArrangement = Arrangement.spacedBy(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                items(paged.itemCount) { i ->
-                                    val item = paged[i] ?: return@items
-                                    val edge = Pos.css(item.tile_color, categoryColors[item.category_id] ?: Pos.TileEdge)
-                                    ItemTile(item, inOrder[item.id] ?: 0, edge, ratio) { vm.onAction(SaleAction.TapItem(item)) }
-                                }
+                        if (paged.itemCount == 0) {
+                            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                Text(
+                                    when {
+                                        searching -> "No item matches that search."
+                                        ready.categories.isEmpty() -> "The menu has not been downloaded yet. Connect this tablet to the internet."
+                                        else -> "No items in this category."
+                                    },
+                                    color = Pos.Text3, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(24.dp),
+                                )
                             }
-                            // more items than fit: arrows that move a screenful
-                            if (grid.canScrollForward || grid.canScrollBackward) {
-                                Row(Modifier.fillMaxWidth().height(30.dp).padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    val step = { grid.layoutInfo.viewportSize.height.toFloat() }
-                                    if (grid.canScrollBackward) PagerButton(up = true, Modifier.weight(1f)) { scope.launch { grid.animateScrollBy(-step()) } }
-                                    if (grid.canScrollForward) PagerButton(up = false, Modifier.weight(1f)) { scope.launch { grid.animateScrollBy(step()) } }
+                        } else {
+                            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                                // two columns as designed, with three rows of them filling the
+                                // height: the tiles flatten a little to fit. Three columns when
+                                // the screen is too short for that.
+                                val need = ((maxWidth - 4.dp) / 2) / ((maxHeight - 10.dp) / 3)
+                                val columns = if (need <= TILE_RATIO * 1.2f) 2 else 3
+                                val ratio = if (columns == 2) maxOf(TILE_RATIO, need) else TILE_RATIO
+                                val grid = rememberLazyGridState()
+                                val scope = rememberCoroutineScope()
+                                // a new category or search starts at the top. The tiles are
+                                // placed by position (no item keys): with keys the grid would
+                                // keep the first visible item in view and open part-way down.
+                                LaunchedEffect(ready.selectedCat, searching, typed) { grid.scrollToItem(0) }
+                                Column(Modifier.fillMaxSize()) {
+                                    LazyVerticalGrid(
+                                        GridCells.Fixed(columns), Modifier.weight(1f).fillMaxWidth(), state = grid,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        items(paged.itemCount) { i ->
+                                            val item = paged[i] ?: return@items
+                                            val edge = Pos.css(item.tile_color, categoryColors[item.category_id] ?: Pos.TileEdge)
+                                            ItemTile(item, inOrder[item.id] ?: 0, edge, ratio) { vm.onAction(SaleAction.TapItem(item)) }
+                                        }
+                                    }
+                                    // more items than fit: arrows that move a screenful
+                                    if (grid.canScrollForward || grid.canScrollBackward) {
+                                        Row(Modifier.fillMaxWidth().height(30.dp).padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            val step = { grid.layoutInfo.viewportSize.height.toFloat() }
+                                            if (grid.canScrollBackward) PagerButton(up = true, Modifier.weight(1f)) { scope.launch { grid.animateScrollBy(-step()) } }
+                                            if (grid.canScrollForward) PagerButton(up = false, Modifier.weight(1f)) { scope.launch { grid.animateScrollBy(step()) } }
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
-                }
-                // Save sends the order to the kitchen and puts it away; Print
-                // bill prints what is owed; Pay opens the payment screen.
-                Row(Modifier.fillMaxWidth().height(52.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    val unsent = lines.any { !it.line.paid && it.line.sent_to_kitchen_at == null }
-                    if (saves) {
-                        BarKey(if (saving) "Sending…" else "Save", if (unsent && !saving) Pos.Green else Pos.Key, if (lines.isNotEmpty()) Color.White else Pos.Text3, Modifier.weight(1f), lines.isNotEmpty() && !saving) {
-                            vm.onAction(SaleAction.Save)
+                        // Save sends the order to the kitchen and puts it away; Print
+                        // bill prints what is owed; Pay opens the payment screen.
+                        Row(Modifier.fillMaxWidth().height(52.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            val unsent = lines.any { !it.line.paid && it.line.sent_to_kitchen_at == null }
+                            if (saves) {
+                                BarKey(if (saving) "Sending…" else "Save", if (unsent && !saving) Pos.Green else Pos.Key, if (lines.isNotEmpty()) Color.White else Pos.Text3, Modifier.weight(1f), lines.isNotEmpty() && !saving) {
+                                    vm.onAction(SaleAction.Save)
+                                }
+                            }
+                            BarKey("Print bill", Pos.Key, if (canPay) Pos.Text else Pos.Text3, Modifier.weight(1f), canPay) { vm.onAction(SaleAction.PrintBill) }
+                            BarKey("Split check", Pos.Key, if (canPay) Pos.Text else Pos.Text3, Modifier.weight(1f), canPay, onSplit)
+                            BarKey("Pay - ${Money.format(totals.total)}", if (canPay) Pos.Blue else Pos.Key, if (canPay) Color.White else Pos.Text3, Modifier.weight(2f), canPay, onPay)
                         }
                     }
-                    BarKey("Print bill", Pos.Key, if (canPay) Pos.Text else Pos.Text3, Modifier.weight(1f), canPay) { vm.onAction(SaleAction.PrintBill) }
-                    BarKey("Split check", Pos.Key, if (canPay) Pos.Text else Pos.Text3, Modifier.weight(1f), canPay, onSplit)
-                    BarKey("Pay - ${Money.format(totals.total)}", if (canPay) Pos.Blue else Pos.Key, if (canPay) Color.White else Pos.Text3, Modifier.weight(2f), canPay, onPay)
                 }
             }
         }

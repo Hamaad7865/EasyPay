@@ -20,10 +20,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -41,7 +45,22 @@ class Printing @Inject constructor(
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _problems = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val problems: SharedFlow<String> = _problems
-    fun report(message: String) { _problems.tryEmit(message) }
+    // Kept as well as shown: a problem said while nobody was looking is still
+    // there under Settings, Notifications.
+    private val _notices = MutableStateFlow<List<Notice>>(emptyList())
+    val notices: StateFlow<List<Notice>> = _notices
+    fun report(message: String) {
+        _problems.tryEmit(message)
+        _notices.update { (listOf(Notice(System.currentTimeMillis(), message)) + it).take(30) }
+    }
+    fun clearNotices() { _notices.value = emptyList() }
+
+    // What went to the printers since the app opened, newest first, so a job
+    // that failed can be seen and sent again (Settings, Printers).
+    private val _jobs = MutableStateFlow<List<PrintJob>>(emptyList())
+    val jobs: StateFlow<List<PrintJob>> = _jobs
+    private val jobSeq = AtomicLong()
+    fun clearJobs() { _jobs.value = emptyList() }
 
     suspend fun settings(): PosSettings = PosSettings.parse(db.ops().settings()).also { Money.decimals = it.decimals }
 
@@ -53,8 +72,45 @@ class Printing @Inject constructor(
 
     suspend fun shop(): Shop = settings().shop(session.businessName() ?: "")
 
-    // Sends the bytes and says, in words a cashier can act on, why it could not.
-    suspend fun send(p: PrinterEntity, bytes: ByteArray): Result<Unit> = withContext(Dispatchers.IO) {
+    // Sends the bytes and says, in words a cashier can act on, why it could
+    // not. `again` is what Try again sends: null for a job that must not be
+    // repeated from the list (a kitchen ticket goes again with Save, which
+    // also marks its lines sent; the drawer is never opened later).
+    suspend fun send(p: PrinterEntity, bytes: ByteArray, what: String = "Print", again: ByteArray? = bytes): Result<Unit> {
+        val result = deliver(p, bytes)
+        val job = PrintJob(jobSeq.incrementAndGet(), what, p, System.currentTimeMillis(), result.exceptionOrNull()?.message, again)
+        _jobs.update { (listOf(job) + it).take(40) }
+        return result
+    }
+
+    // A failed job, once more, to the printer as it is set up now (its
+    // address may have been corrected since).
+    suspend fun retry(id: Long): Result<Unit> {
+        val job = _jobs.value.firstOrNull { it.id == id } ?: return Result.failure(PrintError("That print job is no longer in the list."))
+        val bytes = job.again ?: return Result.failure(PrintError("This one cannot be sent again from here."))
+        val p = printers().firstOrNull { it.id == job.printer.id } ?: return Result.failure(PrintError("${job.printer.name} is switched off or was removed."))
+        val result = deliver(p, bytes)
+        _jobs.update { list -> list.map { if (it.id == id) PrintJob(id, it.what, p, System.currentTimeMillis(), result.exceptionOrNull()?.message, it.again) else it } }
+        return result
+    }
+
+    // Whether a printer answers right now: a network printer by opening its
+    // port, a USB one by being plugged in.
+    suspend fun answers(p: PrinterEntity): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            if (p.kind == "usb") {
+                val manager = context.getSystemService(Context.USB_SERVICE) as? UsbManager
+                manager?.deviceList?.values?.any { printerInterface(it) != null } == true
+            } else {
+                val address = p.address?.trim().orEmpty()
+                if (address.isEmpty()) return@runCatching false
+                Socket().use { it.connect(InetSocketAddress(address.substringBefore(':'), address.substringAfter(':', "9100").toIntOrNull() ?: 9100), 1500) }
+                true
+            }
+        }.getOrDefault(false)
+    }
+
+    private suspend fun deliver(p: PrinterEntity, bytes: ByteArray): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             if (p.kind == "usb") usb(bytes) else tcp(p, bytes)
         }.recoverCatching { e ->
@@ -159,3 +215,10 @@ class Printing @Inject constructor(
 }
 
 class PrintError(message: String) : Exception(message)
+
+// Something a printer could not do while nobody was looking at it.
+class Notice(val time: Long, val text: String)
+
+// One thing sent to a printer. error is null once it printed; again is what
+// Try again sends, null when it must not be repeated from the list.
+class PrintJob(val id: Long, val what: String, val printer: PrinterEntity, val time: Long, val error: String?, val again: ByteArray?)

@@ -280,7 +280,7 @@ private fun Fact(label: String, value: String) {
 }
 
 // "Wi-Fi, 10.0.0.196", or "Offline".
-private fun network(context: Context): String {
+internal fun network(context: Context): String {
     val cm = context.getSystemService(ConnectivityManager::class.java) ?: return "Unknown"
     val net = cm.activeNetwork ?: return "Offline"
     val caps = cm.getNetworkCapabilities(net)

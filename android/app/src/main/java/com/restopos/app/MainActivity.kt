@@ -3,6 +3,7 @@ package com.restopos.app
 import android.content.Context
 import android.content.res.Configuration
 import android.os.Bundle
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,6 +12,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import com.restopos.core.network.AuthClient
@@ -60,6 +64,12 @@ class MainActivity : ComponentActivity() {
         SyncScheduler.pullNow(this)
         setContent {
             val scope = rememberCoroutineScope()
+            // A till that goes to sleep between orders is a nuisance; Settings, Display can let it.
+            val awake by session.keepAwake.collectAsState(initial = true)
+            LaunchedEffect(awake) {
+                if (awake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
             PosTheme {
                 // clear of the status bar and the gesture bar
                 Box(Modifier.fillMaxSize().background(Pos.Bg).safeDrawingPadding()) {

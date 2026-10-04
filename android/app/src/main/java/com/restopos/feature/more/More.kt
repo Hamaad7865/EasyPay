@@ -178,6 +178,7 @@ fun MoreSheets(vm: MoreViewModel, show: String?, onDismiss: () -> Unit, onCloseS
             title = { Text("Shift") },
             text = {
                 if (s == null) Text("No shift has been opened on this till yet.")
+                else if (!vm.can("shift.view_report")) Text("The shift's figures are for someone allowed to see reports. You can still count the drawer and close the shift.")
                 else Column(Modifier.verticalScroll(rememberScrollState())) {
                     val (row, d) = s
                     Text(
@@ -203,7 +204,7 @@ fun MoreSheets(vm: MoreViewModel, show: String?, onDismiss: () -> Unit, onCloseS
             },
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { vm.printShift() }, enabled = s != null && !busy) { Text("Print report") }
+                    OutlinedButton(onClick = { vm.printShift() }, enabled = s != null && !busy && vm.can("shift.view_report")) { Text("Print report") }
                     if (s != null && s.first.closed_at == null) {
                         Button(onClick = { onDismiss(); onCloseShift() }, enabled = vm.can("shift.open_close")) { Text("Close shift") }
                     }
@@ -225,13 +226,15 @@ fun MoreSheets(vm: MoreViewModel, show: String?, onDismiss: () -> Unit, onCloseS
                         "Since ${z.from?.let { stamp.format(Date(it)) } ?: "the first sale"}. This will be closing no. ${z.number}.",
                         Modifier.padding(bottom = 8.dp), color = Pos.Text2, fontSize = 13.sp,
                     )
-                    Figure("Receipts", z.sales.toString())
-                    Figure("Sales", Money.format(z.gross))
-                    Figure("Refunds (${z.refunds})", Money.format(-z.refunded))
-                    Figure("Total", Money.format(z.gross - z.refunded), bold = true)
-                    z.payments.forEach { Figure("${it.name} (${it.count})", Money.format(it.amount)) }
-                    Figure("Cash in", Money.format(z.cashIn))
-                    Figure("Cash out", Money.format(-z.cashOut))
+                    if (vm.can("shift.view_report")) {
+                        Figure("Receipts", z.sales.toString())
+                        Figure("Sales", Money.format(z.gross))
+                        Figure("Refunds (${z.refunds})", Money.format(-z.refunded))
+                        Figure("Total", Money.format(z.gross - z.refunded), bold = true)
+                        z.payments.forEach { Figure("${it.name} (${it.count})", Money.format(it.amount)) }
+                        Figure("Cash in", Money.format(z.cashIn))
+                        Figure("Cash out", Money.format(-z.cashOut))
+                    }
                     Text(
                         if (open) "Close the shift first: the drawer has to be counted before the day is closed."
                         else "Closing the day fixes these figures, prints the report and starts a new day. It cannot be undone.",

@@ -184,6 +184,10 @@ class SaleViewModel @Inject constructor(
         .flatMapLatest { d -> if (d == null) emptyFlow() else db.staff().openShiftFlow(d) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    // Settings, Display: the order and keypad on the right instead of the left.
+    val leftHanded: StateFlow<Boolean> = session.leftHanded
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     val needsSignIn: StateFlow<Boolean> = session.needsSignIn
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     val pending: StateFlow<Long> = db.outbox().pendingCountFlow()

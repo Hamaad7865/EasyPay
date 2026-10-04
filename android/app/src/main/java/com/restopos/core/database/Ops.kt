@@ -70,6 +70,9 @@ data class DayCloseEntity(
 // A payment with its receipt's type and time, for the shift and day reports.
 data class PaidRow(val receipt_id: String, val type: String, val payment_type_id: String, val amount: Long)
 
+// A payment as the Payments list shows it: with its receipt's number and time.
+data class PaymentRow(val id: String, val receipt_id: String, val number: String, val type: String, val device_time: Long, val payment_type_id: String, val amount: Long)
+
 // What was sold of each category in a period.
 data class CategorySale(val name: String?, val qty: Long, val amount: Long)
 
@@ -97,6 +100,16 @@ interface OpsDao {
 
     @Query("SELECT * FROM day_closes WHERE device_id = :device AND deleted_at IS NULL ORDER BY closed_at DESC LIMIT 1")
     suspend fun lastDayClose(device: String): DayCloseEntity?
+
+    @Query("SELECT * FROM day_closes WHERE device_id = :device AND deleted_at IS NULL ORDER BY closed_at DESC LIMIT :limit")
+    suspend fun dayCloses(device: String, limit: Int = 10): List<DayCloseEntity>
+
+    @Query(
+        """SELECT p.id, p.receipt_id, r.number, r.type, r.device_time, p.payment_type_id, p.amount FROM receipt_payments p
+           JOIN receipts r ON r.id = p.receipt_id
+           WHERE r.device_id = :device AND r.deleted_at IS NULL AND r.device_time > :from ORDER BY r.device_time DESC""",
+    )
+    fun paymentsSince(device: String, from: Long): Flow<List<PaymentRow>>
 
     @Query("SELECT * FROM receipts WHERE device_id = :device AND deleted_at IS NULL AND device_time > :from AND device_time <= :to ORDER BY device_time")
     suspend fun receiptsBetween(device: String, from: Long, to: Long): List<ReceiptEntity>

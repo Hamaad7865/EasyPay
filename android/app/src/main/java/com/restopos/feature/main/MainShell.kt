@@ -90,7 +90,6 @@ fun MainShell(
     val vm: SaleViewModel = hiltViewModel()
     val more: MoreViewModel = hiltViewModel()
     val user by vm.user.collectAsState()
-    val shift by vm.shift.collectAsState()
     val till by vm.till.collectAsState()
     val needsSignIn by vm.needsSignIn.collectAsState()
     val pending by vm.pending.collectAsState()
@@ -174,7 +173,10 @@ fun MainShell(
                     )
                     Tab.Orders -> OrdersScreen(onOpen = { go(Tab.Register) })
                     Tab.Receipts -> ReceiptsScreen()
-                    Tab.Settings -> SettingsScreen(till, needsSignIn, pending, rejected, user, shift, onSignIn, onRejected, onClosePeriod) { confirmSignOut = true }
+                    Tab.Settings -> SettingsScreen(
+                        more, lock = if (user != null) "Log out" else "Lock", onLock = onLock,
+                        onSignIn = onSignIn, onRejected = onRejected, onClosePeriod = onClosePeriod, onSignOut = { confirmSignOut = true },
+                    )
                 }
             }
         }

@@ -100,7 +100,11 @@ class DocBuilder @Inject constructor(
     suspend fun print(doc: ReceiptDoc, openDrawer: Boolean = false): Result<Unit> = runCatching {
         val p = printing.receiptPrinter() ?: throw PrintError("No receipt printer is set up. Add one in the back office, under Printers.")
         val s = printing.settings()
-        printing.send(p, Docs.receipt(doc, printing.shop(), printing.paper(p), s.decimals, printing.logo(s, p), openDrawer)).getOrThrow()
+        val what = when (doc.kind) { "bill" -> "Bill, ${doc.order}"; "refund" -> "Refund ${doc.number}"; else -> "Receipt ${doc.number}" }
+        val bytes = Docs.receipt(doc, printing.shop(), printing.paper(p), s.decimals, printing.logo(s, p), openDrawer)
+        // sent again later from the print jobs, it must not open the drawer
+        val again = if (openDrawer) Docs.receipt(doc, printing.shop(), printing.paper(p), s.decimals, printing.logo(s, p), false) else bytes
+        printing.send(p, bytes, what, again).getOrThrow()
     }
 
     private fun ids(text: String): List<String> =
@@ -124,7 +128,7 @@ class DocBuilder @Inject constructor(
         for ((pid, ls) in perPrinter) {
             val p = printers[pid] ?: continue
             val doc = KitchenDoc(title, order, System.currentTimeMillis(), waiter, dining(t), t.covers, t.note, lines(ls), p.name)
-            printing.send(p, Docs.kitchen(doc, printing.paper(p))).onFailure { failed.add(pid); errors.add(it.message ?: "${p.name} did not print") }
+            printing.send(p, Docs.kitchen(doc, printing.paper(p)), "Kitchen ticket, $order", again = null).onFailure { failed.add(pid); errors.add(it.message ?: "${p.name} did not print") }
         }
         return KitchenOutcome(rows.filter { l -> where[l.id].orEmpty().none { failed.contains(it) } }.map { it.id }, errors)
     }

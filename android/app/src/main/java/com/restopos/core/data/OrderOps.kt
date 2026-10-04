@@ -253,6 +253,6 @@ class OrderOps @Inject constructor(
 
     suspend fun test(printerId: String): Result<Unit> = runCatching {
         val p = printing.printers().firstOrNull { it.id == printerId } ?: error("That printer is switched off or was removed")
-        printing.send(p, Docs.test(p.name, printing.paper(p))).getOrThrow()
+        printing.send(p, Docs.test(p.name, printing.paper(p)), "Test print").getOrThrow()
     }
 }

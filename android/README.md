@@ -69,7 +69,30 @@ pull worker, a start screen, and the screens behind the top bar:
   Last edit is the newer of the order's own change and its newest line, as
   an age: green, amber from 30 minutes, red from an hour.
 - **Receipts:** the receipts issued on this tablet.
-- **Settings:** this till, the state of its sync, rejected changes, sign-out.
+- **Settings:** a menu down the left, the chosen page on the right.
+  - This till: who is signed in, the cash drawer's four actions, and the
+    state of the sync, the shift, the printers and the network.
+  - Notifications: what needs attention for as long as it is true (sign-in
+    needed, refused changes, no receipt printer, failed print jobs) and what
+    the printers reported while nobody was looking.
+  - Cash drawer: Cash in, Cash out, Open drawer, Close drawer (the blind count
+    that ends the shift), the shift's cash and its cash in and out. What the
+    drawer should hold is only shown with `shift.view_report`.
+  - Reports (`shift.view_report`): the shift, the day so far (also by
+    category and by staff) with Close the day, and closed shifts and day
+    closings to print again.
+  - Payments (`receipts.view_all`): every payment since the last day closing;
+    tap one for its receipt (print again, refund, correct the payment type).
+  - Printers: each printer, whether it answers, what prints on it, a test
+    print, and the print jobs since the app opened. A failed receipt, bill,
+    slip or report has Try again (a receipt goes again without opening the
+    drawer). A kitchen ticket is not re-sent from here: Save sends it again
+    and marks the lines sent.
+  - Display (`settings.device`): left-handed register, keep the screen on.
+    Kept on the tablet.
+  - Support: the till's details, Sync now, refused changes, and signing the
+    tablet out (`settings.device`).
+  - Help: how the till's own flows work.
 
 Pay (the bar under the items) opens the payment screen, titled with the
 order's name and what is due. Left, the order summary: with more than one

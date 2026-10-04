@@ -114,6 +114,8 @@ class ReceiptsViewModel @Inject constructor(
         }
     }
 
+    fun showId(id: String) = viewModelScope.launch { db.ops().receipt(id)?.let { show(it) } }
+
     private fun run(done: String, block: suspend () -> Result<*>) = viewModelScope.launch {
         if (_busy.value) return@launch
         _busy.value = true
@@ -187,6 +189,16 @@ fun ReceiptsScreen(vm: ReceiptsViewModel = hiltViewModel()) {
         }
     }
 
+    open?.let { d -> Detail(d, types, busy, vm, time) }
+}
+
+// A receipt's details over whatever screen asked for them (Settings, Payments).
+@Composable
+fun ReceiptDialog(vm: ReceiptsViewModel) {
+    val open by vm.open.collectAsState()
+    val types by vm.types.collectAsState()
+    val busy by vm.busy.collectAsState()
+    val time = remember { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
     open?.let { d -> Detail(d, types, busy, vm, time) }
 }
 
