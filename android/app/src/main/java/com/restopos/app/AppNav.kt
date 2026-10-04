@@ -91,7 +91,7 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
         composable(Routes.CLOCK) {
             ClockScreen(onBack = { nav.popBackStack() })
         }
-        // Opening a sales period: confirm the drawer, then on to the register.
+        // Opening a shift: confirm the drawer, then on to the register.
         composable(Routes.CASH_OPEN) {
             CashCountScreen(
                 closing = false,

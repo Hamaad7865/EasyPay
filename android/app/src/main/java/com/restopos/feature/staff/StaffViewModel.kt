@@ -33,11 +33,11 @@ sealed interface PinCheck {
     data class Locked(val seconds: Long) : PinCheck
 }
 
-// What a closed sales period came to, for the screen shown after the count.
+// What a closed shift came to, for the screen shown after the count.
 data class Closing(val float: Long, val cash: Long, val expected: Long, val counted: Long)
 
 // Behind the start screen, clock in/out and the cash count: who works here,
-// who is clocked in, and this till's sales period. All of it from Room.
+// who is clocked in, and this till's shift. All of it from Room.
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class StaffViewModel @Inject constructor(

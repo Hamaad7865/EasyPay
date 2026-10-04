@@ -30,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +49,10 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.restopos.core.ui.Pos
 import com.restopos.core.ui.PosIcons
+import com.restopos.feature.more.MoreDialog
+import com.restopos.feature.more.MoreViewModel
+import com.restopos.feature.more.OrderTypeDialog
+import kotlinx.coroutines.delay
 import com.restopos.feature.orders.OrdersScreen
 import com.restopos.feature.receipts.ReceiptsScreen
 import com.restopos.feature.sale.RegisterScreen
@@ -78,6 +83,7 @@ fun MainShell(
     onSignOut: () -> Unit,
 ) {
     val vm: SaleViewModel = hiltViewModel()
+    val more: MoreViewModel = hiltViewModel()
     val user by vm.user.collectAsState()
     val shift by vm.shift.collectAsState()
     val till by vm.till.collectAsState()
@@ -90,6 +96,15 @@ fun MainShell(
     var menu by rememberSaveable { mutableStateOf(false) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var confirmSignOut by remember { mutableStateOf(false) }
+    var showMore by remember { mutableStateOf(false) }
+    var pickType by remember { mutableStateOf(false) }
+    val types by more.types.collectAsState()
+    val said by more.message.collectAsState()
+    // what a printer said when it could not print behind the scenes
+    var printerSaid by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { more.load(); more.problems.collect { printerSaid = it } }
+    printerSaid?.let { m -> LaunchedEffect(m) { delay(7000); printerSaid = null } }
+    said?.let { m -> LaunchedEffect(m) { delay(5000); more.messageShown() } }
     // true while the floor plan is open to pick where the order on the register moves to
     var moving by remember { mutableStateOf(false) }
     val closeSearch = { searching = false; vm.onAction(SaleAction.Search("")); Unit }
@@ -120,6 +135,7 @@ fun MainShell(
                     sync = sync, pending = pending, searching = searching,
                     onClose = { go(home) },
                     onSearch = { if (searching) closeSearch() else searching = true },
+                    onMore = { showMore = true },
                 )
             } else {
                 NavBar(
@@ -131,7 +147,9 @@ fun MainShell(
                     onLock = onLock,
                     onMenu = { menu = !menu },
                     onTab = go,
-                    onNew = { vm.newOrder { go(Tab.Register) } },
+                    // more than one order type: ask which (Dine in, Take away)
+                    onNew = { if (types.size > 1) pickType = true else vm.newOrder { go(Tab.Register) } },
+                    onMore = { showMore = true },
                 )
             }
             SyncNotices(needsSignIn, pending, rejected, onSignIn, onRejected)
@@ -141,6 +159,7 @@ fun MainShell(
                         vm, searching, closeSearch, { if (vm.mayPay()) onPay() }, onPaid,
                         onTables = { tab = Tab.Plan },
                         onMoveTable = { moving = true; tab = Tab.Plan },
+                        onSaved = { go(home) },
                     )
                     Tab.Plan -> TablesScreen(
                         moving,
@@ -155,6 +174,31 @@ fun MainShell(
         }
         if (slide > 0.dp) {
             SideMenu(Modifier.width(MENU).offset(x = slide - MENU), tab, alert, onClose = { menu = false }, onTab = go)
+        }
+        (printerSaid ?: said)?.let { m ->
+            Text(
+                m,
+                Modifier.align(Alignment.BottomCenter).padding(16.dp).clip(RoundedCornerShape(6.dp))
+                    .background(if (printerSaid != null) Pos.Warn else Pos.Text).padding(horizontal = 16.dp, vertical = 10.dp),
+                color = Pos.Bg, fontSize = 14.sp,
+            )
+        }
+    }
+
+    if (showMore) {
+        MoreDialog(
+            more,
+            onDismiss = { showMore = false },
+            onLock = onLock,
+            onCloseShift = onClosePeriod,
+            onReceipts = { go(Tab.Receipts) },
+        )
+    }
+    if (pickType) {
+        OrderTypeDialog(types, onDismiss = { pickType = false }) { t ->
+            pickType = false
+            // an order that needs a table starts on the floor plan
+            vm.startOrder(t.id) { go(if (t.needs_table) Tab.Plan else Tab.Register) }
         }
     }
 
@@ -181,6 +225,7 @@ private fun NavBar(
     onMenu: () -> Unit,
     onTab: (Tab) -> Unit,
     onNew: () -> Unit,
+    onMore: () -> Unit,
 ) {
     Box(Modifier.fillMaxWidth().height(BAR)) {
         Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
@@ -217,19 +262,19 @@ private fun NavBar(
                 )
             }
         }
-        Row(
-            Modifier.align(Alignment.CenterEnd).clickable(onClick = onNew).padding(horizontal = 14.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Filled.AddCircle, contentDescription = null, tint = Pos.Link, modifier = Modifier.size(24.dp))
-            Text("New order", Modifier.padding(start = 6.dp), color = Pos.Link, fontSize = 16.sp)
+        Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically) {
+            Text("More", Modifier.clickable(onClick = onMore).padding(horizontal = 12.dp, vertical = 16.dp), color = Pos.Link, fontSize = 16.sp)
+            Row(Modifier.clickable(onClick = onNew).padding(start = 8.dp, end = 14.dp, top = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.AddCircle, contentDescription = null, tint = Pos.Link, modifier = Modifier.size(24.dp))
+                Text("New order", Modifier.padding(start = 6.dp), color = Pos.Link, fontSize = 16.sp)
+            }
         }
     }
 }
 
 // The register's own bar: Close on the left, who is selling in the middle.
 @Composable
-private fun RegisterBar(title: String, sync: Color, pending: Long, searching: Boolean, onClose: () -> Unit, onSearch: () -> Unit) {
+private fun RegisterBar(title: String, sync: Color, pending: Long, searching: Boolean, onClose: () -> Unit, onSearch: () -> Unit, onMore: () -> Unit) {
     Box(Modifier.fillMaxWidth().height(BAR)) {
         Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
             Text("Close", Modifier.clickable(onClick = onClose).padding(start = 16.dp, end = 10.dp, top = 16.dp, bottom = 16.dp), color = Pos.Link, fontSize = 16.sp)
@@ -239,11 +284,13 @@ private fun RegisterBar(title: String, sync: Color, pending: Long, searching: Bo
             title, Modifier.align(Alignment.Center).padding(horizontal = 200.dp),
             color = Pos.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
-        Icon(
-            Icons.Filled.Search, contentDescription = "Search the menu", tint = if (searching) Pos.Text else Pos.Link,
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp).clip(CircleShape).clickable(onClick = onSearch)
-                .padding(10.dp).size(26.dp),
-        )
+        Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically) {
+            Text("More", Modifier.clickable(onClick = onMore).padding(horizontal = 12.dp, vertical = 16.dp), color = Pos.Link, fontSize = 16.sp)
+            Icon(
+                Icons.Filled.Search, contentDescription = "Search the menu", tint = if (searching) Pos.Text else Pos.Link,
+                modifier = Modifier.padding(end = 8.dp).clip(CircleShape).clickable(onClick = onSearch).padding(10.dp).size(26.dp),
+            )
+        }
     }
 }
 

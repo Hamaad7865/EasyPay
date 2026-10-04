@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- a receipt printer on a USB cable; a tablet without USB host still installs -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <application
         android:name=".RestoPosApp"
         android:allowBackup="false"

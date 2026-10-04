@@ -91,8 +91,8 @@ fun StartScreen(
             )
             active.isEmpty() -> Closed(
                 vm,
-                title = if (shift == null) "Sales period is closed" else "No one is clocked in",
-                text = if (shift == null) "Clock in below to open a sales period." else "Clock in below to use the register.",
+                title = if (shift == null) "The shift is closed" else "No one is clocked in",
+                text = if (shift == null) "Clock in below to open a shift." else "Clock in below to use the register.",
                 button = "Clock in/out", note = null, onButton = onClock, onSignIn = onSignIn,
             )
             else -> Users(active, shiftOpen = shift != null, openedAt = shift?.opened_at, onPick = { pinFor = it }, onClock = onClock)
@@ -116,7 +116,7 @@ fun StartScreen(
                 when {
                     shift != null -> vm.signIn(member, onOpen)
                     member.can("shift.open_close") -> vm.signIn(member, onCashCount)
-                    else -> vm.say("The sales period is closed. Someone allowed to open it has to sign in first.")
+                    else -> vm.say("The shift is closed. Someone allowed to open it has to sign in first.")
                 }
             },
             onDismiss = { pinFor = null },
@@ -194,7 +194,7 @@ private fun Users(active: List<StaffMember>, shiftOpen: Boolean, openedAt: Long?
             Row(Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     if (shiftOpen) "Welcome! Tap your name, or clock in/out."
-                    else "Welcome! The sales period is closed. Tap your name to open it, or clock in/out.",
+                    else "Welcome! The shift is closed. Tap your name to open it, or clock in/out.",
                     Modifier.weight(1f), color = Pos.Text, fontSize = 14.sp,
                 )
                 Text("Sort by", Modifier.padding(end = 12.dp), color = Pos.Text, fontSize = 14.sp)
@@ -220,7 +220,7 @@ private fun Users(active: List<StaffMember>, shiftOpen: Boolean, openedAt: Long?
             }
             if (openedAt != null) {
                 Text(
-                    "Sales period open since ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(openedAt))}",
+                    "Shift open since ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(openedAt))}",
                     Modifier.padding(bottom = 12.dp), color = Pos.Text3, fontSize = 13.sp,
                 )
             }

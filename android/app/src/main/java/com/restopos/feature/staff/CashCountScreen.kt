@@ -39,7 +39,7 @@ import java.util.Date
 
 private val GREEN = Color(0xFF3FBF7F)
 
-// The cash count. Opening a sales period: confirm what is in the drawer.
+// The cash count. Opening a shift: confirm what is in the drawer.
 // Closing one: enter what was counted (the expected amount is not shown until
 // after, so the count is honest), then see how it compares.
 @Composable
@@ -62,12 +62,12 @@ fun CashCountScreen(closing: Boolean, vm: StaffViewModel = hiltViewModel(), onBa
 
     Box(Modifier.fillMaxSize().background(Pos.Bg)) {
         Column(Modifier.fillMaxSize()) {
-            StaffTopBar(if (closing) "Close sales period" else "Cash count for cash drawer", if (result == null) onBack else null)
+            StaffTopBar(if (closing) "Close shift" else "Cash count for cash drawer", if (result == null) onBack else null)
             Row(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 28.dp), horizontalArrangement = Arrangement.spacedBy(64.dp)) {
                 Column(Modifier.weight(1f).fillMaxHeight()) {
                     val done = result
                     if (done != null) {
-                        Text("Sales period closed.", color = Pos.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text("Shift closed.", color = Pos.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                         Text("How the drawer compares with what it should hold.", Modifier.padding(top = 10.dp, bottom = 18.dp), color = Pos.Text, fontSize = 14.sp)
                         Line("Opening amount", Money.format(done.float))
                         Line("Cash taken", Money.format(done.cash))
@@ -94,7 +94,7 @@ fun CashCountScreen(closing: Boolean, vm: StaffViewModel = hiltViewModel(), onBa
                         )
                         Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(3.dp)).background(Pos.Panel).padding(14.dp), contentAlignment = Alignment.Center) {
                             Text(
-                                if (closing) "Open since ${shift?.let { now.format(Date(it.opened_at)) } ?: "—"}" else "Sales period starts ${now.format(Date())}",
+                                if (closing) "Open since ${shift?.let { now.format(Date(it.opened_at)) } ?: "—"}" else "Shift starts ${now.format(Date())}",
                                 color = GREEN, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                             )
                         }
@@ -113,7 +113,7 @@ fun CashCountScreen(closing: Boolean, vm: StaffViewModel = hiltViewModel(), onBa
                         }
                         if (closing && openOrders > 0) {
                             Text(
-                                "$openOrders ${if (openOrders == 1L) "order is" else "orders are"} still open. They stay open for the next sales period.",
+                                "$openOrders ${if (openOrders == 1L) "order is" else "orders are"} still open. They stay open for the next shift.",
                                 Modifier.padding(top = 14.dp), color = Pos.Pink, fontSize = 13.sp,
                             )
                         }

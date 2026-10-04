@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -84,6 +85,7 @@ import com.restopos.core.common.Money
 import com.restopos.core.common.tableLabel
 import com.restopos.core.data.Calc
 import com.restopos.core.data.DiscountPick
+import com.restopos.core.database.EmployeeEntity
 import com.restopos.core.data.ModPick
 import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.DiningOptionEntity
@@ -109,6 +111,7 @@ fun RegisterScreen(
     onPaid: (String, Long, Long) -> Unit,
     onTables: () -> Unit,
     onMoveTable: () -> Unit,
+    onSaved: () -> Unit,
 ) {
     val tableName by vm.tableName.collectAsState()
     val byCourse by vm.byCourse.collectAsState()
@@ -128,14 +131,16 @@ fun RegisterScreen(
     val buffer by vm.buffer.collectAsState()
     val selected by vm.selected.collectAsState()
     val paid by vm.paid.collectAsState()
-    var voidTarget by remember { mutableStateOf<String?>(null) }
-    var voidReason by remember { mutableStateOf("") }
+    val saves by vm.saves.collectAsState()
+    val saved by vm.saved.collectAsState()
+    val waiters by vm.waiters.collectAsState()
     var naming by remember { mutableStateOf(false) }
     var typed by remember { mutableStateOf("") } // the search text, as last typed
 
     // Back on screen (after paying, or after picking an order): reload it.
     LaunchedEffect(Unit) { vm.refresh() }
     paid?.let { p -> LaunchedEffect(p) { vm.paidShown(); onPaid(p.receiptId, p.change, p.total) } }
+    if (saved) LaunchedEffect(Unit) { vm.savedShown(); onSaved() }
     toast?.let { msg -> LaunchedEffect(msg) { delay(3500); vm.toastShown() } }
 
     val canPay = lines.any { !it.line.paid }
@@ -154,11 +159,11 @@ fun RegisterScreen(
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     OrderPanel(
                         Modifier.weight(1f).fillMaxWidth(), ticket, tableName, lines, totals, selected, dining, discounts, discount,
-                        byCourse, course, courses,
+                        byCourse, course, courses, waiters,
                         onAction = { vm.onAction(it) },
                         onMoveTable = onMoveTable,
                         onDiscount = { vm.setDiscount(it) },
-                        onVoid = { voidTarget = it },
+                        onVoid = { vm.onAction(SaleAction.RemoveLine(it)) },
                     )
                     Keypad(
                         keyHeight, buffer,
@@ -228,15 +233,17 @@ fun RegisterScreen(
                         }
                     }
                 }
-                Box(
-                    Modifier.fillMaxWidth().height(52.dp).background(if (canPay) Pos.Blue else Pos.Key)
-                        .clickable(enabled = canPay, onClick = onPay),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "Pay - ${Money.format(totals.total)}",
-                        color = if (canPay) Color.White else Pos.Text3, fontSize = 15.sp, fontWeight = FontWeight.Medium,
-                    )
+                // Save sends the order to the kitchen and puts it away; Print
+                // bill prints what is owed; Pay opens the payment screen.
+                Row(Modifier.fillMaxWidth().height(52.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val unsent = lines.any { !it.line.paid && it.line.sent_to_kitchen_at == null }
+                    if (saves) {
+                        BarKey("Save", if (unsent) Pos.Green else Pos.Key, if (lines.isNotEmpty()) Color.White else Pos.Text3, Modifier.weight(1f), lines.isNotEmpty()) {
+                            vm.onAction(SaleAction.Save)
+                        }
+                    }
+                    BarKey("Print bill", Pos.Key, if (canPay) Pos.Text else Pos.Text3, Modifier.weight(1f), canPay) { vm.onAction(SaleAction.PrintBill) }
+                    BarKey("Pay - ${Money.format(totals.total)}", if (canPay) Pos.Blue else Pos.Key, if (canPay) Color.White else Pos.Text3, Modifier.weight(2f), canPay, onPay)
                 }
             }
         }
@@ -264,24 +271,12 @@ fun RegisterScreen(
             onOk = { vm.onAction(SaleAction.SetName(it)); naming = false },
         )
     }
-    voidTarget?.let { id ->
-        AlertDialog(
-            onDismissRequest = { voidTarget = null; voidReason = "" },
-            title = { Text("Void line") },
-            text = {
-                OutlinedTextField(voidReason, { voidReason = it }, Modifier.fillMaxWidth(), label = { Text("Reason (required)") })
-            },
-            confirmButton = {
-                Button(onClick = {
-                    if (voidReason.isNotBlank()) {
-                        vm.onAction(SaleAction.VoidLine(id, voidReason)); voidTarget = null; voidReason = ""
-                    }
-                }) { Text("Void") }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { voidTarget = null; voidReason = "" }) { Text("Cancel") }
-            },
-        )
+}
+
+@Composable
+private fun RowScope.BarKey(label: String, color: Color, text: Color, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
+    Box(modifier.fillMaxHeight().background(color).clickable(enabled = enabled, onClick = onClick), contentAlignment = Alignment.Center) {
+        Text(label, color = text, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -299,6 +294,7 @@ private fun OrderPanel(
     byCourse: Boolean,
     course: Int,
     courses: Int,
+    waiters: List<EmployeeEntity>,
     onAction: (SaleAction) -> Unit,
     onMoveTable: () -> Unit,
     onDiscount: (DiscountPick?) -> Unit,
@@ -308,6 +304,9 @@ private fun OrderPanel(
     var diningOpen by remember { mutableStateOf(false) }
     var viewOpen by remember { mutableStateOf(false) }
     var askGuests by remember { mutableStateOf(false) }
+    var askDiscount by remember { mutableStateOf(false) }
+    var askWaiter by remember { mutableStateOf(false) }
+    var askNote by remember { mutableStateOf(false) }
     // table service: an order on a table, or a named tab. It has guests and courses; a direct sale does not.
     val service = ticket?.name != null || tableName != null
     val grouped = service && byCourse
@@ -325,14 +324,21 @@ private fun OrderPanel(
                 DropdownMenu(expanded = actionsOpen, onDismissRequest = { actionsOpen = false }) {
                     DropdownMenuItem(text = { Text("New order") }, onClick = { actionsOpen = false; onAction(SaleAction.NewTicket) })
                     if (tableName != null) {
-                        DropdownMenuItem(text = { Text("Move to another table") }, onClick = { actionsOpen = false; onMoveTable() })
+                        DropdownMenuItem(text = { Text("Transfer to another table") }, onClick = { actionsOpen = false; onMoveTable() })
+                    }
+                    if (ticket != null && waiters.size > 1) {
+                        DropdownMenuItem(text = { Text("Change waiter") }, onClick = { actionsOpen = false; askWaiter = true })
+                    }
+                    DropdownMenuItem(text = { Text(if (ticket?.note.isNullOrBlank()) "Add a remark" else "Change the remark") }, onClick = { actionsOpen = false; askNote = true })
+                    if (lines.any { it.line.sent_to_kitchen_at != null }) {
+                        DropdownMenuItem(text = { Text("Print the kitchen order again") }, onClick = { actionsOpen = false; onAction(SaleAction.ReprintKitchen) })
+                    }
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text("Discount in % or Rs") }, onClick = { actionsOpen = false; askDiscount = true })
+                    if (discount != null) {
+                        DropdownMenuItem(text = { Text("Remove the discount") }, onClick = { actionsOpen = false; onDiscount(null) })
                     }
                     if (discounts.isNotEmpty()) {
-                        HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text(if (discount == null) "No discount  ✓" else "No discount") },
-                            onClick = { actionsOpen = false; onDiscount(null) },
-                        )
                         discounts.forEach { d ->
                             DropdownMenuItem(
                                 text = { Text(if (discount?.discountId == d.id) "${d.name}  ✓" else d.name) },
@@ -426,6 +432,41 @@ private fun OrderPanel(
                 if (n != null) onAction(SaleAction.SetGuests(n))
             }
         }
+        if (askDiscount) DiscountDialog(onDismiss = { askDiscount = false }) { askDiscount = false; onDiscount(it) }
+        if (askWaiter) {
+            AlertDialog(
+                onDismissRequest = { askWaiter = false },
+                title = { Text("Who takes this order?") },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        waiters.forEach { w ->
+                            Text(
+                                w.name + if (w.id == ticket?.opened_by) "  ✓" else "",
+                                Modifier.fillMaxWidth().clickable { askWaiter = false; onAction(SaleAction.SetWaiter(w.id)) }.padding(vertical = 12.dp),
+                                color = Pos.Text, fontSize = 16.sp,
+                            )
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { OutlinedButton(onClick = { askWaiter = false }) { Text("Cancel") } },
+            )
+        }
+        if (askNote) {
+            var note by remember { mutableStateOf(ticket?.note ?: "") }
+            AlertDialog(
+                onDismissRequest = { askNote = false },
+                title = { Text("Remark") },
+                text = {
+                    OutlinedTextField(note, { note = it.take(120) }, Modifier.fillMaxWidth(), label = { Text("Prints on the kitchen order and the receipt") })
+                },
+                confirmButton = { Button(onClick = { askNote = false; onAction(SaleAction.SetNote(note)) }) { Text("OK") } },
+                dismissButton = { OutlinedButton(onClick = { askNote = false }) { Text("Cancel") } },
+            )
+        }
+        ticket?.note?.takeIf { it.isNotBlank() }?.let {
+            Text("Remark: $it", Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 6.dp), color = Pos.Text2, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
         if (totals.discount > 0) {
             Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 6.dp)) {
                 Text("Discount", Modifier.weight(1f), color = Pos.Text2, fontSize = 12.sp)
@@ -439,6 +480,51 @@ private fun OrderPanel(
             Text(Money.format(totals.total), color = Pos.Text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
+}
+
+// A discount typed in: a percentage of the bill, or an amount in rupees.
+@Composable
+private fun DiscountDialog(onDismiss: () -> Unit, onPick: (DiscountPick) -> Unit) {
+    var percent by remember { mutableStateOf(true) }
+    var typed by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Discount") },
+        text = {
+            Column {
+                Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(true to "Percent %", false to "Amount Rs").forEach { (isPercent, label) ->
+                        Box(
+                            Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(4.dp)).background(if (percent == isPercent) Pos.TabOn else Pos.Key)
+                                .clickable { percent = isPercent; typed = ""; problem = null },
+                            contentAlignment = Alignment.Center,
+                        ) { Text(label, color = Color.White, fontSize = 14.sp) }
+                    }
+                }
+                Text(
+                    if (percent) "${typed.ifEmpty { "0" }} %" else "Rs ${typed.ifEmpty { "0" }}", Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                    color = Pos.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End,
+                )
+                com.restopos.feature.staff.AmountPad(typed, 44.dp, Modifier.fillMaxWidth()) { typed = it; problem = null }
+                problem?.let { Text(it, Modifier.padding(top = 8.dp), color = Pos.Pink, fontSize = 13.sp) }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                if (percent) {
+                    val n = typed.toIntOrNull()
+                    if (n == null || n !in 1..100) problem = "A percentage is a whole number from 1 to 100"
+                    else onPick(DiscountPick(null, "percent", n.toLong(), "$n%"))
+                } else {
+                    val cents = Money.parseRs(typed)
+                    if (cents == null || cents <= 0) problem = "Type the amount to take off"
+                    else onPick(DiscountPick(null, "amount", cents, Money.format(cents) + " off"))
+                }
+            }) { Text("Apply") }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 // The order's name. It is what the guest's bill will carry.
@@ -518,6 +604,7 @@ private fun LineRow(lu: LineUi, selected: Boolean, onAction: (SaleAction) -> Uni
             Text("${l.qty / 1000}×", Modifier.width(34.dp), color = Pos.Text2, fontSize = 14.sp)
             Column(Modifier.weight(1f)) {
                 Text(l.name_snapshot + if (l.paid) "  (paid)" else "", color = Pos.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                if (!l.paid && l.sent_to_kitchen_at == null) Text("Not sent yet", color = Pos.Warn, fontSize = 11.sp)
                 if (lu.mods.isNotBlank()) Text(lu.mods, color = Pos.Text2, fontSize = 12.sp)
                 l.note?.takeIf { it.isNotBlank() }?.let { Text("Note: $it", color = Pos.Text2, fontSize = 12.sp) }
             }
@@ -525,13 +612,19 @@ private fun LineRow(lu: LineUi, selected: Boolean, onAction: (SaleAction) -> Uni
         }
         if (selected) {
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                LineButton("−", Pos.Key) {
-                    val q = l.qty / 1000 - 1
-                    if (q <= 0) onVoid(l.id) else onAction(SaleAction.SetQty(l.id, q))
+                val sent = l.sent_to_kitchen_at != null
+                if (!sent) {
+                    LineButton("−", Pos.Key) {
+                        val q = l.qty / 1000 - 1
+                        if (q <= 0) onVoid(l.id) else onAction(SaleAction.SetQty(l.id, q))
+                    }
+                    LineButton("+", Pos.Key) { onAction(SaleAction.SetQty(l.id, l.qty / 1000 + 1)) }
+                } else {
+                    Text("The kitchen has this", color = Pos.Text3, fontSize = 12.sp)
                 }
-                LineButton("+", Pos.Key) { onAction(SaleAction.SetQty(l.id, l.qty / 1000 + 1)) }
                 Spacer(Modifier.weight(1f))
-                LineButton("Void", Pos.Danger) { onVoid(l.id) }
+                // before it is sent it is simply taken off; after, the kitchen is told
+                LineButton(if (sent) "Void" else "Delete", Pos.Danger) { onVoid(l.id) }
             }
         }
     }
@@ -739,8 +832,13 @@ fun ModsSheet(data: SheetData, onDismiss: () -> Unit, onConfirm: (Int, List<ModP
                         val on = sel.value[g.id]?.contains(m.id) == true
                         val pick = {
                             val cur = sel.value[g.id] ?: emptySet()
-                            val next = if (g.max_select <= 1) setOf(m.id)
-                            else if (cur.contains(m.id)) cur - m.id else cur + m.id
+                            // at most 1: one choice; at most 0: as many as wanted; else up to the limit
+                            val next = when {
+                                cur.contains(m.id) -> if (g.max_select == 1 && g.min_select > 0) cur else cur - m.id
+                                g.max_select == 1 -> setOf(m.id)
+                                g.max_select > 1 && cur.size >= g.max_select -> cur
+                                else -> cur + m.id
+                            }
                             sel.value = sel.value + (g.id to next)
                         }
                         val label = m.name + if (m.price > 0) " +${Money.format(m.price)}" else ""

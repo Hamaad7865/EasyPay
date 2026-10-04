@@ -6,6 +6,7 @@ import com.restopos.core.common.Money
 import com.restopos.core.common.tableLabel
 import com.restopos.core.data.Calc
 import com.restopos.core.data.DiscountPick
+import com.restopos.core.data.OrderOps
 import com.restopos.core.data.PayInput
 import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.PaymentTypeEntity
@@ -38,6 +39,7 @@ sealed interface PayUiState {
         val reference: String,
         val error: String?,
         val notice: String? = null,
+        val note: String = "", // a remark for the kitchen and the receipt
     ) : PayUiState
 
     data class Done(val receipt: ReceiptEntity, val change: Long) : PayUiState
@@ -48,6 +50,7 @@ class PaymentViewModel @Inject constructor(
     private val tickets: TicketRepository,
     private val db: TillDatabase,
     private val session: SessionStore,
+    private val orderOps: OrderOps,
 ) : ViewModel() {
     private val _state = MutableStateFlow<PayUiState>(PayUiState.Loading)
     val state: StateFlow<PayUiState> = _state
@@ -60,7 +63,7 @@ class PaymentViewModel @Inject constructor(
     private fun dueFor(ids: Set<String>): Long {
         val picked = calc.filterKeys { ids.contains(it) }.values.toList()
         val d = discount
-        return Calc.totals(picked, listOfNotNull(d?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) })).total
+        return Calc.totalsRounded(picked, listOfNotNull(d?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) })).total
     }
 
     // Loads what is still unpaid. Every line starts ticked: paying the whole
@@ -74,16 +77,14 @@ class PaymentViewModel @Inject constructor(
             amounts[l.id] = base
             l.id to Calc.Line(base, db.catalog().lineTaxes(l.id).map { Calc.TaxRate(it.rate_bp, it.type) })
         }
-        discount = session.pendingDiscount()?.let { id ->
-            db.catalog().discount(id)?.let { DiscountPick(it.id, it.type, it.value, it.name) }
-        }
+        discount = tickets.pendingDiscount()
         val methods = db.catalog().paymentTypes().first()
         val cur = _state.value as? PayUiState.Ready
         val lines = unpaid.map { PayLine(it.id, it.qty, it.name_snapshot, amounts[it.id] ?: 0, true) }
         val title = t.name ?: t.table_id?.let { db.tables().table(it)?.name }?.let { tableLabel(it) } ?: "Direct sale"
         _state.value = PayUiState.Ready(
             title, lines, dueFor(lines.map { it.id }.toSet()), methods,
-            cur?.selected ?: methods.firstOrNull(), null, "", null, notice,
+            cur?.selected ?: methods.firstOrNull(), null, "", null, notice, cur?.note ?: t.note ?: "",
         )
     }
 
@@ -108,6 +109,11 @@ class PaymentViewModel @Inject constructor(
         _state.value = s.copy(reference = v.take(64))
     }
 
+    fun note(v: String) {
+        val s = _state.value as? PayUiState.Ready ?: return
+        _state.value = s.copy(note = v.take(120))
+    }
+
     // Cash: received >= the amount due closes with change. Less than that is
     // refused: a part payment would reach the server as a short receipt.
     // Card/wallet/QR: the amount due in one go, with an optional reference.
@@ -129,11 +135,14 @@ class PaymentViewModel @Inject constructor(
         viewModelScope.launch {
             val m = s.selected ?: return@launch
             paying = true
+            // the remark goes on the order first, so the receipt and the kitchen ticket carry it
+            if (s.note.trim() != (tickets.activeTicket()?.note ?: "")) tickets.setNote(s.note.trim())
             val covered = s.lines.filter { it.selected }.map { it.id }
             // a zero total (fully discounted) is paid with no payment row
             val payments = if (amount > 0) listOf(PayInput(m.id, amount, tendered, change, ref)) else emptyList()
             tickets.pay(payments, listOfNotNull(discount), 0, covered).fold(
                 onSuccess = { receipt ->
+                    orderOps.afterPay(receipt)
                     val closed = tickets.activeTicket() == null
                     if (closed) {
                         session.setPendingDiscount(null)

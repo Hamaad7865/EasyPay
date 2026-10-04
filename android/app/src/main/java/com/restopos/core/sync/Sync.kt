@@ -91,6 +91,8 @@ class PullWorker @AssistedInject constructor(
                         db.catalog().clearCatalog()
                         db.staff().clearStaff()
                         db.tables().clearTables()
+                        db.ops().clearPrinters()
+                        db.ops().clearSettings()
                         db.sync().saveCursor(SyncStateEntity(store, 0, pageEpochs))
                     }
                     cursor = 0

@@ -26,6 +26,9 @@ import com.restopos.core.database.ShiftEntity
 import com.restopos.core.sync.SyncScheduler
 import com.restopos.core.sync.pushNow
 import com.restopos.core.ui.Pos
+import com.restopos.feature.more.MoreViewModel
+import com.restopos.feature.more.PrinterList
+import androidx.hilt.navigation.compose.hiltViewModel
 import java.text.DateFormat
 import java.util.Date
 
@@ -54,9 +57,9 @@ fun SettingsScreen(
         }
         // only on a till where staff sign in with a PIN
         if (user != null) {
-            Section("Sales period") {
+            Section("Shift") {
                 if (shift == null) {
-                    Text("No sales period is open on this till.", color = Pos.Text, fontSize = 14.sp)
+                    Text("No shift is open on this till.", color = Pos.Text, fontSize = 14.sp)
                 } else {
                     Text(
                         "Open since ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(shift.opened_at))}, " +
@@ -64,13 +67,14 @@ fun SettingsScreen(
                         color = Pos.Text, fontSize = 14.sp,
                     )
                     if (user.can("shift.open_close")) {
-                        Button(onClick = onClosePeriod) { Text("Close sales period") }
+                        Button(onClick = onClosePeriod) { Text("Close shift") }
                     } else {
                         Text("${user.employee.name} is not allowed to close it.", color = Pos.Text3, fontSize = 13.sp)
                     }
                 }
             }
         }
+        Section("Printers") { PrinterList(hiltViewModel<MoreViewModel>()) }
         Section("Sync") {
             Text(
                 when {

@@ -129,6 +129,18 @@ private fun Ready(s: PayUiState.Ready, vm: PaymentViewModel) {
                     )
                 }
             }
+            BasicTextField(
+                value = s.note,
+                onValueChange = { vm.note(it) },
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)).background(Pos.Panel).padding(horizontal = 14.dp, vertical = 14.dp),
+                singleLine = true,
+                textStyle = TextStyle(color = Pos.Text, fontSize = 15.sp),
+                cursorBrush = SolidColor(Pos.Text),
+                decorationBox = { inner ->
+                    if (s.note.isEmpty()) Text("Remark for the kitchen and the receipt (optional)", color = Pos.Text3, fontSize = 15.sp)
+                    inner()
+                },
+            )
             Spacer(Modifier.weight(1f))
             s.notice?.let { Text(it, Modifier.padding(horizontal = 4.dp), color = Pos.Link, fontSize = 13.sp) }
             s.error?.let { Text(it, Modifier.padding(horizontal = 4.dp), color = Pos.Pink, fontSize = 13.sp) }

@@ -9,6 +9,7 @@ import com.restopos.core.data.Calc
 import com.restopos.core.data.CatalogRepository
 import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.ModPick
+import com.restopos.core.data.OrderOps
 import com.restopos.core.data.PayInput
 import com.restopos.core.data.StaffMember
 import com.restopos.core.data.StaffSession
@@ -16,6 +17,7 @@ import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.DiningOptionEntity
 import com.restopos.core.database.DiscountEntity
+import com.restopos.core.database.EmployeeEntity
 import com.restopos.core.database.ItemEntity
 import com.restopos.core.database.ModifierEntity
 import com.restopos.core.database.ModifierGroupEntity
@@ -66,6 +68,12 @@ sealed interface SaleAction {
     data class PickCourse(val course: Int) : SaleAction // the course new items go to
     data object AddCourse : SaleAction
     data object NewTicket : SaleAction
+    data class RemoveLine(val lineId: String) : SaleAction // deleted before it is sent, voided after
+    data object Save : SaleAction // sends what the kitchen has not had, and puts the order away
+    data object PrintBill : SaleAction
+    data object ReprintKitchen : SaleAction
+    data class SetWaiter(val employeeId: String) : SaleAction
+    data class SetNote(val note: String) : SaleAction
     data object DismissSheet : SaleAction
 }
 
@@ -92,6 +100,7 @@ class SaleViewModel @Inject constructor(
     private val db: TillDatabase,
     private val session: SessionStore,
     private val staff: StaffSession,
+    private val orderOps: OrderOps,
 ) : ViewModel() {
     private val cat = MutableStateFlow<String?>(null)
     private val query = MutableStateFlow("")
@@ -129,6 +138,21 @@ class SaleViewModel @Inject constructor(
     private val _courses = MutableStateFlow(1)
     val courses: StateFlow<Int> = _courses
 
+    // Who the order can be handed to.
+    private val _waiters = MutableStateFlow<List<EmployeeEntity>>(emptyList())
+    val waiters: StateFlow<List<EmployeeEntity>> = _waiters
+
+    // True when this order's type goes to the kitchen on Save (dine in). A
+    // type that goes when it is paid (take away) has no Save.
+    private val _saves = MutableStateFlow(true)
+    val saves: StateFlow<Boolean> = _saves
+
+    // Set when Save has sent the order and put it away: the screen goes back
+    // to the list it came from.
+    private val _saved = MutableStateFlow(false)
+    val saved: StateFlow<Boolean> = _saved
+    fun savedShown() { _saved.value = false }
+
     private val _sheet = MutableStateFlow<SheetData?>(null)
     val sheet: StateFlow<SheetData?> = _sheet
 
@@ -149,7 +173,7 @@ class SaleViewModel @Inject constructor(
     val till: StateFlow<String> = _till
 
     // Who is at the register (null on a till with no staff PINs), and this
-    // till's open sales period.
+    // till's open shift.
     val user: StateFlow<StaffMember?> = staff.current
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -214,9 +238,11 @@ class SaleViewModel @Inject constructor(
         }
         _dining.value = db.catalog().diningOptions()
         // the discount the pay screen will apply, so both show the same total
-        _discount.value = session.pendingDiscount()?.let { id ->
-            db.catalog().discount(id)?.let { DiscountPick(it.id, it.type, it.value, it.name) }
-        }
+        _discount.value = tickets.pendingDiscount()
+        val type = (_ticket.value?.dining_option_id ?: session.pendingDining())?.let { id -> _dining.value.firstOrNull { it.id == id } }
+            ?: _dining.value.firstOrNull { it.is_default }
+        _saves.value = (type?.kitchen ?: "save") == "save"
+        _waiters.value = session.storeId()?.let { db.staff().staff(it).first() } ?: emptyList()
         reloadLines()
     }
 
@@ -237,7 +263,7 @@ class SaleViewModel @Inject constructor(
             Calc.Line(Calc.lineAmount(l.unit_price, l.qty) + mods, taxes.map { Calc.TaxRate(it.rate_bp, it.type) })
         }
         val d = _discount.value
-        _totals.value = Calc.totals(calcLines, listOfNotNull(d?.let {
+        _totals.value = Calc.totalsRounded(calcLines, listOfNotNull(d?.let {
             Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value)
         }))
     }
@@ -277,8 +303,23 @@ class SaleViewModel @Inject constructor(
                 setQty(line, qty)
             }
             is SaleAction.VoidLine -> {
-                tickets.voidLine(a.lineId, a.reason)
-                    .onFailure { _toast.value = it.message }
+                orderOps.remove(a.lineId).onFailure { _toast.value = it.message }
+                reload()
+            }
+            is SaleAction.RemoveLine -> {
+                orderOps.remove(a.lineId).onFailure { _toast.value = it.message }
+                reload()
+            }
+            is SaleAction.Save -> save()
+            is SaleAction.PrintBill -> orderOps.printBill(_discount.value).onFailure { _toast.value = it.message }
+            is SaleAction.ReprintKitchen -> orderOps.reprintKitchen()
+                .fold({ _toast.value = "Sent to the kitchen again" }, { _toast.value = it.message })
+            is SaleAction.SetWaiter -> {
+                orderOps.setWaiter(a.employeeId).onFailure { _toast.value = it.message }
+                reload()
+            }
+            is SaleAction.SetNote -> {
+                tickets.setNote(a.note.trim()).onFailure { _toast.value = it.message }
                 reload()
             }
             is SaleAction.SetName -> {
@@ -327,6 +368,28 @@ class SaleViewModel @Inject constructor(
 
     // Courses are for table service: an order on a table, or a named tab.
     // A direct sale has none.
+    // Save: the kitchen gets what it has not had, then the order is put away
+    // (it stays open, on its table and under Orders) and the register is free.
+    // If a printer did not answer, its items stay unsent and the order stays
+    // on the register so Save can be pressed again.
+    private suspend fun save() {
+        if (_lines.value.isEmpty()) { _toast.value = "Add an item first"; return }
+        orderOps.save().fold(
+            onSuccess = { r ->
+                if (r.errors.isNotEmpty()) {
+                    _toast.value = r.errors.first() + " Press Save again to send what is left."
+                    reload()
+                } else {
+                    tickets.newTicket()
+                    session.setPendingDiscount(null)
+                    reload()
+                    _saved.value = true
+                }
+            },
+            onFailure = { _toast.value = it.message },
+        )
+    }
+
     private fun courseForNewLine(): Int? =
         if (_byCourse.value && (_ticket.value?.name != null || _tableName.value != null)) _course.value else null
 
@@ -382,6 +445,7 @@ class SaleViewModel @Inject constructor(
         val payments = if (due > 0) listOf(PayInput(type.id, due, received, received - due)) else emptyList()
         tickets.pay(payments, listOfNotNull(_discount.value)).fold(
             onSuccess = { receipt ->
+                orderOps.afterPay(receipt)
                 session.setPendingDiscount(null)
                 _buffer.value = ""
                 reload()
@@ -392,11 +456,21 @@ class SaleViewModel @Inject constructor(
     }
 
     fun setDiscount(d: DiscountPick?) {
+        if (d != null && !staff.can("sale.apply_discount")) { _toast.value = "You are not allowed to give a discount. Ask someone who is."; return }
         _discount.value = d
         viewModelScope.launch {
-            session.setPendingDiscount(d?.discountId)
+            tickets.setPendingDiscount(d)
             reloadLines()
         }
+    }
+
+    // A new order of the type picked (Dine in, Take away): the order on the
+    // register is put away first.
+    fun startOrder(diningId: String?, then: () -> Unit) = viewModelScope.launch {
+        tickets.startOrder(diningId)
+        session.setPendingDiscount(null)
+        reload()
+        then()
     }
     fun toastShown() { _toast.value = null }
 

@@ -61,7 +61,7 @@ class StaffSession @Inject constructor() {
     fun rightPin(employeeId: String) { misses.remove(employeeId); lockedUntil.remove(employeeId) }
 }
 
-// Staff, clock punches and the sales period, all read from and written to
+// Staff, clock punches and the shift, all read from and written to
 // Room; every write queues its op in the same transaction (spec 5.1).
 @Singleton
 class StaffRepository @Inject constructor(
@@ -123,7 +123,7 @@ class StaffRepository @Inject constructor(
 
     suspend fun open(float: Long): Result<ShiftEntity> = runCatching {
         val who = staffSession.current.value ?: error("Sign in first")
-        require(who.can("shift.open_close")) { "${who.employee.name} is not allowed to open a sales period" }
+        require(who.can("shift.open_close")) { "${who.employee.name} is not allowed to open a shift" }
         require(float >= 0) { "bad amount" }
         val store = session.storeId() ?: error("no store")
         val tenant = session.tenantId() ?: error("no tenant")
@@ -149,10 +149,10 @@ class StaffRepository @Inject constructor(
 
     suspend fun close(counted: Long): Result<ShiftEntity> = runCatching {
         val who = staffSession.current.value ?: error("Sign in first")
-        require(who.can("shift.open_close")) { "${who.employee.name} is not allowed to close the sales period" }
+        require(who.can("shift.open_close")) { "${who.employee.name} is not allowed to close the shift" }
         require(counted >= 0) { "bad amount" }
         val device = session.deviceId() ?: error("no device")
-        val open = db.staff().openShift(device) ?: error("No sales period is open")
+        val open = db.staff().openShift(device) ?: error("No shift is open")
         val now = System.currentTimeMillis()
         val closed = open.copy(closed_by = who.employee.id, closed_at = now, counted_cash = counted, expected_cash = expectedCash(open))
         db.withTransaction {
@@ -163,6 +163,7 @@ class StaffRepository @Inject constructor(
             }))
         }
         pushNow(context)
+        cash.printShiftBehind(closed)
         closed
     }
 

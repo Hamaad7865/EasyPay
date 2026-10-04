@@ -20,6 +20,7 @@ import com.restopos.core.print.ZDoc
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.pushNow
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -156,6 +157,13 @@ class CashOps @Inject constructor(
     suspend fun printShift(shift: ShiftEntity): Result<Unit> = runCatching {
         val p = printing.receiptPrinter() ?: throw PrintError("No receipt printer is set up. Add one in the back office, under Printers.")
         printing.send(p, Docs.shift(shiftDoc(shift), printing.shop(), printing.paper(p), printing.settings().decimals)).getOrThrow()
+    }
+
+    // After a shift is closed: its report, without holding the till up.
+    fun printShiftBehind(shift: ShiftEntity) {
+        printing.scope.launch {
+            if (printing.receiptPrinter() != null) printShift(shift).onFailure { printing.report(it.message ?: "The shift report did not print") }
+        }
     }
 
     suspend fun currentShift(): ShiftEntity? = session.deviceId()?.let { db.staff().openShift(it) }

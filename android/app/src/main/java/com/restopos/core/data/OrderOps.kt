@@ -17,6 +17,7 @@ import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.pushNow
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -84,6 +85,25 @@ class OrderOps @Inject constructor(
         val out = docs.kitchen(t, fresh, "ORDER")
         markSent(ticketId, out.printed)
         out.errors.forEach { printing.report(it) }
+    }
+
+    // After a payment: the receipt prints, the drawer opens if the payment
+    // type opens it, and anything paid that the kitchen never had is sent.
+    // None of it holds the till up: it runs behind, and a printer that does
+    // not answer is reported on the screen.
+    fun afterPay(r: ReceiptEntity) {
+        printing.scope.launch {
+            runCatching {
+                val types = db.ops().allPaymentTypes().associateBy { it.id }
+                val drawer = db.receipts().payments(r.id).any { types[it.payment_type_id]?.opens_drawer == true }
+                val doc = docs.decode(r.doc ?: db.ops().receipt(r.id)?.doc)
+                if (doc != null && printing.receiptPrinter() != null) {
+                    docs.print(doc, drawer).onFailure { printing.report(it.message ?: "The receipt did not print") }
+                }
+                val unsent = db.tickets().allLines(r.ticket_id).filter { it.paid && it.sent_to_kitchen_at == null && it.voided_at == null }.map { it.id }
+                if (unsent.isNotEmpty()) sendOnPay(r.ticket_id, unsent)
+            }
+        }
     }
 
     // The same kitchen tickets again, for an order whose paper was lost.
