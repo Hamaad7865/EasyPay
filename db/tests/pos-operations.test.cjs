@@ -201,6 +201,39 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
     check('T10 another restaurant sees none of these rows', n === 0, String(n));
   }
 
+  // T11 delete all transactions: the owner only, and only through the function
+  {
+    const before = (await q1(`select count(*)::int n from receipts where tenant_id = $1`, [tid])).n;
+    let direct = '';
+    try { await asApp(tid, () => c.query(`delete from receipts where tenant_id = $1`, [tid])); } catch (e) { direct = e.message; }
+    let refused = '';
+    try { await asApp(tid, () => c.query(`select purge_transactions($1, $2)`, [tid, cashier])); } catch (e) { refused = e.message; }
+    let wrongTenant = '';
+    try { await asApp(crypto.randomUUID(), () => c.query(`select purge_transactions($1, $2)`, [tid, owner])); } catch (e) { wrongTenant = e.message; }
+    const still = (await q1(`select count(*)::int n from receipts where tenant_id = $1`, [tid])).n;
+    check('T11 a plain delete of receipts is still refused', direct.includes('insert-only'), direct);
+    check('T11 a cashier cannot delete all transactions', refused === 'forbidden' && still === before && before > 0, refused);
+    check('T11 nor can someone working in another restaurant', wrongTenant === 'forbidden', wrongTenant);
+    const out = await asApp(tid, async () => (await c.query(`select purge_transactions($1, $2) as r`, [tid, owner])).rows[0].r);
+    const left = await q1(`select (select count(*) from receipts where tenant_id = $1)::int r, (select count(*) from tickets where tenant_id = $1)::int t,
+      (select count(*) from shifts where tenant_id = $1)::int s, (select count(*) from cash_movements where tenant_id = $1)::int m,
+      (select count(*) from items where tenant_id = $1)::int i, (select count(*) from printers where tenant_id = $1)::int p`, [tid]);
+    check('T11 the owner can: orders, receipts, shifts and cash movements are gone', Number(out.receipts) === before && left.r === 0 && left.t === 0 && left.s === 0 && left.m === 0, JSON.stringify(left));
+    check('T11 the menu and the printers stay', left.i > 0 && left.p === 1);
+    // a sale made after the purge is as protected as any other, also from the owner connection
+    const tk = crypto.randomUUID(), rc = crypto.randomUUID();
+    await push([
+      op('ticket.create', { id: tk, store_id: store }),
+      op('ticket.add_line', { id: crypto.randomUUID(), ticket_id: tk, item_id: dp.id, qty: 1000 }),
+      op('receipt.create', { id: rc, ticket_id: tk, store_id: store, device_id: dev, number: 'PO-AFTER', device_seq: 1,
+        payments: [{ payment_type_id: cash, amount: 5000 }], device_time: at(200) }),
+    ]);
+    let after = '';
+    try { await c.query(`delete from receipts where id = $1`, [rc]); } catch (e) { after = e.message; }
+    const kept = (await q1(`select count(*)::int n from receipts where id = $1`, [rc])).n;
+    check('T11 the way out closes behind it', after.includes('insert-only') && kept === 1, after);
+  }
+
   await devguard.cleanupTenant(c, tid);
   const left = await q1(`select (select count(*) from printers where tenant_id = $1)::int a, (select count(*) from stock_movements where tenant_id = $1)::int b`, [tid]);
   check('cleanup removed the probe rows', left.a === 0 && left.b === 0);

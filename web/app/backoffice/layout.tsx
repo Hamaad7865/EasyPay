@@ -2,10 +2,8 @@ import { isSuspended, tenantContext } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
 import { auth } from "@/lib/auth/server";
 import { redirect } from "next/navigation";
+import { LogOut, Store } from "lucide-react";
 import { SideNav } from "./side-nav";
-
-const PERSON =
-  "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z";
 
 export default async function BackofficeLayout({ children }: { children: React.ReactNode }) {
   const ctx = await tenantContext();
@@ -31,7 +29,8 @@ export default async function BackofficeLayout({ children }: { children: React.R
           <span className="bo-brand-mark">R</span>RestoPOS
         </div>
         <div className="bo-restaurant" title={restaurant}>
-          {restaurant}
+          <Store aria-hidden="true" />
+          <span>{restaurant}</span>
         </div>
         <SideNav />
       </aside>
@@ -42,18 +41,17 @@ export default async function BackofficeLayout({ children }: { children: React.R
           <span className="bo-top-id">ID: {ctx.tenantId.slice(0, 8).toUpperCase()}</span>
           <span className="bo-top-spacer" />
           <span className="bo-top-user">
-            <span className="bo-avatar">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d={PERSON} />
-              </svg>
-            </span>
+            <span className="bo-avatar">{(who.employee ?? "?").trim().slice(0, 1).toUpperCase()}</span>
             <span>
               {who.employee ?? "Signed in"}
-              {ctx.role && <small> · {ctx.role}</small>}
+              {ctx.role && <small>{ctx.role}</small>}
             </span>
           </span>
           <form action={signOut}>
-            <button type="submit">Sign out</button>
+            <button type="submit">
+              <LogOut aria-hidden="true" width={15} height={15} />
+              Sign out
+            </button>
           </form>
         </header>
         <main className="bo-main">

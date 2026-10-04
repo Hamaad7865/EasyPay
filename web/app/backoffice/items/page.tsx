@@ -1,138 +1,132 @@
-import { revalidatePath } from "next/cache";
-import { requirePerm, tenantContext } from "@/lib/tenant";
+import Link from "next/link";
+import { Plus, UtensilsCrossed } from "lucide-react";
+import { tenantContext } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
-import { fmtRs, parseRs } from "@/lib/money";
+import { act, on, Refused, uuid } from "@/lib/action";
+import { parseRs } from "@/lib/money";
+import { loadSettings, money } from "@/lib/settings";
+import { Empty, Flash, one, PageHead, type Search } from "../ui";
 
 type ItemRow = {
   id: string;
   name: string;
   price: string;
   is_available: boolean;
-  category_id: string | null;
   cat_name: string | null;
+  tax: string | null;
+  addons: number;
 };
 
-async function addItem(formData: FormData) {
+// Price and availability are what change day to day, so they are edited in
+// the list; everything else is on the item's own page.
+async function quickSave(f: FormData) {
   "use server";
-  const ctx = await requirePerm("items.edit");
-  const name = String(formData.get("name") ?? "").trim();
-  const price = parseRs(String(formData.get("price") ?? ""));
-  const categoryId = String(formData.get("category") ?? "") || null;
-  if (!name || price === null) return;
-  await withTenant(ctx.tenantId, (c) =>
-    c.query(`insert into items (tenant_id, category_id, name, price) values ($1, $2, $3, $4)`, [
+  const back = String(f.get("back") ?? "/backoffice/items");
+  await act("items.edit", back.startsWith("/backoffice/items") ? back : "/backoffice/items", async (c, ctx) => {
+    const id = uuid(f, "id");
+    const price = parseRs(String(f.get("price") ?? ""));
+    if (price === null) throw new Refused("The price is not a number.");
+    await c.query(`update items set price = $3, is_available = $4 where tenant_id = $1 and id = $2 and deleted_at is null`, [
       ctx.tenantId,
-      categoryId,
-      name,
-      price,
-    ]),
-  );
-  revalidatePath("/backoffice/items");
-}
-
-async function saveItem(formData: FormData) {
-  "use server";
-  const ctx = await requirePerm("items.edit");
-  const id = String(formData.get("id") ?? "");
-  const price = parseRs(String(formData.get("price") ?? ""));
-  const available = formData.get("available") === "on";
-  if (!id || price === null) return;
-  await withTenant(ctx.tenantId, (c) =>
-    c.query(`update items set price = $1, is_available = $2 where id = $3 and tenant_id = $4`, [
-      price,
-      available,
       id,
-      ctx.tenantId,
-    ]),
-  );
-  revalidatePath("/backoffice/items");
+      price,
+      on(f, "available"),
+    ]);
+    return "Item saved.";
+  });
 }
 
-export default async function ItemsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ cat?: string }>;
-}) {
-  const ctx = await tenantContext();
+export default async function ItemsPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
-  const cats = await withTenant(ctx.tenantId, (c) =>
-    c
-      .query(`select id, name from categories where deleted_at is null and tenant_id = $1 order by sort_order, name`, [
-        ctx.tenantId,
-      ])
-      .then((r) => r.rows as { id: string; name: string }[]),
-  );
-  const items = await withTenant(ctx.tenantId, (c) =>
-    c
-      .query(
-        `select i.id, i.name, i.price, i.is_available, i.category_id, c.name as cat_name
+  const cat = one(sp.category) || one(sp.cat);
+  const q = one(sp.q).trim();
+  const ctx = await tenantContext();
+  const d = await withTenant(ctx.tenantId, async (c) => ({
+    settings: await loadSettings(c, ctx.tenantId),
+    cats: (
+      await c.query(`select id, name from categories where deleted_at is null and tenant_id = $1 order by sort_order, name`, [ctx.tenantId])
+    ).rows as { id: string; name: string }[],
+    items: (
+      await c.query(
+        `select i.id, i.name, i.price, i.is_available, c.name as cat_name,
+                (select string_agg(t.name, ', ') from item_taxes it join taxes t on t.tenant_id = it.tenant_id and t.id = it.tax_id
+                  where it.tenant_id = i.tenant_id and it.item_id = i.id and it.deleted_at is null) as tax,
+                (select count(*)::int from item_modifier_groups g where g.tenant_id = i.tenant_id and g.item_id = i.id and g.deleted_at is null) as addons
            from items i left join categories c on c.id = i.category_id and c.tenant_id = i.tenant_id
-          where i.deleted_at is null and i.tenant_id = $2
-            and ($1::uuid is null or i.category_id = $1::uuid)
-          order by i.name`,
-        [sp.cat || null, ctx.tenantId],
+          where i.deleted_at is null and i.tenant_id = $1
+            and ($2::uuid is null or i.category_id = $2::uuid)
+            and ($3 = '' or i.name ilike '%' || $3 || '%')
+          order by c.sort_order nulls last, i.name`,
+        [ctx.tenantId, /^[0-9a-f-]{36}$/i.test(cat) ? cat : null, q],
       )
-      .then((r) => r.rows as ItemRow[]),
-  );
+    ).rows as ItemRow[],
+  }));
+  const here = "/backoffice/items" + (cat ? `?category=${cat}` : "");
   return (
     <div>
-      <h1>Items</h1>
+      <PageHead title="Items" lede="What the till sells. Change a price or mark something sold out here; open an item for its tax, add-ons and category.">
+        <Link href="/backoffice/items/edit" className="btn">
+          <Plus aria-hidden="true" />
+          Add item
+        </Link>
+      </PageHead>
+      <Flash sp={sp} />
       <p className="bo-chips">
-        <a href="/backoffice/items" className={sp.cat ? undefined : "on"}>
-          All
-        </a>
-        {cats.map((c) => (
-          <a key={c.id} href={`/backoffice/items?cat=${c.id}`} className={sp.cat === c.id ? "on" : undefined}>
-            {c.name}
-          </a>
+        <Link href="/backoffice/items" className={cat ? undefined : "on"}>All</Link>
+        {d.cats.map((c) => (
+          <Link key={c.id} href={`/backoffice/items?category=${c.id}`} className={cat === c.id ? "on" : undefined}>{c.name}</Link>
         ))}
       </p>
-      <form action={addItem} className="bo-toolbar">
-        <input name="name" placeholder="Name" required />{" "}
-        <input name="price" placeholder="Price Rs" required />{" "}
-        <select name="category" defaultValue="">
-          <option value="">No category</option>
-          {cats.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>{" "}
-        <button type="submit">Add item</button>
+      <form className="bo-toolbar" action="/backoffice/items">
+        {cat && <input type="hidden" name="category" value={cat} />}
+        <input name="q" defaultValue={q} placeholder="Search items" style={{ minWidth: 260 }} />
+        <button type="submit" className="btn-quiet">Search</button>
       </form>
-      <table>
-        <thead>
-          <tr>
-            <th>Item</th>
-            <th>Category</th>
-            <th>Change</th>
-            <th>Price</th>
-            <th>Available</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((it) => (
-            <tr key={it.id}>
-              <td>{it.name}</td>
-              <td>{it.cat_name ?? "—"}</td>
-              <td>
-                <form action={saveItem} style={{ display: "inline" }}>
-                  <input type="hidden" name="id" value={it.id} />
-                  <input name="price" defaultValue={(Number(it.price) / 100).toString()} size={8} />{" "}
-                  <label>
-                    <input type="checkbox" name="available" defaultChecked={it.is_available} /> avail
-                  </label>{" "}
-                  <button type="submit" className="btn-quiet">
-                    Save
-                  </button>
-                </form>
-              </td>
-              <td>{fmtRs(Number(it.price))}</td>
-              <td>{it.is_available ? "yes" : "no"}</td>
+      {d.items.length === 0 ? (
+        <Empty icon={UtensilsCrossed} title={q ? "No item matches that search" : "No items here yet"}>
+          <Link href="/backoffice/items/edit">Add the first one</Link>
+        </Empty>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Category</th>
+              <th>Tax</th>
+              <th>Add-ons</th>
+              <th className="num">Price</th>
+              <th>Change price</th>
+              <th>On sale</th>
+              <th />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {d.items.map((it) => (
+              <tr key={it.id}>
+                <td><Link href={`/backoffice/items/edit?id=${it.id}`} className="strong">{it.name}</Link></td>
+                <td>{it.cat_name ?? <span className="muted">None</span>}</td>
+                <td>{it.tax ?? <span className="badge amber">No tax set</span>}</td>
+                <td>{it.addons > 0 ? `${it.addons} ${it.addons === 1 ? "group" : "groups"}` : <span className="muted">None</span>}</td>
+                <td className="num">{money(Number(it.price), d.settings.decimals)}</td>
+                <td><input form={"i" + it.id} name="price" defaultValue={(Number(it.price) / 100).toString()} className="narrow" inputMode="decimal" aria-label={`Price of ${it.name}`} /></td>
+                <td>
+                  <label className="check" style={{ margin: 0 }}>
+                    <input form={"i" + it.id} type="checkbox" name="available" defaultChecked={it.is_available} />
+                    {it.is_available ? "Yes" : <span className="flag">Sold out</span>}
+                  </label>
+                </td>
+                <td>
+                  <form id={"i" + it.id} action={quickSave} className="row-actions">
+                    <input type="hidden" name="id" value={it.id} />
+                    <input type="hidden" name="back" value={here} />
+                    <button type="submit" className="btn-quiet btn-sm">Save</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
