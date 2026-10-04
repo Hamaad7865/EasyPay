@@ -3,17 +3,36 @@
 Kotlin + Compose + Hilt + Room + WorkManager + Ktor (OkHttp). Min SDK 26,
 compile SDK 36.
 
-Built: owner sign-in, store and device setup, the menu mirrored into Room by
-the pull worker, the sale grid, ticket building with modifiers and a discount,
-payment of the whole bill (cash with change, or card/wallet with a reference),
-the receipts list, and the outbox with its push worker.
+Built: sign-in, store and device setup, the menu mirrored into Room by the
+pull worker, and four tabs along the bottom:
 
-Not built yet: splitting a bill by item (the server supports it, the screen
-has no line selection), service charge and rounding settings, refunds, staff
-PIN, printing, the kitchen display.
+- **Register:** the order and a keypad on the left, the category strip in the
+  middle (each category in the colour set in the back office), the open
+  category's items on the right, Pay along the bottom. A number typed on the
+  keypad is used by what is tapped next: an item (that many), the × key (the
+  selected line's quantity), Guests, or Cash (the amount received; nothing
+  typed means exact). Cash and Card pay everything unpaid in one receipt.
+  Tab name, guests and the dining option are stored on the ticket. Actions
+  holds New order and the discounts. The magnifier searches the whole menu.
+- **Orders:** the orders opened on this tablet that are not fully paid; tap
+  one to put it back on the register.
+- **Receipts:** the receipts issued on this tablet.
+- **Settings:** this till, the state of its sync, rejected changes, sign-out.
 
-It compiles and its unit tests pass. It has not been run on a tablet yet; the
-three checks below are the first thing to do on one.
+Pay (the bar under the items) is the full payment screen: split by item, any
+payment type, a reference.
+
+Not built yet: tables and a floor plan, customers, sending to the kitchen,
+tips, splitting a bill evenly, service charge and rounding settings, refunds,
+staff PIN, printing, barcode scanning. A till only shows its own orders and
+receipts: the pull does not bring other tills' tickets down.
+
+The layout is drawn for a 1024 x 720dp landscape tablet and scaled to the
+screen it runs on (`MainActivity.attachBaseContext`); the app is locked to
+landscape. Colours live in `core/ui/PosTheme.kt`.
+
+It has been run on a 2560 x 1600 emulator against the dev branch. The three
+checks below are the first thing to do on a real tablet.
 
 ## Build
 

@@ -79,6 +79,9 @@ interface CatalogDao {
     @Query("SELECT * FROM modifier_groups WHERE id IN (SELECT group_id FROM item_modifier_groups WHERE item_id = :item)")
     suspend fun groupsForItem(item: String): List<ModifierGroupEntity>
 
+    @Query("SELECT * FROM dining_options WHERE deleted_at IS NULL ORDER BY sort_order, name")
+    suspend fun diningOptions(): List<DiningOptionEntity>
+
     @Query("SELECT * FROM payment_types WHERE deleted_at IS NULL AND is_active ORDER BY sort_order")
     fun paymentTypes(): kotlinx.coroutines.flow.Flow<List<PaymentTypeEntity>>
 

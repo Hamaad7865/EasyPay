@@ -1,15 +1,23 @@
 package com.restopos.app
 
+import android.content.Context
+import android.content.res.Configuration
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
 import com.restopos.core.network.AuthClient
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.SyncScheduler
+import com.restopos.core.ui.Pos
+import com.restopos.core.ui.PosTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -24,13 +32,35 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var auth: AuthClient
     @Inject lateinit var db: com.restopos.core.database.TillDatabase
 
+    // The screens are drawn for a 1024 x 720dp landscape tablet and scaled to
+    // the tablet they run on: a 15-inch till shows the same layout larger,
+    // instead of the same sizes lost in empty space. The smaller of the two
+    // ratios is used, so a wide 16:10 tablet keeps the height the order list
+    // and keypad need. Done on the activity's configuration rather than in
+    // Compose, so dialogs and menus (separate windows) scale as well.
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(newBase)
+        val base = newBase.resources.configuration
+        val width = maxOf(base.screenWidthDp, base.screenHeightDp)
+        val height = minOf(base.screenWidthDp, base.screenHeightDp)
+        val scale = minOf(width / 1024f, height / 720f).coerceIn(0.75f, 2f)
+        applyOverrideConfiguration(Configuration().apply {
+            densityDpi = (base.densityDpi * scale).toInt()
+            screenWidthDp = (base.screenWidthDp / scale).toInt()
+            screenHeightDp = (base.screenHeightDp / scale).toInt()
+            smallestScreenWidthDp = (base.smallestScreenWidthDp / scale).toInt()
+        })
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SyncScheduler.pullNow(this)
         setContent {
             val scope = rememberCoroutineScope()
-            MaterialTheme {
-                Surface {
+            PosTheme {
+                // clear of the status bar and the gesture bar
+                Box(Modifier.fillMaxSize().background(Pos.Bg).safeDrawingPadding()) {
+                Surface(color = Pos.Bg) {
                     AppNav(session) {
                         scope.launch {
                             // Unsynced sales exist only on this tablet: signing out
@@ -43,7 +73,7 @@ class MainActivity : ComponentActivity() {
                             // Refused changes exist only here until a manager has seen them.
                             val refused = db.outbox().deadCount()
                             if (refused > 0L) {
-                                Toast.makeText(this@MainActivity, "$refused rejected changes need a look first (menu, Rejected changes).", Toast.LENGTH_LONG).show()
+                                Toast.makeText(this@MainActivity, "$refused rejected changes need a look first (Settings, Rejected changes).", Toast.LENGTH_LONG).show()
                                 return@launch
                             }
                             SyncScheduler.stop(this@MainActivity)
@@ -54,6 +84,7 @@ class MainActivity : ComponentActivity() {
                             recreate()
                         }
                     }
+                }
                 }
             }
         }

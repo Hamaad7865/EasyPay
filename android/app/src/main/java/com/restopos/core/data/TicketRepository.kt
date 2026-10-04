@@ -17,6 +17,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -81,10 +82,31 @@ class TicketRepository @Inject constructor(
         return db.tickets().ticket(id)!!
     }
 
-    suspend fun newTicket(): TicketEntity {
-        session.clearActiveTicket()
-        return ensureTicket()
+    // Parks the current order (it stays open, under Orders) and leaves the
+    // register empty. The next item tapped opens a new order.
+    suspend fun newTicket() = session.clearActiveTicket()
+
+    // Brings a parked order back onto the register.
+    suspend fun select(ticketId: String) {
+        if (db.tickets().openTicket(ticketId) != null) session.setActiveTicket(ticketId)
     }
+
+    // Order details kept on the ticket: tab name, guests, dining option. Same
+    // rule as every write: the row and its outbox op in one transaction.
+    private suspend fun updateMeta(change: (TicketEntity) -> TicketEntity, payload: JsonObjectBuilder.() -> Unit): Result<Unit> =
+        runCatching {
+            val t = ensureTicket()
+            db.withTransaction {
+                db.tickets().upsertTicket(change(t).copy(updated_at = System.currentTimeMillis()))
+                db.outbox().enqueue(op("ticket.update_meta", buildJsonObject { put("ticket_id", t.id); payload() }))
+            }
+            pushNow(context)
+        }
+
+    // An empty name clears it (the server does the same).
+    suspend fun setName(name: String) = updateMeta({ it.copy(name = name.ifBlank { null }) }) { put("name", name) }
+    suspend fun setCovers(guests: Int) = updateMeta({ it.copy(covers = guests) }) { put("covers", guests) }
+    suspend fun setDining(optionId: String) = updateMeta({ it.copy(dining_option_id = optionId) }) { put("dining_option_id", optionId) }
 
     fun openTickets(store: String): Flow<List<TicketEntity>> = db.tickets().openTickets(store)
     fun ticketLines(ticket: String) = db.tickets().lines(ticket)

@@ -31,4 +31,12 @@ object Uuid7 {
         lsb = (lsb and Long.MIN_VALUE.inv() ushr 2 or (2L shl 62)) // variant 10
         return UUID(msb, lsb).toString()
     }
+
+    // When an id made here was created (its first 48 bits), or null for an id
+    // that is not a v7.
+    fun millis(id: String): Long? {
+        val hex = id.replace("-", "")
+        if (hex.length != 32 || hex[12] != '7') return null
+        return hex.substring(0, 12).toLongOrNull(16)
+    }
 }

@@ -16,8 +16,7 @@ import com.restopos.feature.auth.AuthViewModel
 import com.restopos.feature.auth.StoreDeviceScreen
 import com.restopos.feature.pay.PaymentScreen
 import com.restopos.feature.pay.ReceiptDoneScreen
-import com.restopos.feature.receipts.ReceiptsScreen
-import com.restopos.feature.sale.SaleScreen
+import com.restopos.feature.main.MainShell
 import com.restopos.feature.sync.RejectedScreen
 
 // Launch modes (spec 7/8): POS and KDS share this APK, chosen at device setup.
@@ -28,7 +27,6 @@ object Routes {
     const val SALE = "sale"
     const val PAY = "pay"
     const val DONE = "done/{receiptId}/{change}/{total}"
-    const val RECEIPTS = "receipts"
     const val REAUTH = "reauth"
     const val REJECTED = "rejected"
     const val KDS = "kds"
@@ -59,9 +57,10 @@ fun AppNav(session: SessionStore, onSignOut: () -> Unit) {
             })
         }
         composable(Routes.SALE) {
-            SaleScreen(
+            // Register, Orders, Receipts and Settings share this entry (tabs).
+            MainShell(
                 onPay = { nav.navigate(Routes.PAY) },
-                onReceipts = { nav.navigate(Routes.RECEIPTS) },
+                onPaid = { id, change, total -> nav.navigate("done/$id/$change/$total") },
                 onSignIn = { nav.navigate(Routes.REAUTH) },
                 onRejected = { nav.navigate(Routes.REJECTED) },
                 onSignOut = onSignOut,
@@ -82,9 +81,6 @@ fun AppNav(session: SessionStore, onSignOut: () -> Unit) {
                 onPrint = {},
                 onNewSale = { nav.navigate(Routes.SALE) { popUpTo(Routes.SALE) { inclusive = true } } },
             )
-        }
-        composable(Routes.RECEIPTS) {
-            ReceiptsScreen(onBack = { nav.popBackStack() })
         }
         // Signing in again on a tablet that is already set up: back to the
         // till afterwards, with its orders and unsynced sales untouched.
