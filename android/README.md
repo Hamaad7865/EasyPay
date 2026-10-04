@@ -6,12 +6,25 @@ compile SDK 36.
 Built: sign-in, store and device setup, the menu mirrored into Room by the
 pull worker, a start screen, and four tabs along the bottom:
 
-- **Start screen:** what the app opens on once the tablet is set up. It says
-  which till this is (business, store, device, version, network, sync) and
-  has one button, Open register. Lock, top left of the register, returns to
-  it. It is where the staff PIN and the sales period (spec 7.2, 7.7) will
-  go; neither is built, so today it only opens the register.
-
+- **Start screen:** what the app opens on once the tablet is set up, and
+  where Log out returns. Three states:
+  - nobody has a PIN (set in the back office, under Staff): one button, Open
+    register, as before. An update never locks a restaurant out.
+  - staff have PINs and nobody is clocked in: "Sales period is closed" (or
+    "No one is clocked in") with Clock in/out.
+  - someone is clocked in: their names as tiles. Tap yours, enter your PIN.
+    If no sales period is open, someone with `shift.open_close` confirms the
+    cash in the drawer (the cash count) and that opens it.
+- **Clock in/out:** two columns, each name needs its PIN. A punch is one row,
+  never changed; "clocked in" is "the last punch was in".
+- **Sales period:** one per till. Closed from Settings with a blind count;
+  the till then shows opening amount, cash taken, expected, counted and the
+  difference. The server works out the same expected figure.
+- **Who did it:** every outbox op carries the signed-in member of staff, and
+  the server acts as them. The register shows their name. What the server
+  would refuse (payment or a discount without the permission, a restricted
+  discount without someone allowed to give it) is refused on the till before
+  money is recorded.
 - **Register:** the order and a keypad on the left, the category strip in the
   middle (each category in the colour set in the back office), the open
   category's items on the right, Pay along the bottom. A number typed on the
@@ -32,7 +45,8 @@ payment type, a reference.
 
 Not built yet: tables and a floor plan, customers, sending to the kitchen,
 tips, splitting a bill evenly, service charge and rounding settings, refunds,
-staff PIN, printing, barcode scanning. A till only shows its own orders and
+printing, barcode scanning, pay in and pay out, X and Z reports, locking
+after inactivity, a manager's PIN to override a refusal, QR sign-in. A till only shows its own orders and
 receipts: the pull does not bring other tills' tickets down.
 
 The layout is drawn for a 1024 x 720dp landscape tablet and scaled to the
