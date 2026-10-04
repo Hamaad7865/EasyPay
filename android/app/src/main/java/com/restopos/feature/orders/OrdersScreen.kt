@@ -27,6 +27,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Money
 import com.restopos.core.common.Uuid7
+import com.restopos.core.common.tableLabel
 import com.restopos.core.data.Calc
 import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.TillDatabase
@@ -64,18 +65,21 @@ class OrdersViewModel @Inject constructor(
         val store = session.storeId() ?: return@launch
         val active = session.activeTicket()
         val time = DateFormat.getTimeInstance(DateFormat.SHORT)
+        val tables = db.tables().tablesNow(store).associateBy { it.id }
         _rows.value = tickets.openTickets(store).first().mapNotNull { t ->
             val unpaid = db.tickets().lines(t.id).first().filter { !it.paid }
             // an order with nothing on it and no name is only an empty register
             if (unpaid.isEmpty() && t.name == null && t.id != active) return@mapNotNull null
             val total = unpaid.sumOf { Calc.lineAmount(it.unit_price, it.qty) + db.tickets().modSum(it.id) }
             val opened = Uuid7.millis(t.id)?.let { time.format(Date(it)) }
+            val table = t.table_id?.let { tables[it] }
             val count = unpaid.sumOf { it.qty } / 1000
             OrderRow(
                 id = t.id,
-                label = t.name ?: opened?.let { "Order $it" } ?: "Order",
+                label = t.name ?: table?.let { tableLabel(it.name) } ?: opened?.let { "Order $it" } ?: "Order",
                 detail = listOfNotNull(
-                    opened?.takeIf { t.name != null }?.let { "Opened $it" },
+                    table?.takeIf { t.name != null }?.let { tableLabel(it.name) },
+                    opened?.takeIf { t.name != null || table != null }?.let { "Opened $it" },
                     if (count == 1) "1 item" else "$count items",
                     t.covers?.let { if (it == 1) "1 guest" else "$it guests" },
                 ).joinToString(" · "),

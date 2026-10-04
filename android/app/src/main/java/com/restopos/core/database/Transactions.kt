@@ -29,6 +29,8 @@ data class TicketEntity(
     val deleted_at: String? = null,
     val server_seq: Long? = null,
     val updated_at: Long = System.currentTimeMillis(),
+    // who opened the order (its waiter); null on an order made before staff PINs
+    val opened_by: String? = null,
 )
 
 @Entity(

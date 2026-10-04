@@ -48,8 +48,9 @@ import com.restopos.feature.sale.RegisterScreen
 import com.restopos.feature.sale.SaleAction
 import com.restopos.feature.sale.SaleViewModel
 import com.restopos.feature.settings.SettingsScreen
+import com.restopos.feature.tables.TablesScreen
 
-enum class Tab(val label: String) { Register("Register"), Orders("Orders"), Receipts("Receipts"), Settings("Settings") }
+enum class Tab(val label: String) { Register("Register"), Tables("Tables"), Orders("Orders"), Receipts("Receipts"), Settings("Settings") }
 
 // What is always on screen once the till is set up: the top bar, the sync
 // notices, the open tab, and the tab bar along the bottom.
@@ -73,6 +74,8 @@ fun MainShell(
     var tab by rememberSaveable { mutableStateOf(Tab.Register) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var confirmSignOut by remember { mutableStateOf(false) }
+    // true while the floor plan is open to pick where the order on the register moves to
+    var moving by remember { mutableStateOf(false) }
     val closeSearch = { searching = false; vm.onAction(SaleAction.Search("")); Unit }
 
     Column(Modifier.fillMaxSize().background(Pos.Bg)) {
@@ -103,7 +106,16 @@ fun MainShell(
         SyncNotices(needsSignIn, pending, rejected, onSignIn, onRejected)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (tab) {
-                Tab.Register -> RegisterScreen(vm, searching, closeSearch, { if (vm.mayPay()) onPay() }, onPaid)
+                Tab.Register -> RegisterScreen(
+                    vm, searching, closeSearch, { if (vm.mayPay()) onPay() }, onPaid,
+                    onTables = { tab = Tab.Tables },
+                    onMoveTable = { moving = true; tab = Tab.Tables },
+                )
+                Tab.Tables -> TablesScreen(
+                    moving,
+                    onOpen = { moving = false; tab = Tab.Register },
+                    onCancelMove = { moving = false; tab = Tab.Register },
+                )
                 Tab.Orders -> OrdersScreen(onOpen = { tab = Tab.Register })
                 Tab.Receipts -> ReceiptsScreen()
                 Tab.Settings -> SettingsScreen(till, needsSignIn, pending, rejected, user, shift, onSignIn, onRejected, onClosePeriod) { confirmSignOut = true }
@@ -114,7 +126,7 @@ fun MainShell(
                 val on = t == tab
                 val tint = if (on) Pos.NavOn else Pos.Text3
                 Row(
-                    Modifier.weight(1f).fillMaxHeight().clickable { if (searching) closeSearch(); tab = t },
+                    Modifier.weight(1f).fillMaxHeight().clickable { if (searching) closeSearch(); moving = false; tab = t },
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -141,6 +153,7 @@ fun MainShell(
 
 private fun icon(tab: Tab): ImageVector = when (tab) {
     Tab.Register -> Icons.Filled.ShoppingCart
+    Tab.Tables -> PosIcons.Grid
     Tab.Orders -> Icons.AutoMirrored.Filled.List
     Tab.Receipts -> PosIcons.Receipt
     Tab.Settings -> Icons.Filled.Settings

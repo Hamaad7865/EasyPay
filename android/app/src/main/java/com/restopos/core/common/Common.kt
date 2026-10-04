@@ -40,3 +40,7 @@ object Uuid7 {
         return hex.substring(0, 12).toLongOrNull(16)
     }
 }
+
+// How a table is called on screen: "Table 4" for a number, the name itself
+// when it already says what it is ("Terrace 2", "Bar").
+fun tableLabel(name: String): String = if (name.firstOrNull()?.isDigit() == true) "Table $name" else name

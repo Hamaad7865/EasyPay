@@ -34,6 +34,7 @@ import com.restopos.core.database.RoleEntity
 import com.restopos.core.database.ShiftEntity
 import com.restopos.core.database.StoreEntity
 import com.restopos.core.database.SyncStateEntity
+import com.restopos.core.database.TableEntity
 import com.restopos.core.database.TaxEntity
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.network.ApiClient
@@ -84,6 +85,7 @@ class PullWorker @AssistedInject constructor(
                     db.withTransaction {
                         db.catalog().clearCatalog()
                         db.staff().clearStaff()
+                        db.tables().clearTables()
                         db.sync().saveCursor(SyncStateEntity(store, 0, pageEpochs))
                     }
                     cursor = 0
@@ -189,6 +191,16 @@ class PullWorker @AssistedInject constructor(
                     if (item == null || group == null) null else ItemModGroupCrossRef(item, group)
                 })
             }
+            changes["tables"]?.let { rows ->
+                db.tables().upsertTables(rows.map {
+                    TableEntity(
+                        id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "name") ?: "", str(it, "area") ?: "Main",
+                        (lng(it, "seats") ?: 4).toInt(), str(it, "shape") ?: "square",
+                        (lng(it, "x") ?: 0).toInt(), (lng(it, "y") ?: 0).toInt(), (lng(it, "w") ?: 10).toInt(), (lng(it, "h") ?: 10).toInt(),
+                        (lng(it, "sort_order") ?: 0).toInt(), str(it, "deleted_at"), lng(it, "server_seq"),
+                    )
+                })
+            }
             val staff = db.staff()
             changes["roles"]?.let { rows ->
                 staff.upsertRoles(rows.map {
@@ -274,6 +286,7 @@ private val ACTIVE_TICKET = stringPreferencesKey("active_ticket")
 private val PENDING_DISCOUNT = stringPreferencesKey("pending_discount")
 private val NEEDS_SIGN_IN = booleanPreferencesKey("needs_sign_in")
 private val BUSINESS = stringPreferencesKey("business_name")
+private val PENDING_TABLE = stringPreferencesKey("pending_table")
 private val Context.sessionPrefs by preferencesDataStore("device")
 
 // Which tenant, store and device this tablet is. Set once at device setup and
@@ -300,6 +313,12 @@ class SessionStore(private val context: Context) {
     suspend fun activeTicket(): String? = store.data.map { it[ACTIVE_TICKET] }.first()
     suspend fun setActiveTicket(id: String) { store.edit { it[ACTIVE_TICKET] = id } }
     suspend fun clearActiveTicket() { store.edit { it.remove(ACTIVE_TICKET) } }
+    // The table a new order will be on: picked on the floor plan, used when
+    // the first item creates the order.
+    suspend fun pendingTable(): String? = store.data.map { it[PENDING_TABLE] }.first()
+    suspend fun setPendingTable(id: String?) {
+        store.edit { if (id == null) it.remove(PENDING_TABLE) else it[PENDING_TABLE] = id }
+    }
     suspend fun pendingDiscount(): String? = store.data.map { it[PENDING_DISCOUNT] }.first()
     suspend fun setPendingDiscount(id: String?) {
         store.edit { if (id == null) it.remove(PENDING_DISCOUNT) else it[PENDING_DISCOUNT] = id }

@@ -74,6 +74,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.restopos.core.common.Money
+import com.restopos.core.common.tableLabel
 import com.restopos.core.data.Calc
 import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.ModPick
@@ -98,7 +99,10 @@ fun RegisterScreen(
     onSearchDone: () -> Unit,
     onPay: () -> Unit,
     onPaid: (String, Long, Long) -> Unit,
+    onTables: () -> Unit,
+    onMoveTable: () -> Unit,
 ) {
+    val tableName by vm.tableName.collectAsState()
     val state by vm.state.collectAsState(SaleUiState.Ready(emptyList(), null))
     val ready = state as SaleUiState.Ready
     val paged = vm.items.collectAsLazyPagingItems()
@@ -138,8 +142,9 @@ fun RegisterScreen(
                 val keyHeight = ((maxHeight * 0.48f - 40.dp) / 5).coerceIn(34.dp, 60.dp)
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     OrderPanel(
-                        Modifier.weight(1f).fillMaxWidth(), ticket, lines, totals, selected, dining, discounts, discount,
+                        Modifier.weight(1f).fillMaxWidth(), ticket, tableName, lines, totals, selected, dining, discounts, discount,
                         onAction = { vm.onAction(it) },
+                        onMoveTable = onMoveTable,
                         onDiscount = { vm.setDiscount(it) },
                         onVoid = { voidTarget = it },
                     )
@@ -147,7 +152,8 @@ fun RegisterScreen(
                         keyHeight, buffer,
                         onKey = { vm.onAction(if (it == Keys.TIMES) SaleAction.ApplyQty else SaleAction.Key(it)) },
                         onName = { naming = true },
-                        onGuests = { vm.onAction(SaleAction.Guests) },
+                        // a table's name typed first opens that table; otherwise the floor plan
+                        onTables = { if (buffer.isEmpty()) onTables() else vm.onAction(SaleAction.OpenTable) },
                         onCash = { vm.onAction(SaleAction.QuickPay("cash")) },
                         onCard = { vm.onAction(SaleAction.QuickPay("card")) },
                     )
@@ -275,6 +281,7 @@ fun RegisterScreen(
 private fun OrderPanel(
     modifier: Modifier,
     ticket: TicketEntity?,
+    tableName: String?,
     lines: List<LineUi>,
     totals: Calc.Totals,
     selected: String?,
@@ -282,6 +289,7 @@ private fun OrderPanel(
     discounts: List<DiscountEntity>,
     discount: DiscountPick?,
     onAction: (SaleAction) -> Unit,
+    onMoveTable: () -> Unit,
     onDiscount: (DiscountPick?) -> Unit,
     onVoid: (String) -> Unit,
 ) {
@@ -290,7 +298,7 @@ private fun OrderPanel(
     Column(modifier.background(Pos.Panel)) {
         Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                ticket?.name ?: "Direct sale", Modifier.weight(1f),
+                ticket?.name ?: tableName?.let { tableLabel(it) } ?: "Direct sale", Modifier.weight(1f),
                 color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Box {
@@ -300,6 +308,10 @@ private fun OrderPanel(
                 )
                 DropdownMenu(expanded = actionsOpen, onDismissRequest = { actionsOpen = false }) {
                     DropdownMenuItem(text = { Text("New order") }, onClick = { actionsOpen = false; onAction(SaleAction.NewTicket) })
+                    DropdownMenuItem(text = { Text("Set guests (type the number first)") }, onClick = { actionsOpen = false; onAction(SaleAction.Guests) })
+                    if (tableName != null) {
+                        DropdownMenuItem(text = { Text("Move to another table") }, onClick = { actionsOpen = false; onMoveTable() })
+                    }
                     if (discounts.isNotEmpty()) {
                         HorizontalDivider()
                         DropdownMenuItem(
@@ -329,6 +341,8 @@ private fun OrderPanel(
                     }
                 }
             }
+            // a named tab on a table still says which table
+            if (ticket?.name != null && tableName != null) Chip(tableLabel(tableName))
             ticket?.covers?.let { Chip(if (it == 1) "1 guest" else "$it guests") }
             discount?.let { Chip(it.name) }
         }
@@ -422,14 +436,14 @@ private fun Keypad(
     buffer: String,
     onKey: (String) -> Unit,
     onName: () -> Unit,
-    onGuests: () -> Unit,
+    onTables: () -> Unit,
     onCash: () -> Unit,
     onCard: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().background(Pos.Panel)) {
         Row(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "Use keypad to apply quantity, guests or payment", Modifier.weight(1f),
+                "Use keypad to apply quantity, table or payment", Modifier.weight(1f),
                 color = Pos.Text3, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 textAlign = if (buffer.isEmpty()) TextAlign.End else TextAlign.Start,
             )
@@ -460,7 +474,7 @@ private fun Keypad(
             }
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 listOf(
-                    Triple("Tab name", Pos.Blue, onName), Triple("Guests", Pos.Blue, onGuests),
+                    Triple("Tab name", Pos.Blue, onName), Triple("Tables", Pos.Blue, onTables),
                     Triple("Cash", Pos.Green, onCash), Triple("Card", Pos.Green, onCard),
                 ).forEach { (label, color, press) ->
                     Box(

@@ -8,6 +8,7 @@ import androidx.room.RoomDatabase
 // ships a Migration, never a destructive fallback (spec 15).
 // Version 2 adds staff (roles, employees, their stores), sales periods
 // (shifts), clock punches, and who made each outbox op.
+// Version 3 adds the floor plan's tables and who opened each order.
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -19,9 +20,9 @@ import androidx.room.RoomDatabase
         ItemTaxCrossRef::class, TicketLineTaxEntity::class,
         ItemModGroupCrossRef::class, DiscountEntity::class,
         RoleEntity::class, EmployeeEntity::class, EmployeeStoreEntity::class,
-        ShiftEntity::class, PunchEntity::class,
+        ShiftEntity::class, PunchEntity::class, TableEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
@@ -31,4 +32,5 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun receipts(): ReceiptDao
     abstract fun outbox(): OutboxDao
     abstract fun staff(): StaffDao
+    abstract fun tables(): TableDao
 }

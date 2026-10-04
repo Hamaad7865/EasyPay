@@ -32,7 +32,7 @@ object AppModule {
         Room.databaseBuilder(ctx, TillDatabase::class.java, "till.db")
             // No destructive fallback (spec 15): a version bump without its
             // Migration fails loudly instead of wiping unsynced sales.
-            .addMigrations(Migrations.V1_V2)
+            .addMigrations(Migrations.V1_V2, Migrations.V2_V3)
             .build()
 
     @Provides @Singleton

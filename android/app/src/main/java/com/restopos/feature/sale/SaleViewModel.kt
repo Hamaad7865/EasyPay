@@ -61,6 +61,7 @@ sealed interface SaleAction {
     data class QuickPay(val kind: String) : SaleAction // "cash" or "card"
     data object ApplyQty : SaleAction
     data object Guests : SaleAction
+    data object OpenTable : SaleAction // the table whose name is on the keypad
     data object NewTicket : SaleAction
     data object DismissSheet : SaleAction
 }
@@ -111,6 +112,10 @@ class SaleViewModel @Inject constructor(
 
     private val _dining = MutableStateFlow<List<DiningOptionEntity>>(emptyList())
     val dining: StateFlow<List<DiningOptionEntity>> = _dining
+
+    // The name of the table this order is on, or will be on once it has an item.
+    private val _tableName = MutableStateFlow<String?>(null)
+    val tableName: StateFlow<String?> = _tableName
 
     private val _sheet = MutableStateFlow<SheetData?>(null)
     val sheet: StateFlow<SheetData?> = _sheet
@@ -178,6 +183,7 @@ class SaleViewModel @Inject constructor(
         val before = _ticket.value?.id
         _ticket.value = tickets.activeTicket()
         if (_ticket.value?.id != before) { _selected.value = null; _buffer.value = "" }
+        _tableName.value = (_ticket.value?.table_id ?: session.pendingTable())?.let { db.tables().table(it)?.name }
         // only the discounts this person may give: one the server would refuse
         // must never reach a paid receipt
         _discounts.value = db.catalog().discounts().filter {
@@ -262,11 +268,21 @@ class SaleViewModel @Inject constructor(
             is SaleAction.Guests -> {
                 val n = _buffer.value.toIntOrNull()
                 if (n == null || n !in 1..99) {
-                    _toast.value = "Type the number of guests on the keypad, then tap Guests"
+                    _toast.value = "Type the number of guests on the keypad, then Actions, Set guests"
                     return@launch
                 }
                 _buffer.value = ""
                 tickets.setCovers(n).onFailure { _toast.value = it.message }
+                reload()
+            }
+            is SaleAction.OpenTable -> {
+                val wanted = _buffer.value.trim()
+                val store = session.storeId() ?: return@launch
+                val table = db.tables().tablesNow(store).firstOrNull { it.name.equals(wanted, ignoreCase = true) }
+                if (table == null) { _toast.value = "There is no table $wanted"; return@launch }
+                _buffer.value = ""
+                session.setPendingDiscount(null)
+                tickets.openTable(table.id)
                 reload()
             }
             is SaleAction.QuickPay -> quickPay(a.kind)

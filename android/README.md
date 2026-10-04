@@ -4,7 +4,7 @@ Kotlin + Compose + Hilt + Room + WorkManager + Ktor (OkHttp). Min SDK 26,
 compile SDK 36.
 
 Built: sign-in, store and device setup, the menu mirrored into Room by the
-pull worker, a start screen, and four tabs along the bottom:
+pull worker, a start screen, and five tabs along the bottom:
 
 - **Start screen:** what the app opens on once the tablet is set up, and
   where Log out returns. Three states:
@@ -35,6 +35,13 @@ pull worker, a start screen, and four tabs along the bottom:
   holds New order and the discounts. The magnifier searches the whole menu.
   When the categories do not all fit, the strip pages and its last slot is
   a down arrow; the item grid shows the same arrows past a screenful.
+- **Tables:** the store's floor plan, as laid out in the back office (Tables),
+  scaled to the screen, one tab per area. A table with something to pay is
+  blue and shows its total and how long it has been open. Tap a free table to
+  start an order on it (the order is created with its first item), tap an
+  occupied one to bring its order back. On the register, the Tables key opens
+  the plan, or the table whose name was typed on the keypad first. Actions
+  has "Move to another table".
 - **Orders:** the orders opened on this tablet that are not fully paid; tap
   one to put it back on the register.
 - **Receipts:** the receipts issued on this tablet.
@@ -43,11 +50,13 @@ pull worker, a start screen, and four tabs along the bottom:
 Pay (the bar under the items) is the full payment screen: split by item, any
 payment type, a reference.
 
-Not built yet: tables and a floor plan, customers, sending to the kitchen,
+Not built yet: customers, sending to the kitchen,
 tips, splitting a bill evenly, service charge and rounding settings, refunds,
 printing, barcode scanning, pay in and pay out, X and Z reports, locking
 after inactivity, a manager's PIN to override a refusal, QR sign-in. A till only shows its own orders and
-receipts: the pull does not bring other tills' tickets down.
+receipts: the pull does not bring other tills' tickets down. So a table that
+is occupied on one tablet shows as free on another. The server already sends
+the store's open tickets (0048); applying them on the till is the next step.
 
 The layout is drawn for a 1024 x 720dp landscape tablet and scaled to the
 screen it runs on (`MainActivity.attachBaseContext`); the app is locked to

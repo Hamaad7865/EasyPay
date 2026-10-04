@@ -47,6 +47,10 @@ interface TicketDao {
     @Query("SELECT * FROM tickets WHERE id = :id AND status = 'open'")
     suspend fun openTicket(id: String): TicketEntity?
 
+    // the order a table has open, newest first if (wrongly) there are several
+    @Query("SELECT * FROM tickets WHERE table_id = :table AND status = 'open' AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1")
+    suspend fun openTicketForTable(table: String): TicketEntity?
+
     @Query("SELECT modifier_id FROM ticket_line_modifiers WHERE line_id = :line")
     suspend fun modIds(line: String): List<String>
 

@@ -67,7 +67,7 @@ fun PosTheme(content: @Composable () -> Unit) {
     )
 }
 
-// The two icons the core icon set lacks (Material Symbols outlines, 24dp).
+// The icons the core icon set lacks (Material Symbols outlines, 24dp).
 object PosIcons {
     val Backspace: ImageVector = icon(
         "M22,3L7,3c-0.69,0 -1.23,0.35 -1.59,0.88L0,12l5.41,8.11c0.36,0.53 0.9,0.89 1.59,0.89h15c1.1,0 2,-0.9 2,-2L24,5c0,-1.1 -0.9,-2 -2,-2zM22,19L7.07,19L2.4,12l4.66,-7L22,5v14zM10.41,17L14,13.41 17.59,17 19,15.59 15.41,12 19,8.41 17.59,7 14,10.59 10.41,7 9,8.41 12.59,12 9,15.59z",
@@ -75,6 +75,8 @@ object PosIcons {
     val Receipt: ImageVector = icon(
         "M19.5,3.5L18,2l-1.5,1.5L15,2l-1.5,1.5L12,2l-1.5,1.5L9,2 7.5,3.5 6,2 4.5,3.5 3,2v20l1.5,-1.5L6,22l1.5,-1.5L9,22l1.5,-1.5L12,22l1.5,-1.5L15,22l1.5,-1.5L18,22l1.5,-1.5L21,22V2l-1.5,1.5zM19,19.09H5V4.91h14v14.18zM6,15h12v2H6zM6,11h12v2H6zM6,7h12v2H6z",
     )
+
+    val Grid: ImageVector = icon("M3,3h8v8H3V3zM13,3h8v8h-8V3zM3,13h8v8H3v-8zM13,13h8v8h-8v-8z")
 
     private fun icon(path: String): ImageVector =
         ImageVector.Builder(defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)

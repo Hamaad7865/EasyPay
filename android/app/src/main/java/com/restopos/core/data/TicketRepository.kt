@@ -73,24 +73,59 @@ class TicketRepository @Inject constructor(
         activeTicket()?.let { return it }
         val (tenant, store, _) = ctx()
         val id = Uuid7.next()
+        // the table picked on the floor plan, if this order is for one
+        val table = session.pendingTable()
         db.withTransaction {
-            db.tickets().upsertTicket(TicketEntity(id, tenant, store))
+            db.tickets().upsertTicket(TicketEntity(id, tenant, store, table_id = table, opened_by = staff.id()))
             db.outbox().enqueue(op("ticket.create", buildJsonObject {
-                put("id", id); put("store_id", store)
+                put("id", id); put("store_id", store); table?.let { put("table_id", it) }
             }))
         }
         session.setActiveTicket(id)
+        session.setPendingTable(null)
         pushNow(context)
         return db.tickets().ticket(id)!!
     }
 
     // Parks the current order (it stays open, under Orders) and leaves the
     // register empty. The next item tapped opens a new order.
-    suspend fun newTicket() = session.clearActiveTicket()
+    suspend fun newTicket() {
+        session.clearActiveTicket()
+        session.setPendingTable(null)
+    }
 
     // Brings a parked order back onto the register.
     suspend fun select(ticketId: String) {
-        if (db.tickets().openTicket(ticketId) != null) session.setActiveTicket(ticketId)
+        if (db.tickets().openTicket(ticketId) != null) {
+            session.setActiveTicket(ticketId)
+            session.setPendingTable(null)
+        }
+    }
+
+    // Tapping a table on the floor plan. Its open order comes back onto the
+    // register; a free table is remembered, and the order is created on it
+    // when the first item is added (so a table opened by mistake leaves
+    // nothing behind).
+    suspend fun openTable(tableId: String) {
+        val open = db.tickets().openTicketForTable(tableId)
+        if (open != null) {
+            session.setActiveTicket(open.id)
+            session.setPendingTable(null)
+        } else {
+            session.clearActiveTicket()
+            session.setPendingTable(tableId)
+        }
+    }
+
+    // Moves the order on the register to another table.
+    suspend fun moveToTable(tableId: String): Result<Unit> = runCatching {
+        val t = activeTicket()
+        if (t == null) { session.setPendingTable(tableId); return@runCatching }
+        db.withTransaction {
+            db.tickets().upsertTicket(t.copy(table_id = tableId, updated_at = System.currentTimeMillis()))
+            db.outbox().enqueue(op("ticket.update_meta", buildJsonObject { put("ticket_id", t.id); put("table_id", tableId) }))
+        }
+        pushNow(context)
     }
 
     // Order details kept on the ticket: tab name, guests, dining option. Same
