@@ -35,11 +35,20 @@ pull worker, a start screen, and five tabs along the bottom:
   holds New order and the discounts. The magnifier searches the whole menu.
   When the categories do not all fit, the strip pages and its last slot is
   a down arrow; the item grid shows the same arrows past a screenful.
+- **Order header:** the order's name top left (the tab name, else its table,
+  else "Direct sale"). Under it: Dine-in / Takeaway, and the table ("Assign
+  table" until it has one; tap to pick or move). An order on a table, or a
+  named tab, is table service and also has "By course" (lines under Course 1,
+  Course 2, ... with "Add a course"; new items go to the course that is lit;
+  the course is sent with the line) and the guests chip. Naming an order (Tab
+  name) takes it off its table: the name is what the guest's bill will carry.
 - **Tables:** the store's floor plan, as laid out in the back office (Tables),
-  scaled to the screen, one tab per area. A table with something to pay is
-  blue and shows its total and how long it has been open. Tap a free table to
-  start an order on it (the order is created with its first item), tap an
-  occupied one to bring its order back. On the register, the Tables key opens
+  scaled to the screen, one tab per area. Each table shows its name and,
+  under a line, what the view chosen bottom left says: Covers (a dot per
+  seat, lit per guest), Total, Time or Status. A table with something to pay
+  has a green marker. Tap a free table to start an order on it (it asks how
+  many guests; the order is created with its first item), tap an occupied one
+  to bring its order back. On the register, the Tables key opens
   the plan, or the table whose name was typed on the keypad first. Actions
   has "Move to another table".
 - **Orders:** the orders opened on this tablet that are not fully paid; tap

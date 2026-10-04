@@ -2,6 +2,7 @@ package com.restopos.feature.sale
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +30,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -67,11 +70,15 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.restopos.core.common.Money
 import com.restopos.core.common.tableLabel
@@ -85,6 +92,7 @@ import com.restopos.core.database.ItemEntity
 import com.restopos.core.database.TicketEntity
 import com.restopos.core.ui.Pos
 import com.restopos.core.ui.PosIcons
+import com.restopos.feature.tables.GuestsDialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -103,6 +111,9 @@ fun RegisterScreen(
     onMoveTable: () -> Unit,
 ) {
     val tableName by vm.tableName.collectAsState()
+    val byCourse by vm.byCourse.collectAsState()
+    val course by vm.course.collectAsState()
+    val courses by vm.courses.collectAsState()
     val state by vm.state.collectAsState(SaleUiState.Ready(emptyList(), null))
     val ready = state as SaleUiState.Ready
     val paged = vm.items.collectAsLazyPagingItems()
@@ -143,6 +154,7 @@ fun RegisterScreen(
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     OrderPanel(
                         Modifier.weight(1f).fillMaxWidth(), ticket, tableName, lines, totals, selected, dining, discounts, discount,
+                        byCourse, course, courses,
                         onAction = { vm.onAction(it) },
                         onMoveTable = onMoveTable,
                         onDiscount = { vm.setDiscount(it) },
@@ -243,17 +255,10 @@ fun RegisterScreen(
         )
     }
     if (naming) {
-        var name by remember { mutableStateOf(ticket?.name ?: "") }
-        AlertDialog(
-            onDismissRequest = { naming = false },
-            title = { Text("Tab name") },
-            text = {
-                OutlinedTextField(name, { name = it.take(40) }, Modifier.fillMaxWidth(), label = { Text("Name for this order") }, singleLine = true)
-            },
-            confirmButton = {
-                Button(onClick = { vm.onAction(SaleAction.SetName(name)); naming = false }) { Text("Save") }
-            },
-            dismissButton = { OutlinedButton(onClick = { naming = false }) { Text("Cancel") } },
+        TabNameDialog(
+            initial = ticket?.name ?: "",
+            onDismiss = { naming = false },
+            onOk = { vm.onAction(SaleAction.SetName(it)); naming = false },
         )
     }
     voidTarget?.let { id ->
@@ -288,6 +293,9 @@ private fun OrderPanel(
     dining: List<DiningOptionEntity>,
     discounts: List<DiscountEntity>,
     discount: DiscountPick?,
+    byCourse: Boolean,
+    course: Int,
+    courses: Int,
     onAction: (SaleAction) -> Unit,
     onMoveTable: () -> Unit,
     onDiscount: (DiscountPick?) -> Unit,
@@ -295,6 +303,11 @@ private fun OrderPanel(
 ) {
     var actionsOpen by remember { mutableStateOf(false) }
     var diningOpen by remember { mutableStateOf(false) }
+    var viewOpen by remember { mutableStateOf(false) }
+    var askGuests by remember { mutableStateOf(false) }
+    // table service: an order on a table, or a named tab. It has guests and courses; a direct sale does not.
+    val service = ticket?.name != null || tableName != null
+    val grouped = service && byCourse
     Column(modifier.background(Pos.Panel)) {
         Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -308,7 +321,6 @@ private fun OrderPanel(
                 )
                 DropdownMenu(expanded = actionsOpen, onDismissRequest = { actionsOpen = false }) {
                     DropdownMenuItem(text = { Text("New order") }, onClick = { actionsOpen = false; onAction(SaleAction.NewTicket) })
-                    DropdownMenuItem(text = { Text("Set guests (type the number first)") }, onClick = { actionsOpen = false; onAction(SaleAction.Guests) })
                     if (tableName != null) {
                         DropdownMenuItem(text = { Text("Move to another table") }, onClick = { actionsOpen = false; onMoveTable() })
                     }
@@ -328,7 +340,27 @@ private fun OrderPanel(
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (service) {
+                // how the order is listed: course by course, or as it was rung up
+                Box {
+                    Chip((if (byCourse) "By course" else "As ordered") + "  ▾") { viewOpen = true }
+                    DropdownMenu(expanded = viewOpen, onDismissRequest = { viewOpen = false }) {
+                        DropdownMenuItem(text = { Text("By course") }, onClick = { viewOpen = false; onAction(SaleAction.ByCourse(true)) })
+                        DropdownMenuItem(text = { Text("As ordered") }, onClick = { viewOpen = false; onAction(SaleAction.ByCourse(false)) })
+                    }
+                }
+                Row(
+                    Modifier.clip(RoundedCornerShape(4.dp)).background(Pos.Key).clickable { askGuests = true }.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(PosIcons.Cutlery, contentDescription = "Guests", tint = Pos.Text2, modifier = Modifier.size(15.dp))
+                    Text(ticket?.covers?.toString() ?: "–", Modifier.padding(start = 6.dp), color = Pos.Text2, fontSize = 12.sp)
+                }
+            }
             if (dining.isNotEmpty()) {
                 val current = dining.firstOrNull { it.id == ticket?.dining_option_id }
                     ?: dining.firstOrNull { it.is_default } ?: dining.first()
@@ -341,25 +373,56 @@ private fun OrderPanel(
                     }
                 }
             }
-            // a named tab on a table still says which table
-            if (ticket?.name != null && tableName != null) Chip(tableLabel(tableName))
-            ticket?.covers?.let { Chip(if (it == 1) "1 guest" else "$it guests") }
+            // the order's table: tap to put it on one, or to move it
+            Chip(tableName?.let { tableLabel(it) } ?: "Assign table") { onMoveTable() }
             discount?.let { Chip(it.name) }
         }
         HorizontalDivider(color = Pos.Line)
+        // What the list holds: the lines, under a heading per course when the
+        // order is shown by course (a line with no course counts as course 1).
+        val rows: List<Any> = remember(lines, grouped, courses) {
+            if (!grouped) lines
+            else buildList {
+                for (c in 1..courses) {
+                    add(c)
+                    addAll(lines.filter { (it.line.course ?: 1) == c })
+                }
+                add("add")
+            }
+        }
         // a line that was just selected, or replaced by a quantity change, stays in view
         val listState = rememberLazyListState()
-        LaunchedEffect(selected, lines.size) {
-            val at = lines.indexOfFirst { it.line.id == selected }
+        LaunchedEffect(selected, rows.size) {
+            val at = rows.indexOfFirst { it is LineUi && it.line.id == selected }
             if (at >= 0) listState.animateScrollToItem(at)
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth().background(Brush.verticalGradient(listOf(Pos.Panel, Pos.PanelDeep))), state = listState) {
-            items(lines, key = { it.line.id }) { lu ->
-                LineRow(lu, selected == lu.line.id, onAction, onVoid)
+            items(rows, key = { r -> if (r is LineUi) r.line.id else "course-$r" }) { r ->
+                when (r) {
+                    is LineUi -> LineRow(r, selected == r.line.id, onAction, onVoid)
+                    is Int -> Row(
+                        // new items go to the course that is lit
+                        Modifier.fillMaxWidth().background(if (r == course) Pos.Selected else Color.Transparent)
+                            .clickable { onAction(SaleAction.PickCourse(r)) }.padding(horizontal = 12.dp, vertical = 7.dp),
+                    ) {
+                        Text("Course $r", Modifier.weight(1f), color = if (r == course) Pos.Text else Pos.Text2, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        if (r == course) Text("adding here", color = Pos.NavOn, fontSize = 11.sp)
+                    }
+                    else -> Row(Modifier.fillMaxWidth().clickable { onAction(SaleAction.AddCourse) }.padding(horizontal = 12.dp, vertical = 7.dp)) {
+                        Text("Add a course", Modifier.weight(1f), color = Pos.NavOn, fontSize = 13.sp)
+                        Text("+", color = Pos.NavOn, fontSize = 15.sp)
+                    }
+                }
                 HorizontalDivider(color = Pos.Line)
             }
         }
         HorizontalDivider(color = Pos.Line)
+        if (askGuests) {
+            GuestsDialog("How many guests?", seats = 12, onDismiss = { askGuests = false }) { n ->
+                askGuests = false
+                if (n != null) onAction(SaleAction.SetGuests(n))
+            }
+        }
         if (totals.discount > 0) {
             Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 6.dp)) {
                 Text("Discount", Modifier.weight(1f), color = Pos.Text2, fontSize = 12.sp)
@@ -371,6 +434,57 @@ private fun OrderPanel(
             if (totals.tax > 0) Text("   VAT ${Money.format(totals.tax)}", color = Pos.Text3, fontSize = 11.sp)
             Spacer(Modifier.weight(1f))
             Text(Money.format(totals.total), color = Pos.Text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+// The order's name. It is what the guest's bill will carry.
+@Composable
+private fun TabNameDialog(initial: String, onDismiss: () -> Unit, onOk: (String) -> Unit) {
+    var name by remember { mutableStateOf(initial) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(Modifier.width(520.dp).clip(RoundedCornerShape(4.dp)).background(Pos.PanelDeep)) {
+            Box(Modifier.fillMaxWidth().background(Pos.Panel).padding(vertical = 18.dp), contentAlignment = Alignment.Center) {
+                Text("Tab name", color = Pos.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
+            Column(Modifier.padding(start = 28.dp, end = 28.dp, top = 24.dp, bottom = 28.dp)) {
+                Text(
+                    "Give this order a name. It is the name on the guest's bill. An order that is on a table leaves it, " +
+                        "and the table is free for the next guests.",
+                    color = Pos.Text, fontSize = 16.sp, lineHeight = 22.sp,
+                )
+                BasicTextField(
+                    value = name,
+                    onValueChange = { name = it.take(40) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 26.dp).focusRequester(focus),
+                    singleLine = true,
+                    textStyle = TextStyle(color = Pos.Text, fontSize = 17.sp),
+                    cursorBrush = SolidColor(Pos.Text),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { onOk(name) }),
+                    decorationBox = { inner ->
+                        Column {
+                            Box {
+                                if (name.isEmpty()) Text("Name", color = Pos.Text2, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                                inner()
+                            }
+                            Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(1.dp).background(Pos.Text3))
+                        }
+                    },
+                )
+                Row(Modifier.fillMaxWidth().padding(top = 34.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(
+                        Modifier.weight(1f).height(64.dp).clip(RoundedCornerShape(3.dp)).background(Pos.Key).clickable(onClick = onDismiss),
+                        contentAlignment = Alignment.Center,
+                    ) { Text("Cancel", color = Pos.NavOn, fontSize = 17.sp, fontWeight = FontWeight.Medium) }
+                    Box(
+                        Modifier.weight(1f).height(64.dp).clip(RoundedCornerShape(3.dp)).background(Pos.Blue).clickable { onOk(name) },
+                        contentAlignment = Alignment.Center,
+                    ) { Text("OK", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold) }
+                }
+            }
         }
     }
 }

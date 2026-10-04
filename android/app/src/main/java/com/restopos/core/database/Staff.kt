@@ -102,6 +102,9 @@ interface StaffDao {
     @Query("SELECT * FROM roles WHERE id = :id")
     suspend fun role(id: String): RoleEntity?
 
+    @Query("SELECT * FROM employees WHERE id = :id")
+    suspend fun employee(id: String): EmployeeEntity?
+
     @Query("SELECT * FROM timeclock_punches WHERE store_id = :store AND deleted_at IS NULL ORDER BY device_time, rowid")
     fun punches(store: String): Flow<List<PunchEntity>>
 

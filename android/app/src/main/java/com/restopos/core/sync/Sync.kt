@@ -3,6 +3,7 @@ package com.restopos.core.sync
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.hilt.work.HiltWorker
@@ -287,6 +288,7 @@ private val PENDING_DISCOUNT = stringPreferencesKey("pending_discount")
 private val NEEDS_SIGN_IN = booleanPreferencesKey("needs_sign_in")
 private val BUSINESS = stringPreferencesKey("business_name")
 private val PENDING_TABLE = stringPreferencesKey("pending_table")
+private val PENDING_COVERS = intPreferencesKey("pending_covers")
 private val Context.sessionPrefs by preferencesDataStore("device")
 
 // Which tenant, store and device this tablet is. Set once at device setup and
@@ -316,8 +318,13 @@ class SessionStore(private val context: Context) {
     // The table a new order will be on: picked on the floor plan, used when
     // the first item creates the order.
     suspend fun pendingTable(): String? = store.data.map { it[PENDING_TABLE] }.first()
-    suspend fun setPendingTable(id: String?) {
-        store.edit { if (id == null) it.remove(PENDING_TABLE) else it[PENDING_TABLE] = id }
+    // and how many guests sat down at it; cleared with the table
+    suspend fun pendingCovers(): Int? = store.data.map { it[PENDING_COVERS] }.first()
+    suspend fun setPendingTable(id: String?, covers: Int? = null) {
+        store.edit {
+            if (id == null) it.remove(PENDING_TABLE) else it[PENDING_TABLE] = id
+            if (id == null || covers == null) it.remove(PENDING_COVERS) else it[PENDING_COVERS] = covers
+        }
     }
     suspend fun pendingDiscount(): String? = store.data.map { it[PENDING_DISCOUNT] }.first()
     suspend fun setPendingDiscount(id: String?) {

@@ -16,6 +16,7 @@ import com.restopos.core.sync.pushNow
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.add
@@ -75,10 +76,11 @@ class TicketRepository @Inject constructor(
         val id = Uuid7.next()
         // the table picked on the floor plan, if this order is for one
         val table = session.pendingTable()
+        val covers = session.pendingCovers()
         db.withTransaction {
-            db.tickets().upsertTicket(TicketEntity(id, tenant, store, table_id = table, opened_by = staff.id()))
+            db.tickets().upsertTicket(TicketEntity(id, tenant, store, table_id = table, covers = covers, opened_by = staff.id()))
             db.outbox().enqueue(op("ticket.create", buildJsonObject {
-                put("id", id); put("store_id", store); table?.let { put("table_id", it) }
+                put("id", id); put("store_id", store); table?.let { put("table_id", it) }; covers?.let { put("covers", it) }
             }))
         }
         session.setActiveTicket(id)
@@ -106,14 +108,14 @@ class TicketRepository @Inject constructor(
     // register; a free table is remembered, and the order is created on it
     // when the first item is added (so a table opened by mistake leaves
     // nothing behind).
-    suspend fun openTable(tableId: String) {
+    suspend fun openTable(tableId: String, guests: Int? = null) {
         val open = db.tickets().openTicketForTable(tableId)
         if (open != null) {
             session.setActiveTicket(open.id)
             session.setPendingTable(null)
         } else {
             session.clearActiveTicket()
-            session.setPendingTable(tableId)
+            session.setPendingTable(tableId, guests)
         }
     }
 
@@ -140,8 +142,15 @@ class TicketRepository @Inject constructor(
             pushNow(context)
         }
 
-    // An empty name clears it (the server does the same).
-    suspend fun setName(name: String) = updateMeta({ it.copy(name = name.ifBlank { null }) }) { put("name", name) }
+    // The tab name is the order's name, and what the guest's bill will carry.
+    // Naming an order makes it a tab of its own: it leaves its table, and the
+    // table is free for the next guests. An empty name only clears the name
+    // (the server does the same).
+    suspend fun setName(name: String): Result<Unit> {
+        if (name.isBlank()) return updateMeta({ it.copy(name = null) }) { put("name", name) }
+        session.setPendingTable(null) // a table picked but not yet ordered on
+        return updateMeta({ it.copy(name = name, table_id = null) }) { put("name", name); put("table_id", JsonNull) }
+    }
     suspend fun setCovers(guests: Int) = updateMeta({ it.copy(covers = guests) }) { put("covers", guests) }
     suspend fun setDining(optionId: String) = updateMeta({ it.copy(dining_option_id = optionId) }) { put("dining_option_id", optionId) }
 
@@ -153,7 +162,9 @@ class TicketRepository @Inject constructor(
     // Tap item: merge into a same-signature unsent line, else insert with tax
     // snapshots + validated modifier links. Availability is checked; live
     // stock counts arrive with inventory (Phase 9).
-    suspend fun addItem(itemId: String, qty: Int, mods: List<ModPick>, note: String?): Result<Unit> =
+    // course: which course of the meal the line belongs to (table service), or
+    // null on an order that is not split into courses.
+    suspend fun addItem(itemId: String, qty: Int, mods: List<ModPick>, note: String?, course: Int? = null): Result<Unit> =
         runCatching {
             require(qty > 0) { "bad qty" }
             val t = ensureTicket()
@@ -168,7 +179,7 @@ class TicketRepository @Inject constructor(
             }
             val modIds = mods.map { it.id }.sorted()
             val lines = db.tickets().lines(t.id).first()
-            val match = lines.filter { it.voided_at == null && it.sent_to_kitchen_at == null && it.item_id == itemId && (it.note ?: "") == (note ?: "") }
+            val match = lines.filter { it.voided_at == null && it.sent_to_kitchen_at == null && it.item_id == itemId && (it.note ?: "") == (note ?: "") && it.course == course }
                 .firstOrNull { db.tickets().modIds(it.id).sorted() == modIds }
             if (match != null) {
                 setQty(match.id, match.qty + qty, "quantity change")
@@ -185,13 +196,13 @@ class TicketRepository @Inject constructor(
             }
             db.withTransaction {
                 db.tickets().upsertLines(listOf(
-                    TicketLineEntity(lineId, tenant, t.id, itemId, null, item.name, item.price, qty, note),
+                    TicketLineEntity(lineId, tenant, t.id, itemId, null, item.name, item.price, qty, note, course),
                 ))
                 db.tickets().upsertLineMods(mods.map { TicketLineModEntity(lineId, it.id, it.name, it.price) })
                 db.catalog().upsertLineTaxes(taxes.map { TicketLineTaxEntity(lineId, it.id, it.rate_bp, it.type) })
                 db.outbox().enqueue(op("ticket.add_line", buildJsonObject {
                     put("id", lineId); put("ticket_id", t.id); put("item_id", itemId)
-                    put("qty", qty); note?.let { put("note", it) }
+                    put("qty", qty); note?.let { put("note", it) }; course?.let { put("course", it) }
                     put("unit_price", item.price); put("name_snapshot", item.name)
                     put("modifiers", modArr)
                 }))
@@ -209,7 +220,7 @@ class TicketRepository @Inject constructor(
                 db.catalog().modifiersForItem(line.item_id ?: return@mapNotNull null).firstOrNull { it.id == mid }
                     ?.let { ModPick(it.id, it.name, it.price) }
             }
-            addItem(line.item_id ?: error("bad line"), qty, mods, line.note).getOrThrow()
+            addItem(line.item_id ?: error("bad line"), qty, mods, line.note, line.course).getOrThrow()
         }
     }
 

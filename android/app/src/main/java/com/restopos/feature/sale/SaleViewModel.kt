@@ -42,7 +42,7 @@ import javax.inject.Inject
 
 // The register: category strip and item tiles from Room, the live order with
 // its totals, and a keypad whose number is used by whatever is tapped next
-// (an item: that many; a line: its quantity; Guests; Cash: the amount received).
+// (an item: that many; a line: its quantity; Tables: that table; Cash: the amount received).
 sealed interface SaleUiState {
     data class Ready(val categories: List<CategoryEntity>, val selectedCat: String?) : SaleUiState
 }
@@ -60,8 +60,11 @@ sealed interface SaleAction {
     data class SetDining(val optionId: String) : SaleAction
     data class QuickPay(val kind: String) : SaleAction // "cash" or "card"
     data object ApplyQty : SaleAction
-    data object Guests : SaleAction
     data object OpenTable : SaleAction // the table whose name is on the keypad
+    data class SetGuests(val guests: Int) : SaleAction
+    data class ByCourse(val on: Boolean) : SaleAction // the order shown course by course, or as rung up
+    data class PickCourse(val course: Int) : SaleAction // the course new items go to
+    data object AddCourse : SaleAction
     data object NewTicket : SaleAction
     data object DismissSheet : SaleAction
 }
@@ -116,6 +119,15 @@ class SaleViewModel @Inject constructor(
     // The name of the table this order is on, or will be on once it has an item.
     private val _tableName = MutableStateFlow<String?>(null)
     val tableName: StateFlow<String?> = _tableName
+
+    // Table service: the order split into courses. Kept per order while it is
+    // on the register: which course new items go to, and how many there are.
+    private val _byCourse = MutableStateFlow(true)
+    val byCourse: StateFlow<Boolean> = _byCourse
+    private val _course = MutableStateFlow(1)
+    val course: StateFlow<Int> = _course
+    private val _courses = MutableStateFlow(1)
+    val courses: StateFlow<Int> = _courses
 
     private val _sheet = MutableStateFlow<SheetData?>(null)
     val sheet: StateFlow<SheetData?> = _sheet
@@ -182,7 +194,8 @@ class SaleViewModel @Inject constructor(
     private suspend fun reload() {
         val before = _ticket.value?.id
         _ticket.value = tickets.activeTicket()
-        if (_ticket.value?.id != before) { _selected.value = null; _buffer.value = "" }
+        val changed = _ticket.value?.id != before
+        if (changed) { _selected.value = null; _buffer.value = ""; _course.value = 1; _courses.value = 1 }
         _tableName.value = (_ticket.value?.table_id ?: session.pendingTable())?.let { db.tables().table(it)?.name }
         // only the discounts this person may give: one the server would refuse
         // must never reach a paid receipt
@@ -207,6 +220,8 @@ class SaleViewModel @Inject constructor(
             LineUi(it, dao.modText(it.id) ?: "", Calc.lineAmount(it.unit_price, it.qty) + dao.modSum(it.id))
         }
         if (rows.none { it.id == _selected.value && !it.paid }) _selected.value = null
+        // never fewer course headings than the order has courses
+        _courses.value = maxOf(_courses.value, rows.maxOfOrNull { it.course ?: 1 } ?: 1)
         val calcLines = rows.filter { it.voided_at == null && !it.paid }.map { l ->
             val taxes = db.catalog().lineTaxes(l.id)
             val mods = dao.modSum(l.id)
@@ -229,7 +244,7 @@ class SaleViewModel @Inject constructor(
                 val groups = db.catalog().groupsForItem(a.item.id)
                 _buffer.value = ""
                 if (groups.isEmpty()) {
-                    tickets.addItem(a.item.id, qty * 1000, emptyList(), null)
+                    tickets.addItem(a.item.id, qty * 1000, emptyList(), null, courseForNewLine())
                         .onFailure { _toast.value = it.message }
                     reload()
                 } else {
@@ -239,7 +254,7 @@ class SaleViewModel @Inject constructor(
             is SaleAction.ConfirmMods -> {
                 val item = _sheet.value?.item ?: return@launch
                 _sheet.value = null
-                tickets.addItem(item.id, a.qty * 1000, a.picks, a.note.ifBlank { null })
+                tickets.addItem(item.id, a.qty * 1000, a.picks, a.note.ifBlank { null }, courseForNewLine())
                     .onFailure { _toast.value = it.message }
                 reload()
             }
@@ -265,16 +280,6 @@ class SaleViewModel @Inject constructor(
                 tickets.setDining(a.optionId).onFailure { _toast.value = it.message }
                 reload()
             }
-            is SaleAction.Guests -> {
-                val n = _buffer.value.toIntOrNull()
-                if (n == null || n !in 1..99) {
-                    _toast.value = "Type the number of guests on the keypad, then Actions, Set guests"
-                    return@launch
-                }
-                _buffer.value = ""
-                tickets.setCovers(n).onFailure { _toast.value = it.message }
-                reload()
-            }
             is SaleAction.OpenTable -> {
                 val wanted = _buffer.value.trim()
                 val store = session.storeId() ?: return@launch
@@ -285,6 +290,13 @@ class SaleViewModel @Inject constructor(
                 tickets.openTable(table.id)
                 reload()
             }
+            is SaleAction.SetGuests -> {
+                tickets.setCovers(a.guests.coerceIn(1, 99)).onFailure { _toast.value = it.message }
+                reload()
+            }
+            is SaleAction.ByCourse -> _byCourse.value = a.on
+            is SaleAction.PickCourse -> _course.value = a.course.coerceIn(1, _courses.value)
+            is SaleAction.AddCourse -> { _courses.value += 1; _course.value = _courses.value }
             is SaleAction.QuickPay -> quickPay(a.kind)
             is SaleAction.NewTicket -> {
                 tickets.newTicket()
@@ -303,6 +315,11 @@ class SaleViewModel @Inject constructor(
         // a quantity change replaces the line; keep its replacement selected
         _selected.value = _lines.value.lastOrNull { it.line.item_id == item && !it.line.paid }?.line?.id
     }
+
+    // Courses are for table service: an order on a table, or a named tab.
+    // A direct sale has none.
+    private fun courseForNewLine(): Int? =
+        if (_byCourse.value && (_ticket.value?.name != null || _tableName.value != null)) _course.value else null
 
     private fun press(key: String) {
         val b = _buffer.value
