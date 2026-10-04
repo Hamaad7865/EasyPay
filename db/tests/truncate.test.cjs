@@ -58,7 +58,7 @@ begin
   -- a referenced table unless the referencing one is in the same statement.
   -- It is not a synced table, so it gets no epoch.
   -- shifts and timeclock_punches (0047) and tables (0048) reference stores and employees.
-  execute 'truncate receipt_reviews, timeclock_punches, shifts, tables, ' || idents;
+  execute 'truncate receipt_reviews, timeclock_punches, shifts, tables, printers, pos_settings, cash_movements, day_closes, payment_corrections, stock_movements, ' || idents;
   insert into sync_epoch (table_name, epoch)
     select unnest(p_tables), 2
     on conflict (table_name) do update set epoch = sync_epoch.epoch + 1;
