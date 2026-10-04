@@ -105,9 +105,9 @@ export default async function ItemsPage({
           <tr>
             <th>Item</th>
             <th>Category</th>
+            <th>Change</th>
             <th>Price</th>
             <th>Available</th>
-            <th></th>
           </tr>
         </thead>
         <tbody>

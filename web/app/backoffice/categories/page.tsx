@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { requirePerm, tenantContext } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
+import { toHex } from "@/lib/colour";
 
 const HEX = /^#[0-9a-f]{6}$/i;
 
@@ -69,7 +70,7 @@ export default async function CategoriesPage() {
           {rows.map((r) => (
             <tr key={r.id}>
               <td>
-                <span className="swatch" style={{ background: r.color ?? "#5b6170" }} />
+                <span className="swatch" style={{ background: toHex(r.color) ?? "#5b6170" }} />
                 {r.name}
               </td>
               <td>{r.items}</td>
@@ -79,7 +80,7 @@ export default async function CategoriesPage() {
                   <input
                     type="color"
                     name="color"
-                    defaultValue={r.color && HEX.test(r.color) ? r.color : "#5b6170"}
+                    defaultValue={toHex(r.color) ?? "#5b6170"}
                     aria-label={`Colour for ${r.name}`}
                   />
                   <button type="submit" className="btn-quiet">
