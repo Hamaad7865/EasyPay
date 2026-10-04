@@ -40,7 +40,7 @@ object Routes {
 }
 
 @Composable
-fun AppNav(session: SessionStore, signedIn: () -> Boolean, onSignOut: () -> Unit) {
+fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend () -> Boolean, onSignOut: () -> Unit) {
     val nav = rememberNavController()
     val context = LocalContext.current
     // A tablet that has been set up opens on the start screen, with or
@@ -57,10 +57,13 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, onSignOut: () -> Unit
     // app in the background and brings back the screen that was open (the
     // register, the pay screen, a cash count), nobody is signed in to it any
     // more: go back to the start screen rather than let it be used unsigned.
+    // Only where staff sign in with a PIN. On a till without PINs nobody is
+    // ever signed in, and this would throw the register back to the start
+    // screen every time Android rebuilt the screen.
     LaunchedEffect(Unit) {
         val at = nav.currentDestination?.route
         if (startRoute == Routes.START && !signedIn() && at != null &&
-            at !in setOf(Routes.START, Routes.CLOCK, Routes.REAUTH)
+            at !in setOf(Routes.START, Routes.CLOCK, Routes.REAUTH) && pinsInUse()
         ) {
             nav.navigate(Routes.START) { popUpTo(0) { inclusive = true } }
         }

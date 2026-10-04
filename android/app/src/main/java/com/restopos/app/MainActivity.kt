@@ -20,6 +20,7 @@ import com.restopos.core.ui.Pos
 import com.restopos.core.ui.PosTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -31,6 +32,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var session: SessionStore
     @Inject lateinit var auth: AuthClient
     @Inject lateinit var staff: com.restopos.core.data.StaffSession
+    @Inject lateinit var staffRepo: com.restopos.core.data.StaffRepository
     @Inject lateinit var db: com.restopos.core.database.TillDatabase
 
     // The screens are drawn for a 1024 x 720dp landscape tablet and scaled to
@@ -62,7 +64,11 @@ class MainActivity : ComponentActivity() {
                 // clear of the status bar and the gesture bar
                 Box(Modifier.fillMaxSize().background(Pos.Bg).safeDrawingPadding()) {
                 Surface(color = Pos.Bg) {
-                    AppNav(session, signedIn = { staff.current.value != null }) {
+                    AppNav(
+                        session,
+                        signedIn = { staff.current.value != null },
+                        pinsInUse = { session.storeId()?.let { staffRepo.pinsInUse(it).first() } ?: false },
+                    ) {
                         scope.launch {
                             // Unsynced sales exist only on this tablet: signing out
                             // would wipe them, so it is refused until they are pushed.
