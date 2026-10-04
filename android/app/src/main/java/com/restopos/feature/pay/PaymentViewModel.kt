@@ -3,6 +3,7 @@ package com.restopos.feature.pay
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Money
+import com.restopos.core.common.tableLabel
 import com.restopos.core.data.Calc
 import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.PayInput
@@ -18,21 +19,22 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-// Payment (spec 7.5): cash quick amounts + tendered/change; wallet/QR take an
-// optional reference (manual record in v1). A bill is split by item: tick the
+// Payment (spec 7.5): cash takes the amount received and gives the change;
+// the other types take an optional reference (manual record in v1). A bill is split by item: tick the
 // lines one guest pays for, take the payment, and the rest stays on the order
 // for the next receipt. Each receipt pays its lines in full (the server would
 // store a part payment, but flagged for review).
-data class PayLine(val id: String, val name: String, val amount: Long, val selected: Boolean)
+data class PayLine(val id: String, val qty: Int, val name: String, val amount: Long, val selected: Boolean)
 
 sealed interface PayUiState {
     data object Loading : PayUiState
     data class Ready(
+        val title: String, // the order's name: its tab name, else its table
         val lines: List<PayLine>, // unpaid lines; the receipt covers the ticked ones
         val due: Long, // total of the ticked lines, discount included
         val methods: List<PaymentTypeEntity>,
         val selected: PaymentTypeEntity?,
-        val tenderedRs: String,
+        val tendered: Long?, // cash received, in cents; null = exactly the amount due
         val reference: String,
         val error: String?,
         val notice: String? = null,
@@ -51,6 +53,7 @@ class PaymentViewModel @Inject constructor(
     val state: StateFlow<PayUiState> = _state
     private var discount: DiscountPick? = null
     private var calc: Map<String, Calc.Line> = emptyMap()
+    private var paying = false // a second tap on Pay while the first is being recorded does nothing
 
     init { reload(notice = null) }
 
@@ -76,27 +79,28 @@ class PaymentViewModel @Inject constructor(
         }
         val methods = db.catalog().paymentTypes().first()
         val cur = _state.value as? PayUiState.Ready
-        val lines = unpaid.map { PayLine(it.id, it.name_snapshot, amounts[it.id] ?: 0, true) }
+        val lines = unpaid.map { PayLine(it.id, it.qty, it.name_snapshot, amounts[it.id] ?: 0, true) }
+        val title = t.name ?: t.table_id?.let { db.tables().table(it)?.name }?.let { tableLabel(it) } ?: "Direct sale"
         _state.value = PayUiState.Ready(
-            lines, dueFor(lines.map { it.id }.toSet()), methods,
-            cur?.selected ?: methods.firstOrNull(), "", "", null, notice,
+            title, lines, dueFor(lines.map { it.id }.toSet()), methods,
+            cur?.selected ?: methods.firstOrNull(), null, "", null, notice,
         )
     }
 
     fun toggle(lineId: String) {
         val s = _state.value as? PayUiState.Ready ?: return
         val lines = s.lines.map { if (it.id == lineId) it.copy(selected = !it.selected) else it }
-        _state.value = s.copy(lines = lines, due = dueFor(lines.filter { it.selected }.map { it.id }.toSet()), error = null)
+        _state.value = s.copy(lines = lines, due = dueFor(lines.filter { it.selected }.map { it.id }.toSet()), tendered = null, error = null)
     }
 
     fun select(m: PaymentTypeEntity) {
         val s = _state.value as? PayUiState.Ready ?: return
-        _state.value = s.copy(selected = m, tenderedRs = "", reference = "")
+        _state.value = s.copy(selected = m, tendered = null, reference = "", error = null)
     }
 
-    fun tendered(v: String) {
+    fun tendered(cents: Long?) {
         val s = _state.value as? PayUiState.Ready ?: return
-        _state.value = s.copy(tenderedRs = v.filter { it.isDigit() }.take(6))
+        _state.value = s.copy(tendered = cents?.coerceIn(0, 99_999_999), error = null)
     }
 
     fun reference(v: String) {
@@ -104,26 +108,27 @@ class PaymentViewModel @Inject constructor(
         _state.value = s.copy(reference = v.take(64))
     }
 
-    // Cash: tendered >= the amount due closes with change. Less than that is
+    // Cash: received >= the amount due closes with change. Less than that is
     // refused: a part payment would reach the server as a short receipt.
-    fun takeCash() {
-        val s = _state.value as? PayUiState.Ready ?: return
-        if (s.lines.none { it.selected }) { _state.value = s.copy(error = "Tick at least one line"); return }
-        val tend = (s.tenderedRs.toLongOrNull() ?: (s.due + 99) / 100) * 100
-        if (tend >= s.due) payChunk(s.due, tend, tend - s.due, s, null)
-        else _state.value = s.copy(error = "Tendered is less than the amount due")
-    }
-
     // Card/wallet/QR: the amount due in one go, with an optional reference.
-    fun takeMethod() {
+    fun pay() {
         val s = _state.value as? PayUiState.Ready ?: return
+        if (paying) return
         if (s.lines.none { it.selected }) { _state.value = s.copy(error = "Tick at least one line"); return }
-        payChunk(s.due, s.due, 0, s, s.reference.ifBlank { null })
+        val m = s.selected ?: run { _state.value = s.copy(error = "Pick a payment type"); return }
+        if (m.kind == "cash") {
+            val got = s.tendered ?: s.due
+            if (got >= s.due) payChunk(s.due, got, got - s.due, s, null)
+            else _state.value = s.copy(error = "Received is less than the amount due")
+        } else {
+            payChunk(s.due, s.due, 0, s, s.reference.ifBlank { null })
+        }
     }
 
     private fun payChunk(amount: Long, tendered: Long, change: Long, s: PayUiState.Ready, ref: String?) =
         viewModelScope.launch {
             val m = s.selected ?: return@launch
+            paying = true
             val covered = s.lines.filter { it.selected }.map { it.id }
             // a zero total (fully discounted) is paid with no payment row
             val payments = if (amount > 0) listOf(PayInput(m.id, amount, tendered, change, ref)) else emptyList()
@@ -143,5 +148,6 @@ class PaymentViewModel @Inject constructor(
                 },
                 onFailure = { _state.value = s.copy(error = it.message) },
             )
+            paying = false
         }
 }

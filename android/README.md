@@ -71,8 +71,14 @@ pull worker, a start screen, and the screens behind the top bar:
 - **Receipts:** the receipts issued on this tablet.
 - **Settings:** this till, the state of its sync, rejected changes, sign-out.
 
-Pay (the bar under the items) is the full payment screen: split by item, any
-payment type, a reference.
+Pay (the bar under the items) opens the payment screen, titled with the
+order's name and what is due. Left, the order summary: with more than one
+line, tap a line to leave it for another guest's payment (split by item).
+Middle, the payment types from the back office, grouped Cash / Cards / Other.
+Right: the payment amount, the amount received (cash: exact, the next notes
+up, or Custom on a number pad; other types: an optional reference), the
+change, and Pay. Cancel goes back to the order. Pay ignores taps in its first
+moment on screen, because it sits where Pay on the register was.
 
 Not built yet: customers, sending to the kitchen,
 tips, splitting a bill evenly, service charge and rounding settings, refunds,
