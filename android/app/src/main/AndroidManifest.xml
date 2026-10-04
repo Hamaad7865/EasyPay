@@ -9,6 +9,8 @@
         android:name=".RestoPosApp"
         android:allowBackup="false"
         android:label="RestoPOS"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
             android:name=".MainActivity"

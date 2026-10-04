@@ -1,5 +1,6 @@
 package com.restopos.core.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,18 +19,31 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.restopos.app.R
 
 // The few pieces the till's lists are built from, so Orders, Receipts and the
 // rest look like one product: a card with a hairline edge, a table header in
 // small capitals, a tinted tag, an avatar.
 
 val CardShape = RoundedCornerShape(14.dp)
+
+// RestoPOS's own logo: the mark above the name. The name is white on the dark
+// screen and dark on the light one.
+@Composable
+fun Logo(modifier: Modifier = Modifier) {
+    Image(
+        painterResource(if (Pos.light) R.drawable.logo_full_light else R.drawable.logo_full_dark),
+        contentDescription = "RestoPOS", modifier = modifier, contentScale = ContentScale.Fit,
+    )
+}
 
 fun Modifier.card(): Modifier = clip(CardShape).background(Pos.Panel).border(1.dp, Pos.Stroke, CardShape)
 

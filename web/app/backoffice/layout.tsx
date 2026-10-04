@@ -26,7 +26,9 @@ export default async function BackofficeLayout({ children }: { children: React.R
     <div className="bo">
       <aside className="bo-side">
         <div className="bo-brand">
-          <span className="bo-brand-mark">R</span>RestoPOS
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-mark.png" alt="" className="bo-brand-logo" />
+          <span>Resto<span className="bo-brand-pos">POS</span></span>
         </div>
         <div className="bo-restaurant" title={restaurant}>
           <Store aria-hidden="true" />

@@ -31,7 +31,9 @@ export default function LoginPage() {
     <main className="auth">
       <div className="auth-card">
         <div className="auth-brand">
-          <span className="bo-brand-mark">R</span>RestoPOS
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-mark.png" alt="" className="bo-brand-logo" />
+          <span>Resto<span className="bo-brand-pos">POS</span></span>
         </div>
         <h1>Sign in to your back office</h1>
         <p className="auth-lede">Your menu, your reports and your settings, wherever you are.</p>

@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.restopos.app.BuildConfig
 import com.restopos.core.data.StaffMember
+import com.restopos.core.ui.Logo
 import com.restopos.core.ui.Pos
 import com.restopos.feature.staff.PinPad
 import com.restopos.feature.staff.RoleBadge
@@ -247,12 +248,7 @@ private fun SortKey(label: String, on: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun Wordmark() {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).background(Pos.Blue), contentAlignment = Alignment.Center) {
-            Text("R", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-        }
-        Text("RestoPOS", Modifier.padding(start = 10.dp), color = Pos.Text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-    }
+    Logo(Modifier.width(190.dp))
 }
 
 @Composable

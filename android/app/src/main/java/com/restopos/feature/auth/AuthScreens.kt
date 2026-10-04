@@ -1,5 +1,7 @@
 package com.restopos.feature.auth
 
+import com.restopos.core.ui.Logo
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,7 +39,7 @@ fun AuthScreen(
     var password by remember { mutableStateOf("") }
     val busy = state == AuthUiState.Busy || state == AuthUiState.SignedIn
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("RestoPOS", style = MaterialTheme.typography.headlineLarge)
+        Logo(Modifier.width(220.dp))
         Text(
             if (reauth) "Sign in again to sync. Everything sold on this tablet is saved and will go up once you are signed in."
             else "Sign in with the login RestoPOS gave you. Staff PIN arrives in Phase 4.",
