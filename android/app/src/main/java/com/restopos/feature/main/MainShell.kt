@@ -85,11 +85,13 @@ fun MainShell(
     onRejected: () -> Unit,
     onLock: () -> Unit,
     onClosePeriod: () -> Unit,
+    onCountDrawer: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     val vm: SaleViewModel = hiltViewModel()
     val more: MoreViewModel = hiltViewModel()
     val user by vm.user.collectAsState()
+    val shift by vm.shift.collectAsState()
     val till by vm.till.collectAsState()
     val needsSignIn by vm.needsSignIn.collectAsState()
     val pending by vm.pending.collectAsState()
@@ -175,7 +177,8 @@ fun MainShell(
                     Tab.Receipts -> ReceiptsScreen()
                     Tab.Settings -> SettingsScreen(
                         more, lock = if (user != null) "Log out" else "Lock", onLock = onLock,
-                        onSignIn = onSignIn, onRejected = onRejected, onClosePeriod = onClosePeriod, onSignOut = { confirmSignOut = true },
+                        onSignIn = onSignIn, onRejected = onRejected, onClosePeriod = onClosePeriod, onCountDrawer = onCountDrawer,
+                        onSignOut = { confirmSignOut = true },
                     )
                 }
             }
@@ -187,6 +190,7 @@ fun MainShell(
                 onClose = { menu = false }, onTab = go,
                 onDrawer = { menu = false; more.openDrawer() },
                 onSheet = { menu = false; sheet = it },
+                onCount = { menu = false; if (shift == null) more.say("No shift is open.") else onCountDrawer() },
                 onLock = { menu = false; onLock() },
             )
         }
@@ -327,6 +331,7 @@ private fun SideMenu(
     onTab: (Tab) -> Unit,
     onDrawer: () -> Unit,
     onSheet: (String) -> Unit,
+    onCount: () -> Unit,
     onLock: () -> Unit,
 ) {
     Column(modifier.fillMaxHeight().background(Pos.Panel).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
@@ -340,6 +345,7 @@ private fun SideMenu(
         MenuAction("Open cash drawer", onDrawer)
         MenuAction("Cash in") { onSheet("in") }
         MenuAction("Cash out") { onSheet("out") }
+        MenuAction("Count drawer", onCount)
         MenuHead("Closing")
         MenuAction("Shift") { onSheet("shift") }
         MenuAction("Day closing") { onSheet("day") }

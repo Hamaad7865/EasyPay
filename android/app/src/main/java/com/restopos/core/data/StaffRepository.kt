@@ -37,6 +37,25 @@ data class StaffMember(
     fun can(permission: String) = permissions.contains("*") || permissions.contains(permission)
 }
 
+// Thrown by something the person signed in may not do. The screen catches it
+// and asks for someone who may, to enter their own PIN.
+class NeedsApproval(val permission: String, val what: String) : Exception("You are not allowed to $what. Ask a manager.")
+
+// Hands a need for approval on, out of the Result an operation returns, so the
+// screen can ask for it.
+fun <T> Result<T>.orAsk(): Result<T> = onFailure { if (it is NeedsApproval) throw it }
+
+// Asking for an approval: one request at a time, shown over whatever screen is
+// open. `then` runs with the person who approved.
+@Singleton
+class Approvals @Inject constructor() {
+    class Request(val permission: String, val what: String, val then: (StaffMember) -> Unit)
+    private val _request = MutableStateFlow<Request?>(null)
+    val request: StateFlow<Request?> = _request
+    fun ask(permission: String, what: String, then: (StaffMember) -> Unit) { _request.value = Request(permission, what, then) }
+    fun done() { _request.value = null }
+}
+
 // Who is signed in at this till right now. Kept in memory only: every time
 // the app opens it starts on the start screen (spec 7.1).
 @Singleton
@@ -48,6 +67,17 @@ class StaffSession @Inject constructor() {
     fun id(): String? = _current.value?.employee?.id
     // On a till with no staff PINs nobody is signed in and nothing is held back.
     fun can(permission: String): Boolean = _current.value?.can(permission) ?: true
+
+    // The person signed in may, or the person who approved may. If neither,
+    // the caller is told what to ask for.
+    fun allow(permission: String, what: String, approver: StaffMember?) {
+        if (can(permission) || approver?.can(permission) == true) return
+        throw NeedsApproval(permission, what)
+    }
+
+    // For an op's payload: who approved it, when the person signed in could
+    // not have done it alone.
+    fun approvedBy(permission: String, approver: StaffMember?): String? = approver?.takeIf { !can(permission) }?.employee?.id
 
     // Wrong PINs: five in a row for one person locks that name for a minute.
     private val misses = HashMap<String, Int>()
@@ -147,9 +177,9 @@ class StaffRepository @Inject constructor(
     // Refunds paid in cash come off; cash put in and taken out counts.
     suspend fun expectedCash(shift: ShiftEntity): Long = cash.expectedCash(shift)
 
-    suspend fun close(counted: Long): Result<ShiftEntity> = runCatching {
+    suspend fun close(counted: Long, approver: StaffMember? = null): Result<ShiftEntity> = runCatching {
         val who = staffSession.current.value ?: error("Sign in first")
-        require(who.can("shift.open_close")) { "${who.employee.name} is not allowed to close the shift" }
+        staffSession.allow("shift.open_close", "close the shift", approver)
         require(counted >= 0) { "bad amount" }
         val device = session.deviceId() ?: error("no device")
         val open = db.staff().openShift(device) ?: error("No shift is open")
@@ -160,12 +190,16 @@ class StaffRepository @Inject constructor(
             db.outbox().enqueue(op("shift.close", who.employee.id, buildJsonObject {
                 put("id", closed.id); put("counted_cash", counted)
                 put("closed_at", Instant.ofEpochMilli(now).toString())
+                staffSession.approvedBy("shift.open_close", approver)?.let { put("approved_by", it) }
             }))
         }
         pushNow(context)
         cash.printShiftBehind(closed)
         closed
     }
+
+    // The drawer counted during the shift, which stays open.
+    suspend fun count(counted: Long, approver: StaffMember? = null) = cash.count(counted, approver)
 
     suspend fun staffNow(): List<StaffMember> = session.storeId()?.let { staff(it).first() } ?: emptyList()
 }

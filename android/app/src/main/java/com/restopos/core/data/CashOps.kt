@@ -5,6 +5,7 @@ import androidx.room.withTransaction
 import com.restopos.core.common.Uuid7
 import com.restopos.core.database.CashMoveEntity
 import com.restopos.core.database.DayCloseEntity
+import com.restopos.core.database.DrawerCountEntity
 import com.restopos.core.database.OutboxEntity
 import com.restopos.core.database.ShiftEntity
 import com.restopos.core.database.TillDatabase
@@ -12,6 +13,7 @@ import com.restopos.core.print.CashSlipDoc
 import com.restopos.core.print.DocAmount
 import com.restopos.core.print.DocTax
 import com.restopos.core.print.Docs
+import com.restopos.core.print.DrawerCountDoc
 import com.restopos.core.print.EscPos
 import com.restopos.core.print.PrintError
 import com.restopos.core.print.Printing
@@ -45,7 +47,7 @@ class CashOps @Inject constructor(
     private suspend fun till(): String = session.deviceId()?.let { db.catalog().device(it)?.name } ?: "Till"
     private suspend fun name(id: String?): String? = id?.let { db.staff().employee(it)?.name }
 
-    private suspend fun record(type: String, amount: Long, reason: String?): CashMoveEntity {
+    private suspend fun record(type: String, amount: Long, reason: String?, approvedBy: String? = null): CashMoveEntity {
         val tenant = session.tenantId() ?: error("no tenant")
         val store = session.storeId() ?: error("no store")
         val device = session.deviceId() ?: error("no device")
@@ -57,6 +59,7 @@ class CashOps @Inject constructor(
                 put("id", row.id); put("store_id", store); put("device_id", device); shift?.let { put("shift_id", it) }
                 put("type", type); put("amount", amount); reason?.let { put("reason", it) }
                 put("device_time", Instant.ofEpochMilli(row.device_time).toString())
+                approvedBy?.let { put("approved_by", it) }
             }))
         }
         pushNow(context)
@@ -65,25 +68,61 @@ class CashOps @Inject constructor(
 
     // The drawer opened with no sale. It is written down: a drawer that opens
     // for no reason is what an owner wants to know about.
-    suspend fun openDrawer(): Result<Unit> = runCatching {
-        require(staff.can("drawer.open_no_sale")) { "You are not allowed to open the drawer without a sale. Ask a manager." }
+    suspend fun openDrawer(approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("drawer.open_no_sale", "open the drawer without a sale", approver)
         val p = printing.receiptPrinter() ?: throw PrintError("The drawer opens through the receipt printer, and none is set up.")
         printing.send(p, EscPos(EscPos.columnsFor(p.paper_mm)).drawer().bytes(), "Open cash drawer", again = null).getOrThrow()
-        record("drawer", 0, null)
+        record("drawer", 0, null, staff.approvedBy("drawer.open_no_sale", approver))
     }
 
     // Cash in or cash out: recorded first, then the slip for the drawer. The
     // slip not printing does not undo it: the cash has moved.
-    suspend fun move(type: String, amount: Long, reason: String): Result<String?> = runCatching {
+    suspend fun move(type: String, amount: Long, reason: String, approver: StaffMember? = null): Result<String?> = runCatching {
         require(type == "in" || type == "out") { "bad type" }
-        require(staff.can("cash.pay_in_out")) { "You are not allowed to put cash in or take cash out. Ask a manager." }
         require(amount > 0) { "Type the amount" }
         require(reason.isNotBlank()) { "Say what it is for" }
-        val row = record(type, amount, reason.trim())
+        staff.allow("cash.pay_in_out", "put cash in or take cash out", approver)
+        val row = record(type, amount, reason.trim(), staff.approvedBy("cash.pay_in_out", approver))
         val p = printing.receiptPrinter() ?: return@runCatching "Recorded. No receipt printer is set up, so no slip was printed."
         val s = printing.settings()
         val slip = CashSlipDoc(type, amount, row.reason, row.device_time, staff.current.value?.employee?.name, till())
-        printing.send(p, Docs.cashSlip(slip, printing.shop(), printing.paper(p), s.decimals), if (type == "in") "Cash in slip" else "Cash out slip").fold({ null }, { "Recorded, but the slip did not print: ${it.message}" })
+        // sent again later from the print jobs, the slip must not open the drawer
+        printing.send(
+            p, Docs.cashSlip(slip, printing.shop(), printing.paper(p), s.decimals), if (type == "in") "Cash in slip" else "Cash out slip",
+            again = Docs.cashSlip(slip, printing.shop(), printing.paper(p), s.decimals, openDrawer = false),
+        ).fold({ null }, { "Recorded, but the slip did not print: ${it.message}" })
+    }
+
+    // Counting the drawer during a shift, at a handover: what was counted and
+    // what the drawer should have held are recorded, and a slip prints for
+    // the two people to sign. Nothing closes, and the shift's expected cash at
+    // its end is worked out as if nobody had counted.
+    suspend fun count(counted: Long, approver: StaffMember? = null): Result<DrawerCountEntity> = runCatching {
+        require(counted >= 0) { "Type the amount" }
+        staff.allow("shift.open_close", "count the drawer", approver)
+        val tenant = session.tenantId() ?: error("no tenant")
+        val store = session.storeId() ?: error("no store")
+        val device = session.deviceId() ?: error("no device")
+        val shift = db.staff().openShift(device) ?: error("No shift is open")
+        val now = System.currentTimeMillis()
+        val row = DrawerCountEntity(Uuid7.next(), tenant, store, device, shift.id, staff.id(), counted, expectedCash(shift, now), now)
+        db.withTransaction {
+            db.ops().upsertDrawerCounts(listOf(row))
+            db.outbox().enqueue(op("drawer.count", buildJsonObject {
+                put("id", row.id); put("store_id", store); put("device_id", device); put("shift_id", shift.id)
+                put("counted", counted); put("expected", row.expected)
+                put("device_time", Instant.ofEpochMilli(now).toString())
+                staff.approvedBy("shift.open_close", approver)?.let { put("approved_by", it) }
+            }))
+        }
+        pushNow(context)
+        printing.scope.launch {
+            val p = printing.receiptPrinter() ?: return@launch
+            val doc = DrawerCountDoc(row.device_time, name(row.employee_id), row.counted, row.expected, till())
+            printing.send(p, Docs.drawerCount(doc, printing.shop(), printing.paper(p), printing.settings().decimals), "Drawer count slip")
+                .onFailure { printing.report(it.message ?: "The drawer count slip did not print") }
+        }
+        row
     }
 
     // ---- the figures of a period on this till ----
@@ -147,10 +186,12 @@ class CashOps @Inject constructor(
     suspend fun shiftDoc(shift: ShiftEntity): ShiftDoc {
         val p = period(shift.device_id, shift.opened_at - 1, shift.closed_at ?: System.currentTimeMillis())
         val expected = shift.opening_float + p.cashTaken + p.cashIn - p.cashOut
+        val till = till()
         return ShiftDoc(
-            till(), name(shift.opened_by), shift.opened_at, name(shift.closed_by), shift.closed_at, shift.opening_float,
+            till, name(shift.opened_by), shift.opened_at, name(shift.closed_by), shift.closed_at, shift.opening_float,
             p.payments, p.cashTaken, p.cashIn, p.cashOut, p.moves, shift.expected_cash ?: expected, shift.counted_cash,
             p.sales, p.gross, p.refunds, p.refunded, p.discounts,
+            db.ops().drawerCounts(shift.id).map { DrawerCountDoc(it.device_time, name(it.employee_id), it.counted, it.expected, till) },
         )
     }
 
@@ -211,8 +252,8 @@ class CashOps @Inject constructor(
     // Closing the day: the shift must be closed first (the drawer counted),
     // then the Z is fixed at this moment, sent, and printed. With "start again
     // each day", the next bill is number 1 of the next closing.
-    suspend fun closeDay(): Result<Pair<ZDoc, String?>> = runCatching {
-        require(staff.can("shift.open_close")) { "You are not allowed to close the day. Ask a manager." }
+    suspend fun closeDay(approver: StaffMember? = null): Result<Pair<ZDoc, String?>> = runCatching {
+        staff.allow("shift.open_close", "close the day", approver)
         val tenant = session.tenantId() ?: error("no tenant")
         val store = session.storeId() ?: error("no store")
         val device = session.deviceId() ?: error("no device")
@@ -231,6 +272,7 @@ class CashOps @Inject constructor(
                     put("sales", z.sales); put("gross", z.gross); put("refunds", z.refunds); put("refunded", z.refunded)
                     put("discounts", z.discounts); put("tax", z.tax); put("cash_in", z.cashIn); put("cash_out", z.cashOut)
                 })
+                staff.approvedBy("shift.open_close", approver)?.let { put("approved_by", it) }
             }))
         }
         session.setPeriodSeq(0)

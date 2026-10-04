@@ -37,9 +37,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Money
+import com.restopos.core.data.Approvals
 import com.restopos.core.data.CashOps
+import com.restopos.core.data.NeedsApproval
 import com.restopos.core.data.OrderOps
+import com.restopos.core.data.StaffMember
 import com.restopos.core.data.StaffSession
+import com.restopos.core.data.orAsk
 import com.restopos.core.database.DiningOptionEntity
 import com.restopos.core.database.PrinterEntity
 import com.restopos.core.database.ShiftEntity
@@ -51,6 +55,7 @@ import com.restopos.core.sync.SessionStore
 import com.restopos.core.ui.Pos
 import com.restopos.feature.staff.AmountPad
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -69,6 +74,7 @@ class MoreViewModel @Inject constructor(
     private val staff: StaffSession,
     private val db: TillDatabase,
     private val session: SessionStore,
+    private val approvals: Approvals,
     printing: Printing,
 ) : ViewModel() {
     // what a printer said when it could not print something in the background
@@ -77,6 +83,7 @@ class MoreViewModel @Inject constructor(
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
     fun messageShown() { _message.value = null }
+    fun say(text: String) { _message.value = text }
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy
@@ -95,6 +102,12 @@ class MoreViewModel @Inject constructor(
 
     fun can(permission: String) = staff.can(permission)
 
+    // For something only looked at (the figures): asks for an approval when
+    // the person signed in may not see it.
+    fun unlock(permission: String, what: String, then: () -> Unit) {
+        if (staff.can(permission)) then() else approvals.ask(permission, what) { then() }
+    }
+
     fun load() = viewModelScope.launch {
         _types.value = db.catalog().diningOptions()
         _printers.value = session.storeId()?.let { db.ops().printers(it) } ?: emptyList()
@@ -102,36 +115,41 @@ class MoreViewModel @Inject constructor(
         _day.value = runCatching { cash.dayDoc() }.getOrNull()
     }
 
-    private fun run(block: suspend () -> String?) = viewModelScope.launch {
+    // Runs something that may need someone else's go-ahead. If it does, asks
+    // for it and runs the same thing again with whoever approved.
+    private fun run(by: StaffMember? = null, block: suspend (StaffMember?) -> String?): Job = viewModelScope.launch {
         if (_busy.value) return@launch
         _busy.value = true
-        _message.value = runCatching { block() }.getOrElse { it.message ?: "That did not work" }
+        val out = runCatching { block(by) }
         _busy.value = false
+        val need = out.exceptionOrNull() as? NeedsApproval
+        if (need != null && by == null) approvals.ask(need.permission, need.what) { approver -> run(approver, block) }
+        else _message.value = out.getOrElse { it.message ?: "That did not work" }
         load()
     }
 
-    fun openDrawer() = run { cash.openDrawer().fold({ null }, { it.message }) }
+    fun openDrawer() = run { by -> cash.openDrawer(by).orAsk().fold({ null }, { it.message }) }
 
-    fun cashMove(type: String, amount: Long, reason: String, done: () -> Unit) = run {
-        cash.move(type, amount, reason).fold(
+    fun cashMove(type: String, amount: Long, reason: String, done: () -> Unit) = run { by ->
+        cash.move(type, amount, reason, by).orAsk().fold(
             { note -> done(); note ?: (if (type == "in") "Cash in recorded." else "Cash out recorded.") },
             { it.message },
         )
     }
 
-    fun printShift() = run {
+    fun printShift() = run { _ ->
         val s = _shift.value?.first ?: return@run "No shift has been opened on this till yet"
         cash.printShift(s).fold({ "Shift report sent to the printer." }, { it.message })
     }
 
-    fun closeDay(done: () -> Unit) = run {
-        cash.closeDay().fold(
+    fun closeDay(done: () -> Unit) = run { by ->
+        cash.closeDay(by).orAsk().fold(
             { (z, problem) -> done(); problem ?: "Day closing no. ${z.number} is done and printed." },
             { it.message },
         )
     }
 
-    fun testPrint(id: String) = run { orders.test(id).fold({ "Test print sent." }, { it.message }) }
+    fun testPrint(id: String) = run { _ -> orders.test(id).fold({ "Test print sent." }, { it.message }) }
 }
 
 private val stamp: DateFormat get() = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
@@ -164,6 +182,9 @@ fun MoreSheets(vm: MoreViewModel, show: String?, onDismiss: () -> Unit, onCloseS
     val day by vm.day.collectAsState()
     val busy by vm.busy.collectAsState()
     LaunchedEffect(show) { if (show != null) vm.load() }
+    // the figures are for those allowed to see reports, or shown with their go-ahead
+    var seen by remember(show) { mutableStateOf(false) }
+    val figures = vm.can("shift.view_report") || seen
     val cashType = show?.takeIf { it == "in" || it == "out" }
     val showShift = show == "shift"
     val showDay = show == "day"
@@ -178,7 +199,10 @@ fun MoreSheets(vm: MoreViewModel, show: String?, onDismiss: () -> Unit, onCloseS
             title = { Text("Shift") },
             text = {
                 if (s == null) Text("No shift has been opened on this till yet.")
-                else if (!vm.can("shift.view_report")) Text("The shift's figures are for someone allowed to see reports. You can still count the drawer and close the shift.")
+                else if (!figures) Column {
+                    Text("The shift's figures are for someone allowed to see reports. You can still count the drawer and close the shift.")
+                    OutlinedButton(onClick = { vm.unlock("shift.view_report", "see the shift's figures") { seen = true } }, Modifier.padding(top = 10.dp)) { Text("Show them with an approval") }
+                }
                 else Column(Modifier.verticalScroll(rememberScrollState())) {
                     val (row, d) = s
                     Text(
@@ -204,9 +228,9 @@ fun MoreSheets(vm: MoreViewModel, show: String?, onDismiss: () -> Unit, onCloseS
             },
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { vm.printShift() }, enabled = s != null && !busy && vm.can("shift.view_report")) { Text("Print report") }
+                    OutlinedButton(onClick = { vm.printShift() }, enabled = s != null && !busy && figures) { Text("Print report") }
                     if (s != null && s.first.closed_at == null) {
-                        Button(onClick = { onDismiss(); onCloseShift() }, enabled = vm.can("shift.open_close")) { Text("Close shift") }
+                        Button(onClick = { onDismiss(); onCloseShift() }) { Text("Close shift") }
                     }
                 }
             },
@@ -226,7 +250,7 @@ fun MoreSheets(vm: MoreViewModel, show: String?, onDismiss: () -> Unit, onCloseS
                         "Since ${z.from?.let { stamp.format(Date(it)) } ?: "the first sale"}. This will be closing no. ${z.number}.",
                         Modifier.padding(bottom = 8.dp), color = Pos.Text2, fontSize = 13.sp,
                     )
-                    if (vm.can("shift.view_report")) {
+                    if (figures) {
                         Figure("Receipts", z.sales.toString())
                         Figure("Sales", Money.format(z.gross))
                         Figure("Refunds (${z.refunds})", Money.format(-z.refunded))
@@ -243,7 +267,7 @@ fun MoreSheets(vm: MoreViewModel, show: String?, onDismiss: () -> Unit, onCloseS
                 }
             },
             confirmButton = {
-                Button(onClick = { vm.closeDay { onDismiss() } }, enabled = z != null && !open && !busy && vm.can("shift.open_close")) { Text("Close the day and print") }
+                Button(onClick = { vm.closeDay { onDismiss() } }, enabled = z != null && !open && !busy) { Text("Close the day and print") }
             },
             dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Close") } },
         )

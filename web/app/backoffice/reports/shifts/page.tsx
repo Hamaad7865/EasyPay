@@ -12,6 +12,7 @@ type Shift = {
   payments: { name: string | null; kind: string | null; amount: number; n: number }[];
   sales: { sales: number; refunds: number; gross: number; refunded: number; discounts: number };
   cash: { in: number; out: number; drawer: number; list: { type: string; amount: number; reason: string | null; at: string; who: string | null }[] };
+  counts: { counted: number; expected: number; at: string; who: string | null }[];
 };
 
 // A shift is one cashier's time on a till: from the float they started with
@@ -41,7 +42,11 @@ const SQL = `
             from cash_movements m left join employees e on e.tenant_id = m.tenant_id and e.id = m.employee_id
            where m.tenant_id = sh.tenant_id and m.device_id = sh.device_id and m.deleted_at is null
              and coalesce(m.device_time, m.created_at) >= sh.opened_at
-             and coalesce(m.device_time, m.created_at) <= coalesce(sh.closed_at, now())) as cash
+             and coalesce(m.device_time, m.created_at) <= coalesce(sh.closed_at, now())) as cash,
+         (select coalesce(json_agg(json_build_object('counted', dc.counted, 'expected', dc.expected,
+                   'at', coalesce(dc.device_time, dc.created_at), 'who', e.name) order by coalesce(dc.device_time, dc.created_at)), '[]'::json)
+            from drawer_counts dc left join employees e on e.tenant_id = dc.tenant_id and e.id = dc.employee_id
+           where dc.tenant_id = sh.tenant_id and dc.shift_id = sh.id and dc.deleted_at is null) as counts
     from shifts sh
     join stores s on s.tenant_id = sh.tenant_id and s.id = sh.store_id
     left join employees o on o.tenant_id = sh.tenant_id and o.id = sh.opened_by
@@ -134,6 +139,23 @@ export default async function ShiftReport({ searchParams }: { searchParams: Sear
                         <td className="num strong">{x.type === "out" ? "-" : ""}{m(x.amount)}</td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              )}
+              {sh.counts.length > 0 && (
+                <table style={{ marginTop: 18, marginBottom: 0 }}>
+                  <thead><tr><th>Drawer counted during the shift</th><th>By</th><th className="num">Expected</th><th className="num">Counted</th><th className="num">Difference</th></tr></thead>
+                  <tbody>
+                    {sh.counts.map((x, i) => {
+                      const off = Number(x.counted) - Number(x.expected);
+                      return (
+                        <tr key={i}>
+                          <td>{at(x.at)}</td><td>{x.who ?? ""}</td>
+                          <td className="num">{m(x.expected)}</td><td className="num strong">{m(x.counted)}</td>
+                          <td className="num" style={off < 0 ? { color: "var(--red)" } : undefined}>{off > 0 ? "+" : off < 0 ? "-" : ""}{m(Math.abs(off))}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}

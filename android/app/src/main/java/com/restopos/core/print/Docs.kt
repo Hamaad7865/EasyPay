@@ -84,7 +84,11 @@ data class ShiftDoc(
     val refunds: Int,
     val refunded: Long,
     val discounts: Long,
+    val counts: List<DrawerCountDoc> = emptyList(), // the drawer counted during the shift
 )
+
+// The drawer counted during a shift: what was in it and what it should have held.
+data class DrawerCountDoc(val time: Long, val user: String?, val counted: Long, val expected: Long, val till: String)
 
 data class ZDoc(
     val number: Int,
@@ -260,6 +264,30 @@ object Docs {
         return p.bytes()
     }
 
+    // The drawer counted during a shift, at a handover: the two people sign it.
+    fun drawerCount(d: DrawerCountDoc, shop: Shop, paper: Paper, decimals: Int): ByteArray {
+        val p = EscPos(paper.columns)
+        val n = { c: Long -> num(c, decimals) }
+        if (shop.name.isNotBlank()) p.center(shop.name)
+        p.align(EscPos.Align.Center).bold(true).big(true).line("DRAWER COUNT").big(false).bold(false).align(EscPos.Align.Left)
+        p.rule()
+        p.row("Date", stamp(d.time))
+        p.row("Till", d.till)
+        p.row("Counted by", d.user ?: "")
+        p.rule()
+        p.row("Expected in drawer", n(d.expected))
+        p.bold(true).tall(true).row("COUNTED", "Rs " + n(d.counted)).tall(false).bold(false)
+        val diff = d.counted - d.expected
+        p.bold(true).row(if (diff == 0L) "Difference" else if (diff < 0) "SHORT" else "OVER", n(diff)).bold(false)
+        p.line("The shift stays open.")
+        p.feed(2)
+        p.line("Handed over: " + "_".repeat((paper.columns - 13).coerceAtLeast(4)))
+        p.feed(1)
+        p.line("Taken over: " + "_".repeat((paper.columns - 12).coerceAtLeast(4)))
+        p.end(paper)
+        return p.bytes()
+    }
+
     // One cashier's time on the till, from the float to the count.
     fun shift(d: ShiftDoc, shop: Shop, paper: Paper, decimals: Int): ByteArray {
         val p = EscPos(paper.columns)
@@ -287,6 +315,14 @@ object Docs {
         p.row("Cash in", n(d.cashIn))
         p.row("Cash out", off(d.cashOut, decimals))
         d.moves.forEach { m -> p.row("  ${if (m.type == "in") "In" else "Out"}: ${m.reason ?: ""}", n(m.amount)) }
+        if (d.counts.isNotEmpty()) {
+            p.line("Counted during the shift:")
+            d.counts.forEach { c ->
+                val diff = c.counted - c.expected
+                p.row("  ${stamp(c.time).substringAfter(' ')} ${c.user ?: ""}".take(paper.columns - 12), n(c.counted))
+                p.row("    " + (if (diff == 0L) "as expected" else if (diff < 0) "short" else "over"), if (diff == 0L) "" else n(diff))
+            }
+        }
         p.bold(true).row("Expected in drawer", n(d.expected)).bold(false)
         if (d.counted != null) {
             p.row("Counted", n(d.counted))

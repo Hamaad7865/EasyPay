@@ -3,6 +3,8 @@ package com.restopos.feature.staff
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.PinHash
+import com.restopos.core.data.Approvals
+import com.restopos.core.data.NeedsApproval
 import com.restopos.core.data.StaffMember
 import com.restopos.core.data.StaffRepository
 import com.restopos.core.data.StaffSession
@@ -13,6 +15,7 @@ import com.restopos.core.sync.SessionStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +50,7 @@ class StaffViewModel @Inject constructor(
     private val staffSession: StaffSession,
     private val db: TillDatabase,
     private val api: ApiClient,
+    private val approvals: Approvals,
 ) : ViewModel() {
     private val _info = MutableStateFlow(TillInfo())
     val info: StateFlow<TillInfo> = _info
@@ -156,11 +160,29 @@ class StaffViewModel @Inject constructor(
         repo.open(float).fold(onSuccess = { then() }, onFailure = { _message.value = it.message })
     }
 
-    fun close(counted: Long) = viewModelScope.launch {
-        repo.close(counted).fold(
+    // Someone who may not close the shift asks for someone who may.
+    fun close(counted: Long, by: StaffMember? = null): Job = viewModelScope.launch {
+        val out = repo.close(counted, by)
+        val need = out.exceptionOrNull() as? NeedsApproval
+        if (need != null && by == null) { approvals.ask(need.permission, need.what) { approver -> close(counted, approver) }; return@launch }
+        out.fold(
             onSuccess = { s ->
                 val expected = s.expected_cash ?: s.opening_float
                 _closing.value = Closing(s.opening_float, expected - s.opening_float, expected, counted)
+            },
+            onFailure = { _message.value = it.message },
+        )
+    }
+
+    // The drawer counted during the shift: the same comparison, and the shift stays open.
+    fun count(counted: Long, by: StaffMember? = null): Job = viewModelScope.launch {
+        val out = repo.count(counted, by)
+        val need = out.exceptionOrNull() as? NeedsApproval
+        if (need != null && by == null) { approvals.ask(need.permission, need.what) { approver -> count(counted, approver) }; return@launch }
+        out.fold(
+            onSuccess = { c ->
+                val float = db.staff().shift(c.shift_id)?.opening_float ?: 0
+                _closing.value = Closing(float, c.expected - float, c.expected, c.counted)
             },
             onFailure = { _message.value = it.message },
         )

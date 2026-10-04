@@ -38,8 +38,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Money
+import com.restopos.core.data.Approvals
 import com.restopos.core.data.DocBuilder
+import com.restopos.core.data.NeedsApproval
 import com.restopos.core.data.OrderOps
+import com.restopos.core.data.StaffMember
 import com.restopos.core.data.StaffSession
 import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.PaymentTypeEntity
@@ -56,6 +59,7 @@ import com.restopos.core.ui.card
 import androidx.compose.ui.text.style.TextAlign
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -80,6 +84,7 @@ class ReceiptsViewModel @Inject constructor(
     private val docs: DocBuilder,
     private val db: TillDatabase,
     private val staff: StaffSession,
+    private val approvals: Approvals,
 ) : ViewModel() {
     private val _rows = MutableStateFlow<List<ReceiptEntity>>(emptyList())
     val rows: StateFlow<List<ReceiptEntity>> = _rows
@@ -116,17 +121,22 @@ class ReceiptsViewModel @Inject constructor(
 
     fun showId(id: String) = viewModelScope.launch { db.ops().receipt(id)?.let { show(it) } }
 
-    private fun run(done: String, block: suspend () -> Result<*>) = viewModelScope.launch {
+    // Runs something that may need someone else's go-ahead. If it does, asks
+    // for it and runs the same thing again with whoever approved.
+    private fun run(done: String, by: StaffMember? = null, block: suspend (StaffMember?) -> Result<*>): Job = viewModelScope.launch {
         if (_busy.value) return@launch
         _busy.value = true
-        _message.value = block().fold({ done }, { it.message ?: "That did not work" })
+        val out = block(by)
         _busy.value = false
+        val need = out.exceptionOrNull() as? NeedsApproval
+        if (need != null && by == null) approvals.ask(need.permission, need.what) { approver -> run(done, approver, block) }
+        else _message.value = out.fold({ done }, { it.message ?: "That did not work" })
         _open.value?.let { show(it.receipt) }
     }
 
-    fun reprint(id: String) = run("Sent to the printer.") { orders.reprint(id) }
-    fun refund(id: String, reason: String, type: String) = run("Refunded. The refund is in the list.") { orders.refund(id, reason, type) }
-    fun correct(id: String, from: String, to: String) = run("Payment type corrected.") { orders.correctPayment(id, from, to) }
+    fun reprint(id: String) = run("Sent to the printer.") { by -> orders.reprint(id, by) }
+    fun refund(id: String, reason: String, type: String) = run("Refunded. The refund is in the list.") { by -> orders.refund(id, reason, type, by) }
+    fun correct(id: String, from: String, to: String) = run("Payment type corrected.") { by -> orders.correctPayment(id, from, to, by) }
 }
 
 // Receipts issued on this tablet. Tap one to see it, print it again, refund
@@ -237,7 +247,7 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Paid by ${names[type]?.name ?: "another type"}", Modifier.weight(1f), color = Pos.Text2, fontSize = 14.sp)
                         Text(Money.format(list.sumOf { it.amount }), color = Pos.Text2, fontSize = 14.sp)
-                        if (r.type == "sale" && vm.can("payment.correct")) {
+                        if (r.type == "sale") {
                             Text("Change", Modifier.clickable { correcting = type }.padding(start = 12.dp, top = 6.dp, bottom = 6.dp), color = Pos.Link, fontSize = 14.sp)
                         }
                     }
@@ -249,9 +259,9 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (r.type == "sale" && !d.refunded) {
-                    OutlinedButton(onClick = { refunding = true }, enabled = !busy && vm.can("sale.refund")) { Text("Refund", color = Pos.Pink) }
+                    OutlinedButton(onClick = { refunding = true }, enabled = !busy) { Text("Refund", color = Pos.Pink) }
                 }
-                Button(onClick = { vm.reprint(r.id) }, enabled = !busy && vm.can("receipts.reprint")) { Text("Print again") }
+                Button(onClick = { vm.reprint(r.id) }, enabled = !busy) { Text("Print again") }
             }
         },
         dismissButton = { OutlinedButton(onClick = { vm.show(null) }) { Text("Close") } },

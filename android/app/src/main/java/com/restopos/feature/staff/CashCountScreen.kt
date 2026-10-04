@@ -42,9 +42,11 @@ private val GREEN = Color(0xFF3FBF7F)
 
 // The cash count. Opening a shift: confirm what is in the drawer.
 // Closing one: enter what was counted (the expected amount is not shown until
-// after, so the count is honest), then see how it compares.
+// after, so the count is honest), then see how it compares. Counting during a
+// shift (a handover) is the same count, and the shift stays open.
 @Composable
-fun CashCountScreen(closing: Boolean, vm: StaffViewModel = hiltViewModel(), onBack: () -> Unit, onDone: () -> Unit) {
+fun CashCountScreen(closing: Boolean, counting: Boolean = false, vm: StaffViewModel = hiltViewModel(), onBack: () -> Unit, onDone: () -> Unit) {
+    // closing and counting are both counted blind
     val suggested by vm.suggested.collectAsState()
     val shift by vm.shift.collectAsState()
     val current by vm.current.collectAsState()
@@ -62,18 +64,19 @@ fun CashCountScreen(closing: Boolean, vm: StaffViewModel = hiltViewModel(), onBa
     BackHandler(enabled = result != null) { onDone() }
 
     // opening offers what the drawer was left with last time; closing starts empty
-    val shown = typed ?: if (closing || suggested == 0L) "" else (suggested / 100).toString() + if (suggested % 100 == 0L) "" else ".%02d".format(suggested % 100)
+    val blind = closing || counting
+    val shown = typed ?: if (blind || suggested == 0L) "" else (suggested / 100).toString() + if (suggested % 100 == 0L) "" else ".%02d".format(suggested % 100)
     val amount = if (shown.isEmpty()) 0L else Money.parseRs(shown)
     val now = remember { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
 
     Box(Modifier.fillMaxSize().background(Pos.Bg)) {
         Column(Modifier.fillMaxSize()) {
-            StaffTopBar(if (closing) "Close shift" else "Cash count for cash drawer", if (result == null) onBack else null)
+            StaffTopBar(if (counting) "Count the drawer" else if (closing) "Close shift" else "Cash count for cash drawer", if (result == null) onBack else null)
             Row(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 28.dp), horizontalArrangement = Arrangement.spacedBy(64.dp)) {
                 Column(Modifier.weight(1f).fillMaxHeight()) {
                     val done = result
                     if (done != null) {
-                        Text("Shift closed.", color = Pos.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text(if (counting) "Drawer counted. The shift stays open." else "Shift closed.", color = Pos.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                         Text("How the drawer compares with what it should hold.", Modifier.padding(top = 10.dp, bottom = 18.dp), color = Pos.Text, fontSize = 14.sp)
                         Line("Opening amount", Money.format(done.float))
                         Line("Cash taken, with cash in and out", Money.format(done.cash))
@@ -92,7 +95,7 @@ fun CashCountScreen(closing: Boolean, vm: StaffViewModel = hiltViewModel(), onBa
                         Spacer(Modifier.weight(1f))
                         // Last shift of the day: the day closing (Z) is done from here,
                         // because the next sign-in opens a new shift.
-                        if (more.can("shift.open_close")) {
+                        if (!counting) {
                             Text(
                                 dayNote ?: "Is this the last shift of the day? Closing the day fixes the day's figures and prints the closing report.",
                                 Modifier.padding(bottom = 10.dp), color = if (dayNote != null) Pos.Text else Pos.Text3, fontSize = 13.sp,
@@ -107,15 +110,16 @@ fun CashCountScreen(closing: Boolean, vm: StaffViewModel = hiltViewModel(), onBa
                         }
                         Confirm("Done", enabled = true, onDone)
                     } else {
-                        Text(if (closing) "Count the cash." else "Confirm cash amount.", color = Pos.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text(if (blind) "Count the cash." else "Confirm cash amount.", color = Pos.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                         Text(
-                            if (closing) "Count the cash in this till's drawer and enter the amount. You will see how it compares after you confirm."
+                            if (counting) "Count the cash in this till's drawer and enter the amount. You will see how it compares after you confirm. A slip prints for the handover, and the shift stays open."
+                            else if (closing) "Count the cash in this till's drawer and enter the amount. You will see how it compares after you confirm."
                             else "Enter the cash that is in this till's drawer now. Each till has its own amount.",
                             Modifier.padding(top = 10.dp, bottom = 18.dp), color = Pos.Text, fontSize = 14.sp,
                         )
                         Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(3.dp)).background(Pos.Panel).padding(14.dp), contentAlignment = Alignment.Center) {
                             Text(
-                                if (closing) "Open since ${shift?.let { now.format(Date(it.opened_at)) } ?: "—"}" else "Shift starts ${now.format(Date())}",
+                                if (blind) "Open since ${shift?.let { now.format(Date(it.opened_at)) } ?: "—"}" else "Shift starts ${now.format(Date())}",
                                 color = GREEN, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                             )
                         }
@@ -125,7 +129,7 @@ fun CashCountScreen(closing: Boolean, vm: StaffViewModel = hiltViewModel(), onBa
                                 Text("Cash", color = Pos.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                             }
                             Column(Modifier.weight(1f)) {
-                                Text(if (closing) "Counted" else "Total", color = Pos.Text3, fontSize = 12.sp)
+                                Text(if (blind) "Counted" else "Total", color = Pos.Text3, fontSize = 12.sp)
                                 Text(
                                     if (shown.isEmpty()) "Rs 0" else "Rs $shown",
                                     color = if (amount == null) Pos.Pink else Pos.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold,
@@ -142,9 +146,9 @@ fun CashCountScreen(closing: Boolean, vm: StaffViewModel = hiltViewModel(), onBa
                             Text("Signed in: ${it.employee.name}", Modifier.padding(top = 14.dp), color = Pos.Text3, fontSize = 13.sp)
                         }
                         Spacer(Modifier.weight(1f))
-                        Confirm(if (closing) "Confirm counted cash" else "Confirm cash amount", enabled = amount != null) {
+                        Confirm(if (blind) "Confirm counted cash" else "Confirm cash amount", enabled = amount != null) {
                             val value = amount ?: return@Confirm
-                            if (closing) vm.close(value) else vm.open(value, onDone)
+                            if (counting) vm.count(value) else if (closing) vm.close(value) else vm.open(value, onDone)
                         }
                     }
                 }

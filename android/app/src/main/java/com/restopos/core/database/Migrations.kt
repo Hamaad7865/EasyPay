@@ -66,4 +66,12 @@ object Migrations {
             db.execSQL("ALTER TABLE `ticket_lines` ADD COLUMN `check_no` INTEGER NOT NULL DEFAULT 1")
         }
     }
+
+    // 5 -> 6: the drawer counted during a shift.
+    val V5_V6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `drawer_counts` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `device_id` TEXT NOT NULL, `shift_id` TEXT NOT NULL, `employee_id` TEXT, `counted` INTEGER NOT NULL, `expected` INTEGER NOT NULL, `device_time` INTEGER NOT NULL, `deleted_at` TEXT, `server_seq` INTEGER, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_drawer_counts_shift_id` ON `drawer_counts` (`shift_id`)")
+        }
+    }
 }

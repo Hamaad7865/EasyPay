@@ -5,10 +5,12 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import com.restopos.core.common.Money
+import com.restopos.core.data.Approvals
 import com.restopos.core.data.Calc
 import com.restopos.core.data.CatalogRepository
 import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.ModPick
+import com.restopos.core.data.NeedsApproval
 import com.restopos.core.data.OrderOps
 import com.restopos.core.data.PayInput
 import com.restopos.core.data.StaffMember
@@ -101,6 +103,7 @@ class SaleViewModel @Inject constructor(
     private val session: SessionStore,
     private val staff: StaffSession,
     private val orderOps: OrderOps,
+    private val approvals: Approvals,
 ) : ViewModel() {
     private val cat = MutableStateFlow<String?>(null)
     private val query = MutableStateFlow("")
@@ -237,12 +240,10 @@ class SaleViewModel @Inject constructor(
         val changed = _ticket.value?.id != before
         if (changed) { _selected.value = null; _buffer.value = ""; _course.value = 1; _courses.value = 1 }
         _tableName.value = (_ticket.value?.table_id ?: session.pendingTable())?.let { db.tables().table(it)?.name }
-        // only the discounts this person may give: one the server would refuse
-        // must never reach a paid receipt
-        _discounts.value = db.catalog().discounts().filter {
-            staff.can("sale.apply_discount") &&
-                (!it.requires_approval || (staff.id() != null && staff.can("sale.apply_restricted_discount")))
-        }
+        // Every discount is offered: one this person may not give asks for
+        // someone who may when it is picked. On a till without staff PINs
+        // there is nobody to ask, so one that needs approval is left out.
+        _discounts.value = db.catalog().discounts().filter { !it.requires_approval || staff.id() != null }
         _dining.value = db.catalog().diningOptions()
         // the discount the pay screen will apply, so both show the same total
         _discount.value = tickets.pendingDiscount()
@@ -309,22 +310,12 @@ class SaleViewModel @Inject constructor(
                 _buffer.value = ""
                 setQty(line, qty)
             }
-            is SaleAction.VoidLine -> {
-                orderOps.remove(a.lineId).onFailure { _toast.value = it.message }
-                reload()
-            }
-            is SaleAction.RemoveLine -> {
-                orderOps.remove(a.lineId).onFailure { _toast.value = it.message }
-                reload()
-            }
+            is SaleAction.VoidLine -> approved { by -> orderOps.remove(a.lineId, by) }
+            is SaleAction.RemoveLine -> approved { by -> orderOps.remove(a.lineId, by) }
             is SaleAction.Save -> save()
             is SaleAction.PrintBill -> orderOps.printBill(_discount.value).onFailure { _toast.value = it.message }
-            is SaleAction.ReprintKitchen -> orderOps.reprintKitchen()
-                .fold({ _toast.value = "Sent to the kitchen again" }, { _toast.value = it.message })
-            is SaleAction.SetWaiter -> {
-                orderOps.setWaiter(a.employeeId).onFailure { _toast.value = it.message }
-                reload()
-            }
+            is SaleAction.ReprintKitchen -> approved("Sent to the kitchen again") { by -> orderOps.reprintKitchen(by) }
+            is SaleAction.SetWaiter -> approved { by -> orderOps.setWaiter(a.employeeId, by) }
             is SaleAction.SetNote -> {
                 tickets.setNote(a.note.trim()).onFailure { _toast.value = it.message }
                 reload()
@@ -466,11 +457,38 @@ class SaleViewModel @Inject constructor(
         )
     }
 
-    fun setDiscount(d: DiscountPick?) {
-        if (d != null && !staff.can("sale.apply_discount")) { _toast.value = "You are not allowed to give a discount. Ask someone who is."; return }
-        _discount.value = d
+    // Runs something that may need someone else's go-ahead. If it does, asks
+    // for it and runs the same thing again with whoever approved.
+    private suspend fun approved(done: String? = null, by: StaffMember? = null, block: suspend (StaffMember?) -> Result<*>) {
+        val out = block(by)
+        val need = out.exceptionOrNull() as? NeedsApproval
+        if (need != null && by == null) {
+            approvals.ask(need.permission, need.what) { approver -> viewModelScope.launch { approved(done, approver, block) } }
+        } else {
+            out.fold({ done?.let { _toast.value = it } }, { _toast.value = it.message })
+        }
+        reload()
+    }
+
+    // A discount this person may not give asks for someone who may; who
+    // approved goes with the discount to the receipt.
+    fun setDiscount(d: DiscountPick?, by: StaffMember? = null) {
+        if (d != null) {
+            val restricted = d.discountId != null && _discounts.value.firstOrNull { it.id == d.discountId }?.requires_approval == true
+            val need = when {
+                !staff.can("sale.apply_discount") && by?.can("sale.apply_discount") != true -> "sale.apply_discount"
+                restricted && !staff.can("sale.apply_restricted_discount") && by?.can("sale.apply_restricted_discount") != true -> "sale.apply_restricted_discount"
+                else -> null
+            }
+            if (need != null) {
+                approvals.ask(need, if (restricted) "give the discount ${d.name}" else "give a discount") { approver -> setDiscount(d, approver) }
+                return
+            }
+        }
+        val pick = d?.copy(approvedBy = by?.employee?.id)
+        _discount.value = pick
         viewModelScope.launch {
-            tickets.setPendingDiscount(d)
+            tickets.setPendingDiscount(pick)
             reloadLines()
         }
     }

@@ -25,9 +25,9 @@ import androidx.room.RoomDatabase
         ItemModGroupCrossRef::class, DiscountEntity::class,
         RoleEntity::class, EmployeeEntity::class, EmployeeStoreEntity::class,
         ShiftEntity::class, PunchEntity::class, TableEntity::class,
-        PrinterEntity::class, SettingsEntity::class, CashMoveEntity::class, DayCloseEntity::class,
+        PrinterEntity::class, SettingsEntity::class, CashMoveEntity::class, DayCloseEntity::class, DrawerCountEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {

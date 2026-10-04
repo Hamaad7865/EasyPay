@@ -107,8 +107,8 @@ class OrderOps @Inject constructor(
     }
 
     // The same kitchen tickets again, for an order whose paper was lost.
-    suspend fun reprintKitchen(): Result<Unit> = runCatching {
-        require(staff.can("receipts.reprint")) { "You are not allowed to reprint" }
+    suspend fun reprintKitchen(approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("receipts.reprint", "reprint", approver)
         val t = tickets.activeTicket() ?: error("No order is open")
         val sent = db.tickets().lines(t.id).first().filter { it.sent_to_kitchen_at != null }
         require(sent.isNotEmpty()) { "Nothing on this order has been sent to the kitchen yet" }
@@ -137,26 +137,26 @@ class OrderOps @Inject constructor(
     // Taking an item off. Before it is sent it is simply deleted; after, it is
     // a void: the kitchen gets a VOID ticket so they stop making it. Neither
     // asks for a reason.
-    suspend fun remove(lineId: String): Result<Unit> = runCatching {
+    suspend fun remove(lineId: String, approver: StaffMember? = null): Result<Unit> = runCatching {
         val line = db.tickets().line(lineId) ?: error("That line is gone")
         val sent = line.sent_to_kitchen_at != null
-        if (sent) require(staff.can("sale.void_sent_line")) { "You are not allowed to void an item the kitchen already has. Ask a manager." }
-        else require(staff.can("sale.void_line")) { "You are not allowed to delete an item" }
-        tickets.voidLine(lineId, if (sent) "void" else "deleted").getOrThrow()
+        val permission = if (sent) "sale.void_sent_line" else "sale.void_line"
+        staff.allow(permission, if (sent) "void an item the kitchen already has" else "take an item off an order", approver)
+        tickets.voidLine(lineId, if (sent) "void" else "deleted", staff.approvedBy(permission, approver)).getOrThrow()
         if (sent) {
             db.tickets().ticket(line.ticket_id)?.let { t -> docs.kitchen(t, listOf(line), "VOID").errors.forEach { printing.report(it) } }
         }
     }
 
-    suspend fun setWaiter(employeeId: String): Result<Unit> {
-        if (!staff.can("ticket.reassign")) return Result.failure(IllegalStateException("You are not allowed to change the waiter"))
-        return tickets.setWaiter(employeeId)
+    suspend fun setWaiter(employeeId: String, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("ticket.reassign", "change the waiter", approver)
+        tickets.setWaiter(employeeId, staff.approvedBy("ticket.reassign", approver)).getOrThrow()
     }
 
     // ---- receipts already issued ----
 
-    suspend fun reprint(receiptId: String): Result<Unit> = runCatching {
-        require(staff.can("receipts.reprint")) { "You are not allowed to reprint" }
+    suspend fun reprint(receiptId: String, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("receipts.reprint", "print a receipt again", approver)
         val r = db.ops().receipt(receiptId) ?: error("That receipt is not on this tablet")
         docs.print(docFor(r)).getOrThrow()
     }
@@ -177,9 +177,9 @@ class OrderOps @Inject constructor(
     // A refund gives a whole receipt back, in the payment type chosen. The
     // server works the refund out from the receipt itself; the till sends the
     // same total, which it knows because it issued the receipt.
-    suspend fun refund(receiptId: String, reason: String, paymentTypeId: String): Result<ReceiptEntity> = runCatching {
-        require(staff.can("sale.refund")) { "You are not allowed to refund. Ask a manager." }
+    suspend fun refund(receiptId: String, reason: String, paymentTypeId: String, approver: StaffMember? = null): Result<ReceiptEntity> = runCatching {
         require(reason.isNotBlank()) { "Say why it is refunded" }
+        staff.allow("sale.refund", "refund", approver)
         val orig = db.ops().receipt(receiptId) ?: error("That receipt is not on this tablet")
         require(orig.type == "sale") { "A refund cannot be refunded" }
         require(db.ops().refundedOf(receiptId) == 0L) { "This receipt was already refunded" }
@@ -218,6 +218,7 @@ class OrderOps @Inject constructor(
                 put("payments", buildJsonArray {
                     if (orig.total > 0) add(buildJsonObject { put("payment_type_id", type.id); put("amount", orig.total) })
                 })
+                staff.approvedBy("sale.refund", approver)?.let { put("approved_by", it) }
             }))
         }
         pushNow(context)
@@ -227,9 +228,9 @@ class OrderOps @Inject constructor(
 
     // A bill rung up under the wrong payment type. The amount never changes;
     // the server keeps who corrected it and when.
-    suspend fun correctPayment(receiptId: String, from: String, to: String): Result<Unit> = runCatching {
-        require(staff.can("payment.correct")) { "You are not allowed to correct a payment type. Ask a manager." }
+    suspend fun correctPayment(receiptId: String, from: String, to: String, approver: StaffMember? = null): Result<Unit> = runCatching {
         require(from != to) { "Pick a different payment type" }
+        staff.allow("payment.correct", "correct a payment type", approver)
         val r = db.ops().receipt(receiptId) ?: error("That receipt is not on this tablet")
         val names = db.ops().allPaymentTypes().associateBy { it.id }
         val now = Instant.now().toString()
@@ -246,6 +247,7 @@ class OrderOps @Inject constructor(
             db.outbox().enqueue(op("payment.correct", buildJsonObject {
                 put("id", Uuid7.next()); put("receipt_id", receiptId)
                 put("from_payment_type_id", from); put("to_payment_type_id", to); put("corrected_at", now)
+                staff.approvedBy("payment.correct", approver)?.let { put("approved_by", it) }
             }))
         }
         pushNow(context)

@@ -67,6 +67,23 @@ data class DayCloseEntity(
     val server_seq: Long? = null,
 )
 
+// The cash counted in the drawer during a shift (a handover), with what the
+// drawer should have held at that moment. Made on this till and sent up.
+@Entity(tableName = "drawer_counts", indices = [Index("shift_id")])
+data class DrawerCountEntity(
+    @PrimaryKey val id: String,
+    val tenant_id: String,
+    val store_id: String,
+    val device_id: String,
+    val shift_id: String,
+    val employee_id: String? = null,
+    val counted: Long,
+    val expected: Long,
+    val device_time: Long = System.currentTimeMillis(),
+    val deleted_at: String? = null,
+    val server_seq: Long? = null,
+)
+
 // A payment with its receipt's type and time, for the shift and day reports.
 data class PaidRow(val receipt_id: String, val type: String, val payment_type_id: String, val amount: Long)
 
@@ -82,6 +99,10 @@ interface OpsDao {
     @Upsert suspend fun upsertSettings(row: SettingsEntity)
     @Upsert suspend fun upsertCashMoves(rows: List<CashMoveEntity>)
     @Upsert suspend fun upsertDayCloses(rows: List<DayCloseEntity>)
+    @Upsert suspend fun upsertDrawerCounts(rows: List<DrawerCountEntity>)
+
+    @Query("SELECT * FROM drawer_counts WHERE shift_id = :shift AND deleted_at IS NULL ORDER BY device_time")
+    suspend fun drawerCounts(shift: String): List<DrawerCountEntity>
 
     @Query("SELECT * FROM printers WHERE store_id = :store AND deleted_at IS NULL AND is_active ORDER BY sort_order, name")
     suspend fun printers(store: String): List<PrinterEntity>

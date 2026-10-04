@@ -54,6 +54,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.app.BuildConfig
 import com.restopos.core.common.Money
+import com.restopos.core.data.Approvals
 import com.restopos.core.data.CashOps
 import com.restopos.core.data.StaffMember
 import com.restopos.core.data.StaffSession
@@ -123,12 +124,19 @@ class SettingsViewModel @Inject constructor(
     private val db: TillDatabase,
     private val session: SessionStore,
     private val staff: StaffSession,
+    private val approvals: Approvals,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     private fun <T> Flow<T>.held(initial: T): StateFlow<T> = stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), initial)
 
     val user: StateFlow<StaffMember?> = staff.current
     fun can(permission: String) = staff.can(permission)
+
+    // Does it at once when the person signed in may; otherwise asks for
+    // someone who may, and does it with their go-ahead.
+    fun guard(permission: String, what: String, then: () -> Unit) {
+        if (staff.can(permission)) then() else approvals.ask(permission, what) { then() }
+    }
 
     val needsSignIn = session.needsSignIn.held(false)
     val pending = db.outbox().pendingCountFlow().held(0L)
@@ -268,16 +276,14 @@ private fun icon(p: Page): ImageVector = when (p) {
 }
 
 private val Shape = RoundedCornerShape(6.dp)
-private const val ASK = "You are not allowed to do that. Ask a manager."
 private val stamp: DateFormat get() = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
 private val clock: DateFormat get() = DateFormat.getTimeInstance(DateFormat.SHORT)
 
 // Something that needs someone's attention for as long as it is true.
 private class Standing(val title: String, val detail: String, val button: String, val onClick: () -> Unit)
 
-// The four things done to the cash drawer, each already checked against what
-// the person signed in may do.
-private class CashKeys(val cashIn: () -> Unit, val cashOut: () -> Unit, val open: () -> Unit, val close: () -> Unit)
+// The things done to the cash drawer.
+private class CashKeys(val cashIn: () -> Unit, val cashOut: () -> Unit, val open: () -> Unit, val count: () -> Unit, val close: () -> Unit)
 
 // Settings: a menu down the left, the chosen page on the right. Everything a
 // cashier or a manager does to this till that is not taking an order: the
@@ -291,6 +297,7 @@ fun SettingsScreen(
     onSignIn: () -> Unit,
     onRejected: () -> Unit,
     onClosePeriod: () -> Unit,
+    onCountDrawer: () -> Unit,
     onSignOut: () -> Unit,
     vm: SettingsViewModel = hiltViewModel(),
     receipts: ReceiptsViewModel = hiltViewModel(),
@@ -317,17 +324,13 @@ fun SettingsScreen(
     said?.let { m -> LaunchedEffect(m) { delay(5000); vm.messageShown() } }
     receiptSaid?.let { m -> LaunchedEffect(m) { delay(4000); receipts.messageShown() } }
 
+    // each of these asks for someone else's PIN if the person signed in may not do it
     val keys = CashKeys(
-        cashIn = { if (vm.can("cash.pay_in_out")) sheet = "in" else vm.say(ASK) },
-        cashOut = { if (vm.can("cash.pay_in_out")) sheet = "out" else vm.say(ASK) },
+        cashIn = { sheet = "in" },
+        cashOut = { sheet = "out" },
         open = { more.openDrawer() },
-        close = {
-            when {
-                shift == null -> vm.say("No shift is open.")
-                !vm.can("shift.open_close") -> vm.say(ASK)
-                else -> onClosePeriod()
-            }
-        },
+        count = { if (shift == null) vm.say("No shift is open.") else onCountDrawer() },
+        close = { if (shift == null) vm.say("No shift is open.") else onClosePeriod() },
     )
     val failed = jobs.count { it.error != null }
     val standing = buildList {
@@ -499,7 +502,7 @@ private fun CashPage(vm: SettingsViewModel, more: MoreViewModel, keys: CashKeys)
     val reports = vm.can("shift.view_report")
 
     CashActions(keys)
-    Note("Cash in and cash out each print a slip for the drawer. Close shift counts the cash in the drawer and ends the shift: selling stops until the next one is opened. The day is closed under Reports.")
+    Note("Cash in and cash out each print a slip for the drawer. Count drawer is for a handover: it records what is in the drawer and how that compares, prints a slip to sign, and the shift stays open. Close shift is the same count and ends the shift. The day is closed under Reports.")
     Heading("This shift")
     Panel {
         if (open == null) {
@@ -516,6 +519,22 @@ private fun CashPage(vm: SettingsViewModel, more: MoreViewModel, keys: CashKeys)
                 Figure("Expected in the drawer", Money.format(d.expected), bold = true)
             } else {
                 Note("What the drawer should hold shows after it has been counted.")
+            }
+        }
+    }
+    val counts = open?.second?.counts.orEmpty()
+    if (counts.isNotEmpty()) {
+        Heading("Drawer counts this shift")
+        Panel {
+            counts.forEach { c ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Counted ${Money.format(c.counted)}", color = Pos.Text, fontSize = 15.sp)
+                        Text(clock.format(Date(c.time)) + (c.user?.let { " · $it" } ?: ""), color = Pos.Text3, fontSize = 13.sp)
+                    }
+                    val diff = c.counted - c.expected
+                    if (reports) Tag(if (diff == 0L) "As expected" else if (diff < 0) "${Money.format(-diff)} short" else "${Money.format(diff)} over", if (diff == 0L) Pos.Ok else Pos.Pink)
+                }
             }
         }
     }
@@ -541,8 +560,9 @@ private fun CashPage(vm: SettingsViewModel, more: MoreViewModel, keys: CashKeys)
 
 @Composable
 private fun ReportsPage(vm: SettingsViewModel, more: MoreViewModel, onCloseShift: () -> Unit, onCloseDay: () -> Unit) {
-    if (!vm.can("shift.view_report")) {
-        Panel { Text("Reports are for people allowed to see them. Ask a manager to sign in.", color = Pos.Text, fontSize = 14.sp) }
+    var shown by remember { mutableStateOf(false) }
+    if (!vm.can("shift.view_report") && !shown) {
+        Locked("Reports are for people allowed to see them.") { vm.guard("shift.view_report", "see the reports") { shown = true } }
         return
     }
     var tab by rememberSaveable { mutableStateOf(0) }
@@ -581,6 +601,12 @@ private fun ReportsPage(vm: SettingsViewModel, more: MoreViewModel, onCloseShift
                     d.counted?.let {
                         Figure("Counted", Money.format(it))
                         Figure("Difference", Money.format(it - d.expected), bold = true)
+                    }
+                    if (d.counts.isNotEmpty()) {
+                        Hairline(Modifier.padding(vertical = 6.dp))
+                        d.counts.forEach { c ->
+                            Figure("Counted at ${clock.format(Date(c.time))}" + (c.user?.let { " by $it" } ?: ""), "${Money.format(c.counted)} (${Money.format(c.counted - c.expected)})")
+                        }
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -663,8 +689,9 @@ private fun ReportsPage(vm: SettingsViewModel, more: MoreViewModel, onCloseShift
 
 @Composable
 private fun PaymentsPage(vm: SettingsViewModel, onOpen: (String) -> Unit) {
-    if (!vm.can("receipts.view_all")) {
-        Panel { Text("The day's payments are for people allowed to see every receipt. Ask a manager to sign in.", color = Pos.Text, fontSize = 14.sp) }
+    var shown by remember { mutableStateOf(false) }
+    if (!vm.can("receipts.view_all") && !shown) {
+        Locked("The day's payments are for people allowed to see every receipt.") { vm.guard("receipts.view_all", "see the day's payments") { shown = true } }
         return
     }
     val rows by vm.payments.collectAsState()
@@ -795,10 +822,10 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel) {
 private fun DisplayPage(vm: SettingsViewModel) {
     val leftHanded by vm.leftHanded.collectAsState()
     val keepAwake by vm.keepAwake.collectAsState()
-    val allowed = vm.can("settings.device")
-    Toggle("Left-handed register", "The order and the keypad move to the right, the menu to the left.", leftHanded, allowed) { vm.setLeftHanded(it) }
-    Toggle("Keep the screen on", "The tablet does not go to sleep while RestoPOS is open.", keepAwake, allowed) { vm.setKeepAwake(it) }
-    Note(if (allowed) "These are for this tablet only." else "Only someone allowed to change this till's settings can change these.")
+    val change = "change how this till is set up"
+    Toggle("Left-handed register", "The order and the keypad move to the right, the menu to the left.", leftHanded) { vm.guard("settings.device", change) { vm.setLeftHanded(it) } }
+    Toggle("Keep the screen on", "The tablet does not go to sleep while RestoPOS is open.", keepAwake) { vm.guard("settings.device", change) { vm.setKeepAwake(it) } }
+    Note("These are for this tablet only.")
 }
 
 @Composable
@@ -833,7 +860,7 @@ private fun SupportPage(vm: SettingsViewModel, network: String, onSignIn: () -> 
                     "It is refused while a sale is waiting to be sent or an order is unpaid.",
                 Modifier.weight(1f).padding(end = 12.dp),
             )
-            Small("Sign out", color = Pos.Pink) { if (vm.can("settings.device")) onSignOut() else vm.say(ASK) }
+            Small("Sign out", color = Pos.Pink) { vm.guard("settings.device", "sign this tablet out", onSignOut) }
         }
     }
 }
@@ -845,6 +872,8 @@ private val HELP = listOf(
     "Splitting the bill" to "Split check moves items onto separate checks, and each check is paid on its own. To share one bill evenly, tap Pay and choose how many guests are paying.",
     "Taking an item off" to "Tap the line on the order. Before it has gone to the kitchen it is simply removed. After that it is a void: the kitchen gets a void ticket, and it needs someone allowed to void.",
     "A refund, or the wrong payment type" to "Under Receipts, tap the receipt. Refund gives the whole receipt back. Change corrects how it was paid without changing the amount.",
+    "When you are not allowed to" to "A refund, a void after the kitchen has it, opening the drawer and the like may need a manager. The till asks who approves: they tap their name and enter their own PIN, and it is done in your name with their approval on record.",
+    "Handing the drawer to someone else" to "Settings, Cash drawer, Count drawer. Count the cash and enter it: the till shows how it compares, prints a slip for both of you to sign, and the shift carries on.",
     "Cash in and cash out" to "Settings, Cash drawer. Type the amount and what it is for. A slip prints for the drawer and it shows on the shift report.",
     "Ending the day" to "Take payment for every open order. Under Settings, Cash drawer, tap Close shift and count the cash. Then Reports, Day so far, Close the day and print.",
     "A printer does not print" to "Settings, Printers. Check the printer says Connected and try a test print. A failed receipt or report has Try again next to it. A kitchen ticket goes again when you open the order and tap Save.",
@@ -910,6 +939,9 @@ private fun CashActions(keys: CashKeys) {
         Action("Cash in", onClick = keys.cashIn)
         Action("Cash out", onClick = keys.cashOut)
         Action("Open drawer", onClick = keys.open)
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Action("Count drawer", onClick = keys.count)
         Action("Close shift", primary = true, onClick = keys.close)
     }
 }
@@ -942,13 +974,24 @@ private fun Seg(options: List<String>, selected: Int, onPick: (Int) -> Unit) {
     }
 }
 
+// A page someone may not open, with the way in: someone who may, and their PIN.
 @Composable
-private fun Toggle(title: String, detail: String, on: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
+private fun Locked(text: String, onAsk: () -> Unit) {
+    Panel {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text, Modifier.weight(1f).padding(end = 12.dp), color = Pos.Text, fontSize = 14.sp)
+            Small("Open with an approval", onClick = onAsk)
+        }
+    }
+}
+
+@Composable
+private fun Toggle(title: String, detail: String, on: Boolean, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().clip(Shape).background(Pos.Panel).padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
             Text(title, color = Pos.Text, fontSize = 15.sp)
             Text(detail, color = Pos.Text3, fontSize = 13.sp)
         }
-        Switch(checked = on, onCheckedChange = onChange, enabled = enabled)
+        Switch(checked = on, onCheckedChange = onChange)
     }
 }

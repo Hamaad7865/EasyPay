@@ -32,6 +32,7 @@ object Routes {
     const val CLOCK = "clock"
     const val CASH_OPEN = "cash-open"
     const val CASH_CLOSE = "cash-close"
+    const val CASH_COUNT = "cash-count"
     const val SALE = "sale"
     const val PAY = "pay"
     const val SPLIT = "split"
@@ -113,6 +114,14 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
                 onDone = { nav.popBackStack(Routes.START, inclusive = false) },
             )
         }
+        // Counting the drawer during a shift: count, see the result, and back.
+        composable(Routes.CASH_COUNT) {
+            CashCountScreen(
+                closing = false, counting = true,
+                onBack = { nav.popBackStack() },
+                onDone = { nav.popBackStack() },
+            )
+        }
         composable(Routes.SALE) {
             // Register, Orders, Receipts and Settings share this entry (tabs).
             MainShell(
@@ -123,6 +132,7 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
                 onRejected = { nav.navigate(Routes.REJECTED) },
                 onLock = { nav.popBackStack(Routes.START, inclusive = false) },
                 onClosePeriod = { nav.navigate(Routes.CASH_CLOSE) },
+                onCountDrawer = { nav.navigate(Routes.CASH_COUNT) },
                 onSignOut = onSignOut,
             )
         }

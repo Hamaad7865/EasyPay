@@ -39,6 +39,8 @@ data class DiscountPick(
     val type: String = "amount",
     val value: Long = 0,
     val name: String = "Discount",
+    // who approved it, when the person at the register may not give it
+    val approvedBy: String? = null,
 )
 
 data class ModPick(val id: String, val name: String, val price: Long)
@@ -169,22 +171,34 @@ class TicketRepository @Inject constructor(
     // a remark for the kitchen and the receipt ("no onions", "collect at 7")
     suspend fun setNote(note: String) = updateMeta({ it.copy(note = note.ifBlank { null }) }) { put("note", note) }
     // hands the order to another waiter
-    suspend fun setWaiter(employeeId: String) = updateMeta({ it.copy(opened_by = employeeId) }) { put("opened_by", employeeId) }
+    suspend fun setWaiter(employeeId: String, approvedBy: String? = null) =
+        updateMeta({ it.copy(opened_by = employeeId) }) { put("opened_by", employeeId); approvedBy?.let { put("approved_by", it) } }
 
     // The discount picked on the register and waiting for the payment: one of
     // the back office's, or one typed in ("custom:percent:10").
+    // Whoever approved it follows an "@".
     suspend fun pendingDiscount(): DiscountPick? {
-        val v = session.pendingDiscount() ?: return null
+        val saved = session.pendingDiscount() ?: return null
+        val v = saved.substringBefore('@')
+        val by = saved.substringAfter('@', "").ifEmpty { null }
         if (v.startsWith("custom:")) {
             val parts = v.split(':')
             val value = parts.getOrNull(2)?.toLongOrNull() ?: return null
             val percent = parts.getOrNull(1) == "percent"
-            return DiscountPick(null, if (percent) "percent" else "amount", value, if (percent) "$value%" else com.restopos.core.common.Money.format(value))
+            return DiscountPick(null, if (percent) "percent" else "amount", value, if (percent) "$value%" else com.restopos.core.common.Money.format(value), by)
         }
-        return db.catalog().discount(v)?.takeIf { it.deleted_at == null }?.let { DiscountPick(it.id, it.type, it.value, it.name) }
+        return db.catalog().discount(v)?.takeIf { it.deleted_at == null }?.let { DiscountPick(it.id, it.type, it.value, it.name, by) }
     }
     suspend fun setPendingDiscount(d: DiscountPick?) {
-        session.setPendingDiscount(d?.let { it.discountId ?: "custom:${it.type}:${it.value}" })
+        session.setPendingDiscount(d?.let { (it.discountId ?: "custom:${it.type}:${it.value}") + (it.approvedBy?.let { by -> "@$by" } ?: "") })
+    }
+
+    // Whether a member of staff, by id, may do something: for an approval
+    // given earlier (a discount picked on the register, used at payment).
+    private suspend fun may(employeeId: String?, permission: String): Boolean {
+        val e = employeeId?.let { db.staff().employee(it) }?.takeIf { it.is_active && it.deleted_at == null } ?: return false
+        val perms = e.role_id?.let { db.staff().role(it) }?.takeIf { it.deleted_at == null }?.permissions ?: return false
+        return perms.contains("\"*\"") || perms.contains("\"$permission\"")
     }
 
     fun openTickets(store: String): Flow<List<TicketEntity>> = db.tickets().openTickets(store)
@@ -281,13 +295,14 @@ class TicketRepository @Inject constructor(
     }
 
     // No reason is asked for: "void" stands in when none is given.
-    suspend fun voidLine(lineId: String, reason: String): Result<Unit> = runCatching {
+    suspend fun voidLine(lineId: String, reason: String, approvedBy: String? = null): Result<Unit> = runCatching {
         val why = reason.ifBlank { "void" }
         val at = java.time.Instant.now().toString()
         db.withTransaction {
             db.tickets().voidLine(lineId, at, why)
             db.outbox().enqueue(op("ticket.void_line", buildJsonObject {
                 put("line_id", lineId); put("reason", why)
+                approvedBy?.let { put("approved_by", it) }
             }))
         }
         pushNow(context)
@@ -310,7 +325,9 @@ class TicketRepository @Inject constructor(
         // What the server would refuse is refused here, before any money is
         // recorded: a receipt it rejects would leave a payment stranded.
         require(staff.can("payment.take")) { "You are not allowed to take payment" }
-        require(discounts.isEmpty() || staff.can("sale.apply_discount")) { "You are not allowed to give a discount" }
+        // a discount needs someone allowed to give it: the person paying, or whoever approved it on the register
+        val approver = discounts.firstNotNullOfOrNull { it.approvedBy }
+        require(discounts.isEmpty() || staff.can("sale.apply_discount") || may(approver, "sale.apply_discount")) { "You are not allowed to give a discount" }
         val t = activeTicket() ?: error("no ticket")
         val (tenant, store, deviceId) = ctx()
         val lines = currentLines().filter { it.voided_at == null }
@@ -332,7 +349,7 @@ class TicketRepository @Inject constructor(
                 val row = db.catalog().discount(d.discountId) ?: error("bad discount")
                 if (row.requires_approval) {
                     // only someone allowed to give it, and they are named on the receipt
-                    require(staff.id() != null && staff.can("sale.apply_restricted_discount")) { "${row.name} needs a manager" }
+                    require((staff.id() != null && staff.can("sale.apply_restricted_discount")) || may(d.approvedBy, "sale.apply_restricted_discount")) { "${row.name} needs a manager" }
                     restricted.add(row.id)
                 }
                 Calc.Discount(if (row.type == "percent") row.value.toInt() else null, row.value)
@@ -384,7 +401,9 @@ class TicketRepository @Inject constructor(
                     d.discountId?.let { put("discount_id", it) }
                     put("type", d.type); put("value", d.value); put("name", d.name)
                     put("amount", totals.discountAmounts[i]) // as charged
-                    if (restricted.contains(d.discountId)) staff.id()?.let { put("approved_by", it) }
+                    if (restricted.contains(d.discountId)) {
+                        (d.approvedBy?.takeIf { !staff.can("sale.apply_restricted_discount") } ?: staff.id())?.let { put("approved_by", it) }
+                    }
                 })
             }
         }
@@ -415,6 +434,7 @@ class TicketRepository @Inject constructor(
                 if (servicePct > 0) put("service_pct", servicePct)
                 if (totals.rounding != 0L) put("rounding", totals.rounding)
                 put("payments", payArr); put("discounts", discArr); put("line_ids", lineArr)
+                if (discounts.isNotEmpty() && !staff.can("sale.apply_discount")) approver?.let { put("approved_by", it) }
             }))
         }
         session.setPeriodSeq(daySeq)

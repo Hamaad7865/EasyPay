@@ -22,6 +22,7 @@ import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.SyncScheduler
 import com.restopos.core.ui.Pos
 import com.restopos.core.ui.PosTheme
+import com.restopos.feature.staff.ApprovalHost
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -108,6 +109,8 @@ class MainActivity : ComponentActivity() {
                             recreate()
                         }
                     }
+                    // someone else's PIN, over whatever screen asked for it
+                    ApprovalHost()
                 }
                 }
             }

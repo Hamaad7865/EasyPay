@@ -25,6 +25,7 @@ import com.restopos.core.database.DayCloseEntity
 import com.restopos.core.database.DeviceEntity
 import com.restopos.core.database.DiningOptionEntity
 import com.restopos.core.database.DiscountEntity
+import com.restopos.core.database.DrawerCountEntity
 import com.restopos.core.database.EmployeeEntity
 import com.restopos.core.database.EmployeeStoreEntity
 import com.restopos.core.database.ItemEntity
@@ -246,6 +247,15 @@ class PullWorker @AssistedInject constructor(
                     CashMoveEntity(
                         id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "device_id") ?: "", str(it, "shift_id"), str(it, "employee_id"),
                         str(it, "type") ?: "out", lng(it, "amount") ?: 0, str(it, "reason"), at, str(it, "deleted_at"), lng(it, "server_seq"),
+                    )
+                })
+            }
+            changes["drawer_counts"]?.let { rows ->
+                ops.upsertDrawerCounts(rows.mapNotNull {
+                    val at = time(it, "device_time") ?: time(it, "created_at") ?: return@mapNotNull null
+                    DrawerCountEntity(
+                        id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "device_id") ?: "", str(it, "shift_id") ?: return@mapNotNull null,
+                        str(it, "employee_id"), lng(it, "counted") ?: 0, lng(it, "expected") ?: 0, at, str(it, "deleted_at"), lng(it, "server_seq"),
                     )
                 })
             }
