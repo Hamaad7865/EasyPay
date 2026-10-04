@@ -1,34 +1,72 @@
-import Link from "next/link";
 import { isSuspended, tenantContext } from "@/lib/tenant";
+import { withTenant } from "@/lib/db";
 import { auth } from "@/lib/auth/server";
 import { redirect } from "next/navigation";
+import { SideNav } from "./side-nav";
+
+const PERSON =
+  "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z";
 
 export default async function BackofficeLayout({ children }: { children: React.ReactNode }) {
   const ctx = await tenantContext();
+  const who = await withTenant(ctx.tenantId, (c) =>
+    c
+      .query(
+        `select (select name from tenants where id = $1) as tenant,
+                (select name from employees where id = $2 and tenant_id = $1) as employee`,
+        [ctx.tenantId, ctx.employeeId],
+      )
+      .then((r) => r.rows[0] as { tenant: string | null; employee: string | null }),
+  );
   async function signOut() {
     "use server";
     await auth.signOut();
     redirect("/login");
   }
+  const restaurant = who.tenant ?? "Restaurant";
   return (
-    <div style={{ fontFamily: "system-ui" }}>
-      <nav style={{ display: "flex", gap: 16, padding: 12, borderBottom: "1px solid #ccc" }}>
-        <strong>RestoPOS</strong>
-        <Link href="/backoffice/categories">Categories</Link>
-        <Link href="/backoffice/items">Items</Link>
-        <Link href="/backoffice/receipts">Receipts</Link>
-        <span style={{ marginLeft: "auto" }}>{ctx.role}</span>
-        <form action={signOut}>
-          <button type="submit">Sign out</button>
-        </form>
-      </nav>
-      {isSuspended(ctx) && (
-        <p style={{ margin: 0, padding: 12, background: "#fde8e8", color: "#8a1c1c" }}>
-          This account is suspended{ctx.statusReason ? ` (${ctx.statusReason})` : ""}. You can still see your data, and
-          sales already made on the tills still sync, but nothing can be changed here. Contact RestoPOS to reactivate.
-        </p>
-      )}
-      <div style={{ padding: 16 }}>{children}</div>
+    <div className="bo">
+      <aside className="bo-side">
+        <div className="bo-brand">
+          <span className="bo-brand-mark">R</span>RestoPOS
+        </div>
+        <div className="bo-restaurant" title={restaurant}>
+          {restaurant}
+        </div>
+        <SideNav />
+      </aside>
+      <div className="bo-body">
+        <header className="bo-top">
+          <span className="bo-top-name">{restaurant}</span>
+          {/* the start of the restaurant's id: what to quote to RestoPOS support */}
+          <span className="bo-top-id">ID: {ctx.tenantId.slice(0, 8).toUpperCase()}</span>
+          <span className="bo-top-spacer" />
+          <span className="bo-top-user">
+            <span className="bo-avatar">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d={PERSON} />
+              </svg>
+            </span>
+            <span>
+              {who.employee ?? "Signed in"}
+              {ctx.role && <small> · {ctx.role}</small>}
+            </span>
+          </span>
+          <form action={signOut}>
+            <button type="submit">Sign out</button>
+          </form>
+        </header>
+        <main className="bo-main">
+          {isSuspended(ctx) && (
+            <div className="bo-banner danger">
+              <strong>This account is suspended{ctx.statusReason ? ` (${ctx.statusReason})` : ""}.</strong>
+              You can still see your data, and sales already made on the tills still sync, but nothing can be changed
+              here. Contact RestoPOS to reactivate.
+            </div>
+          )}
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

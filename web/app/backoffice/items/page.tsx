@@ -77,16 +77,17 @@ export default async function ItemsPage({
   return (
     <div>
       <h1>Items</h1>
-      <p>
-        <a href="/backoffice/items">All</a>
+      <p className="bo-chips">
+        <a href="/backoffice/items" className={sp.cat ? undefined : "on"}>
+          All
+        </a>
         {cats.map((c) => (
-          <span key={c.id}>
-            {" "}
-            · <a href={`/backoffice/items?cat=${c.id}`}>{c.name}</a>
-          </span>
+          <a key={c.id} href={`/backoffice/items?cat=${c.id}`} className={sp.cat === c.id ? "on" : undefined}>
+            {c.name}
+          </a>
         ))}
       </p>
-      <form action={addItem}>
+      <form action={addItem} className="bo-toolbar">
         <input name="name" placeholder="Name" required />{" "}
         <input name="price" placeholder="Price Rs" required />{" "}
         <select name="category" defaultValue="">
@@ -121,7 +122,9 @@ export default async function ItemsPage({
                   <label>
                     <input type="checkbox" name="available" defaultChecked={it.is_available} /> avail
                   </label>{" "}
-                  <button type="submit">Save</button>
+                  <button type="submit" className="btn-quiet">
+                    Save
+                  </button>
                 </form>
               </td>
               <td>{fmtRs(Number(it.price))}</td>

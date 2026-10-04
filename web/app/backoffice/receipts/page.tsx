@@ -92,7 +92,7 @@ export default async function ReceiptsPage() {
   return (
     <div>
       <h1>Receipts</h1>
-      {open > 0 && <p style={{ color: "red" }}>{open} need review</p>}
+      {open > 0 && <p className="flag">{open} need review</p>}
       <table>
         <thead>
           <tr>
@@ -130,7 +130,7 @@ export default async function ReceiptsPage() {
           ))}
         </tbody>
       </table>
-      {rows.length === 0 && <p>No receipts yet. Make a sale on the tablet.</p>}
+      {rows.length === 0 && <p className="muted">No receipts yet. Make a sale on the tablet.</p>}
     </div>
   );
 }
