@@ -119,7 +119,8 @@ fun MainShell(
                 onSearch = { if (searching) closeSearch() else searching = true },
             )
             SyncNotices(needsSignIn, pending, rejected, onSignIn, onRejected)
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            // air between the bar with the name and the screen under it
+            Box(Modifier.weight(1f).fillMaxWidth().padding(top = if (tab == Tab.Register) 4.dp else 12.dp)) {
                 when (tab) {
                     Tab.Register -> RegisterScreen(
                         vm, searching, closeSearch, { if (vm.mayPay()) onPay() }, onPaid,

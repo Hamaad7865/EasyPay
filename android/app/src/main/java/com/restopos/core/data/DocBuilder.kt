@@ -102,7 +102,7 @@ class DocBuilder @Inject constructor(
     suspend fun print(doc: ReceiptDoc, openDrawer: Boolean = false): Result<Unit> = runCatching {
         val p = printing.receiptPrinter() ?: throw PrintError("No receipt printer is set up. Add one in the back office, under Printers.")
         val s = printing.settings()
-        val what = when (doc.kind) { "bill" -> "Bill, ${doc.order}"; "refund" -> "Refund ${doc.number}"; else -> "Receipt ${doc.number}" }
+        val what = when (doc.kind) { "bill" -> "Bill, ${doc.order}"; "refund" -> "Refund ${doc.number}"; else -> "Receipt ${doc.number}" + (doc.share?.let { ", share $it" } ?: "") }
         val bytes = Docs.receipt(doc, printing.shop(), printing.paper(p), s.decimals, printing.logo(s, p), openDrawer)
         // sent again later from the print jobs, it must not open the drawer
         val again = if (openDrawer) Docs.receipt(doc, printing.shop(), printing.paper(p), s.decimals, printing.logo(s, p), false) else bytes

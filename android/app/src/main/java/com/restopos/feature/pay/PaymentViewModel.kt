@@ -30,7 +30,8 @@ import javax.inject.Inject
 // number of guests or typed in. The shares are kept here until they add up
 // to the amount due, and then go out as ONE receipt with all its payments:
 // a receipt always pays its lines in full (the server would store a part
-// payment, but flagged for review).
+// payment, but flagged for review). Split evenly, each guest gets their own
+// printed copy of that receipt, saying their share and the tax in it.
 data class PayLine(val id: String, val qty: Int, val name: String, val amount: Long, val selected: Boolean)
 
 // A share already taken: who paid what, and how.
@@ -53,6 +54,7 @@ sealed interface PayUiState {
         val ways: Int = 1, // how many equal shares are still to come, this one included
         val custom: Long? = null, // an amount typed in for this payment
         val check: Int? = null, // the check of a split check being paid
+        val perGuest: Boolean = false, // split evenly between guests: each gets their own copy of the receipt
     ) : PayUiState {
         val taken: Long get() = shares.sumOf { it.input.amount }
         val remaining: Long get() = due - taken
@@ -152,7 +154,7 @@ class PaymentViewModel @Inject constructor(
     // Split evenly between this many guests (1 = no split).
     fun ways(n: Int) {
         val s = _state.value as? PayUiState.Ready ?: return
-        _state.value = s.copy(ways = n.coerceIn(1, 20), custom = null, tendered = null, error = null)
+        _state.value = s.copy(ways = n.coerceIn(1, 20), custom = null, tendered = null, error = null, perGuest = n > 1 || (s.perGuest && s.shares.isNotEmpty()))
     }
 
     // An amount typed in for this payment; null goes back to all that is left.
@@ -168,7 +170,7 @@ class PaymentViewModel @Inject constructor(
     // Forgets the shares taken so far (the cashier gives the money back).
     fun dropShares() {
         val s = _state.value as? PayUiState.Ready ?: return
-        _state.value = s.copy(shares = emptyList(), ways = 1, custom = null, tendered = null, error = null, notice = null)
+        _state.value = s.copy(shares = emptyList(), ways = 1, custom = null, tendered = null, error = null, notice = null, perGuest = false)
     }
 
     // Takes this payment. Cash: received >= the amount closes with change;
@@ -211,7 +213,7 @@ class PaymentViewModel @Inject constructor(
         val change = shares.sumOf { it.input.change }
         tickets.pay(payments, listOfNotNull(discount), 0, covered).fold(
             onSuccess = { receipt ->
-                orderOps.afterPay(receipt)
+                orderOps.afterPay(receipt, perGuest = s.perGuest && shares.size >= 2)
                 val closed = tickets.activeTicket() == null
                 if (closed) {
                     session.setPendingDiscount(null)
@@ -224,7 +226,7 @@ class PaymentViewModel @Inject constructor(
                     } else {
                         val left = s.lines.count { !it.selected }
                         val paid = "Paid ${Money.format(receipt.total)}" + if (change > 0) ", change ${Money.format(change)}" else ""
-                        _state.value = s.copy(shares = emptyList(), ways = 1, custom = null)
+                        _state.value = s.copy(shares = emptyList(), ways = 1, custom = null, perGuest = false)
                         reload("$paid. $left ${if (left == 1) "line" else "lines"} left to pay.")
                     }
                 }

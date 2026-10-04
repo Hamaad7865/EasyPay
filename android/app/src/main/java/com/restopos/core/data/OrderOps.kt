@@ -91,14 +91,24 @@ class OrderOps @Inject constructor(
     // type opens it, and anything paid that the kitchen never had is sent.
     // None of it holds the till up: it runs behind, and a printer that does
     // not answer is reported on the screen.
-    fun afterPay(r: ReceiptEntity) {
+    // perGuest: the bill was split evenly between guests, and each of them
+    // gets a copy of the receipt that says their share and the tax in it. It
+    // is still one receipt, with one number.
+    fun afterPay(r: ReceiptEntity, perGuest: Boolean = false) {
         printing.scope.launch {
             runCatching {
                 val types = db.ops().allPaymentTypes().associateBy { it.id }
                 val drawer = db.receipts().payments(r.id).any { types[it.payment_type_id]?.opens_drawer == true }
                 val doc = docs.decode(r.doc ?: db.ops().receipt(r.id)?.doc)
                 if (doc != null && printing.receiptPrinter() != null) {
-                    docs.print(doc, drawer).onFailure { printing.report(it.message ?: "The receipt did not print") }
+                    if (perGuest && doc.payments.size >= 2) {
+                        doc.payments.forEachIndexed { i, pay ->
+                            docs.print(doc.copy(payments = listOf(pay), share = i + 1, shares = doc.payments.size), drawer && i == 0)
+                                .onFailure { printing.report(it.message ?: "The receipt did not print") }
+                        }
+                    } else {
+                        docs.print(doc, drawer).onFailure { printing.report(it.message ?: "The receipt did not print") }
+                    }
                 }
                 val unsent = db.tickets().allLines(r.ticket_id).filter { it.paid && it.sent_to_kitchen_at == null && it.voided_at == null }.map { it.id }
                 if (unsent.isNotEmpty()) sendOnPay(r.ticket_id, unsent)

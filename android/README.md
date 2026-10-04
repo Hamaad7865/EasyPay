@@ -114,8 +114,10 @@ pull worker, a start screen, and the screens behind the top bar:
     slip or report has Try again (a receipt goes again without opening the
     drawer). A kitchen ticket is not re-sent from here: Save sends it again
     and marks the lines sent.
-  - Display (`settings.device`): left-handed register, keep the screen on.
-    Kept on the tablet.
+  - Display (`settings.device`): light mode, left-handed register, keep the
+    screen on. Kept on the tablet. Every colour is a getter on `Pos` that
+    reads `Pos.light`, so nothing on a screen may hard-code a colour that
+    assumes a dark background (the PIN pad is the one dark sheet in both).
   - Support: the till's details, Sync now, refused changes, and signing the
     tablet out (`settings.device`).
   - Help: how the till's own flows work.
@@ -129,38 +131,38 @@ up, or Custom on a number pad; other types: an optional reference), the
 change, and Pay. Cancel goes back to the order. Pay ignores taps in its first
 moment on screen, because it sits where Pay on the register was.
 
-- **Starting an order:** New order asks the order type (the back office's
-  order types: Dine-in, Takeaway, ...). One that needs a table opens the floor
-  plan; the others go straight to the register.
-- **Save (send to the kitchen):** under the items, next to Print bill and Pay,
-  for an order type that goes to the kitchen on Save. It prints what the
-  kitchen has not had yet, each line on the printers ticked on its category
+- **Starting an order:** the register is always ready for one. The order type
+  chip (the back office's order types: Dine-in, Takeaway, ...) changes its
+  type; Tables, or a table tapped on the Tables tab, puts it on a table.
+- **Send (to the kitchen):** under the items, next to Split Check and Pay. It
+  prints what the kitchen has not had yet, each line on the printers ticked on its category
   (back office > Categories), with the table, the time and the waiter, marks
   those lines sent (`ticket.send`), and puts the order away. Opening the order
   again and saving again sends only what was added. A printer that does not
-  answer keeps its lines unsent and says so; Save again retries them. An
-  order type set to "when the bill is paid" prints its kitchen ticket after
-  payment instead.
+  answer keeps its lines unsent and says so; Send again retries them. An
+  order paid without ever being sent prints its kitchen ticket after payment.
+- **On hold** puts the order away as it is, with nothing sent; it waits under
+  Orders.
 - **Delete and void:** a line the kitchen has not had is deleted (and its
   quantity can still change); one it has is voided, which prints a VOID ticket
   where the line printed. Neither asks for a reason.
-- **Print bill:** the order as it stands, as often as asked. Nothing is
-  recorded.
-- **Actions:** transfer to another table, change waiter (`ticket.reassign`),
-  a remark (prints on the kitchen order and the receipt), a discount in % or
-  Rs, print the kitchen order again.
+- **Actions:** new order, name the order, transfer to another table, change
+  waiter (`ticket.reassign`), a remark (prints on the kitchen order and the
+  receipt), print the bill (the order as it stands, as often as asked; nothing
+  is recorded), print the kitchen order again, a discount in % or Rs.
 - **Payment:** the receipt prints by itself on the cashier's printer and the
   drawer opens if the payment type is set to open it. A remark can be added
   on the payment screen. With no decimals (or one), the total is rounded and
-  the rounding is kept on the receipt.
-- **Side menu** (the button left of Floor plan, and on the register next to
-  the magnifier): the lists, then Cash drawer (open it without a sale, which
-  is recorded; cash in and cash out with an amount and a reason: a slip
-  prints and it counts in the drawer's expected cash), Closing (the shift:
-  figures, print the report, close it; the day closing, the Z), and This till
-  (refund or reprint, settings, lock). The day is closed on the screen that
-  shows a closed shift, or from the menu when no shift is open: it needs the
-  shift closed and no unpaid order, fixes the figures, prints, and with
+  the rounding is kept on the receipt. A bill split evenly between guests is
+  still one receipt with one number, and each guest gets a printed copy that
+  says their share and the tax in it. Items rung up by seat can instead go on
+  one check per seat (Split Check), each paid on its own receipt.
+- **Cash drawer and closings** are in Settings: opening the drawer without a
+  sale (recorded), cash in and cash out with an amount and a reason (a slip
+  prints and it counts in the drawer's expected cash), Count drawer (a count
+  for a handover that leaves the sales period open), Close sales period (the
+  blind count), and under Reports the day closing (the Z): it needs the sales
+  period closed and no unpaid order, fixes the figures, prints, and with
   "start again each day" restarts bill numbers.
 - **Receipts:** tap one to see it, print it again (the same paper: what a
   receipt printed is kept with it), refund it (the whole receipt, with a
@@ -170,9 +172,9 @@ moment on screen, because it sits where Pay on the register was.
   80 mm paper. It does not need the internet. Settings > Printers has a test
   print for each printer.
 
-Not built yet: customers, a kitchen screen, tips, splitting a bill evenly,
-service charge, refunding part of a receipt, barcode scanning, locking after
-inactivity, a manager's PIN to override a refusal, QR sign-in. A till only shows its own orders and
+Not built yet: a kitchen screen, tips, service charge, refunding part of a
+receipt, barcode scanning, locking after inactivity, QR sign-in, card
+terminals, a discount on one item, changing an item's price on the order. A till only shows its own orders and
 receipts: the pull does not bring other tills' tickets down. So a table that
 is occupied on one tablet shows as free on another. The server already sends
 the store's open tickets (0048); applying them on the till is the next step.

@@ -51,6 +51,10 @@ data class ReceiptDoc(
     val refundOf: String? = null,
     val reason: String? = null,
     val customer: String? = null,
+    // Set only on the copy printed for one guest of a bill split evenly: which
+    // share this is, of how many. Its payments then hold that guest's alone.
+    val share: Int? = null,
+    val shares: Int? = null,
 )
 
 data class KitchenDoc(
@@ -204,6 +208,14 @@ object Docs {
         p.bold(true).tall(true)
         p.row(if (d.kind == "refund") "REFUNDED" else "TOTAL", "Rs " + n(d.total))
         p.tall(false).bold(false)
+        if (d.share != null && d.shares != null) {
+            // one guest's copy: the whole bill above, then what this guest paid and the tax in it
+            val mine = d.payments.sumOf { it.amount }
+            p.rule()
+            p.bold(true).row("SHARE ${d.share} OF ${d.shares}", "Rs " + n(mine)).bold(false)
+            val tax = d.taxes.sumOf { it.amount }
+            if (tax > 0 && d.total > 0) p.row("Tax in this share", n((tax * mine + d.total / 2) / d.total))
+        }
         d.payments.forEach { pay ->
             p.row(pay.name, n(pay.amount))
             pay.reference?.takeIf { it.isNotBlank() }?.let { p.line("  Ref: $it") }

@@ -873,7 +873,7 @@ private val HELP = listOf(
     "Starting the day" to "Tap Clock in/out, pick your name and enter your PIN. If no sales period is open you count the cash in the drawer first; that opens the sales period.",
     "Taking an order" to "Tap New order and choose the order type. Pick the table if it asks for one, then tap the items. Save sends what is new to the kitchen and puts the order away; it is back under Orders or on its table.",
     "Taking payment" to "Open the order and tap Pay. Pick how it is paid. For cash, type what the guest gave to see the change. The receipt prints and the order closes.",
-    "Splitting the bill" to "Split check moves items onto separate checks, and each check is paid on its own. To share one bill evenly, tap Pay and choose how many guests are paying.",
+    "Splitting the bill" to "Split check moves items onto separate checks, and each check is paid on its own. To share one bill evenly, tap Pay and choose how many guests are paying: each gets a printed receipt for their share. When items were rung up by seat, Split Check has One check per seat.",
     "Taking an item off" to "Tap the line on the order. Before it has gone to the kitchen it is simply removed. After that it is a void: the kitchen gets a void ticket, and it needs someone allowed to void.",
     "A refund, or the wrong payment type" to "Under Receipts, tap the receipt. Refund gives the whole receipt back. Change corrects how it was paid without changing the amount.",
     "When you are not allowed to" to "A refund, a void after the kitchen has it, opening the drawer and the like may need a manager. The till asks who approves: they tap their name and enter their own PIN, and it is done in your name with their approval on record.",
