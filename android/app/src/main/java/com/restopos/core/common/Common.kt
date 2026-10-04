@@ -25,6 +25,16 @@ object Money {
         return (if (neg) "-" else "") + body
     }
 
+    // One of `ways` equal shares of an amount, rounded to what can be paid
+    // with the decimals shown. The last share (ways = 1) is whatever is left,
+    // so the shares always add up to the amount exactly.
+    fun share(remaining: Long, ways: Int, places: Int = decimals): Long {
+        if (ways <= 1 || remaining <= 0) return remaining.coerceAtLeast(0)
+        val unit = when (places) { 0 -> 100L; 1 -> 10L; else -> 1L }
+        val each = (remaining / ways + unit / 2) / unit * unit
+        return each.coerceIn(minOf(unit, remaining), remaining)
+    }
+
     // What a total is rounded by so it can be paid with the decimals shown:
     // to the rupee with none, to ten cents with one, not at all with two.
     fun roundingFor(total: Long, places: Int = decimals): Long {

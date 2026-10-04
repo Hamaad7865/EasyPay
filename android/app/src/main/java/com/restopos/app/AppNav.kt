@@ -34,6 +34,7 @@ object Routes {
     const val CASH_CLOSE = "cash-close"
     const val SALE = "sale"
     const val PAY = "pay"
+    const val SPLIT = "split"
     const val DONE = "done/{receiptId}/{change}/{total}"
     const val REAUTH = "reauth"
     const val REJECTED = "rejected"
@@ -112,6 +113,7 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
             // Register, Orders, Receipts and Settings share this entry (tabs).
             MainShell(
                 onPay = { nav.navigate(Routes.PAY) },
+                onSplit = { nav.navigate(Routes.SPLIT) },
                 onPaid = { id, change, total -> nav.navigate("done/$id/$change/$total") },
                 onSignIn = { nav.navigate(Routes.REAUTH) },
                 onRejected = { nav.navigate(Routes.REJECTED) },
@@ -119,6 +121,10 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
                 onClosePeriod = { nav.navigate(Routes.CASH_CLOSE) },
                 onSignOut = onSignOut,
             )
+        }
+        // The split check: its checks are paid one at a time from here.
+        composable(Routes.SPLIT) {
+            com.restopos.feature.split.SplitScreen(onBack = { nav.popBackStack() }, onPay = { nav.navigate(Routes.PAY) })
         }
         composable(Routes.PAY) {
             PaymentScreen(

@@ -12,6 +12,7 @@ import androidx.room.RoomDatabase
 // Version 4 adds printers, the restaurant's settings, cash movements, day
 // closings, where a category prints, when an order type goes to the kitchen,
 // which payment types open the drawer, and what each receipt printed.
+// Version 5 adds the check a line is on, for a split check.
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -26,7 +27,7 @@ import androidx.room.RoomDatabase
         ShiftEntity::class, PunchEntity::class, TableEntity::class,
         PrinterEntity::class, SettingsEntity::class, CashMoveEntity::class, DayCloseEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {

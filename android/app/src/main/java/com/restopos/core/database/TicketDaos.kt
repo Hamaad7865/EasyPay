@@ -74,6 +74,13 @@ interface TicketDao {
     @Query("SELECT name_snapshot FROM ticket_line_modifiers WHERE line_id = :line")
     suspend fun modNames(line: String): List<String>
 
+    @Query("SELECT * FROM ticket_line_modifiers WHERE line_id = :line")
+    suspend fun lineMods(line: String): List<TicketLineModEntity>
+
+    // which check of a split check the line is on
+    @Query("UPDATE ticket_lines SET check_no = :check WHERE id = :id")
+    suspend fun setCheck(id: String, check: Int)
+
     // Open orders that still have something to pay. They live on this tablet
     // only (the pull does not bring tickets back), so sign-out checks this.
     @Query(

@@ -1,6 +1,7 @@
 package com.restopos.feature.pay
 
 import android.os.SystemClock
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -59,10 +61,28 @@ import com.restopos.feature.staff.AmountPad
 fun PaymentScreen(vm: PaymentViewModel = hiltViewModel(), onDone: (String, Long, Long) -> Unit, onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val ready = state as? PayUiState.Ready
+    // one check of a split check was paid and others remain: back to the checks
+    val checkPaid by vm.checkPaid.collectAsStateWithLifecycle()
+    if (checkPaid) LaunchedEffect(Unit) { onBack() }
+    // Leaving with shares taken: the money is in hand but nothing is recorded
+    // yet, so the cashier is asked first.
+    var leaving by remember { mutableStateOf(false) }
+    val taken = ready?.shares.orEmpty()
+    val leave = { if (taken.isEmpty()) onBack() else leaving = true }
+    BackHandler(enabled = taken.isNotEmpty()) { leaving = true }
+    if (leaving) {
+        AlertDialog(
+            onDismissRequest = { leaving = false },
+            title = { Text("Give the money back?") },
+            text = { Text("${Money.format(taken.sumOf { it.input.amount })} has been taken for this bill and is not recorded yet. If you leave now, give it back: the bill stays unpaid.") },
+            confirmButton = { Button(onClick = { leaving = false; vm.dropShares(); onBack() }) { Text("Leave, bill unpaid") } },
+            dismissButton = { OutlinedButton(onClick = { leaving = false }) { Text("Stay and finish") } },
+        )
+    }
     Column(Modifier.fillMaxSize().background(Pos.Bg)) {
         Box(Modifier.fillMaxWidth().height(48.dp).background(Pos.Panel)) {
             Text(
-                "Cancel", Modifier.align(Alignment.CenterStart).clickable(onClick = onBack).padding(horizontal = 16.dp, vertical = 12.dp),
+                "Cancel", Modifier.align(Alignment.CenterStart).clickable(onClick = leave).padding(horizontal = 16.dp, vertical = 12.dp),
                 color = Pos.Pink, fontSize = 15.sp,
             )
             if (ready != null) {
@@ -91,8 +111,10 @@ private fun Busy() {
 @Composable
 private fun Ready(s: PayUiState.Ready, vm: PaymentViewModel) {
     val cash = s.selected?.kind == "cash"
-    val received = if (cash) s.tendered ?: s.due else s.due
+    val now = s.now // what this payment is for: the whole bill, or a share of it
+    val received = if (cash) s.tendered ?: now else now
     var custom by remember { mutableStateOf(false) }
+    var part by remember { mutableStateOf(false) } // typing an amount for this payment
     // Pay here sits where Pay on the register was: a double tap there must not
     // take the payment, so the button ignores the first moment on screen.
     val shownAt = remember { SystemClock.elapsedRealtime() }
@@ -100,12 +122,34 @@ private fun Ready(s: PayUiState.Ready, vm: PaymentViewModel) {
         Summary(Modifier.weight(1.15f).fillMaxHeight(), s) { vm.toggle(it) }
         Methods(Modifier.weight(0.62f).fillMaxHeight(), s) { vm.select(it) }
         Column(Modifier.weight(1.05f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Panel("Payment amount", Money.format(s.due), if (s.lines.size > 1) "The lines ticked in the order summary" else "The whole order")
-            Panel("Received amount", Money.format(received), if (cash) null else "Paid in full by ${s.selected?.name ?: "this type"}") {
+            Panel(
+                "Payment amount", Money.format(now),
+                when {
+                    s.shares.isNotEmpty() || s.ways > 1 || s.custom != null -> "Of ${Money.format(s.due)}. ${Money.format(s.remaining - now)} is left after this payment."
+                    s.lines.size > 1 -> "The lines ticked in the order summary"
+                    else -> "The whole bill"
+                },
+            ) {
+                // Split the bill: evenly between a number of guests, or an amount typed in.
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Split evenly", Modifier.weight(1f), color = Pos.Text2, fontSize = 13.sp)
+                    Key("−", false, Modifier.width(44.dp)) { vm.ways(s.ways - 1) }
+                    Text(if (s.ways > 1) "${s.ways} ways" else "No", Modifier.width(64.dp), color = Pos.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+                    Key("+", false, Modifier.width(44.dp)) { vm.ways(s.ways + 1) }
+                    Key(if (s.custom != null) "Whole" else "Amount", s.custom != null, Modifier.width(84.dp)) { if (s.custom != null) vm.custom(null) else part = true }
+                }
+                s.shares.forEach { sh ->
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                        Text("Taken: ${sh.type}", Modifier.weight(1f), color = Pos.Ok, fontSize = 13.sp)
+                        Text(Money.format(sh.input.amount), color = Pos.Ok, fontSize = 13.sp)
+                    }
+                }
+            }
+            Panel("Received amount", Money.format(received), if (cash) null else "Paid by ${s.selected?.name ?: "this type"}") {
                 if (cash) {
-                    val quick = quickAmounts(s.due)
+                    val quick = quickAmounts(now)
                     val keys = listOf(Quick("Custom", s.tendered != null && s.tendered !in quick) { custom = true }) +
-                        Quick(Money.format(s.due), s.tendered == null) { vm.tendered(null) } +
+                        Quick(Money.format(now), s.tendered == null) { vm.tendered(null) } +
                         quick.map { a -> Quick(Money.format(a), s.tendered == a) { vm.tendered(a) } }
                     keys.chunked(3).forEach { row ->
                         Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -144,13 +188,37 @@ private fun Ready(s: PayUiState.Ready, vm: PaymentViewModel) {
             Spacer(Modifier.weight(1f))
             s.notice?.let { Text(it, Modifier.padding(horizontal = 4.dp), color = Pos.Link, fontSize = 13.sp) }
             s.error?.let { Text(it, Modifier.padding(horizontal = 4.dp), color = Pos.Pink, fontSize = 13.sp) }
-            Panel("Change", Money.format((received - s.due).coerceAtLeast(0)), null)
+            Panel("Change", Money.format((received - now).coerceAtLeast(0)), null)
             Box(
                 Modifier.fillMaxWidth().height(50.dp).clip(RoundedCornerShape(3.dp)).background(Pos.Green)
                     .clickable { if (SystemClock.elapsedRealtime() - shownAt > 700) vm.pay() },
                 contentAlignment = Alignment.Center,
-            ) { Text("Pay - ${Money.format(s.due)}", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium) }
+            ) {
+                Text(
+                    (if (now < s.remaining) "Take this share - " else "Pay - ") + Money.format(now),
+                    color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                )
+            }
         }
+    }
+    if (part) {
+        var typed by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { part = false },
+            title = { Text("Amount for this payment") },
+            text = {
+                Column {
+                    Text("Up to ${Money.format(s.remaining)}. The rest stays to pay.", Modifier.padding(bottom = 8.dp), color = Pos.Text2, fontSize = 13.sp)
+                    Text(
+                        "Rs ${typed.ifEmpty { "0" }}", Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        color = Pos.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End,
+                    )
+                    AmountPad(typed, 48.dp, Modifier.fillMaxWidth()) { typed = it }
+                }
+            },
+            confirmButton = { Button(onClick = { Money.parseRs(typed)?.let { vm.custom(it) }; part = false }) { Text("OK") } },
+            dismissButton = { OutlinedButton(onClick = { part = false }) { Text("Cancel") } },
+        )
     }
     if (custom) {
         var typed by remember { mutableStateOf("") }

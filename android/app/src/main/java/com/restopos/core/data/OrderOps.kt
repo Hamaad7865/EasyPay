@@ -125,6 +125,15 @@ class OrderOps @Inject constructor(
         docs.print(docs.bill(t, unpaid, discount)).getOrThrow()
     }
 
+    // The bill of one check of a split check.
+    suspend fun printCheck(lineIds: List<String>, check: Int, discount: DiscountPick?): Result<Unit> = runCatching {
+        val t = tickets.activeTicket() ?: error("No order is open")
+        val rows = db.tickets().lines(t.id).first().filter { !it.paid && lineIds.contains(it.id) }
+        require(rows.isNotEmpty()) { "Nothing on this check" }
+        val bill = docs.bill(t, rows, discount)
+        docs.print(bill.copy(order = "${bill.order} - Check $check")).getOrThrow()
+    }
+
     // Taking an item off. Before it is sent it is simply deleted; after, it is
     // a void: the kitchen gets a VOID ticket so they stop making it. Neither
     // asks for a reason.

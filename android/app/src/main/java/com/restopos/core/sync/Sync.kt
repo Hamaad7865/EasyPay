@@ -355,6 +355,7 @@ private val PENDING_TABLE = stringPreferencesKey("pending_table")
 private val PENDING_COVERS = intPreferencesKey("pending_covers")
 private val PENDING_DINING = stringPreferencesKey("pending_dining")
 private val PERIOD_SEQ = intPreferencesKey("period_seq")
+private val PAY_CHECK = intPreferencesKey("pay_check")
 private val Context.sessionPrefs by preferencesDataStore("device")
 
 // Which tenant, store and device this tablet is. Set once at device setup and
@@ -405,5 +406,9 @@ class SessionStore(private val context: Context) {
     // Bills issued since the last day closing, for "start again each day".
     suspend fun periodSeq(): Int = store.data.map { it[PERIOD_SEQ] ?: 0 }.first()
     suspend fun setPeriodSeq(n: Int) { store.edit { it[PERIOD_SEQ] = n } }
+    // The check of a split check the payment screen is about to open on; read
+    // once by the payment screen and cleared.
+    suspend fun payCheck(): Int? = store.data.map { it[PAY_CHECK] }.first()
+    suspend fun setPayCheck(n: Int?) { store.edit { if (n == null) it.remove(PAY_CHECK) else it[PAY_CHECK] = n } }
     suspend fun clear() { store.edit { it.clear() } }
 }

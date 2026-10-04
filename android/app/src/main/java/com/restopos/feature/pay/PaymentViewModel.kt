@@ -21,11 +21,20 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 // Payment (spec 7.5): cash takes the amount received and gives the change;
-// the other types take an optional reference (manual record in v1). A bill is split by item: tick the
-// lines one guest pays for, take the payment, and the rest stays on the order
-// for the next receipt. Each receipt pays its lines in full (the server would
-// store a part payment, but flagged for review).
+// the other types take an optional reference (manual record in v1).
+//
+// A bill is split two ways. By item: tick the lines one guest pays for (or
+// open one check of a split check), take the payment, and the rest stays on
+// the order for the next receipt. By amount: the amount due is paid in
+// several shares, each with its own payment type, split evenly between a
+// number of guests or typed in. The shares are kept here until they add up
+// to the amount due, and then go out as ONE receipt with all its payments:
+// a receipt always pays its lines in full (the server would store a part
+// payment, but flagged for review).
 data class PayLine(val id: String, val qty: Int, val name: String, val amount: Long, val selected: Boolean)
+
+// A share already taken: who paid what, and how.
+data class Share(val type: String, val input: PayInput)
 
 sealed interface PayUiState {
     data object Loading : PayUiState
@@ -35,12 +44,27 @@ sealed interface PayUiState {
         val due: Long, // total of the ticked lines, discount included
         val methods: List<PaymentTypeEntity>,
         val selected: PaymentTypeEntity?,
-        val tendered: Long?, // cash received, in cents; null = exactly the amount due
+        val tendered: Long?, // cash received, in cents; null = exactly this payment's amount
         val reference: String,
         val error: String?,
         val notice: String? = null,
         val note: String = "", // a remark for the kitchen and the receipt
-    ) : PayUiState
+        val shares: List<Share> = emptyList(), // taken so far, not recorded yet
+        val ways: Int = 1, // how many equal shares are still to come, this one included
+        val custom: Long? = null, // an amount typed in for this payment
+        val check: Int? = null, // the check of a split check being paid
+    ) : PayUiState {
+        val taken: Long get() = shares.sumOf { it.input.amount }
+        val remaining: Long get() = due - taken
+        // What this payment is for: the typed amount, else an equal share of
+        // what is left (the last share takes the remainder), else all of it.
+        val now: Long
+            get() = when {
+                custom != null -> custom.coerceIn(0, remaining)
+                ways > 1 -> Money.share(remaining, ways)
+                else -> remaining
+            }
+    }
 
     data class Done(val receipt: ReceiptEntity, val change: Long) : PayUiState
 }
@@ -58,6 +82,11 @@ class PaymentViewModel @Inject constructor(
     private var calc: Map<String, Calc.Line> = emptyMap()
     private var paying = false // a second tap on Pay while the first is being recorded does nothing
 
+    // Set when one check of a split check has been paid and others remain:
+    // the screen goes back to the checks.
+    private val _checkPaid = MutableStateFlow(false)
+    val checkPaid: StateFlow<Boolean> = _checkPaid
+
     init { reload(notice = null) }
 
     private fun dueFor(ids: Set<String>): Long {
@@ -66,8 +95,9 @@ class PaymentViewModel @Inject constructor(
         return Calc.totalsRounded(picked, listOfNotNull(d?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) })).total
     }
 
-    // Loads what is still unpaid. Every line starts ticked: paying the whole
-    // bill is the common case, splitting is the exception.
+    // Loads what is still unpaid. Every line starts ticked (paying the whole
+    // bill is the common case), unless one check of a split check was opened:
+    // then only that check's lines are.
     private fun reload(notice: String?) = viewModelScope.launch {
         val t = tickets.activeTicket() ?: return@launch
         val unpaid = db.tickets().lines(t.id).first().filter { it.voided_at == null && !it.paid }
@@ -80,18 +110,22 @@ class PaymentViewModel @Inject constructor(
         discount = tickets.pendingDiscount()
         val methods = db.catalog().paymentTypes().first()
         val cur = _state.value as? PayUiState.Ready
-        val lines = unpaid.map { PayLine(it.id, it.qty, it.name_snapshot, amounts[it.id] ?: 0, true) }
-        val title = t.name ?: t.table_id?.let { db.tables().table(it)?.name }?.let { tableLabel(it) } ?: "Direct sale"
+        val check = session.payCheck()
+        session.setPayCheck(null)
+        val lines = unpaid.map { PayLine(it.id, it.qty, it.name_snapshot, amounts[it.id] ?: 0, check == null || it.check_no == check) }
+        val name = t.name ?: t.table_id?.let { db.tables().table(it)?.name }?.let { tableLabel(it) } ?: "Direct sale"
         _state.value = PayUiState.Ready(
-            title, lines, dueFor(lines.map { it.id }.toSet()), methods,
-            cur?.selected ?: methods.firstOrNull(), null, "", null, notice, cur?.note ?: t.note ?: "",
+            if (check != null) "$name · Check $check" else name, lines, dueFor(lines.filter { it.selected }.map { it.id }.toSet()), methods,
+            cur?.selected ?: methods.firstOrNull(), null, "", null, notice, cur?.note ?: t.note ?: "", check = check,
         )
     }
 
+    // Which lines a payment covers is fixed once a share of it has been taken.
     fun toggle(lineId: String) {
         val s = _state.value as? PayUiState.Ready ?: return
+        if (s.shares.isNotEmpty()) { _state.value = s.copy(error = "Part of this bill is already paid. Finish it, or cancel to start again."); return }
         val lines = s.lines.map { if (it.id == lineId) it.copy(selected = !it.selected) else it }
-        _state.value = s.copy(lines = lines, due = dueFor(lines.filter { it.selected }.map { it.id }.toSet()), tendered = null, error = null)
+        _state.value = s.copy(lines = lines, due = dueFor(lines.filter { it.selected }.map { it.id }.toSet()), tendered = null, custom = null, error = null)
     }
 
     fun select(m: PaymentTypeEntity) {
@@ -114,49 +148,88 @@ class PaymentViewModel @Inject constructor(
         _state.value = s.copy(note = v.take(120))
     }
 
-    // Cash: received >= the amount due closes with change. Less than that is
-    // refused: a part payment would reach the server as a short receipt.
-    // Card/wallet/QR: the amount due in one go, with an optional reference.
+    // Split evenly between this many guests (1 = no split).
+    fun ways(n: Int) {
+        val s = _state.value as? PayUiState.Ready ?: return
+        _state.value = s.copy(ways = n.coerceIn(1, 20), custom = null, tendered = null, error = null)
+    }
+
+    // An amount typed in for this payment; null goes back to all that is left.
+    fun custom(cents: Long?) {
+        val s = _state.value as? PayUiState.Ready ?: return
+        if (cents != null && (cents <= 0 || cents > s.remaining)) {
+            _state.value = s.copy(error = "Type an amount up to ${Money.format(s.remaining)}")
+            return
+        }
+        _state.value = s.copy(custom = cents?.takeIf { it < s.remaining }, ways = 1, tendered = null, error = null)
+    }
+
+    // Forgets the shares taken so far (the cashier gives the money back).
+    fun dropShares() {
+        val s = _state.value as? PayUiState.Ready ?: return
+        _state.value = s.copy(shares = emptyList(), ways = 1, custom = null, tendered = null, error = null, notice = null)
+    }
+
+    // Takes this payment. Cash: received >= the amount closes with change;
+    // less is refused. Card, wallet, QR: the amount in one go, with an
+    // optional reference. If something is still due afterwards, the share is
+    // kept and the next one is asked for; when nothing is, the receipt goes out.
     fun pay() {
         val s = _state.value as? PayUiState.Ready ?: return
         if (paying) return
         if (s.lines.none { it.selected }) { _state.value = s.copy(error = "Tick at least one line"); return }
         val m = s.selected ?: run { _state.value = s.copy(error = "Pick a payment type"); return }
-        if (m.kind == "cash") {
-            val got = s.tendered ?: s.due
-            if (got >= s.due) payChunk(s.due, got, got - s.due, s, null)
-            else _state.value = s.copy(error = "Received is less than the amount due")
+        val amount = s.now
+        val input = if (m.kind == "cash") {
+            val got = s.tendered ?: amount
+            if (got < amount) { _state.value = s.copy(error = "Received is less than this payment's amount"); return }
+            PayInput(m.id, amount, got, got - amount, null)
         } else {
-            payChunk(s.due, s.due, 0, s, s.reference.ifBlank { null })
+            PayInput(m.id, amount, amount, 0, s.reference.ifBlank { null })
         }
+        val shares = s.shares + Share(m.name, input)
+        if (amount < s.remaining) {
+            // more to come: keep the share, ask for the next
+            _state.value = s.copy(
+                shares = shares, ways = (s.ways - 1).coerceAtLeast(1), custom = null, tendered = null, reference = "", error = null,
+                notice = "${m.name} ${Money.format(amount)} taken" + (if (input.change > 0) ", change ${Money.format(input.change)}" else "") +
+                    ". ${Money.format(s.remaining - amount)} still to pay.",
+            )
+            return
+        }
+        record(s, shares)
     }
 
-    private fun payChunk(amount: Long, tendered: Long, change: Long, s: PayUiState.Ready, ref: String?) =
-        viewModelScope.launch {
-            val m = s.selected ?: return@launch
-            paying = true
-            // the remark goes on the order first, so the receipt and the kitchen ticket carry it
-            if (s.note.trim() != (tickets.activeTicket()?.note ?: "")) tickets.setNote(s.note.trim())
-            val covered = s.lines.filter { it.selected }.map { it.id }
-            // a zero total (fully discounted) is paid with no payment row
-            val payments = if (amount > 0) listOf(PayInput(m.id, amount, tendered, change, ref)) else emptyList()
-            tickets.pay(payments, listOfNotNull(discount), 0, covered).fold(
-                onSuccess = { receipt ->
-                    orderOps.afterPay(receipt)
-                    val closed = tickets.activeTicket() == null
-                    if (closed) {
-                        session.setPendingDiscount(null)
-                        _state.value = PayUiState.Done(receipt, change)
+    private fun record(s: PayUiState.Ready, shares: List<Share>) = viewModelScope.launch {
+        paying = true
+        // the remark goes on the order first, so the receipt and the kitchen ticket carry it
+        if (s.note.trim() != (tickets.activeTicket()?.note ?: "")) tickets.setNote(s.note.trim())
+        val covered = s.lines.filter { it.selected }.map { it.id }
+        // a zero total (fully discounted) is paid with no payment row
+        val payments = shares.map { it.input }.filter { it.amount > 0 }
+        val change = shares.sumOf { it.input.change }
+        tickets.pay(payments, listOfNotNull(discount), 0, covered).fold(
+            onSuccess = { receipt ->
+                orderOps.afterPay(receipt)
+                val closed = tickets.activeTicket() == null
+                if (closed) {
+                    session.setPendingDiscount(null)
+                    _state.value = PayUiState.Done(receipt, change)
+                } else {
+                    // an amount discount is given once, not on every guest's receipt
+                    if (discount?.type == "amount") session.setPendingDiscount(null)
+                    if (s.check != null) {
+                        _checkPaid.value = true
                     } else {
-                        // an amount discount is given once, not on every guest's receipt
-                        if (discount?.type == "amount") session.setPendingDiscount(null)
                         val left = s.lines.count { !it.selected }
-                        val paid = "Paid ${Money.format(amount)}" + if (change > 0) ", change ${Money.format(change)}" else ""
+                        val paid = "Paid ${Money.format(receipt.total)}" + if (change > 0) ", change ${Money.format(change)}" else ""
+                        _state.value = s.copy(shares = emptyList(), ways = 1, custom = null)
                         reload("$paid. $left ${if (left == 1) "line" else "lines"} left to pay.")
                     }
-                },
-                onFailure = { _state.value = s.copy(error = it.message) },
-            )
-            paying = false
-        }
+                }
+            },
+            onFailure = { _state.value = s.copy(error = it.message) },
+        )
+        paying = false
+    }
 }

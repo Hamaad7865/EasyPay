@@ -59,4 +59,11 @@ object Migrations {
             db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
         }
     }
+
+    // 4 -> 5: which check of a split check a line is on.
+    val V4_V5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `ticket_lines` ADD COLUMN `check_no` INTEGER NOT NULL DEFAULT 1")
+        }
+    }
 }

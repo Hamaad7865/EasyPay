@@ -112,6 +112,7 @@ fun RegisterScreen(
     onTables: () -> Unit,
     onMoveTable: () -> Unit,
     onSaved: () -> Unit,
+    onSplit: () -> Unit,
 ) {
     val tableName by vm.tableName.collectAsState()
     val byCourse by vm.byCourse.collectAsState()
@@ -244,6 +245,7 @@ fun RegisterScreen(
                         }
                     }
                     BarKey("Print bill", Pos.Key, if (canPay) Pos.Text else Pos.Text3, Modifier.weight(1f), canPay) { vm.onAction(SaleAction.PrintBill) }
+                    BarKey("Split check", Pos.Key, if (canPay) Pos.Text else Pos.Text3, Modifier.weight(1f), canPay, onSplit)
                     BarKey("Pay - ${Money.format(totals.total)}", if (canPay) Pos.Blue else Pos.Key, if (canPay) Color.White else Pos.Text3, Modifier.weight(2f), canPay, onPay)
                 }
             }
@@ -277,7 +279,7 @@ fun RegisterScreen(
 @Composable
 private fun RowScope.BarKey(label: String, color: Color, text: Color, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
     Box(modifier.fillMaxHeight().background(color).clickable(enabled = enabled, onClick = onClick), contentAlignment = Alignment.Center) {
-        Text(label, color = text, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, Modifier.padding(horizontal = 4.dp), color = text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

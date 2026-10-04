@@ -79,6 +79,7 @@ private val MENU = 250.dp
 @Composable
 fun MainShell(
     onPay: () -> Unit,
+    onSplit: () -> Unit,
     onPaid: (String, Long, Long) -> Unit,
     onSignIn: () -> Unit,
     onRejected: () -> Unit,
@@ -164,6 +165,7 @@ fun MainShell(
                         onTables = { tab = Tab.Plan },
                         onMoveTable = { moving = true; tab = Tab.Plan },
                         onSaved = { go(home) },
+                        onSplit = { if (vm.mayPay()) onSplit() },
                     )
                     Tab.Plan -> TablesScreen(
                         moving,

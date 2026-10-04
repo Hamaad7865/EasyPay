@@ -256,6 +256,30 @@ class TicketRepository @Inject constructor(
         }
     }
 
+    // Split check: takes `units` off a line and puts them on a new line of the
+    // same order, on the check given. Same item, price, note, course, taxes
+    // and kitchen state: nothing is voided and nothing goes to the kitchen
+    // again. A line with a priced add-on is not divided (the add-on is charged
+    // once per line); it moves whole.
+    suspend fun splitLine(lineId: String, units: Int, toCheck: Int): Result<String> = runCatching {
+        val line = db.tickets().line(lineId) ?: error("That line is gone")
+        require(!line.paid && line.voided_at == null) { "That line cannot be divided" }
+        require(line.qty % 1000 == 0 && units >= 1 && units * 1000 < line.qty) { "Pick fewer than the line has" }
+        require(db.tickets().modSum(lineId) == 0L) { "This line has an add-on that is charged once. Move the whole line instead." }
+        val newId = Uuid7.next()
+        db.withTransaction {
+            db.tickets().setQty(lineId, line.qty - units * 1000)
+            db.tickets().upsertLines(listOf(line.copy(id = newId, qty = units * 1000, server_seq = null, check_no = toCheck)))
+            db.tickets().upsertLineMods(db.tickets().lineMods(lineId).map { it.copy(line_id = newId) })
+            db.catalog().upsertLineTaxes(db.catalog().lineTaxes(lineId).map { it.copy(line_id = newId) })
+            db.outbox().enqueue(op("ticket.split_line", buildJsonObject {
+                put("line_id", lineId); put("new_id", newId); put("qty", units * 1000)
+            }))
+        }
+        pushNow(context)
+        newId
+    }
+
     // No reason is asked for: "void" stands in when none is given.
     suspend fun voidLine(lineId: String, reason: String): Result<Unit> = runCatching {
         val why = reason.ifBlank { "void" }
