@@ -141,6 +141,36 @@ body {
 .muted { color: var(--ink3); }
 .flag { color: var(--red); font-weight: 700; }
 
+/* ---- floor plan ---- */
+
+.bo-main button:disabled { opacity: 0.55; cursor: default; }
+.floor-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.floor-bar .spacer { flex: 1; }
+.floor-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
+/* the plan is 100 x 60 grid units; the faint lines are every 5 units */
+.floor-canvas {
+  position: relative; aspect-ratio: 100 / 60; overflow: hidden;
+  background-color: var(--card);
+  background-image: linear-gradient(#edeff3 1px, transparent 1px), linear-gradient(90deg, #edeff3 1px, transparent 1px);
+  background-size: 5% 8.3333%;
+  border-radius: 8px; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+  touch-action: none; user-select: none;
+}
+.floor-table {
+  position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: #4a5062; color: #fff; border: 2px solid transparent; border-radius: 6px;
+  font-size: 13px; line-height: 1.25; cursor: grab; touch-action: none;
+}
+.floor-table.round { border-radius: 50%; }
+.floor-table.on { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(29, 85, 208, 0.25); z-index: 2; }
+.floor-table.busy { outline: 3px solid #d9a100; }
+.floor-table small { font-size: 11px; opacity: 0.8; }
+.floor-handle { position: absolute; right: -2px; bottom: -2px; width: 14px; height: 14px; background: var(--blue); border: 2px solid #fff; border-radius: 3px; cursor: nwse-resize; }
+.floor-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--ink3); }
+.floor-panel { background: var(--card); border-radius: 8px; padding: 18px; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06); }
+.floor-panel label { display: block; font-size: 12px; color: var(--ink3); margin-bottom: 12px; }
+.floor-panel label input, .floor-panel label select { display: block; width: 100%; margin-top: 4px; }
+
 /* ---- dashboard ---- */
 
 .dash-controls { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
@@ -197,6 +227,7 @@ body {
   .bo { grid-template-columns: 1fr; }
   .bo-side { position: static; height: auto; }
   .bo-main { padding: 20px 16px 40px; }
+  .floor-wrap { grid-template-columns: 1fr; }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 20px; }
   .kpi:nth-child(odd) { border-left: 0; }
 }
