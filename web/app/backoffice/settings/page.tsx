@@ -166,7 +166,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
             <div className="setting">
               <div>
                 <strong>Detailed day closing report</strong>
-                <small>On: the report lists sales by category, by payment type and by tax. Off: it shows only cash in and cash out.</small>
+                <small>On: the report also breaks sales down by category and by tax. Off: it shows the totals, the payment methods and the cash in and out, with no categories.</small>
               </div>
               <label className="check" style={{ margin: 0 }}>
                 <input type="checkbox" name="dayCloseDetailed" defaultChecked={s.dayCloseDetailed} />

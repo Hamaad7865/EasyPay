@@ -84,10 +84,27 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
     check('T3 someone unknown leaves the waiter as it was', tag(stray[0]) === 'applied' && after.opened_by === cashier, tag(stray[0]));
   }
 
-  // T4 dining options carry the table and kitchen rules
+  // T4 order types carry the table and kitchen rules, and the demo menu loads
+  // on a restaurant that already has its basics without doubling anything
   {
     const rows = (await c.query(`select name, needs_table, kitchen from dining_options where tenant_id = $1`, [tid])).rows;
-    check('T4 a new dining option goes to the kitchen on Save by default', rows.length > 0 && rows.every((r) => r.kitchen === 'save' && r.needs_table === false), JSON.stringify(rows));
+    const by = Object.fromEntries(rows.map((r) => [r.name, r]));
+    check('T4 Dine-in needs a table and goes to the kitchen on Save', by['Dine-in'] && by['Dine-in'].needs_table === true && by['Dine-in'].kitchen === 'save', JSON.stringify(rows));
+    check('T4 Takeaway goes when it is paid, a bar tab on Save', by['Takeaway'] && by['Takeaway'].kitchen === 'pay' && by['Bar tab'] && by['Bar tab'].kitchen === 'save' && by['Bar tab'].needs_table === false);
+    const t2 = crypto.randomUUID();
+    await c.query(`insert into tenants (id, tenant_id, name) values ('${t2}','${t2}','PO-Probe-2')`);
+    await c.query(`select ensure_pos_basics('${t2}')`);
+    let seeded = '';
+    try { seeded = JSON.stringify((await q1(`select seed_demo_catalog('${t2}') as r`)).r); } catch (e) { seeded = 'ERR ' + e.message; }
+    const dup = await q1(`select
+        (select count(*) from (select lower(name) from taxes where tenant_id = $1 group by 1 having count(*) > 1) x)::int as taxes,
+        (select count(*) from (select lower(name) from payment_types where tenant_id = $1 group by 1 having count(*) > 1) x)::int as pays,
+        (select count(*) from (select lower(name) from dining_options where tenant_id = $1 group by 1 having count(*) > 1) x)::int as dining,
+        (select count(*) from items i where i.tenant_id = $1 and not exists (select 1 from item_taxes it where it.item_id = i.id))::int as untaxed,
+        (select count(*) from items where tenant_id = $1)::int as items`, [t2]);
+    check('T4 the demo menu loads after the basics', seeded.includes('"seeded": true') || seeded.includes('"seeded":true'), seeded);
+    check('T4 and nothing is doubled, every item carries a tax', dup.taxes === 0 && dup.pays === 0 && dup.dining === 0 && dup.untaxed === 0 && dup.items > 0, JSON.stringify(dup));
+    await devguard.cleanupTenant(c, t2);
   }
 
   // T5 cash in and out count in the period's expected cash; a drawer opening does not
@@ -182,7 +199,7 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
   {
     const printer = (await q1(`insert into printers (tenant_id, store_id, name, kind, address, is_receipt) values ($1,$2,'Kitchen','network','192.168.1.50', false) returning id`, [tid, store])).id;
     await c.query(`update categories set printer_ids = array[$1::uuid] where id = $2`, [printer, dp.category_id]);
-    await c.query(`insert into pos_settings (tenant_id, data) values ($1, '{"decimals":0}'::jsonb)`, [tid]);
+    await c.query(`insert into pos_settings (tenant_id, data) values ($1, '{"decimals":0}'::jsonb) on conflict (tenant_id) do update set data = excluded.data`, [tid]);
     const pull = await asApp(tid, async () => (await c.query('select sync_pull($1, 0, 1000) as r', [store])).rows[0].r);
     const ch = pull.changes;
     const cat = ch.categories.find((x) => x.id === dp.category_id);

@@ -93,7 +93,7 @@ export default async function DataPage({ searchParams }: { searchParams: Search 
       {!d.owner && <div className="note warn">You are not signed in as the owner, so the two actions below are switched off.</div>}
       <div className="grid-2">
         <Card title="Delete all transactions" lede={`${d.counts.receipts} receipts and ${d.counts.orders} orders today.`}>
-          <p>Removes every order, receipt, refund, shift, clock-in, cash movement and day closing, and starts bill numbers again. The menu, staff, tables, printers and settings stay.</p>
+          <p>Removes every order, receipt, refund, shift, clock-in, cash movement and day closing. The menu, staff, tables, printers and settings stay. A till carries on from its own last bill number unless it is signed out and set up again.</p>
           <p className="flag">Receipts are tax records. Do not delete them once the restaurant is trading for real.</p>
           <form action={deleteTransactions}>
             <label className="field">

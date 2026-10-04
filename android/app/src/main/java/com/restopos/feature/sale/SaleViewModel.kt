@@ -152,6 +152,9 @@ class SaleViewModel @Inject constructor(
     private val _saved = MutableStateFlow(false)
     val saved: StateFlow<Boolean> = _saved
     fun savedShown() { _saved.value = false }
+    // true while Save is waiting on the printers: a second tap must not send the same lines again
+    private val _saving = MutableStateFlow(false)
+    val saving: StateFlow<Boolean> = _saving
 
     private val _sheet = MutableStateFlow<SheetData?>(null)
     val sheet: StateFlow<SheetData?> = _sheet
@@ -373,8 +376,12 @@ class SaleViewModel @Inject constructor(
     // If a printer did not answer, its items stay unsent and the order stays
     // on the register so Save can be pressed again.
     private suspend fun save() {
+        if (_saving.value) return
         if (_lines.value.isEmpty()) { _toast.value = "Add an item first"; return }
-        orderOps.save().fold(
+        _saving.value = true
+        val result = orderOps.save()
+        _saving.value = false
+        result.fold(
             onSuccess = { r ->
                 if (r.errors.isNotEmpty()) {
                     _toast.value = r.errors.first() + " Press Save again to send what is left."

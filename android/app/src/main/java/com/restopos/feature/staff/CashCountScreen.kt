@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.restopos.core.common.Money
 import com.restopos.core.ui.Pos
+import com.restopos.feature.more.MoreViewModel
 import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
@@ -50,6 +51,11 @@ fun CashCountScreen(closing: Boolean, vm: StaffViewModel = hiltViewModel(), onBa
     val message by vm.message.collectAsState()
     val result by vm.closing.collectAsState()
     val openOrders by vm.openOrders.collectAsState()
+    // closing the day comes after closing the shift, on the same screen
+    val more: MoreViewModel = hiltViewModel()
+    val dayNote by more.message.collectAsState()
+    val dayBusy by more.busy.collectAsState()
+    var dayClosed by remember { mutableStateOf(false) }
     var typed by remember { mutableStateOf<String?>(null) } // null = nothing typed yet
     message?.let { m -> LaunchedEffect(m) { delay(4000); vm.messageShown() } }
     // once the period is closed there is no register to go back to
@@ -70,7 +76,7 @@ fun CashCountScreen(closing: Boolean, vm: StaffViewModel = hiltViewModel(), onBa
                         Text("Shift closed.", color = Pos.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                         Text("How the drawer compares with what it should hold.", Modifier.padding(top = 10.dp, bottom = 18.dp), color = Pos.Text, fontSize = 14.sp)
                         Line("Opening amount", Money.format(done.float))
-                        Line("Cash taken", Money.format(done.cash))
+                        Line("Cash taken, with cash in and out", Money.format(done.cash))
                         Line("Expected in the drawer", Money.format(done.expected))
                         Line("Counted", Money.format(done.counted))
                         val diff = done.counted - done.expected
@@ -84,6 +90,21 @@ fun CashCountScreen(closing: Boolean, vm: StaffViewModel = hiltViewModel(), onBa
                             color = if (diff == 0L) GREEN else Pos.Pink,
                         )
                         Spacer(Modifier.weight(1f))
+                        // Last shift of the day: the day closing (Z) is done from here,
+                        // because the next sign-in opens a new shift.
+                        if (more.can("shift.open_close")) {
+                            Text(
+                                dayNote ?: "Is this the last shift of the day? Closing the day fixes the day's figures and prints the closing report.",
+                                Modifier.padding(bottom = 10.dp), color = if (dayNote != null) Pos.Text else Pos.Text3, fontSize = 13.sp,
+                            )
+                            if (!dayClosed) {
+                                Box(
+                                    Modifier.fillMaxWidth().height(50.dp).padding(bottom = 8.dp).clip(RoundedCornerShape(3.dp)).background(Pos.Key)
+                                        .clickable(enabled = !dayBusy) { more.closeDay { dayClosed = true } },
+                                    contentAlignment = Alignment.Center,
+                                ) { Text("Close the day and print", color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium) }
+                            }
+                        }
                         Confirm("Done", enabled = true, onDone)
                     } else {
                         Text(if (closing) "Count the cash." else "Confirm cash amount.", color = Pos.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)

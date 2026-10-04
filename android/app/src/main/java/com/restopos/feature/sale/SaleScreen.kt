@@ -133,6 +133,7 @@ fun RegisterScreen(
     val paid by vm.paid.collectAsState()
     val saves by vm.saves.collectAsState()
     val saved by vm.saved.collectAsState()
+    val saving by vm.saving.collectAsState()
     val waiters by vm.waiters.collectAsState()
     var naming by remember { mutableStateOf(false) }
     var typed by remember { mutableStateOf("") } // the search text, as last typed
@@ -238,7 +239,7 @@ fun RegisterScreen(
                 Row(Modifier.fillMaxWidth().height(52.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     val unsent = lines.any { !it.line.paid && it.line.sent_to_kitchen_at == null }
                     if (saves) {
-                        BarKey("Save", if (unsent) Pos.Green else Pos.Key, if (lines.isNotEmpty()) Color.White else Pos.Text3, Modifier.weight(1f), lines.isNotEmpty()) {
+                        BarKey(if (saving) "Sending…" else "Save", if (unsent && !saving) Pos.Green else Pos.Key, if (lines.isNotEmpty()) Color.White else Pos.Text3, Modifier.weight(1f), lines.isNotEmpty() && !saving) {
                             vm.onAction(SaleAction.Save)
                         }
                     }
