@@ -1,5 +1,6 @@
 package com.restopos.feature.main
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -107,6 +108,8 @@ fun MainShell(
         else -> Pos.Ok
     }
     val slide by animateDpAsState(if (menu && tab != Tab.Register) MENU else 0.dp, label = "menu")
+    // the tablet's Back key closes what is open, as Close and the menu button do
+    BackHandler(enabled = tab == Tab.Register || menu) { if (tab == Tab.Register) go(home) else menu = false }
 
     Box(Modifier.fillMaxSize().background(Pos.Bg)) {
         // the side menu pushes the screen to the right, it does not squeeze it
