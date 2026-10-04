@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 const HOME = "M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z";
 const TAG = "M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12l-4.37-6.16z";
 const LIST = "M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z";
+const PERSON = "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z";
 const RECEIPT = "M18 17H6v-2h12v2zm0-4H6v-2h12v2zm0-4H6V7h12v2zM3 22l1.5-1.5L6 22l1.5-1.5L9 22l1.5-1.5L12 22l1.5-1.5L15 22l1.5-1.5L18 22l1.5-1.5L21 22V2l-1.5 1.5L18 2l-1.5 1.5L15 2l-1.5 1.5L12 2l-1.5 1.5L9 2 7.5 3.5 6 2 4.5 3.5 3 2v20z";
 
 const SECTIONS: { title: string | null; links: { href: string; label: string; icon: string }[] }[] = [
@@ -18,6 +19,7 @@ const SECTIONS: { title: string | null; links: { href: string; label: string; ic
       { href: "/backoffice/items", label: "Items", icon: LIST },
     ],
   },
+  { title: "Configuration", links: [{ href: "/backoffice/staff", label: "Staff", icon: PERSON }] },
   { title: "Reports", links: [{ href: "/backoffice/receipts", label: "Receipts", icon: RECEIPT }] },
 ];
 
