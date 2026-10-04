@@ -214,8 +214,13 @@ fun RegisterScreen(
                                     },
                                     onEdit = { if (lines.isEmpty()) vm.onAction(SaleAction.Key("")) ; editing = lines.isNotEmpty() },
                                     onHold = { vm.onAction(SaleAction.OnHold) },
-                                    // a table's name typed first opens that table; otherwise the floor plan
-                                    onTables = { if (buffer.isEmpty()) onTables() else vm.onAction(SaleAction.OpenTable) },
+                                    // With an order on the register the key moves it: to the table whose
+                                    // name was typed, or to one picked on the plan. On an empty register
+                                    // it opens that table, or the plan.
+                                    onTables = {
+                                        if (lines.isNotEmpty()) { if (buffer.isEmpty()) onMoveTable() else vm.onAction(SaleAction.MoveToTable) }
+                                        else if (buffer.isEmpty()) onTables() else vm.onAction(SaleAction.OpenTable)
+                                    },
                                     onQuick = { vm.onAction(SaleAction.QuickPay(quick.first)) },
                                 )
                             }

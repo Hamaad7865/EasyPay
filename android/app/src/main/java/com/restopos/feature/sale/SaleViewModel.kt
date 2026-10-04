@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import com.restopos.core.common.Money
+import com.restopos.core.common.tableLabel
 import com.restopos.core.data.Approvals
 import com.restopos.core.data.Calc
 import com.restopos.core.data.CatalogRepository
@@ -67,6 +68,7 @@ sealed interface SaleAction {
     data class QuickPay(val kind: String) : SaleAction // "cash" or "card"
     data object ApplyQty : SaleAction
     data object OpenTable : SaleAction // the table whose name is on the keypad
+    data object MoveToTable : SaleAction // the order on the register goes to the table whose name is on the keypad
     data class SetGuests(val guests: Int) : SaleAction
     data class ByCourse(val on: Boolean) : SaleAction // the order shown course by course, or as rung up
     data object BySeat : SaleAction // the order shown seat by seat
@@ -373,6 +375,20 @@ class SaleViewModel @Inject constructor(
                 tickets.openTable(table.id)
                 reload()
             }
+            is SaleAction.MoveToTable -> {
+                val wanted = _buffer.value.trim()
+                val store = session.storeId() ?: return@launch
+                val table = db.tables().tablesNow(store).firstOrNull { it.name.equals(wanted, ignoreCase = true) }
+                if (table == null) { _toast.value = "There is no table $wanted"; return@launch }
+                val there = db.tickets().openTicketForTable(table.id)
+                if (there != null && there.id != _ticket.value?.id) {
+                    _toast.value = "${tableLabel(table.name)} already has an order. Pick a free table."
+                    return@launch
+                }
+                _buffer.value = ""
+                tickets.moveToTable(table.id).onFailure { _toast.value = it.message }
+                reload()
+            }
             is SaleAction.SetGuests -> {
                 tickets.setCovers(a.guests.coerceIn(1, 99)).onFailure { _toast.value = it.message }
                 reload()
@@ -387,10 +403,7 @@ class SaleViewModel @Inject constructor(
                 a.course?.let { _courses.value = maxOf(_courses.value, it) }
                 reload()
             }
-            is SaleAction.RemoveLines -> approved { by ->
-                // a line already taken off (the first try, before the approval) is skipped
-                runCatching { a.lineIds.forEach { id -> if (db.tickets().line(id)?.voided_at == null) orderOps.remove(id, by).getOrThrow() } }
-            }
+            is SaleAction.RemoveLines -> approved { by -> runCatching { removeAll(a.lineIds, by) } }
             is SaleAction.OnHold -> hold()
             is SaleAction.CancelOrder -> cancelOrder()
             is SaleAction.SetCustomer -> {
@@ -450,6 +463,15 @@ class SaleViewModel @Inject constructor(
     // Every order has courses; new items go to the one that is lit.
     private fun courseForNewLine(): Int? = _course.value
 
+    // Takes several lines off at once. Everything it needs is checked before
+    // anything comes off, so an approval that is not given leaves the order whole.
+    private suspend fun removeAll(ids: List<String>, by: StaffMember?) {
+        val rows = ids.mapNotNull { db.tickets().line(it) }.filter { it.voided_at == null && !it.paid }
+        if (rows.any { it.sent_to_kitchen_at != null }) staff.allow("sale.void_sent_line", "void an item the kitchen already has", by)
+        if (rows.any { it.sent_to_kitchen_at == null }) staff.allow("sale.void_line", "take an item off an order", by)
+        rows.forEach { orderOps.remove(it.id, by).getOrThrow() }
+    }
+
     // On hold: the order is put away as it is, nothing goes to the kitchen,
     // and the register is free for the next one. It waits under Orders.
     private suspend fun hold() {
@@ -478,7 +500,7 @@ class SaleViewModel @Inject constructor(
         }
         approved("Order cancelled.") { by ->
             runCatching {
-                db.tickets().allLines(t.id).filter { it.voided_at == null }.forEach { orderOps.remove(it.id, by).getOrThrow() }
+                removeAll(db.tickets().allLines(t.id).map { it.id }, by)
                 if (t.table_id != null || t.name != null || t.customer_id != null) tickets.release().getOrThrow()
                 tickets.newTicket()
                 session.setPendingDiscount(null)

@@ -1,5 +1,6 @@
 package com.restopos.feature.main
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -110,6 +111,10 @@ fun MainShell(
         pending > 0 -> Pos.Warn
         else -> Pos.Ok
     }
+
+    // Back never drops out to the start screen (that is Log out, in Settings):
+    // from another tab it goes to the register, and on the register it does nothing.
+    BackHandler { if (tab != Tab.Register) go(Tab.Register) }
 
     Box(Modifier.fillMaxSize().background(Pos.Bg)) {
         Column(Modifier.fillMaxSize()) {

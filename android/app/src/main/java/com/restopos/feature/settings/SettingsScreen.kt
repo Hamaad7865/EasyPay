@@ -789,7 +789,7 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel) {
         Heading("When an order goes to the kitchen")
         Panel {
             orderTypes.forEach {
-                Figure(it.name, when (it.kitchen) { "save" -> "When it is saved"; "pay" -> "When it is paid"; else -> "Never" })
+                Figure(it.name, when (it.kitchen) { "save" -> "When it is sent"; "pay" -> "When it is paid, or sooner with Send"; else -> "Never" })
             }
             Note("Set per order type in the back office, under POS settings.")
         }

@@ -53,6 +53,9 @@ class OrderOps @Inject constructor(
     // its lines unsent, so the next Save tries them again.
     suspend fun save(): Result<SaveResult> = runCatching {
         val t = tickets.activeTicket() ?: return@runCatching SaveResult(0, emptyList())
+        // an order type set to never go to the kitchen is only put away
+        val mode = (t.dining_option_id?.let { db.ops().dining(it) } ?: db.catalog().diningOptions().firstOrNull { it.is_default })?.kitchen ?: "save"
+        if (mode == "off") return@runCatching SaveResult(0, emptyList())
         val fresh = db.tickets().lines(t.id).first().filter { it.sent_to_kitchen_at == null && !it.paid }
         if (fresh.isEmpty()) return@runCatching SaveResult(0, emptyList())
         val out = docs.kitchen(t, fresh, "ORDER")
