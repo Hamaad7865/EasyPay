@@ -2,6 +2,7 @@ package com.restopos.feature.sale
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -21,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -30,6 +32,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -49,11 +52,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -68,7 +73,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.compose.itemKey
 import com.restopos.core.common.Money
 import com.restopos.core.data.Calc
 import com.restopos.core.data.DiscountPick
@@ -81,6 +85,7 @@ import com.restopos.core.database.TicketEntity
 import com.restopos.core.ui.Pos
 import com.restopos.core.ui.PosIcons
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val TILE_RATIO = 1.45f // a tile's width over its height
 
@@ -111,6 +116,7 @@ fun RegisterScreen(
     var voidTarget by remember { mutableStateOf<String?>(null) }
     var voidReason by remember { mutableStateOf("") }
     var naming by remember { mutableStateOf(false) }
+    var typed by remember { mutableStateOf("") } // the search text, as last typed
 
     // Back on screen (after paying, or after picking an order): reload it.
     LaunchedEffect(Unit) { vm.refresh() }
@@ -118,6 +124,10 @@ fun RegisterScreen(
     toast?.let { msg -> LaunchedEffect(msg) { delay(3500); vm.toastShown() } }
 
     val canPay = lines.any { !it.line.paid }
+    // a tile's bottom edge is its category's colour, unless the item has its own
+    val categoryColors = remember(ready.categories) {
+        ready.categories.filter { it.color != null }.associate { it.id to Pos.css(it.color, Pos.TileEdge) }
+    }
     val inOrder = remember(lines) {
         lines.filter { !it.line.paid }.groupBy { it.line.item_id }.mapValues { e -> e.value.sumOf { it.line.qty } / 1000 }
     }
@@ -150,7 +160,7 @@ fun RegisterScreen(
                 ItemsHeader(
                     title = ready.categories.firstOrNull { it.id == ready.selectedCat }?.name ?: "Menu",
                     searching = searching,
-                    onQuery = { vm.onAction(SaleAction.Search(it)) },
+                    onQuery = { typed = it; vm.onAction(SaleAction.Search(it)) },
                     onSearchDone = onSearchDone,
                 )
                 if (paged.itemCount == 0) {
@@ -169,13 +179,30 @@ fun RegisterScreen(
                         // two columns as designed; three when the screen is too
                         // short to show three rows of two
                         val columns = if (maxHeight >= (maxWidth - 4.dp) / 2 / TILE_RATIO * 3) 2 else 3
-                        LazyVerticalGrid(
-                            GridCells.Fixed(columns), Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            items(paged.itemCount, key = paged.itemKey { it.id }) { i ->
-                                val item = paged[i] ?: return@items
-                                ItemTile(item, inOrder[item.id] ?: 0) { vm.onAction(SaleAction.TapItem(item)) }
+                        val grid = rememberLazyGridState()
+                        val scope = rememberCoroutineScope()
+                        // a new category or search starts at the top. The tiles are
+                        // placed by position (no item keys): with keys the grid would
+                        // keep the first visible item in view and open part-way down.
+                        LaunchedEffect(ready.selectedCat, searching, typed) { grid.scrollToItem(0) }
+                        Column(Modifier.fillMaxSize()) {
+                            LazyVerticalGrid(
+                                GridCells.Fixed(columns), Modifier.weight(1f).fillMaxWidth(), state = grid,
+                                verticalArrangement = Arrangement.spacedBy(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                items(paged.itemCount) { i ->
+                                    val item = paged[i] ?: return@items
+                                    val edge = Pos.css(item.tile_color, categoryColors[item.category_id] ?: Pos.TileEdge)
+                                    ItemTile(item, inOrder[item.id] ?: 0, edge) { vm.onAction(SaleAction.TapItem(item)) }
+                                }
+                            }
+                            // more items than fit: arrows that move a screenful
+                            if (grid.canScrollForward || grid.canScrollBackward) {
+                                Row(Modifier.fillMaxWidth().height(30.dp).padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    val step = { grid.layoutInfo.viewportSize.height.toFloat() }
+                                    if (grid.canScrollBackward) PagerButton(up = true, Modifier.weight(1f)) { scope.launch { grid.animateScrollBy(-step()) } }
+                                    if (grid.canScrollForward) PagerButton(up = false, Modifier.weight(1f)) { scope.launch { grid.animateScrollBy(step()) } }
+                                }
                             }
                         }
                     }
@@ -446,15 +473,28 @@ private fun Keypad(
     }
 }
 
+private val CATEGORY_MIN = 56.dp // the smallest a category button gets before the strip pages
+
 // Categories in the colours set in the back office, stacked to fill the
-// height; the list scrolls when there are too many to fit.
+// height. When they do not all fit, the strip shows a page of them and its
+// last slot becomes the pager: down for the next page, up for the previous.
 @Composable
 private fun CategoryStrip(modifier: Modifier, categories: List<CategoryEntity>, selected: String?, onPick: (String) -> Unit) {
     BoxWithConstraints(modifier) {
-        val n = categories.size.coerceAtLeast(1)
-        val each = ((maxHeight - 1.dp * (n - 1)) / n).coerceIn(44.dp, 84.dp)
-        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            items(categories, key = { it.id }) { c ->
+        val gap = 1.dp
+        val slots = ((maxHeight + gap) / (CATEGORY_MIN + gap)).toInt().coerceAtLeast(2)
+        val paged = categories.size > slots
+        val perPage = if (paged) slots - 1 else categories.size.coerceAtLeast(1)
+        val pages = if (paged) (categories.size + perPage - 1) / perPage else 1
+        // opens on the page that holds the selected category
+        var page by remember(perPage, categories.size) {
+            mutableStateOf(if (paged) categories.indexOfFirst { it.id == selected }.coerceAtLeast(0) / perPage else 0)
+        }
+        val current = page.coerceIn(0, pages - 1)
+        val rows = if (paged) slots else perPage
+        val each = ((maxHeight - gap * (rows - 1)) / rows).coerceAtMost(84.dp)
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
+            (if (paged) categories.drop(current * perPage).take(perPage) else categories).forEach { c ->
                 val color = Pos.css(c.color, Pos.CategoryDefault)
                 val on = c.id == selected
                 Box(Modifier.fillMaxWidth().height(each).background(color).clickable { onPick(c.id) }, contentAlignment = Alignment.Center) {
@@ -467,7 +507,25 @@ private fun CategoryStrip(modifier: Modifier, categories: List<CategoryEntity>, 
                     )
                 }
             }
+            if (paged) {
+                // the pager stays in the last slot when the last page is short
+                Spacer(Modifier.weight(1f))
+                Row(Modifier.fillMaxWidth().height(each), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    if (current > 0) PagerButton(up = true, Modifier.weight(1f)) { page = current - 1 }
+                    if (current < pages - 1) PagerButton(up = false, Modifier.weight(1f)) { page = current + 1 }
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun PagerButton(up: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Box(modifier.fillMaxHeight().background(Pos.Key).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        Icon(
+            Icons.Filled.ArrowDropDown, contentDescription = if (up) "Previous" else "More",
+            tint = Pos.Text, modifier = Modifier.size(30.dp).rotate(if (up) 180f else 0f),
+        )
     }
 }
 
@@ -501,7 +559,7 @@ private fun ItemsHeader(title: String, searching: Boolean, onQuery: (String) -> 
 }
 
 @Composable
-private fun ItemTile(item: ItemEntity, inOrder: Int, onTap: () -> Unit) {
+private fun ItemTile(item: ItemEntity, inOrder: Int, edge: Color, onTap: () -> Unit) {
     Box(
         Modifier.fillMaxWidth().aspectRatio(TILE_RATIO).background(Pos.Tile)
             .clickable(enabled = item.is_available, onClick = onTap)
@@ -520,7 +578,7 @@ private fun ItemTile(item: ItemEntity, inOrder: Int, onTap: () -> Unit) {
                 contentAlignment = Alignment.Center,
             ) { Text("$inOrder", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
         }
-        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp).background(Pos.css(item.tile_color, Pos.TileEdge)))
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp).background(edge))
     }
 }
 
