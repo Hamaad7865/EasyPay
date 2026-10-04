@@ -221,6 +221,7 @@ private val DEVICE = stringPreferencesKey("device_id")
 private val ACTIVE_TICKET = stringPreferencesKey("active_ticket")
 private val PENDING_DISCOUNT = stringPreferencesKey("pending_discount")
 private val NEEDS_SIGN_IN = booleanPreferencesKey("needs_sign_in")
+private val BUSINESS = stringPreferencesKey("business_name")
 private val Context.sessionPrefs by preferencesDataStore("device")
 
 // Which tenant, store and device this tablet is. Set once at device setup and
@@ -236,6 +237,8 @@ class SessionStore(private val context: Context) {
     suspend fun deviceId(): String? = store.data.map { it[DEVICE] }.first()
     suspend fun tenantId(): String? = store.data.map { it[TENANT] }.first()
     suspend fun isSetUp(): Boolean = storeId() != null && deviceId() != null
+    suspend fun businessName(): String? = store.data.map { it[BUSINESS] }.first()
+    suspend fun setBusinessName(name: String) { store.edit { it[BUSINESS] = name } }
 
     // Set by the sync workers when the session has expired, cleared by a
     // successful sign-in. While it is set the tablet keeps selling and keeps

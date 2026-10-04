@@ -17,6 +17,7 @@ import com.restopos.feature.auth.StoreDeviceScreen
 import com.restopos.feature.pay.PaymentScreen
 import com.restopos.feature.pay.ReceiptDoneScreen
 import com.restopos.feature.main.MainShell
+import com.restopos.feature.start.StartScreen
 import com.restopos.feature.sync.RejectedScreen
 
 // Launch modes (spec 7/8): POS and KDS share this APK, chosen at device setup.
@@ -24,6 +25,7 @@ import com.restopos.feature.sync.RejectedScreen
 object Routes {
     const val AUTH = "auth"
     const val DEVICE = "device"
+    const val START = "start"
     const val SALE = "sale"
     const val PAY = "pay"
     const val DONE = "done/{receiptId}/{change}/{total}"
@@ -36,14 +38,15 @@ object Routes {
 fun AppNav(session: SessionStore, onSignOut: () -> Unit) {
     val nav = rememberNavController()
     val context = LocalContext.current
-    // A tablet that has been set up opens on the menu, with or without a
-    // network: the menu is in Room. Sign-in is only the first-run path.
+    // A tablet that has been set up opens on the start screen, with or
+    // without a network: everything it shows is on the tablet. Sign-in is only
+    // the first-run path.
     val start by produceState<String?>(initialValue = null) {
-        value = if (session.isSetUp()) Routes.SALE else Routes.AUTH
+        value = if (session.isSetUp()) Routes.START else Routes.AUTH
     }
     val startRoute = start ?: return
     LaunchedEffect(startRoute) {
-        if (startRoute == Routes.SALE) SyncScheduler.startPeriodic(context)
+        if (startRoute == Routes.START) SyncScheduler.startPeriodic(context)
     }
     NavHost(nav, startDestination = startRoute) {
         composable(Routes.AUTH) {
@@ -53,8 +56,15 @@ fun AppNav(session: SessionStore, onSignOut: () -> Unit) {
         composable(Routes.DEVICE) {
             StoreDeviceScreen(onReady = {
                 SyncScheduler.startPeriodic(context)
-                nav.navigate(Routes.SALE) { popUpTo(Routes.DEVICE) { inclusive = true } }
+                nav.navigate(Routes.START) { popUpTo(Routes.DEVICE) { inclusive = true } }
             })
+        }
+        // The register sits on top of the start screen: Lock (or Back) returns here.
+        composable(Routes.START) {
+            StartScreen(
+                onOpen = { nav.navigate(Routes.SALE) { launchSingleTop = true } },
+                onSignIn = { nav.navigate(Routes.REAUTH) },
+            )
         }
         composable(Routes.SALE) {
             // Register, Orders, Receipts and Settings share this entry (tabs).
@@ -63,6 +73,7 @@ fun AppNav(session: SessionStore, onSignOut: () -> Unit) {
                 onPaid = { id, change, total -> nav.navigate("done/$id/$change/$total") },
                 onSignIn = { nav.navigate(Routes.REAUTH) },
                 onRejected = { nav.navigate(Routes.REJECTED) },
+                onLock = { nav.popBackStack(Routes.START, inclusive = false) },
                 onSignOut = onSignOut,
             )
         }

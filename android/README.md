@@ -4,7 +4,13 @@ Kotlin + Compose + Hilt + Room + WorkManager + Ktor (OkHttp). Min SDK 26,
 compile SDK 36.
 
 Built: sign-in, store and device setup, the menu mirrored into Room by the
-pull worker, and four tabs along the bottom:
+pull worker, a start screen, and four tabs along the bottom:
+
+- **Start screen:** what the app opens on once the tablet is set up. It says
+  which till this is (business, store, device, version, network, sync) and
+  has one button, Open register. Lock, top left of the register, returns to
+  it. It is where the staff PIN and the sales period (spec 7.2, 7.7) will
+  go; neither is built, so today it only opens the register.
 
 - **Register:** the order and a keypad on the left, the category strip in the
   middle (each category in the colour set in the back office), the open
@@ -14,6 +20,8 @@ pull worker, and four tabs along the bottom:
   typed means exact). Cash and Card pay everything unpaid in one receipt.
   Tab name, guests and the dining option are stored on the ticket. Actions
   holds New order and the discounts. The magnifier searches the whole menu.
+  When the categories do not all fit, the strip pages and its last slot is
+  a down arrow; the item grid shows the same arrows past a screenful.
 - **Orders:** the orders opened on this tablet that are not fully paid; tap
   one to put it back on the register.
 - **Receipts:** the receipts issued on this tablet.

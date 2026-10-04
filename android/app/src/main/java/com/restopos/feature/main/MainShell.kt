@@ -59,6 +59,7 @@ fun MainShell(
     onPaid: (String, Long, Long) -> Unit,
     onSignIn: () -> Unit,
     onRejected: () -> Unit,
+    onLock: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     val vm: SaleViewModel = hiltViewModel()
@@ -75,9 +76,10 @@ fun MainShell(
         Box(
             Modifier.fillMaxWidth().height(52.dp).background(Brush.verticalGradient(listOf(Pos.BarTop, Pos.BarBottom))),
         ) {
+            // back to the start screen; signing the tablet out is under Settings
             Text(
-                "Sign out",
-                Modifier.align(Alignment.CenterStart).clickable { confirmSignOut = true }.padding(horizontal = 16.dp, vertical = 14.dp),
+                "Lock",
+                Modifier.align(Alignment.CenterStart).clickable(onClick = onLock).padding(horizontal = 16.dp, vertical = 14.dp),
                 color = Pos.Pink, fontSize = 14.sp,
             )
             Text(
