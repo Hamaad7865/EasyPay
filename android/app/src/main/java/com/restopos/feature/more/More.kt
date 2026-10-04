@@ -156,52 +156,25 @@ private fun Figure(label: String, value: String, bold: Boolean = false) {
     }
 }
 
-// What More opens. Each tile says what it does; one the signed-in person may
-// not use says who to ask rather than disappearing.
+// The dialogs behind the side menu's cash and closing entries: "in" and
+// "out" (cash in, cash out), "shift" and "day". Null shows nothing.
 @Composable
-fun MoreDialog(vm: MoreViewModel, onDismiss: () -> Unit, onLock: () -> Unit, onCloseShift: () -> Unit, onReceipts: () -> Unit) {
-    var cashType by remember { mutableStateOf<String?>(null) }
-    var showShift by remember { mutableStateOf(false) }
-    var showDay by remember { mutableStateOf(false) }
+fun MoreSheets(vm: MoreViewModel, show: String?, onDismiss: () -> Unit, onCloseShift: () -> Unit) {
     val shift by vm.shift.collectAsState()
     val day by vm.day.collectAsState()
     val busy by vm.busy.collectAsState()
-    LaunchedEffect(Unit) { vm.load() }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("More") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Tile("Open cash drawer", "Without a sale. It is written down.", Modifier.weight(1f), !busy) { vm.openDrawer() }
-                    Tile("Lock", "Back to the start screen.", Modifier.weight(1f)) { onDismiss(); onLock() }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Tile("Cash out", "Take cash from the drawer, with a slip.", Modifier.weight(1f)) { cashType = "out" }
-                    Tile("Cash in", "Put cash into the drawer, with a slip.", Modifier.weight(1f)) { cashType = "in" }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Tile("Refund or reprint", "Pick the receipt under Receipts.", Modifier.weight(1f)) { onDismiss(); onReceipts() }
-                    Tile("Shift", "This cashier's figures, and closing the shift.", Modifier.weight(1f)) { showShift = true }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Tile("Day closing", "The day's report (Z), after the shift is closed.", Modifier.weight(1f)) { showDay = true }
-                    Spacer(Modifier.weight(1f))
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Close") } },
-    )
+    LaunchedEffect(show) { if (show != null) vm.load() }
+    val cashType = show?.takeIf { it == "in" || it == "out" }
+    val showShift = show == "shift"
+    val showDay = show == "day"
 
     cashType?.let { type ->
-        CashDialog(type, busy, onDismiss = { cashType = null }) { amount, reason -> vm.cashMove(type, amount, reason) { cashType = null } }
+        CashDialog(type, busy, onDismiss = onDismiss) { amount, reason -> vm.cashMove(type, amount, reason) { onDismiss() } }
     }
     if (showShift) {
         val s = shift
         AlertDialog(
-            onDismissRequest = { showShift = false },
+            onDismissRequest = onDismiss,
             title = { Text("Shift") },
             text = {
                 if (s == null) Text("No shift has been opened on this till yet.")
@@ -213,13 +186,13 @@ fun MoreDialog(vm: MoreViewModel, onDismiss: () -> Unit, onLock: () -> Unit, onC
                     )
                     Figure("Receipts", d.sales.toString())
                     Figure("Sales", Money.format(d.gross))
-                    if (d.refunds > 0) Figure("Refunds (${d.refunds})", "-" + Money.format(d.refunded))
+                    if (d.refunds > 0) Figure("Refunds (${d.refunds})", Money.format(-d.refunded))
                     d.payments.forEach { Figure("${it.name} (${it.count})", Money.format(it.amount)) }
                     Spacer(Modifier.height(8.dp))
                     Figure("Opening float", Money.format(d.float))
                     Figure("Cash taken", Money.format(d.cashTaken))
                     Figure("Cash in", Money.format(d.cashIn))
-                    Figure("Cash out", "-" + Money.format(d.cashOut))
+                    Figure("Cash out", Money.format(-d.cashOut))
                     Figure("Expected in the drawer", Money.format(d.expected), bold = true)
                     d.counted?.let {
                         Figure("Counted", Money.format(it))
@@ -232,18 +205,18 @@ fun MoreDialog(vm: MoreViewModel, onDismiss: () -> Unit, onLock: () -> Unit, onC
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { vm.printShift() }, enabled = s != null && !busy) { Text("Print report") }
                     if (s != null && s.first.closed_at == null) {
-                        Button(onClick = { showShift = false; onDismiss(); onCloseShift() }, enabled = vm.can("shift.open_close")) { Text("Close shift") }
+                        Button(onClick = { onDismiss(); onCloseShift() }, enabled = vm.can("shift.open_close")) { Text("Close shift") }
                     }
                 }
             },
-            dismissButton = { OutlinedButton(onClick = { showShift = false }) { Text("Back") } },
+            dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Close") } },
         )
     }
     if (showDay) {
         val z = day
         val open = shift?.first?.closed_at == null && shift != null
         AlertDialog(
-            onDismissRequest = { showDay = false },
+            onDismissRequest = onDismiss,
             title = { Text("Day closing") },
             text = {
                 if (z == null) Text("Nothing to close yet.")
@@ -254,11 +227,11 @@ fun MoreDialog(vm: MoreViewModel, onDismiss: () -> Unit, onLock: () -> Unit, onC
                     )
                     Figure("Receipts", z.sales.toString())
                     Figure("Sales", Money.format(z.gross))
-                    Figure("Refunds (${z.refunds})", "-" + Money.format(z.refunded))
+                    Figure("Refunds (${z.refunds})", Money.format(-z.refunded))
                     Figure("Total", Money.format(z.gross - z.refunded), bold = true)
                     z.payments.forEach { Figure("${it.name} (${it.count})", Money.format(it.amount)) }
                     Figure("Cash in", Money.format(z.cashIn))
-                    Figure("Cash out", "-" + Money.format(z.cashOut))
+                    Figure("Cash out", Money.format(-z.cashOut))
                     Text(
                         if (open) "Close the shift first: the drawer has to be counted before the day is closed."
                         else "Closing the day fixes these figures, prints the report and starts a new day. It cannot be undone.",
@@ -267,9 +240,9 @@ fun MoreDialog(vm: MoreViewModel, onDismiss: () -> Unit, onLock: () -> Unit, onC
                 }
             },
             confirmButton = {
-                Button(onClick = { vm.closeDay { showDay = false } }, enabled = z != null && !open && !busy && vm.can("shift.open_close")) { Text("Close the day and print") }
+                Button(onClick = { vm.closeDay { onDismiss() } }, enabled = z != null && !open && !busy && vm.can("shift.open_close")) { Text("Close the day and print") }
             },
-            dismissButton = { OutlinedButton(onClick = { showDay = false }) { Text("Back") } },
+            dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Close") } },
         )
     }
 }

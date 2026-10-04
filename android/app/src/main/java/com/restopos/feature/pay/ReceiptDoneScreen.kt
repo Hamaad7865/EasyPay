@@ -20,9 +20,9 @@ import com.restopos.core.common.Money
 import com.restopos.core.ui.Pos
 
 // Result screen (spec 7.5): what was paid and the change to hand back.
-// Printing arrives with the printer work; the button is there but off.
+// The receipt has already gone to the printer; the button prints it again.
 @Composable
-fun ReceiptDoneScreen(change: Long, total: Long, onPrint: () -> Unit, onNewSale: () -> Unit) {
+fun ReceiptDoneScreen(change: Long, total: Long, note: String? = null, onPrint: () -> Unit, onNewSale: () -> Unit) {
     Column(
         Modifier.fillMaxSize().background(Pos.Bg).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
@@ -36,6 +36,7 @@ fun ReceiptDoneScreen(change: Long, total: Long, onPrint: () -> Unit, onNewSale:
             Text("No change due", color = Pos.Text, fontSize = 32.sp, fontWeight = FontWeight.Bold)
         }
         Button(onClick = onNewSale, Modifier.padding(top = 16.dp).width(320.dp).height(56.dp)) { Text("New sale", fontSize = 18.sp) }
-        OutlinedButton(onClick = onPrint, Modifier.width(320.dp), enabled = false) { Text("Print receipt (not available yet)") }
+        OutlinedButton(onClick = onPrint, Modifier.width(320.dp)) { Text("Print the receipt again") }
+        if (note != null) Text(note)
     }
 }

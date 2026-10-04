@@ -2,6 +2,7 @@ package com.restopos.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.platform.LocalContext
@@ -128,10 +129,13 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
             )
         }
         composable(Routes.DONE) { back ->
+            val receipts: com.restopos.feature.receipts.ReceiptsViewModel = hiltViewModel()
+            val said by receipts.message.collectAsState()
             ReceiptDoneScreen(
                 change = back.arguments?.getString("change")?.toLongOrNull() ?: 0,
                 total = back.arguments?.getString("total")?.toLongOrNull() ?: 0,
-                onPrint = {},
+                note = said,
+                onPrint = { back.arguments?.getString("receiptId")?.let { receipts.reprint(it) } },
                 onNewSale = { nav.navigate(Routes.SALE) { popUpTo(Routes.SALE) { inclusive = true } } },
             )
         }

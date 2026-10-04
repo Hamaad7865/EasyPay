@@ -228,7 +228,11 @@ class OrderOps @Inject constructor(
             require(db.ops().retypePayments(receiptId, from, to) > 0) { "This receipt has no payment of that type" }
             docs.decode(r.doc)?.let { d ->
                 val old = names[from]?.name
-                db.ops().setDoc(receiptId, docs.encode(d.copy(payments = d.payments.map { if (it.name == old) it.copy(name = names[to]?.name ?: it.name) else it })))
+                val cash = names[to]?.kind == "cash"
+                db.ops().setDoc(receiptId, docs.encode(d.copy(payments = d.payments.map {
+                    if (it.name != old) it
+                    else it.copy(name = names[to]?.name ?: it.name, tendered = if (cash) it.tendered else null, change = if (cash) it.change else 0)
+                })))
             }
             db.outbox().enqueue(op("payment.correct", buildJsonObject {
                 put("id", Uuid7.next()); put("receipt_id", receiptId)

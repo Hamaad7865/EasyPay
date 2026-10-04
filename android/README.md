@@ -104,11 +104,15 @@ moment on screen, because it sits where Pay on the register was.
   drawer opens if the payment type is set to open it. A remark can be added
   on the payment screen. With no decimals (or one), the total is rounded and
   the rounding is kept on the receipt.
-- **More:** open the cash drawer without a sale (recorded), lock, cash in and
-  cash out (amount and reason; a slip prints; it counts in the drawer's
-  expected cash), the shift (figures, print the report, close it), and the
-  day closing (the Z: needs the shift closed and no unpaid order; fixes the
-  figures, prints, and with "start again each day" restarts bill numbers).
+- **Side menu** (the button left of Floor plan, and on the register next to
+  the magnifier): the lists, then Cash drawer (open it without a sale, which
+  is recorded; cash in and cash out with an amount and a reason: a slip
+  prints and it counts in the drawer's expected cash), Closing (the shift:
+  figures, print the report, close it; the day closing, the Z), and This till
+  (refund or reprint, settings, lock). The day is closed on the screen that
+  shows a closed shift, or from the menu when no shift is open: it needs the
+  shift closed and no unpaid order, fixes the figures, prints, and with
+  "start again each day" restarts bill numbers.
 - **Receipts:** tap one to see it, print it again (the same paper: what a
   receipt printed is kept with it), refund it (the whole receipt, with a
   reason and how the money goes back), or correct its payment type.

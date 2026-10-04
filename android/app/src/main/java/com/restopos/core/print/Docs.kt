@@ -138,6 +138,9 @@ object Docs {
         return (if (neg) "-" else "") + body
     }
 
+    // an amount taken off: "-100.00", and plain "0.00" for nothing
+    private fun off(cents: Long, decimals: Int): String = num(-cents, decimals).let { if (cents == 0L) it.removePrefix("-") else it }
+
     fun qty(q: Int): String = if (q % 1000 == 0) "${q / 1000}" else "%.3f".format(Locale.US, q / 1000.0).trimEnd('0')
 
     private fun stamp(ms: Long): String = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US).format(Date(ms))
@@ -272,7 +275,7 @@ object Docs {
         p.rule()
         p.row("Receipts", d.sales.toString())
         p.row("Sales", n(d.gross))
-        p.row("Refunds (${d.refunds})", "-" + n(d.refunded))
+        p.row("Refunds (${d.refunds})", off(d.refunded, decimals))
         p.row("Discounts given", n(d.discounts))
         p.rule()
         p.bold(true).line("TAKEN BY PAYMENT METHOD").bold(false)
@@ -282,7 +285,7 @@ object Docs {
         p.row("Opening float", n(d.float))
         p.row("Cash taken", n(d.cashTaken))
         p.row("Cash in", n(d.cashIn))
-        p.row("Cash out", "-" + n(d.cashOut))
+        p.row("Cash out", off(d.cashOut, decimals))
         d.moves.forEach { m -> p.row("  ${if (m.type == "in") "In" else "Out"}: ${m.reason ?: ""}", n(m.amount)) }
         p.bold(true).row("Expected in drawer", n(d.expected)).bold(false)
         if (d.counted != null) {
@@ -312,7 +315,7 @@ object Docs {
         p.rule()
         p.row("Receipts", d.sales.toString())
         p.row("Sales", n(d.gross))
-        p.row("Refunds (${d.refunds})", "-" + n(d.refunded))
+        p.row("Refunds (${d.refunds})", off(d.refunded, decimals))
         p.bold(true).tall(true).row("TOTAL", "Rs " + n(d.gross - d.refunded)).tall(false).bold(false)
         p.row("Of which tax", n(d.tax))
         p.row("Discounts given", n(d.discounts))
@@ -334,7 +337,7 @@ object Docs {
         p.rule()
         p.bold(true).line("CASH IN AND OUT").bold(false)
         p.row("Cash in", n(d.cashIn))
-        p.row("Cash out", "-" + n(d.cashOut))
+        p.row("Cash out", off(d.cashOut, decimals))
         d.moves.forEach { m -> p.row("  ${if (m.type == "in") "In" else "Out"}: ${m.reason ?: ""}${m.user?.let { " ($it)" } ?: ""}", n(m.amount)) }
         p.end(paper)
         return p.bytes()

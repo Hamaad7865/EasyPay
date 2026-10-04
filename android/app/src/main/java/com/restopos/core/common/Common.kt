@@ -11,6 +11,7 @@ object Money {
     @Volatile var decimals: Int = 2
 
     fun format(cents: Long): String = (if (cents < 0) "-" else "") + "Rs " + plain(Math.abs(cents))
+    // an amount that is taken off: "-Rs 100.00", and plain "Rs 0.00" for nothing
 
     // the number alone, for the columns of a receipt
     fun plain(cents: Long, places: Int = decimals): String {
