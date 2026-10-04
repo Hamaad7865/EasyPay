@@ -55,6 +55,15 @@ interface TicketDao {
 
     @Query("UPDATE ticket_lines SET paid = 1 WHERE id IN (:ids)")
     suspend fun markPaid(ids: List<String>)
+
+    // Open orders that still have something to pay. They live on this tablet
+    // only (the pull does not bring tickets back), so sign-out checks this.
+    @Query(
+        """SELECT COUNT(DISTINCT t.id) FROM tickets t JOIN ticket_lines l ON l.ticket_id = t.id
+           WHERE t.status = 'open' AND t.deleted_at IS NULL
+           AND l.voided_at IS NULL AND l.deleted_at IS NULL AND l.paid = 0""",
+    )
+    suspend fun unpaidOrderCount(): Long
 }
 
 @Dao

@@ -108,7 +108,7 @@ fun OrdersScreen(vm: OrdersViewModel = hiltViewModel(), onOpen: () -> Unit) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Open orders", color = Pos.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text("Orders opened on this tablet that are not fully paid.", color = Pos.Text3, fontSize = 12.sp)
+                Text("Orders opened on this tablet that are not fully paid. Amounts are before any discount.", color = Pos.Text3, fontSize = 12.sp)
             }
             Button(onClick = { vm.startNew(onOpen) }) { Text("New order") }
         }

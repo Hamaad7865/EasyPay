@@ -76,6 +76,13 @@ class MainActivity : ComponentActivity() {
                                 Toast.makeText(this@MainActivity, "$refused rejected changes need a look first (Settings, Rejected changes).", Toast.LENGTH_LONG).show()
                                 return@launch
                             }
+                            // An open order is only on this tablet: wiping it would
+                            // leave it unpaid on the server with no till able to charge it.
+                            val unpaid = db.tickets().unpaidOrderCount()
+                            if (unpaid > 0L) {
+                                Toast.makeText(this@MainActivity, "$unpaid open orders are not paid yet. Take payment or void their lines (Orders), then sign out.", Toast.LENGTH_LONG).show()
+                                return@launch
+                            }
                             SyncScheduler.stop(this@MainActivity)
                             auth.signOut() // best effort on the server, always clears locally
                             session.clear()

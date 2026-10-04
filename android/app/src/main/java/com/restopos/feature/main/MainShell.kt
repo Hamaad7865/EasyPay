@@ -127,7 +127,7 @@ fun MainShell(
         AlertDialog(
             onDismissRequest = { confirmSignOut = false },
             title = { Text("Sign out of this till?") },
-            text = { Text("This clears the menu, the open orders and the receipt list from this tablet. Sales already synced stay in the back office. Signing out is refused while a sale is still waiting to sync.") },
+            text = { Text("This clears the menu and the receipt list from this tablet. Sales already synced stay in the back office. Signing out is refused while a sale is still waiting to sync or an order is still unpaid.") },
             confirmButton = { Button(onClick = { confirmSignOut = false; onSignOut() }) { Text("Sign out") } },
             dismissButton = { OutlinedButton(onClick = { confirmSignOut = false }) { Text("Cancel") } },
         )
