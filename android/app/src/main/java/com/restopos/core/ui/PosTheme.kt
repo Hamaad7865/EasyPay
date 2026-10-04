@@ -21,6 +21,7 @@ object Pos {
     val PanelDeep = Color(0xFF232427)
     val Key = Color(0xFF333438)
     val Line = Color(0xFF17181A)
+    val Stroke = Color(0xFF36383E) // the hairline around a card and between its rows
     val Tile = Color(0xFF3B3C41)
     val TileEdge = Color(0xFF3D6BFF)
     val Blue = Color(0xFF4C6FF5)

@@ -48,7 +48,12 @@ import com.restopos.core.database.ReceiptPaymentEntity
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.print.ReceiptDoc
 import com.restopos.core.sync.SessionStore
+import com.restopos.core.ui.Hairline
+import com.restopos.core.ui.HeadCell
 import com.restopos.core.ui.Pos
+import com.restopos.core.ui.Tag
+import com.restopos.core.ui.card
+import androidx.compose.ui.text.style.TextAlign
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -135,34 +140,44 @@ fun ReceiptsScreen(vm: ReceiptsViewModel = hiltViewModel()) {
     message?.let { m -> LaunchedEffect(m) { delay(4000); vm.messageShown() } }
 
     Box(Modifier.fillMaxSize().background(Pos.Bg)) {
-        Column(Modifier.fillMaxSize().padding(start = 6.dp, end = 6.dp, bottom = 6.dp)) {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Pos.Panel)) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)) {
-                    listOf("Number" to 1.6f, "Type" to 0.8f, "Time" to 1.3f, "Total" to 1f).forEach { (h, w) ->
-                        Text(h, Modifier.weight(w), color = Pos.Text2, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Column(Modifier.fillMaxSize().padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.weight(1f, fill = false).fillMaxWidth().card()) {
+                Row(Modifier.fillMaxWidth().background(Pos.PanelDeep).padding(horizontal = 12.dp)) {
+                    HeadCell("Number", 1.6f)
+                    HeadCell("Type", 0.8f)
+                    HeadCell("Time", 1.3f)
+                    HeadCell("Total", 1f, end = true)
+                    HeadCell("", 0.4f)
+                }
+                Hairline()
+                if (rows.isEmpty()) {
+                    Column(Modifier.fillMaxWidth().padding(vertical = 44.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("No receipts yet", color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text("A receipt shows here as soon as an order is paid.", Modifier.padding(top = 2.dp), color = Pos.Text3, fontSize = 13.sp)
                     }
                 }
-                if (rows.isEmpty()) Text("No receipts yet.", Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp), color = Pos.Text3, fontSize = 15.sp)
                 LazyColumn {
                     items(rows, key = { it.id }) { r ->
                         Row(
-                            Modifier.fillMaxWidth().clickable { vm.show(r) }.padding(horizontal = 20.dp).height(56.dp),
+                            Modifier.fillMaxWidth().clickable { vm.show(r) }.padding(horizontal = 12.dp).height(56.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(r.number, Modifier.weight(1.6f), color = Pos.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                            Box(Modifier.weight(0.8f)) {
-                                Text(
-                                    if (r.type == "refund") "Refund" else "Sale",
-                                    Modifier.clip(RoundedCornerShape(3.dp)).background(if (r.type == "refund") Pos.Danger else Pos.Key).padding(horizontal = 8.dp, vertical = 3.dp),
-                                    color = Pos.Text, fontSize = 13.sp,
-                                )
+                            Text(r.number, Modifier.weight(1.6f).padding(horizontal = 8.dp), color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            Box(Modifier.weight(0.8f).padding(horizontal = 8.dp)) {
+                                Tag(if (r.type == "refund") "Refund" else "Sale", if (r.type == "refund") Pos.Pink else Pos.Ok)
                             }
-                            Text(time.format(Date(r.device_time)), Modifier.weight(1.3f), color = Pos.Text, fontSize = 15.sp)
-                            Text((if (r.type == "refund") "-" else "") + Money.format(r.total), Modifier.weight(1f), color = Pos.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            Text(time.format(Date(r.device_time)), Modifier.weight(1.3f).padding(horizontal = 8.dp), color = Pos.Text, fontSize = 15.sp)
+                            Text(
+                                (if (r.type == "refund") "-" else "") + Money.format(r.total), Modifier.weight(1f).padding(horizontal = 8.dp),
+                                color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End,
+                            )
+                            Text("›", Modifier.weight(0.4f).padding(horizontal = 8.dp), color = Pos.Text3, fontSize = 20.sp, textAlign = TextAlign.End)
                         }
+                        Hairline(Modifier.padding(horizontal = 20.dp))
                     }
                 }
             }
+            Text("Receipts issued on this tablet, newest first. Tap one to print it again, refund it or correct how it was paid.", Modifier.padding(horizontal = 6.dp), color = Pos.Text3, fontSize = 12.sp)
         }
         message?.let {
             Text(

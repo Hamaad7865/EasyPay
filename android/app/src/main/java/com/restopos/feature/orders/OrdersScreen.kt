@@ -1,6 +1,7 @@
 package com.restopos.feature.orders
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,7 +52,13 @@ import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.DiningOptionEntity
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.sync.SessionStore
+import com.restopos.core.ui.Avatar
+import com.restopos.core.ui.Hairline
+import com.restopos.core.ui.HeadCell
 import com.restopos.core.ui.Pos
+import com.restopos.core.ui.PosIcons
+import com.restopos.core.ui.Tag
+import com.restopos.core.ui.card
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -74,6 +82,7 @@ data class OrderRow(
     val partPaid: Boolean,
     val dining: String?, // the dining option the order counts under
     val onRegister: Boolean,
+    val badge: String = "", // what its little square shows: the table's number, a tab's first letter
 )
 
 data class OrdersUi(val options: List<DiningOptionEntity> = emptyList(), val rows: List<OrderRow> = emptyList())
@@ -119,6 +128,7 @@ class OrdersViewModel @Inject constructor(
                 partPaid = lines.any { it.paid },
                 dining = t.dining_option_id?.takeIf { known.contains(it) } ?: fallback,
                 onRegister = t.id == active,
+                badge = if (t.name != null) t.name.trim().take(1).uppercase() else table?.name?.trim()?.take(3) ?: "",
             )
         }
         _ui.value = OrdersUi(options, rows)
@@ -133,9 +143,9 @@ class OrdersViewModel @Inject constructor(
     }
 }
 
-private enum class Col(val label: String, val weight: Float) {
-    Order("Order", 1.4f), Floor("Floor", 1.3f), User("User", 1.3f), Covers("Covers", 0.8f), Created("Created", 1.1f),
-    LastEdit("Last edit", 1.1f), Course("Course", 1f), Total("Total", 1f), Payment("Payment", 0.9f),
+private enum class Col(val label: String, val weight: Float, val end: Boolean = false) {
+    Order("Order", 1.7f), Floor("Floor", 1.1f), User("Waiter", 1.5f), Covers("Covers", 0.8f), Created("Created", 1f),
+    LastEdit("Last edit", 1.2f), Course("Course", 0.9f), Total("Total", 1.2f, end = true), Payment("Payment", 1f),
 }
 
 private fun sorted(rows: List<OrderRow>, by: Col, desc: Boolean): List<OrderRow> {
@@ -154,8 +164,9 @@ private fun sorted(rows: List<OrderRow>, by: Col, desc: Boolean): List<OrderRow>
     return rows.sortedWith(if (desc) cmp.reversed() else cmp)
 }
 
-// The open orders as a table: one tab per dining option, a search, and a row
-// per order. Tapping a column sorts by it; tapping an order opens it.
+// The open orders: a switch between the order types, a search, and a table
+// with a row per order. Tapping a heading sorts by it; tapping an order
+// opens it.
 @Composable
 fun OrdersScreen(vm: OrdersViewModel = hiltViewModel(), onOpen: () -> Unit) {
     val ui by vm.ui.collectAsState()
@@ -180,91 +191,119 @@ fun OrdersScreen(vm: OrdersViewModel = hiltViewModel(), onOpen: () -> Unit) {
     }
     val time = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
 
-    Column(Modifier.fillMaxSize().background(Pos.Bg).padding(start = 6.dp, end = 6.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (ui.options.size > 1) {
-            Row(Modifier.fillMaxWidth().height(40.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                ui.options.forEach { o ->
-                    val on = o.id == option
-                    Box(
-                        Modifier.weight(1f).fillMaxSize().clip(RoundedCornerShape(3.dp)).background(if (on) Pos.TabOn else Pos.Panel)
-                            .clickable { picked = o.id },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            "${o.name} (${ui.rows.count { it.dining == o.id }})",
-                            color = if (on) Color.White else Pos.Text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        )
+    Column(Modifier.fillMaxSize().background(Pos.Bg).padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (ui.options.size > 1) {
+                // one segment per order type, with how many orders it has
+                Row(Modifier.clip(RoundedCornerShape(12.dp)).background(Pos.Panel).border(1.dp, Pos.Stroke, RoundedCornerShape(12.dp)).padding(4.dp)) {
+                    ui.options.forEach { o ->
+                        val on = o.id == option
+                        val n = ui.rows.count { it.dining == o.id }
+                        Row(
+                            Modifier.height(36.dp).clip(RoundedCornerShape(9.dp)).background(if (on) Pos.TabOn else Color.Transparent)
+                                .clickable { picked = o.id }.padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(o.name, color = if (on) Color.White else Pos.Text2, fontSize = 14.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1)
+                            Text(
+                                "$n",
+                                Modifier.padding(start = 8.dp).clip(RoundedCornerShape(9.dp)).background(if (on) Color.White.copy(alpha = 0.2f) else Pos.Key)
+                                    .padding(horizontal = 7.dp, vertical = 1.dp),
+                                color = if (on) Color.White else Pos.Text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                     }
                 }
             }
+            Row(
+                Modifier.weight(1f).height(46.dp).clip(RoundedCornerShape(12.dp)).background(Pos.Panel).border(1.dp, Pos.Stroke, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.Search, contentDescription = null, tint = Pos.Text3, modifier = Modifier.size(20.dp))
+                BasicTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.weight(1f).padding(start = 12.dp),
+                    singleLine = true,
+                    textStyle = TextStyle(color = Pos.Text, fontSize = 15.sp),
+                    cursorBrush = SolidColor(Pos.Text),
+                    decorationBox = { inner ->
+                        if (query.isEmpty()) Text("Search by table, name or waiter", color = Pos.Text3, fontSize = 15.sp)
+                        inner()
+                    },
+                )
+                if (query.isNotEmpty()) Text("Clear", Modifier.clickable { query = "" }.padding(8.dp), color = Pos.Link, fontSize = 13.sp)
+            }
         }
-        Row(
-            Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(6.dp)).background(Pos.Panel).padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Filled.Search, contentDescription = null, tint = Pos.Text2, modifier = Modifier.size(26.dp))
-            BasicTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.weight(1f).padding(start = 20.dp),
-                singleLine = true,
-                textStyle = TextStyle(color = Pos.Text, fontSize = 17.sp),
-                cursorBrush = SolidColor(Pos.Text),
-                decorationBox = { inner ->
-                    if (query.isEmpty()) Text("Search by table, name or waiter", color = Pos.Text3, fontSize = 17.sp, fontWeight = FontWeight.Medium)
-                    inner()
-                },
-            )
-            if (query.isNotEmpty()) Text("Clear", Modifier.clickable { query = "" }.padding(8.dp), color = Pos.Link, fontSize = 14.sp)
-        }
-        Column(Modifier.weight(1f, fill = false).fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Pos.Panel)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f, fill = false).fillMaxWidth().card()) {
+            Row(Modifier.fillMaxWidth().background(Pos.PanelDeep).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Col.entries.forEach { c ->
                     val on = c == sort
-                    Text(
-                        c.label,
-                        Modifier.weight(c.weight).clickable { if (on) desc = !desc else { sort = c; desc = c == Col.Created || c == Col.LastEdit } }
-                            .padding(horizontal = 8.dp, vertical = 18.dp),
-                        color = if (on) Pos.Link else Pos.Text2, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1,
-                    )
+                    HeadCell(c.label, c.weight, sorted = on, descending = desc, end = c.end) {
+                        if (on) desc = !desc else { sort = c; desc = c == Col.Created || c == Col.LastEdit }
+                    }
                 }
             }
+            Hairline()
             if (shown.isEmpty()) {
-                Text(
-                    if (q.isEmpty()) "No open orders." else "No open order matches that search.",
-                    Modifier.padding(horizontal = 20.dp).padding(bottom = 22.dp), color = Pos.Text3, fontSize = 15.sp,
-                )
+                Column(Modifier.fillMaxWidth().padding(vertical = 44.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(PosIcons.Receipt, contentDescription = null, tint = Pos.Text3, modifier = Modifier.size(30.dp))
+                    Text(if (q.isEmpty()) "No open orders" else "No open order matches that search", Modifier.padding(top = 10.dp), color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text(if (q.isEmpty()) "New order, top right, starts one." else "Try the table's number or the waiter's name.", Modifier.padding(top = 2.dp), color = Pos.Text3, fontSize = 13.sp)
+                }
             } else {
-                LazyColumn {
+                LazyColumn(Modifier.weight(1f, fill = false)) {
                     items(shown, key = { it.id }) { r ->
                         Row(
-                            Modifier.fillMaxWidth().background(if (r.onRegister) Pos.Selected else Color.Transparent)
-                                .clickable { vm.open(r.id, onOpen) }.padding(horizontal = 12.dp).height(60.dp),
+                            Modifier.fillMaxWidth().background(if (r.onRegister) Pos.Selected.copy(alpha = 0.55f) else Color.Transparent)
+                                .clickable { vm.open(r.id, onOpen) }.padding(horizontal = 12.dp).height(58.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Cell(Col.Order, r.label)
+                            Row(Modifier.weight(Col.Order.weight).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(Pos.TabOn.copy(alpha = 0.22f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (r.badge.isEmpty()) Icon(PosIcons.Receipt, contentDescription = null, tint = Pos.Link, modifier = Modifier.size(16.dp))
+                                    else Text(r.badge, color = Pos.Link, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
+                                Text(r.label, Modifier.padding(start = 10.dp), color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                             Cell(Col.Floor, r.floor)
-                            Cell(Col.User, r.user)
+                            Row(Modifier.weight(Col.User.weight).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                if (r.user == null) Text("—", color = Pos.Text3, fontSize = 15.sp)
+                                else {
+                                    Avatar(r.user)
+                                    Text(r.user, Modifier.padding(start = 8.dp), color = Pos.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
                             Cell(Col.Covers, r.covers?.toString())
                             Cell(Col.Created, r.created?.let { time.format(Date(it)) })
                             Box(Modifier.weight(Col.LastEdit.weight).padding(horizontal = 8.dp)) { Age(now - r.lastEdit) }
                             Cell(Col.Course, r.course?.let { "Course $it" })
-                            Cell(Col.Total, Money.format(r.total))
-                            Box(Modifier.weight(Col.Payment.weight).padding(horizontal = 8.dp)) {
-                                Text(
-                                    if (r.partPaid) "Part paid" else "Open",
-                                    Modifier.clip(RoundedCornerShape(3.dp)).background(Pos.ChipOpen).padding(horizontal = 9.dp, vertical = 3.dp),
-                                    color = Pos.Line, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1,
-                                )
+                            Text(
+                                Money.format(r.total), Modifier.weight(Col.Total.weight).padding(horizontal = 8.dp),
+                                color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End, maxLines = 1,
+                            )
+                            Box(Modifier.weight(Col.Payment.weight).padding(start = 20.dp, end = 8.dp)) {
+                                Tag(if (r.partPaid) "Part paid" else "Open", if (r.partPaid) Pos.Warn else Pos.Link)
                             }
                         }
+                        Hairline(Modifier.padding(horizontal = 20.dp))
                     }
+                }
+                // what the orders on show add up to
+                Row(Modifier.fillMaxWidth().background(Pos.PanelDeep).padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${shown.size} ${if (shown.size == 1) "order" else "orders"} open", Modifier.weight(1f), color = Pos.Text2, fontSize = 13.sp)
+                    Text("Total  ", color = Pos.Text3, fontSize = 13.sp)
+                    Text(Money.format(shown.sumOf { it.total }), color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
         Text(
             "Orders opened on this tablet that are not fully paid. Totals are before any discount.",
-            Modifier.padding(horizontal = 8.dp), color = Pos.Text3, fontSize = 12.sp,
+            Modifier.padding(horizontal = 6.dp), color = Pos.Text3, fontSize = 12.sp,
         )
     }
 }
@@ -273,7 +312,7 @@ fun OrdersScreen(vm: OrdersViewModel = hiltViewModel(), onOpen: () -> Unit) {
 private fun RowScope.Cell(col: Col, text: String?) {
     Text(
         text ?: "—", Modifier.weight(col.weight).padding(horizontal = 8.dp),
-        color = if (text == null) Pos.Text3 else Pos.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+        color = if (text == null) Pos.Text3 else Pos.Text, fontSize = 15.sp,
         maxLines = 1, overflow = TextOverflow.Ellipsis,
     )
 }
@@ -283,14 +322,13 @@ private fun RowScope.Cell(col: Col, text: String?) {
 @Composable
 private fun Age(ms: Long) {
     val min = (ms / 60_000).coerceAtLeast(0)
-    Text(
+    Tag(
         if (min < 60) "$min min" else "${min / 60} h ${min % 60} min",
-        Modifier.clip(RoundedCornerShape(3.dp)).background(Pos.Key).padding(horizontal = 7.dp, vertical = 3.dp),
-        color = when {
+        when {
             min < 30 -> Pos.Ok
             min < 60 -> Pos.Warn
             else -> Pos.Pink
         },
-        fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1,
+        dot = true,
     )
 }

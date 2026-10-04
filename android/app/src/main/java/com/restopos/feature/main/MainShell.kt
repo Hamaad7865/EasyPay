@@ -3,6 +3,7 @@ package com.restopos.feature.main
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.restopos.core.ui.Avatar
 import com.restopos.core.ui.Pos
 import com.restopos.core.ui.PosIcons
 import com.restopos.feature.more.MoreSheets
@@ -238,14 +240,17 @@ private fun NavBar(
             }
             SyncMark(sync, pending)
             if (name != null) {
-                Text(
-                    name, Modifier.padding(start = 12.dp).widthIn(max = 100.dp),
-                    color = Pos.Text3, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
+                Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Avatar(name, 24.dp)
+                    Text(
+                        name, Modifier.padding(start = 7.dp).widthIn(max = 96.dp),
+                        color = Pos.Text2, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         Row(
-            Modifier.align(Alignment.Center).clip(RoundedCornerShape(22.dp)).background(Pos.Panel).padding(4.dp),
+            Modifier.align(Alignment.Center).clip(RoundedCornerShape(22.dp)).background(Pos.Panel).border(1.dp, Pos.Stroke, RoundedCornerShape(22.dp)).padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.clip(CircleShape).clickable(onClick = onMenu).padding(horizontal = 14.dp, vertical = 8.dp)) {
@@ -262,12 +267,14 @@ private fun NavBar(
                 )
             }
         }
+        // the one thing this bar is for
         Row(
-            Modifier.align(Alignment.CenterEnd).clickable(onClick = onNew).padding(horizontal = 14.dp, vertical = 16.dp),
+            Modifier.align(Alignment.CenterEnd).padding(end = 14.dp).height(40.dp).clip(RoundedCornerShape(20.dp)).background(Pos.TabOn)
+                .clickable(onClick = onNew).padding(start = 12.dp, end = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Filled.AddCircle, contentDescription = null, tint = Pos.Link, modifier = Modifier.size(24.dp))
-            Text("New order", Modifier.padding(start = 6.dp), color = Pos.Link, fontSize = 16.sp)
+            Icon(Icons.Filled.AddCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+            Text("New order", Modifier.padding(start = 8.dp), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
