@@ -21,9 +21,9 @@ const SECTIONS: { title: string | null; links: { href: string; label: string; ic
     ],
   },
   {
-    title: "Configuration",
+    title: "Settings",
     links: [
-      { href: "/backoffice/tables", label: "Tables", icon: GRID },
+      { href: "/backoffice/tables", label: "Floor plans", icon: GRID },
       { href: "/backoffice/staff", label: "Staff", icon: PERSON },
     ],
   },

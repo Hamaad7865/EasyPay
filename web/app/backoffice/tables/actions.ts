@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
-import { requirePerm } from "@/lib/tenant";
+import { requirePerm, type TenantContext } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
 
 // A table on the plan. Positions and sizes are grid units on a 100 x 60 plan
@@ -19,23 +19,28 @@ export type FloorTable = {
   h: number;
 };
 
+type Result = { ok: true } | { error: string };
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const int = (v: unknown, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(Number(v) || 0)));
+const floorName = (v: unknown) => String(v ?? "").trim().slice(0, 30);
 
-// Saves the whole plan of one store in one transaction: every table as it is
-// on the screen, and the ones that were removed.
-export async function saveFloor(
-  storeId: string,
-  tables: FloorTable[],
-  removed: string[],
-): Promise<{ ok: true } | { error: string }> {
-  let ctx;
+// Owners and managers lay out floors (settings.device).
+async function allowed(): Promise<{ ctx: TenantContext; error?: undefined } | { ctx?: undefined; error: string }> {
   try {
-    ctx = await requirePerm("settings.device");
+    return { ctx: await requirePerm("settings.device") };
   } catch (e) {
     unstable_rethrow(e);
     return { error: e instanceof Error ? e.message : "Not allowed." };
   }
+}
+
+// Saves the tables given (one floor's, as they are on the screen) and removes
+// the ones that were taken off, in one transaction.
+export async function saveFloor(storeId: string, tables: FloorTable[], removed: string[]): Promise<Result> {
+  const who = await allowed();
+  if (!who.ctx) return { error: who.error };
+  const ctx = who.ctx;
   if (!UUID.test(storeId)) return { error: "Unknown store." };
   if (!Array.isArray(tables) || tables.length > 300) return { error: "Too many tables." };
   const clean: FloorTable[] = [];
@@ -50,7 +55,7 @@ export async function saveFloor(
     clean.push({
       id: String(t.id),
       name,
-      area: String(t.area ?? "").trim().slice(0, 30) || "Main",
+      area: floorName(t.area) || "Main",
       seats: int(t.seats, 1, 99),
       shape: t.shape === "round" ? "round" : "square",
       w,
@@ -90,10 +95,55 @@ export async function saveFloor(
     });
   } catch (e) {
     const code = (e as { code?: string }).code;
-    if (code === "23505") return { error: "Two tables in this store have the same name." };
+    if (code === "23505") return { error: "Another table in this store already has one of these names (it may be on another floor)." };
     if (e instanceof Error && e.message === "unknown-store") return { error: "Unknown store." };
     return { error: "The plan could not be saved. Nothing was changed." };
   }
+  revalidatePath("/backoffice/tables");
+  return { ok: true };
+}
+
+// A floor is the name its tables share, so renaming it renames it on all of them.
+export async function renameFloor(storeId: string, from: string, to: string): Promise<Result> {
+  const who = await allowed();
+  if (!who.ctx) return { error: who.error };
+  const ctx = who.ctx;
+  const next = floorName(to);
+  if (!UUID.test(storeId) || !next) return { error: "Give the floor a name." };
+  if (next === from) return { ok: true };
+  const outcome = await withTenant(ctx.tenantId, async (c) => {
+    const clash = await c.query(
+      `select 1 from tables where tenant_id = $1 and store_id = $2 and lower(area) = lower($3) and area <> $4 and deleted_at is null limit 1`,
+      [ctx.tenantId, storeId, next, from],
+    );
+    if (clash.rowCount) return "clash";
+    await c.query(`update tables set area = $4 where tenant_id = $1 and store_id = $2 and area = $3 and deleted_at is null`, [
+      ctx.tenantId,
+      storeId,
+      from,
+      next,
+    ]);
+    return "ok";
+  });
+  if (outcome === "clash") return { error: `There is already a floor called "${next}".` };
+  revalidatePath("/backoffice/tables");
+  return { ok: true };
+}
+
+// Removes a floor: every table on it. An order open on one of them stays open
+// on the tills, under Orders, without a table.
+export async function deleteFloor(storeId: string, floor: string): Promise<Result> {
+  const who = await allowed();
+  if (!who.ctx) return { error: who.error };
+  const ctx = who.ctx;
+  if (!UUID.test(storeId)) return { error: "Unknown store." };
+  await withTenant(ctx.tenantId, (c) =>
+    c.query(`update tables set deleted_at = now() where tenant_id = $1 and store_id = $2 and area = $3 and deleted_at is null`, [
+      ctx.tenantId,
+      storeId,
+      floor,
+    ]),
+  );
   revalidatePath("/backoffice/tables");
   return { ok: true };
 }
