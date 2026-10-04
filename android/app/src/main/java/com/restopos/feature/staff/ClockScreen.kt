@@ -40,8 +40,10 @@ import java.text.DateFormat
 import java.util.Date
 
 // Clock in on the left, clock out on the right. Each needs that person's PIN.
+// Clocking in carries straight on: to the cash count that opens the shift, or
+// to the register when a shift is already open.
 @Composable
-fun ClockScreen(vm: StaffViewModel = hiltViewModel(), onBack: () -> Unit) {
+fun ClockScreen(vm: StaffViewModel = hiltViewModel(), onBack: () -> Unit, onRegister: () -> Unit, onCashCount: () -> Unit) {
     val staff by vm.staff.collectAsState()
     val message by vm.message.collectAsState()
     var query by remember { mutableStateOf("") }
@@ -59,7 +61,7 @@ fun ClockScreen(vm: StaffViewModel = hiltViewModel(), onBack: () -> Unit) {
             Row(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 28.dp), horizontalArrangement = Arrangement.spacedBy(64.dp)) {
                 Column(Modifier.weight(1f)) {
                     Text("Clock in", color = Pos.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    Text("Select a name to clock in", Modifier.padding(top = 10.dp, bottom = 14.dp), color = Pos.Text, fontSize = 14.sp)
+                    Text("Select your name to clock in and start", Modifier.padding(top = 10.dp, bottom = 14.dp), color = Pos.Text, fontSize = 14.sp)
                     Row(
                         Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(3.dp)).background(Pos.Key).padding(horizontal = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -107,7 +109,7 @@ fun ClockScreen(vm: StaffViewModel = hiltViewModel(), onBack: () -> Unit) {
         PinPad(
             member,
             check = { vm.checkPin(member, it) },
-            onOk = { pinFor = null; vm.clock(member, kind) },
+            onOk = { pinFor = null; if (kind == "in") vm.clockIn(member, onRegister, onCashCount) else vm.clock(member, kind) },
             onDismiss = { pinFor = null },
         )
     }

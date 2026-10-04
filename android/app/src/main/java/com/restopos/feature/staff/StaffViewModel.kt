@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -117,6 +118,24 @@ class StaffViewModel @Inject constructor(
     fun clock(member: StaffMember, kind: String) = viewModelScope.launch {
         repo.punch(member, kind).fold(
             onSuccess = { _message.value = "${member.employee.name} clocked ${if (kind == "in") "in" else "out"}" },
+            onFailure = { _message.value = it.message },
+        )
+    }
+
+    // Clocking in is also signing in: the PIN was just entered, so the person
+    // goes straight on. With a shift open, to the register. With none, to the
+    // cash count that opens it, if they are allowed to open one; if not, they
+    // are clocked in and wait for someone who is.
+    fun clockIn(member: StaffMember, toRegister: () -> Unit, toCashCount: () -> Unit) = viewModelScope.launch {
+        repo.punch(member, "in").fold(
+            onSuccess = {
+                val open = session.deviceId()?.let { repo.openShift(it).first() }
+                when {
+                    open != null -> { session.setPendingDiscount(null); staffSession.signIn(member); toRegister() }
+                    member.can("shift.open_close") -> { session.setPendingDiscount(null); staffSession.signIn(member); toCashCount() }
+                    else -> _message.value = "${member.employee.name} is clocked in. The shift is closed: someone allowed to open it has to clock in."
+                }
+            },
             onFailure = { _message.value = it.message },
         )
     }

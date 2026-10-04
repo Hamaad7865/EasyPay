@@ -95,7 +95,7 @@ fun StartScreen(
                 text = if (shift == null) "Clock in below to open a shift." else "Clock in below to use the register.",
                 button = "Clock in/out", note = null, onButton = onClock, onSignIn = onSignIn,
             )
-            else -> Users(active, shiftOpen = shift != null, openedAt = shift?.opened_at, onPick = { pinFor = it }, onClock = onClock)
+            else -> Users(vm, active, shiftOpen = shift != null, openedAt = shift?.opened_at, onPick = { pinFor = it }, onClock = onClock)
         }
         message?.let { m ->
             Text(
@@ -135,26 +135,9 @@ private fun Closed(
     onButton: () -> Unit,
     onSignIn: () -> Unit,
 ) {
-    val info by vm.info.collectAsState()
     val needsSignIn by vm.needsSignIn.collectAsState()
-    val pending by vm.pending.collectAsState()
-    val context = LocalContext.current
-    val network by produceState(initialValue = network(context)) {
-        while (true) { delay(5000); value = network(context) }
-    }
     Row(Modifier.fillMaxSize()) {
-        Column(
-            Modifier.width(300.dp).fillMaxHeight().background(Pos.Panel).padding(horizontal = 28.dp),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Wordmark()
-            Spacer(Modifier.height(28.dp))
-            Facts(info, network, when {
-                needsSignIn -> "Sign-in needed"
-                pending > 0 -> "$pending changes waiting"
-                else -> "Everything sent"
-            })
-        }
+        InfoPanel(vm)
         Column(
             Modifier.weight(1f).fillMaxHeight().padding(24.dp),
             verticalArrangement = Arrangement.Center,
@@ -182,19 +165,44 @@ private fun Closed(
     }
 }
 
+// What this till is, down the left of the start screen: the business, the
+// store and device, the version, the network and whether everything is sent.
+@Composable
+private fun InfoPanel(vm: StaffViewModel) {
+    val info by vm.info.collectAsState()
+    val needsSignIn by vm.needsSignIn.collectAsState()
+    val pending by vm.pending.collectAsState()
+    val context = LocalContext.current
+    val network by produceState(initialValue = network(context)) {
+        while (true) { delay(5000); value = network(context) }
+    }
+    Column(
+        Modifier.width(300.dp).fillMaxHeight().background(Pos.Panel).padding(horizontal = 28.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Wordmark()
+        Spacer(Modifier.height(28.dp))
+        Facts(info, network, when {
+            needsSignIn -> "Sign-in needed"
+            pending > 0 -> "$pending changes waiting"
+            else -> "Everything sent"
+        })
+    }
+}
+
 // Everyone who is clocked in, as tiles: tap your name, then enter your PIN.
 @Composable
-private fun Users(active: List<StaffMember>, shiftOpen: Boolean, openedAt: Long?, onPick: (StaffMember) -> Unit, onClock: () -> Unit) {
+private fun Users(vm: StaffViewModel, active: List<StaffMember>, shiftOpen: Boolean, openedAt: Long?, onPick: (StaffMember) -> Unit, onClock: () -> Unit) {
     var byTime by rememberSaveable { mutableStateOf(false) }
     val shown = if (byTime) active.sortedBy { it.clockedInAt } else active
-    Column(Modifier.fillMaxSize()) {
-        StaffTopBar("RestoPOS")
-        Column(Modifier.weight(1f).fillMaxWidth().padding(start = 64.dp, end = 64.dp, top = 28.dp, bottom = 28.dp)) {
-            Wordmark()
-            Row(Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxSize()) {
+        InfoPanel(vm)
+        Column(Modifier.weight(1f).fillMaxHeight().padding(start = 40.dp, end = 40.dp, top = 36.dp, bottom = 28.dp)) {
+            Text(if (shiftOpen) "Who is at the till?" else "The shift is closed", color = Pos.Text, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (shiftOpen) "Welcome! Tap your name, or clock in/out."
-                    else "Welcome! The shift is closed. Tap your name to open it, or clock in/out.",
+                    if (shiftOpen) "Tap your name and enter your PIN. New on shift? Clock in below."
+                    else "Tap your name to open the shift, or clock in below.",
                     Modifier.weight(1f), color = Pos.Text, fontSize = 14.sp,
                 )
                 Text("Sort by", Modifier.padding(end = 12.dp), color = Pos.Text, fontSize = 14.sp)
