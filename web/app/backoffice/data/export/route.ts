@@ -9,7 +9,7 @@ const TABLES = [
   "dining_options", "payment_types", "stores", "pos_devices", "roles", "tables", "printers", "pos_settings",
   "tickets", "ticket_lines", "ticket_line_modifiers", "receipts", "receipt_lines", "receipt_line_modifiers",
   "receipt_line_taxes", "receipt_payments", "receipt_discounts", "payment_corrections", "shifts",
-  "timeclock_punches", "cash_movements", "day_closes", "stock_movements",
+  "timeclock_punches", "cash_movements", "drawer_counts", "day_closes", "approvals", "stock_movements",
 ];
 
 export async function GET() {
