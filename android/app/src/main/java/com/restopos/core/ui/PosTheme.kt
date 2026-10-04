@@ -10,18 +10,19 @@ import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 import com.restopos.core.common.CssColor
 
-// The till's look: dark slate panels, coloured category strip, blue and green
-// action keys. One place for every colour so screens never hard-code one.
+// The till's look: near-black screens with dark grey panels, blue categories,
+// blue and green action keys. One place for every colour so screens never
+// hard-code one.
 object Pos {
-    val Bg = Color(0xFF14161B)
-    val BarTop = Color(0xFF3B404D)
-    val BarBottom = Color(0xFF2E323C)
-    val Panel = Color(0xFF2B2F3A)
-    val PanelDeep = Color(0xFF20232B)
-    val Key = Color(0xFF2E323D)
-    val Line = Color(0xFF1B1D23)
-    val Tile = Color(0xFF4A5062)
-    val TileEdge = Color(0xFFB7BAC3)
+    val Bg = Color(0xFF1B1C1F)
+    val BarTop = Color(0xFF2B2C30)
+    val BarBottom = Color(0xFF2B2C30)
+    val Panel = Color(0xFF2B2C30)
+    val PanelDeep = Color(0xFF232427)
+    val Key = Color(0xFF333438)
+    val Line = Color(0xFF17181A)
+    val Tile = Color(0xFF3B3C41)
+    val TileEdge = Color(0xFF3D6BFF)
     val Blue = Color(0xFF4C6FF5)
     val Green = Color(0xFF4E9A62)
     val Pink = Color(0xFFE2587A)
@@ -29,10 +30,15 @@ object Pos {
     val Text = Color(0xFFF3F4F6)
     val Text2 = Color(0xFFA9AFBC)
     val Text3 = Color(0xFF7C8291)
-    val Selected = Color(0xFF3A4152)
+    val Selected = Color(0xFF46474D)
     val NavOn = Color(0xFF6C8BFF)
     val Danger = Color(0xFF8E2B40)
-    val CategoryDefault = Color(0xFF5B5F68)
+    val CategoryDefault = Color(0xFF1740E0)
+    val Link = Color(0xFFAEB8F8) // text you can tap: Log out, New order, the sorted column
+    val TabOn = Color(0xFF1740E0)
+    val ChipOpen = Color(0xFFB4BDF7)
+    val Ok = Color(0xFF45A85A)
+    val Warn = Color(0xFFE6B23C)
 
     // A category's or item's own colour, as set in the back office.
     fun css(value: String?, fallback: Color): Color = CssColor.argb(value)?.let { Color(it) } ?: fallback
@@ -84,6 +90,17 @@ object PosIcons {
     val Cutlery: ImageVector = icon(
         "M11,9H9V2H7v7H5V2H3v7c0,2.12 1.66,3.84 3.75,3.97V22h2.5v-9.03C11.34,12.84 13,11.12 13,9V2h-2v7zM16,6v8h2.5v8H21V2c-2.76,0 -5,2.24 -5,4z",
     )
+
+    // sync: a dot with waves either side
+    val Signal: ImageVector = icon(
+        "M7.76,16.24C6.67,15.16 6,13.66 6,12s0.67,-3.16 1.76,-4.24l1.42,1.42C8.45,9.9 8,10.9 8,12c0,1.1 0.45,2.1 1.17,2.83L7.76,16.24z" +
+            "M16.24,16.24C17.33,15.16 18,13.66 18,12s-0.67,-3.16 -1.76,-4.24l-1.42,1.42C15.55,9.9 16,10.9 16,12c0,1.1 -0.45,2.1 -1.17,2.83L16.24,16.24z" +
+            "M12,10c-1.1,0 -2,0.9 -2,2s0.9,2 2,2s2,-0.9 2,-2S13.1,10 12,10z" +
+            "M20,12c0,2.21 -0.9,4.21 -2.35,5.65l1.42,1.42C20.88,17.26 22,14.76 22,12s-1.12,-5.26 -2.93,-7.07l-1.42,1.42C19.1,7.79 20,9.79 20,12z" +
+            "M6.35,6.35L4.93,4.93C3.12,6.74 2,9.24 2,12s1.12,5.26 2.93,7.07l1.42,-1.42C4.9,16.21 4,14.21 4,12S4.9,7.79 6.35,6.35z",
+    )
+    // the side menu: a screen with a panel down its left
+    val SidePanel: ImageVector = icon("M3,5h18v14H3zM5,7v10h4V7zM11,7v10h8V7zM6,9h2v1.5H6zM6,12h2v1.5H6z")
 
     private fun icon(path: String): ImageVector =
         ImageVector.Builder(defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)

@@ -4,7 +4,17 @@ Kotlin + Compose + Hilt + Room + WorkManager + Ktor (OkHttp). Min SDK 26,
 compile SDK 36.
 
 Built: sign-in, store and device setup, the menu mirrored into Room by the
-pull worker, a start screen, and five tabs along the bottom:
+pull worker, a start screen, and the screens behind the top bar:
+
+- **Top bar:** Log out (back to the start screen) and the sync mark on the
+  left (green: nothing waiting here; amber: changes waiting; red: refused
+  changes or a sign-in needed; the till does not test the network itself). In
+  the middle, the side menu's button and Floor plan, Orders, Receipts. On the
+  right, New order. The side menu pushes the screen aside and also holds
+  Settings. There is no tab bar along the bottom.
+- **The register is its own screen:** New order, an order or a table opens
+  it; Close goes back to the list it was opened from. Its bar shows who is
+  selling and the magnifier. The till opens on it after the start screen.
 
 - **Start screen:** what the app opens on once the tablet is set up, and
   where Log out returns. Three states:
@@ -25,15 +35,15 @@ pull worker, a start screen, and five tabs along the bottom:
   would refuse (payment or a discount without the permission, a restricted
   discount without someone allowed to give it) is refused on the till before
   money is recorded.
-- **Register:** the order and a keypad on the left, the category strip in the
-  middle (each category in the colour set in the back office), the open
-  category's items on the right, Pay along the bottom. A number typed on the
+- **Register:** the order and a keypad on the left, the categories two across
+  in the middle (each in the colour set in the back office, blue when none is
+  set), the open category's items on the right, Pay along the bottom. A number typed on the
   keypad is used by what is tapped next: an item (that many), the × key (the
   selected line's quantity), Guests, or Cash (the amount received; nothing
   typed means exact). Cash and Card pay everything unpaid in one receipt.
   Tab name, guests and the dining option are stored on the ticket. Actions
   holds New order and the discounts. The magnifier searches the whole menu.
-  When the categories do not all fit, the strip pages and its last slot is
+  When the categories do not all fit, the grid pages and its last row is
   a down arrow; the item grid shows the same arrows past a screenful.
 - **Order header:** the order's name top left (the tab name, else its table,
   else "Direct sale"). Under it: Dine-in / Takeaway, and the table ("Assign
@@ -42,7 +52,7 @@ pull worker, a start screen, and five tabs along the bottom:
   Course 2, ... with "Add a course"; new items go to the course that is lit;
   the course is sent with the line) and the guests chip. Naming an order (Tab
   name) takes it off its table: the name is what the guest's bill will carry.
-- **Tables:** the store's floor plan, as laid out in the back office (Tables),
+- **Floor plan:** the store's floor plan, as laid out in the back office (Floor plans),
   scaled to the screen, one tab per area. Each table shows its name and,
   under a line, what the view chosen bottom left says: Covers (a dot per
   seat, lit per guest), Total, Time or Status. A table with something to pay
@@ -51,8 +61,13 @@ pull worker, a start screen, and five tabs along the bottom:
   to bring its order back. On the register, the Tables key opens
   the plan, or the table whose name was typed on the keypad first. Actions
   has "Move to another table".
-- **Orders:** the orders opened on this tablet that are not fully paid; tap
-  one to put it back on the register.
+- **Orders:** the orders opened on this tablet that are not fully paid, as a
+  table: a tab per dining option with its count (an order with none counts
+  under the default), a search (order, floor or waiter), and the columns
+  Order, Floor, User, Covers, Created, Last edit, Course, Total, Payment.
+  Tap a column to sort by it, tap an order to put it back on the register.
+  Last edit is the newer of the order's own change and its newest line, as
+  an age: green, amber from 30 minutes, red from an hour.
 - **Receipts:** the receipts issued on this tablet.
 - **Settings:** this till, the state of its sync, rejected changes, sign-out.
 

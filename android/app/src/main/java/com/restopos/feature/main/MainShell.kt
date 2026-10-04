@@ -1,8 +1,8 @@
 package com.restopos.feature.main
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,14 +10,19 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -33,7 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,10 +55,17 @@ import com.restopos.feature.sale.SaleViewModel
 import com.restopos.feature.settings.SettingsScreen
 import com.restopos.feature.tables.TablesScreen
 
-enum class Tab(val label: String) { Register("Register"), Tables("Tables"), Orders("Orders"), Receipts("Receipts"), Settings("Settings") }
+// The lists are picked in the top bar. Settings is in the side menu. The
+// register is the order screen: New order, an order or a table opens it, and
+// Close goes back to the list it was opened from.
+enum class Tab(val label: String) { Plan("Floor plan"), Orders("Orders"), Receipts("Receipts"), Settings("Settings"), Register("Register") }
+
+private val LISTS = listOf(Tab.Plan, Tab.Orders, Tab.Receipts)
+private val BAR = 56.dp
+private val MENU = 250.dp
 
 // What is always on screen once the till is set up: the top bar, the sync
-// notices, the open tab, and the tab bar along the bottom.
+// notices and the open screen.
 @Composable
 fun MainShell(
     onPay: () -> Unit,
@@ -72,71 +84,74 @@ fun MainShell(
     val pending by vm.pending.collectAsState()
     val rejected by vm.rejected.collectAsState()
     var tab by rememberSaveable { mutableStateOf(Tab.Register) }
+    // the list Close goes back to
+    var home by rememberSaveable { mutableStateOf(Tab.Orders) }
+    var menu by rememberSaveable { mutableStateOf(false) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var confirmSignOut by remember { mutableStateOf(false) }
     // true while the floor plan is open to pick where the order on the register moves to
     var moving by remember { mutableStateOf(false) }
     val closeSearch = { searching = false; vm.onAction(SaleAction.Search("")); Unit }
+    val go = { t: Tab ->
+        if (searching) closeSearch()
+        moving = false
+        menu = false
+        if (t != Tab.Register) home = t
+        tab = t
+    }
+    val alert = rejected > 0 || needsSignIn
+    // green only says nothing is waiting here; the till cannot see the network itself
+    val sync = when {
+        alert -> Pos.Pink
+        pending > 0 -> Pos.Warn
+        else -> Pos.Ok
+    }
+    val slide by animateDpAsState(if (menu && tab != Tab.Register) MENU else 0.dp, label = "menu")
 
-    Column(Modifier.fillMaxSize().background(Pos.Bg)) {
-        Box(
-            Modifier.fillMaxWidth().height(52.dp).background(Brush.verticalGradient(listOf(Pos.BarTop, Pos.BarBottom))),
-        ) {
-            // back to the start screen; signing the tablet out is under Settings
-            Text(
-                if (user != null) "Log out" else "Lock",
-                Modifier.align(Alignment.CenterStart).clickable(onClick = onLock).padding(horizontal = 16.dp, vertical = 14.dp),
-                color = Pos.Pink, fontSize = 14.sp,
-            )
-            Text(
-                user?.employee?.name ?: till.ifBlank { "RestoPOS" }, Modifier.align(Alignment.Center).padding(horizontal = 140.dp),
-                color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-            Row(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (pending > 0) Text("$pending to sync", Modifier.padding(end = 8.dp), color = Pos.Text2, fontSize = 12.sp)
-                if (tab == Tab.Register) {
-                    Icon(
-                        Icons.Filled.Search, contentDescription = "Search the menu", tint = Pos.NavOn,
-                        modifier = Modifier.clip(CircleShape).clickable { if (searching) closeSearch() else searching = true }
-                            .padding(10.dp).size(24.dp),
+    Box(Modifier.fillMaxSize().background(Pos.Bg)) {
+        // the side menu pushes the screen to the right, it does not squeeze it
+        Column(Modifier.fillMaxSize().offset(x = slide)) {
+            if (tab == Tab.Register) {
+                RegisterBar(
+                    title = user?.employee?.name ?: till.ifBlank { "RestoPOS" },
+                    sync = sync, pending = pending, searching = searching,
+                    onClose = { go(home) },
+                    onSearch = { if (searching) closeSearch() else searching = true },
+                )
+            } else {
+                NavBar(
+                    tab = tab,
+                    // back to the start screen; signing the tablet out is under Settings
+                    lock = if (user != null) "Log out" else "Lock",
+                    name = user?.employee?.name,
+                    sync = sync, pending = pending, alert = alert,
+                    onLock = onLock,
+                    onMenu = { menu = !menu },
+                    onTab = go,
+                    onNew = { vm.newOrder { go(Tab.Register) } },
+                )
+            }
+            SyncNotices(needsSignIn, pending, rejected, onSignIn, onRejected)
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (tab) {
+                    Tab.Register -> RegisterScreen(
+                        vm, searching, closeSearch, { if (vm.mayPay()) onPay() }, onPaid,
+                        onTables = { tab = Tab.Plan },
+                        onMoveTable = { moving = true; tab = Tab.Plan },
                     )
+                    Tab.Plan -> TablesScreen(
+                        moving,
+                        onOpen = { go(Tab.Register) },
+                        onCancelMove = { go(Tab.Register) },
+                    )
+                    Tab.Orders -> OrdersScreen(onOpen = { go(Tab.Register) })
+                    Tab.Receipts -> ReceiptsScreen()
+                    Tab.Settings -> SettingsScreen(till, needsSignIn, pending, rejected, user, shift, onSignIn, onRejected, onClosePeriod) { confirmSignOut = true }
                 }
             }
         }
-        SyncNotices(needsSignIn, pending, rejected, onSignIn, onRejected)
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            when (tab) {
-                Tab.Register -> RegisterScreen(
-                    vm, searching, closeSearch, { if (vm.mayPay()) onPay() }, onPaid,
-                    onTables = { tab = Tab.Tables },
-                    onMoveTable = { moving = true; tab = Tab.Tables },
-                )
-                Tab.Tables -> TablesScreen(
-                    moving,
-                    onOpen = { moving = false; tab = Tab.Register },
-                    onCancelMove = { moving = false; tab = Tab.Register },
-                )
-                Tab.Orders -> OrdersScreen(onOpen = { tab = Tab.Register })
-                Tab.Receipts -> ReceiptsScreen()
-                Tab.Settings -> SettingsScreen(till, needsSignIn, pending, rejected, user, shift, onSignIn, onRejected, onClosePeriod) { confirmSignOut = true }
-            }
-        }
-        Row(Modifier.fillMaxWidth().height(52.dp).background(Pos.Panel)) {
-            Tab.entries.forEach { t ->
-                val on = t == tab
-                val tint = if (on) Pos.NavOn else Pos.Text3
-                Row(
-                    Modifier.weight(1f).fillMaxHeight().clickable { if (searching) closeSearch(); moving = false; tab = t },
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(icon(t), contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
-                    Text(t.label, Modifier.padding(start = 8.dp), color = tint, fontSize = 13.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal)
-                    if (t == Tab.Settings && (rejected > 0 || needsSignIn)) {
-                        Box(Modifier.padding(start = 6.dp).size(8.dp).clip(CircleShape).background(Pos.Pink))
-                    }
-                }
-            }
+        if (slide > 0.dp) {
+            SideMenu(Modifier.width(MENU).offset(x = slide - MENU), tab, alert, onClose = { menu = false }, onTab = go)
         }
     }
 
@@ -151,12 +166,116 @@ fun MainShell(
     }
 }
 
-private fun icon(tab: Tab): ImageVector = when (tab) {
-    Tab.Register -> Icons.Filled.ShoppingCart
-    Tab.Tables -> PosIcons.Grid
-    Tab.Orders -> Icons.AutoMirrored.Filled.List
-    Tab.Receipts -> PosIcons.Receipt
-    Tab.Settings -> Icons.Filled.Settings
+@Composable
+private fun NavBar(
+    tab: Tab,
+    lock: String,
+    name: String?,
+    sync: Color,
+    pending: Long,
+    alert: Boolean,
+    onLock: () -> Unit,
+    onMenu: () -> Unit,
+    onTab: (Tab) -> Unit,
+    onNew: () -> Unit,
+) {
+    Box(Modifier.fillMaxWidth().height(BAR)) {
+        Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.clickable(onClick = onLock).padding(start = 14.dp, end = 10.dp, top = 16.dp, bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, tint = Pos.Link, modifier = Modifier.size(22.dp))
+                Text(lock, Modifier.padding(start = 6.dp), color = Pos.Link, fontSize = 16.sp)
+            }
+            SyncMark(sync, pending)
+            if (name != null) {
+                Text(
+                    name, Modifier.padding(start = 12.dp).widthIn(max = 100.dp),
+                    color = Pos.Text3, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Row(
+            Modifier.align(Alignment.Center).clip(RoundedCornerShape(22.dp)).background(Pos.Panel).padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.clip(CircleShape).clickable(onClick = onMenu).padding(horizontal = 14.dp, vertical = 8.dp)) {
+                Icon(PosIcons.SidePanel, contentDescription = "Menu", tint = Pos.Text2, modifier = Modifier.size(20.dp))
+                if (alert) Box(Modifier.align(Alignment.TopEnd).size(8.dp).clip(CircleShape).background(Pos.Pink))
+            }
+            LISTS.forEach { t ->
+                val on = t == tab
+                Text(
+                    t.label,
+                    Modifier.clip(RoundedCornerShape(18.dp)).background(if (on) Pos.Selected else Color.Transparent)
+                        .clickable { onTab(t) }.padding(horizontal = 18.dp, vertical = 8.dp),
+                    color = if (on) Pos.Text else Pos.Text2, fontSize = 16.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
+                )
+            }
+        }
+        Row(
+            Modifier.align(Alignment.CenterEnd).clickable(onClick = onNew).padding(horizontal = 14.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Filled.AddCircle, contentDescription = null, tint = Pos.Link, modifier = Modifier.size(24.dp))
+            Text("New order", Modifier.padding(start = 6.dp), color = Pos.Link, fontSize = 16.sp)
+        }
+    }
+}
+
+// The register's own bar: Close on the left, who is selling in the middle.
+@Composable
+private fun RegisterBar(title: String, sync: Color, pending: Long, searching: Boolean, onClose: () -> Unit, onSearch: () -> Unit) {
+    Box(Modifier.fillMaxWidth().height(BAR)) {
+        Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
+            Text("Close", Modifier.clickable(onClick = onClose).padding(start = 16.dp, end = 10.dp, top = 16.dp, bottom = 16.dp), color = Pos.Link, fontSize = 16.sp)
+            SyncMark(sync, pending)
+        }
+        Text(
+            title, Modifier.align(Alignment.Center).padding(horizontal = 200.dp),
+            color = Pos.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+        Icon(
+            Icons.Filled.Search, contentDescription = "Search the menu", tint = if (searching) Pos.Text else Pos.Link,
+            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp).clip(CircleShape).clickable(onClick = onSearch)
+                .padding(10.dp).size(26.dp),
+        )
+    }
+}
+
+@Composable
+private fun SyncMark(color: Color, pending: Long) {
+    Icon(PosIcons.Signal, contentDescription = if (pending > 0) "Changes waiting to sync" else "Nothing waiting to sync", tint = color, modifier = Modifier.size(22.dp))
+    if (pending > 0) Text("$pending to sync", Modifier.padding(start = 6.dp), color = Pos.Text3, fontSize = 12.sp)
+}
+
+@Composable
+private fun SideMenu(modifier: Modifier, tab: Tab, alert: Boolean, onClose: () -> Unit, onTab: (Tab) -> Unit) {
+    Column(modifier.fillMaxHeight().background(Pos.Panel).padding(vertical = 8.dp)) {
+        Box(Modifier.padding(start = 8.dp, bottom = 12.dp).clip(CircleShape).clickable(onClick = onClose).padding(12.dp)) {
+            Icon(PosIcons.SidePanel, contentDescription = "Close the menu", tint = Pos.Text2, modifier = Modifier.size(22.dp))
+        }
+        MenuRow(PosIcons.Grid, Tab.Plan, tab, onTab)
+        MenuRow(Icons.AutoMirrored.Filled.List, Tab.Orders, tab, onTab)
+        MenuRow(PosIcons.Receipt, Tab.Receipts, tab, onTab)
+        Text("This till", Modifier.padding(start = 20.dp, top = 24.dp, bottom = 6.dp), color = Pos.Text3, fontSize = 14.sp)
+        MenuRow(Icons.Filled.Settings, Tab.Settings, tab, onTab, dot = alert)
+    }
+}
+
+@Composable
+private fun MenuRow(icon: ImageVector, to: Tab, tab: Tab, onTab: (Tab) -> Unit, dot: Boolean = false) {
+    val on = to == tab
+    Row(
+        Modifier.fillMaxWidth().background(if (on) Pos.Selected else Color.Transparent).clickable { onTab(to) }
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = Pos.Link, modifier = Modifier.size(20.dp))
+        Text(to.label, Modifier.padding(start = 12.dp), color = Pos.Text, fontSize = 16.sp)
+        if (dot) Box(Modifier.padding(start = 8.dp).size(8.dp).clip(CircleShape).background(Pos.Pink))
+    }
 }
 
 // What the till needs someone to know about syncing, in a strip under the top

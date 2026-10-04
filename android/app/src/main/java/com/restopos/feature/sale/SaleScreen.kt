@@ -99,7 +99,7 @@ import kotlinx.coroutines.launch
 private const val TILE_RATIO = 1.45f // a tile's width over its height
 
 // The register, tablet landscape: the order and keypad on the left, the
-// category strip in the middle, the open category's items on the right.
+// categories two across in the middle, the open category's items on the right.
 @Composable
 fun RegisterScreen(
     vm: SaleViewModel,
@@ -171,10 +171,10 @@ fun RegisterScreen(
                     )
                 }
             }
-            CategoryStrip(Modifier.weight(1.57f).fillMaxHeight(), ready.categories, ready.selectedCat) {
+            CategoryStrip(Modifier.weight(1.75f).fillMaxHeight(), ready.categories, ready.selectedCat) {
                 vm.onAction(SaleAction.SelectCategory(it))
             }
-            Column(Modifier.weight(4.68f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.weight(4.5f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 ItemsHeader(
                     title = ready.categories.firstOrNull { it.id == ready.selectedCat }?.name ?: "Menu",
                     searching = searching,
@@ -194,9 +194,12 @@ fun RegisterScreen(
                     }
                 } else {
                     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                        // two columns as designed; three when the screen is too
-                        // short to show three rows of two
-                        val columns = if (maxHeight >= (maxWidth - 4.dp) / 2 / TILE_RATIO * 3) 2 else 3
+                        // two columns as designed, with three rows of them filling the
+                        // height: the tiles flatten a little to fit. Three columns when
+                        // the screen is too short for that.
+                        val need = ((maxWidth - 4.dp) / 2) / ((maxHeight - 10.dp) / 3)
+                        val columns = if (need <= TILE_RATIO * 1.2f) 2 else 3
+                        val ratio = if (columns == 2) maxOf(TILE_RATIO, need) else TILE_RATIO
                         val grid = rememberLazyGridState()
                         val scope = rememberCoroutineScope()
                         // a new category or search starts at the top. The tiles are
@@ -211,7 +214,7 @@ fun RegisterScreen(
                                 items(paged.itemCount) { i ->
                                     val item = paged[i] ?: return@items
                                     val edge = Pos.css(item.tile_color, categoryColors[item.category_id] ?: Pos.TileEdge)
-                                    ItemTile(item, inOrder[item.id] ?: 0, edge) { vm.onAction(SaleAction.TapItem(item)) }
+                                    ItemTile(item, inOrder[item.id] ?: 0, edge, ratio) { vm.onAction(SaleAction.TapItem(item)) }
                                 }
                             }
                             // more items than fit: arrows that move a screenful
@@ -601,42 +604,49 @@ private fun Keypad(
     }
 }
 
-private val CATEGORY_MIN = 56.dp // the smallest a category button gets before the strip pages
+private val CATEGORY_MIN = 56.dp // the smallest a category button gets before the grid pages
+private const val CATEGORY_COLS = 2
 
-// Categories in the colours set in the back office, stacked to fill the
-// height. When they do not all fit, the strip shows a page of them and its
-// last slot becomes the pager: down for the next page, up for the previous.
+// Categories two across, in the colours set in the back office (blue when
+// none is set). When they do not all fit, the grid shows a page of them and
+// its last row becomes the pager: down for the next page, up for the previous.
 @Composable
 private fun CategoryStrip(modifier: Modifier, categories: List<CategoryEntity>, selected: String?, onPick: (String) -> Unit) {
     BoxWithConstraints(modifier) {
-        val gap = 1.dp
-        val slots = ((maxHeight + gap) / (CATEGORY_MIN + gap)).toInt().coerceAtLeast(2)
-        val paged = categories.size > slots
-        val perPage = if (paged) slots - 1 else categories.size.coerceAtLeast(1)
+        val gap = 2.dp
+        val fit = ((maxHeight + gap) / (CATEGORY_MIN + gap)).toInt().coerceAtLeast(2)
+        val paged = categories.size > fit * CATEGORY_COLS
+        val perPage = if (paged) (fit - 1) * CATEGORY_COLS else categories.size.coerceAtLeast(1)
         val pages = if (paged) (categories.size + perPage - 1) / perPage else 1
         // opens on the page that holds the selected category
         var page by remember(perPage, categories.size) {
             mutableStateOf(if (paged) categories.indexOfFirst { it.id == selected }.coerceAtLeast(0) / perPage else 0)
         }
         val current = page.coerceIn(0, pages - 1)
-        val rows = if (paged) slots else perPage
+        val rows = if (paged) fit else (perPage + CATEGORY_COLS - 1) / CATEGORY_COLS
         val each = ((maxHeight - gap * (rows - 1)) / rows).coerceAtMost(84.dp)
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
-            (if (paged) categories.drop(current * perPage).take(perPage) else categories).forEach { c ->
-                val color = Pos.css(c.color, Pos.CategoryDefault)
-                val on = c.id == selected
-                Box(Modifier.fillMaxWidth().height(each).background(color).clickable { onPick(c.id) }, contentAlignment = Alignment.Center) {
-                    if (on) Box(Modifier.align(Alignment.CenterStart).width(5.dp).fillMaxHeight().background(Color.White))
-                    Text(
-                        c.name, Modifier.padding(horizontal = 10.dp),
-                        color = if (color.luminance() > 0.5f) Pos.Line else Color.White,
-                        fontSize = 14.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
-                        textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    )
+            (if (paged) categories.drop(current * perPage).take(perPage) else categories).chunked(CATEGORY_COLS).forEach { pair ->
+                Row(Modifier.fillMaxWidth().height(each), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    pair.forEach { c ->
+                        val color = Pos.css(c.color, Pos.CategoryDefault)
+                        val on = c.id == selected
+                        Box(Modifier.weight(1f).fillMaxHeight().background(color).clickable { onPick(c.id) }, contentAlignment = Alignment.Center) {
+                            if (on) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(4.dp).background(Color.White))
+                            Text(
+                                c.name, Modifier.padding(horizontal = 4.dp),
+                                color = if (color.luminance() > 0.5f) Pos.Line else Color.White,
+                                fontSize = 13.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
+                                textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 16.sp,
+                            )
+                        }
+                    }
+                    // an odd one out keeps its half of the row
+                    repeat(CATEGORY_COLS - pair.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
             if (paged) {
-                // the pager stays in the last slot when the last page is short
+                // the pager stays in the last row when the last page is short
                 Spacer(Modifier.weight(1f))
                 Row(Modifier.fillMaxWidth().height(each), horizontalArrangement = Arrangement.spacedBy(gap)) {
                     if (current > 0) PagerButton(up = true, Modifier.weight(1f)) { page = current - 1 }
@@ -687,9 +697,9 @@ private fun ItemsHeader(title: String, searching: Boolean, onQuery: (String) -> 
 }
 
 @Composable
-private fun ItemTile(item: ItemEntity, inOrder: Int, edge: Color, onTap: () -> Unit) {
+private fun ItemTile(item: ItemEntity, inOrder: Int, edge: Color, ratio: Float, onTap: () -> Unit) {
     Box(
-        Modifier.fillMaxWidth().aspectRatio(TILE_RATIO).background(Pos.Tile)
+        Modifier.fillMaxWidth().aspectRatio(ratio).background(Pos.Tile)
             .clickable(enabled = item.is_available, onClick = onTap)
             .alpha(if (item.is_available) 1f else 0.45f),
     ) {

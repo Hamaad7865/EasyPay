@@ -191,6 +191,15 @@ class SaleViewModel @Inject constructor(
     // screen (after paying, or after picking an order under Orders).
     fun refresh() = viewModelScope.launch { reload() }
 
+    // New order from the top bar: the order on the register is parked first,
+    // then the register is shown, so it never flashes the old order.
+    fun newOrder(then: () -> Unit) = viewModelScope.launch {
+        tickets.newTicket()
+        session.setPendingDiscount(null)
+        reload()
+        then()
+    }
+
     private suspend fun reload() {
         val before = _ticket.value?.id
         _ticket.value = tickets.activeTicket()
