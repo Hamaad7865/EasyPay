@@ -28,27 +28,33 @@ export default function LoginPage() {
   }
 
   return (
-    <main style={{ maxWidth: 400, margin: "80px auto", fontFamily: "system-ui" }}>
-      <h1>RestoPOS</h1>
-      <form onSubmit={submit}>
-        <p>
-          <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        </p>
-        <p>
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </p>
-        {error && <p style={{ color: "red" }}>{error}</p>}
-        <button type="submit" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
-        </button>
-      </form>
-      <p style={{ color: "#555" }}>No login yet? Restaurants are set up by RestoPOS. Contact us.</p>
+    <main className="auth">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <span className="bo-brand-mark">R</span>RestoPOS
+        </div>
+        <h1>Sign in to your back office</h1>
+        <p className="auth-lede">Your menu, your reports and your settings, wherever you are.</p>
+        <form onSubmit={submit}>
+          <label>
+            Email
+            <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+          </label>
+          <label>
+            Password
+            <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          </label>
+          {error && (
+            <p className="auth-error" role="alert">
+              {error}
+            </p>
+          )}
+          <button type="submit" disabled={busy}>
+            {busy ? "Signing in…" : "Sign in"}
+          </button>
+        </form>
+        <p className="auth-foot">No login yet? Restaurants are set up by RestoPOS. Contact us.</p>
+      </div>
     </main>
   );
 }

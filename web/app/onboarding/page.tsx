@@ -21,15 +21,20 @@ export default async function NotLinkedPage() {
     redirect("/login");
   }
   return (
-    <main style={{ maxWidth: 480, margin: "80px auto", fontFamily: "system-ui" }}>
-      <h1>No restaurant on this login</h1>
-      <p>
-        {data.user.email} is signed in, but it is not linked to a restaurant, or its access was switched off.
-        Restaurants are set up by RestoPOS. Contact us to get access.
-      </p>
-      <form action={signOut}>
-        <button type="submit">Sign out</button>
-      </form>
+    <main className="auth">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <span className="bo-brand-mark">R</span>RestoPOS
+        </div>
+        <h1>No restaurant on this login</h1>
+        <p className="auth-lede">
+          {data.user.email} is signed in, but it is not linked to a restaurant, or its access was switched off.
+          Restaurants are set up by RestoPOS. Contact us to get access.
+        </p>
+        <form action={signOut}>
+          <button type="submit">Sign out</button>
+        </form>
+      </div>
     </main>
   );
 }
