@@ -6,6 +6,8 @@ export type PosSettings = {
   decimals: 0 | 1 | 2;
   billNumbering: "continuous" | "reset";
   dayCloseDetailed: boolean;
+  // what the quick payment key beside the register's keypad takes
+  quickPay: "card" | "cash";
   receipt: { header: string; footer: string; logo: string | null; showLogo: boolean };
   company: { name: string; brn: string; vat: string; address: string; phone: string };
 };
@@ -14,6 +16,7 @@ export const DEFAULT_SETTINGS: PosSettings = {
   decimals: 2,
   billNumbering: "continuous",
   dayCloseDetailed: true,
+  quickPay: "card",
   receipt: { header: "", footer: "Thank you. See you again soon.", logo: null, showLogo: true },
   company: { name: "", brn: "", vat: "", address: "", phone: "" },
 };
@@ -31,6 +34,7 @@ export function withDefaults(raw: unknown): PosSettings {
     decimals: dec,
     billNumbering: d.billNumbering === "reset" ? "reset" : "continuous",
     dayCloseDetailed: d.dayCloseDetailed === false ? false : true,
+    quickPay: d.quickPay === "cash" ? "cash" : "card",
     receipt: {
       header: str(r.header, DEFAULT_SETTINGS.receipt.header),
       footer: str(r.footer, DEFAULT_SETTINGS.receipt.footer),

@@ -31,6 +31,8 @@ data class TicketEntity(
     val updated_at: Long = System.currentTimeMillis(),
     // who opened the order (its waiter); null on an order made before staff PINs
     val opened_by: String? = null,
+    // who the order is for, when a customer was put on it
+    val customer_id: String? = null,
 )
 
 @Entity(
@@ -61,6 +63,8 @@ data class TicketLineEntity(
     // which check of a split check the line is on. Kept on this tablet only:
     // the server knows the lines, not how the guests divided them.
     val check_no: Int = 1,
+    // the seat the item is for; null when it is for the table
+    val seat: Int? = null,
 )
 
 @Entity(tableName = "ticket_line_modifiers", primaryKeys = ["line_id", "modifier_id"])

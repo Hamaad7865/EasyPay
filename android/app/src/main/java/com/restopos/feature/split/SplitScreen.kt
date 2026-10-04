@@ -70,6 +70,7 @@ data class SplitUi(
     val asking: Pair<String, Int>? = null, // a line of several being moved to a check: how many?
     val message: String? = null,
     val ready: Boolean = false,
+    val seated: Boolean = false, // items were rung up for more than one seat
 )
 
 // The split check: the order's unpaid lines laid out on separate checks, each
@@ -108,10 +109,12 @@ class SplitViewModel @Inject constructor(
             }
             totals[n] = Calc.totalsRounded(calc, listOfNotNull(d?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) })).total
         }
-        val name = t.name ?: t.table_id?.let { db.tables().table(it)?.name }?.let { tableLabel(it) } ?: "Direct sale"
+        val name = t.name ?: t.table_id?.let { db.tables().table(it)?.name }?.let { tableLabel(it) }
+            ?: t.customer_id?.let { db.customers().customer(it)?.name } ?: "Direct sale"
         _ui.value = _ui.value.copy(
             title = name, lines = lines, checks = checks, totals = totals,
             selected = _ui.value.selected?.takeIf { id -> lines.any { it.id == id } }, asking = null, message = message, ready = true,
+            seated = rows.mapNotNull { it.seat }.distinct().size >= 2,
         )
     }
 
@@ -147,6 +150,18 @@ class SplitViewModel @Inject constructor(
                 onFailure = { reload(it.message) },
             )
         }
+    }
+
+    // Each seat's items on a check of their own, in seat order. What was rung
+    // up for the table stays on check 1.
+    fun bySeat() = viewModelScope.launch {
+        val t = tickets.activeTicket() ?: return@launch
+        val rows = db.tickets().lines(t.id).first().filter { !it.paid }
+        val checkOf = rows.mapNotNull { it.seat }.distinct().sorted().withIndex().associate { (i, seat) -> seat to minOf(i + 1, 8) }
+        if (checkOf.size < 2) return@launch
+        rows.forEach { db.tickets().setCheck(it.id, it.seat?.let { seat -> checkOf[seat] } ?: 1) }
+        _ui.value = _ui.value.copy(checks = minOf(checkOf.size, 8), selected = null)
+        reload("One check per seat. What was for the table is on check 1.")
     }
 
     // Everything back on one check.
@@ -189,7 +204,10 @@ fun SplitScreen(vm: SplitViewModel = hiltViewModel(), onBack: () -> Unit, onPay:
                     "Split check · ${ui.title}", Modifier.align(Alignment.Center).padding(horizontal = 160.dp),
                     color = Pos.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
-                Text("Put all back on check 1", Modifier.align(Alignment.CenterEnd).clickable { vm.merge() }.padding(horizontal = 16.dp, vertical = 12.dp), color = Pos.Link, fontSize = 15.sp)
+                Row(Modifier.align(Alignment.CenterEnd)) {
+                    if (ui.seated) Text("One check per seat", Modifier.clickable { vm.bySeat() }.padding(horizontal = 12.dp, vertical = 12.dp), color = Pos.Link, fontSize = 15.sp)
+                    Text("Put all back on check 1", Modifier.clickable { vm.merge() }.padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 12.dp), color = Pos.Link, fontSize = 15.sp)
+                }
             }
             Text(
                 if (ui.selected == null) "Tap an item, then tap the check it goes on. Each check prints its own bill and is paid on its own receipt."

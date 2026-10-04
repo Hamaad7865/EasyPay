@@ -6,15 +6,38 @@ compile SDK 36.
 Built: sign-in, store and device setup, the menu mirrored into Room by the
 pull worker, a start screen, and the screens behind the top bar:
 
-- **Top bar:** Log out (back to the start screen) and the sync mark on the
-  left (green: nothing waiting here; amber: changes waiting; red: refused
-  changes or a sign-in needed; the till does not test the network itself). In
-  the middle, the side menu's button and Floor plan, Orders, Receipts. On the
-  right, New order. The side menu pushes the screen aside and also holds
-  Settings. There is no tab bar along the bottom.
-- **The register is its own screen:** New order, an order or a table opens
-  it; Close goes back to the list it was opened from. Its bar shows who is
-  selling and the magnifier. The till opens on it after the start screen.
+- **Tabs along the bottom:** Register, Tables, Orders, Customers, Receipts,
+  Settings, and at the end three dots for the sync (green: nothing waiting
+  here; amber: changes waiting; red: refused changes or a sign-in needed; the
+  till does not test the network itself). The bar along the top says who is
+  signed in; on the register it also has the magnifier. Log out is at the top
+  of Settings.
+- **The register always holds an order:** the one opened from Tables or
+  Orders, or a new direct sale. Send, On hold, a payment and Cancel order all
+  leave it on a new one. Actions has New order, naming the order, the bill,
+  the remark, the waiter and the discounts.
+- **Beside the keypad:** Edit order (the keypad makes way for the whole order;
+  tick items, then move them to a seat or a course, or remove them), On hold
+  (the order is put away without going to the kitchen), Tables (Switch Table
+  when the order is on one) and the quick payment key (card or cash, set in
+  the back office under POS settings, Payment options).
+- **C** clears what is typed; with nothing typed it asks to cancel the order.
+  Yes takes every item off (the kitchen gets a void for what it already has,
+  which needs someone allowed to void), frees the table, and puts the register
+  back on a direct sale. A partly paid order cannot be cancelled.
+- **Seats:** "Select a seat" above the items says who the next items are for:
+  the table, a seat, or a new seat (+). The order can be listed by course, by
+  seat, or as rung up. The seat prints on the kitchen ticket, and Split Check
+  has "One check per seat".
+- **Customers:** the Customers tab lists them (search, New customer, tap to
+  change). Assign customer on the register puts one on the order; their name
+  is the order's name when it has no table or tab name, and prints on the bill
+  and the receipt. They are also kept in the back office, under Customers.
+- **Approval:** something the person signed in may not do (a refund, a void
+  after the kitchen has it, opening the drawer, cash in and out, closing the
+  shift or the day, a discount, the reports) asks who approves. They tap their
+  name and enter their own PIN; it is done in the cashier's name with
+  `approved_by` on the op.
 
 - **Start screen:** what the app opens on once the tablet is set up, and
   where Log out returns. Three states:
@@ -36,22 +59,24 @@ pull worker, a start screen, and the screens behind the top bar:
   discount without someone allowed to give it) is refused on the till before
   money is recorded.
 - **Register:** the order and a keypad on the left, the categories two across
-  in the middle (each in the colour set in the back office, blue when none is
-  set), the open category's items on the right, Pay along the bottom. A number typed on the
+  in the middle (all in the till's blue), the open category's items on the
+  right, and Send, Split Check and Pay along the bottom. A number typed on the
   keypad is used by what is tapped next: an item (that many), the × key (the
-  selected line's quantity), Guests, or Cash (the amount received; nothing
-  typed means exact). Cash and Card pay everything unpaid in one receipt.
-  Tab name, guests and the dining option are stored on the ticket. Actions
-  holds New order and the discounts. The magnifier searches the whole menu.
-  When the categories do not all fit, the grid pages and its last row is
-  a down arrow; the item grid shows the same arrows past a screenful.
+  selected line's quantity), Tables (that table), or the quick payment key
+  when it takes cash (the amount received; nothing typed means exact). The
+  quick payment key pays everything unpaid in one receipt. The name, guests,
+  the order type and the customer are stored on the ticket. The magnifier
+  searches the whole menu. When the categories do not all fit, the grid pages
+  and its last row is a down arrow; the item grid shows the same arrows past a
+  screenful.
 - **Order header:** the order's name top left (the tab name, else its table,
-  else "Direct sale"). Under it: Dine-in / Takeaway, and the table ("Assign
-  table" until it has one; tap to pick or move). An order on a table, or a
-  named tab, is table service and also has "By course" (lines under Course 1,
-  Course 2, ... with "Add a course"; new items go to the course that is lit;
-  the course is sent with the line) and the guests chip. Naming an order (Tab
-  name) takes it off its table: the name is what the guest's bill will carry.
+  else its customer, else "Direct sale"). Under it: how the order is listed
+  (By course, By seat, As ordered), the guests, the order type and Assign
+  customer. Every order has courses: lines sit under Course 1, Course 2, ...
+  with "Add a course", new items go to the course that is lit, and the course
+  is sent with the line (the kitchen ticket only says the course when the
+  order has more than the first). Naming an order (Actions) takes it off its
+  table: the name is what the guest's bill will carry.
 - **Floor plan:** the store's floor plan, as laid out in the back office (Floor plans),
   scaled to the screen, one tab per area. Each table shows its name and,
   under a line, what the view chosen bottom left says: Covers (a dot per

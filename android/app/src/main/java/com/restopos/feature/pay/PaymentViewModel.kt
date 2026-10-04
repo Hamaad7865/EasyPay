@@ -113,7 +113,8 @@ class PaymentViewModel @Inject constructor(
         val check = session.payCheck()
         session.setPayCheck(null)
         val lines = unpaid.map { PayLine(it.id, it.qty, it.name_snapshot, amounts[it.id] ?: 0, check == null || it.check_no == check) }
-        val name = t.name ?: t.table_id?.let { db.tables().table(it)?.name }?.let { tableLabel(it) } ?: "Direct sale"
+        val name = t.name ?: t.table_id?.let { db.tables().table(it)?.name }?.let { tableLabel(it) }
+            ?: t.customer_id?.let { db.customers().customer(it)?.name } ?: "Direct sale"
         _state.value = PayUiState.Ready(
             if (check != null) "$name · Check $check" else name, lines, dueFor(lines.filter { it.selected }.map { it.id }.toSet()), methods,
             cur?.selected ?: methods.firstOrNull(), null, "", null, notice, cur?.note ?: t.note ?: "", check = check,

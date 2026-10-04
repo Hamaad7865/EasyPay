@@ -6,6 +6,7 @@ import com.restopos.core.common.Uuid7
 import com.restopos.core.database.ReceiptEntity
 import com.restopos.core.database.ReceiptLineEntity
 import com.restopos.core.database.ReceiptPaymentEntity
+import com.restopos.core.database.CustomerEntity
 import com.restopos.core.database.TicketEntity
 import com.restopos.core.database.TicketLineEntity
 import com.restopos.core.database.TicketLineModEntity
@@ -174,6 +175,51 @@ class TicketRepository @Inject constructor(
     suspend fun setWaiter(employeeId: String, approvedBy: String? = null) =
         updateMeta({ it.copy(opened_by = employeeId) }) { put("opened_by", employeeId); approvedBy?.let { put("approved_by", it) } }
 
+    // who the order is for; null takes the customer off it
+    suspend fun setCustomer(customerId: String?) =
+        updateMeta({ it.copy(customer_id = customerId) }) { if (customerId == null) put("customer_id", JsonNull) else put("customer_id", customerId) }
+
+    // Takes an order off its table, its name and its customer: what is left of
+    // a cancelled order holds no table and shows nowhere.
+    suspend fun release() = updateMeta({ it.copy(name = null, table_id = null, customer_id = null) }) {
+        put("name", ""); put("table_id", JsonNull); put("customer_id", JsonNull)
+    }
+
+    // Moves lines of the order on the register to another seat (null: the
+    // table) and/or course. Paid and voided lines stay where they are.
+    suspend fun placeLines(lineIds: List<String>, moveSeat: Boolean, seat: Int?, course: Int?): Result<Unit> = runCatching {
+        val t = activeTicket() ?: error("No order is open")
+        val rows = db.tickets().allLines(t.id).filter { lineIds.contains(it.id) && it.voided_at == null && !it.paid }
+        require(rows.isNotEmpty()) { "Pick the items first" }
+        db.withTransaction {
+            db.tickets().upsertLines(rows.map { it.copy(seat = if (moveSeat) seat else it.seat, course = course ?: it.course) })
+            db.outbox().enqueue(op("ticket.place_lines", buildJsonObject {
+                put("ticket_id", t.id)
+                put("line_ids", buildJsonArray { rows.forEach { add(it.id) } })
+                if (moveSeat) { if (seat == null) put("seat", JsonNull) else put("seat", seat) }
+                course?.let { put("course", it) }
+            }))
+        }
+        pushNow(context)
+    }
+
+    // A customer made or changed on this till. It is on the tablet at once and
+    // goes to the server and the other tills from there.
+    suspend fun saveCustomer(id: String?, name: String, phone: String, email: String, note: String): Result<CustomerEntity> = runCatching {
+        require(name.isNotBlank()) { "Type the customer's name" }
+        val (tenant, _, _) = ctx()
+        val row = CustomerEntity(id ?: Uuid7.next(), tenant, name.trim().take(120), phone.trim().ifEmpty { null }, email.trim().ifEmpty { null }, note.trim().ifEmpty { null })
+        db.withTransaction {
+            db.customers().upsert(listOf(row))
+            db.outbox().enqueue(op("customer.upsert", buildJsonObject {
+                put("id", row.id); put("name", row.name)
+                row.phone?.let { put("phone", it) }; row.email?.let { put("email", it) }; row.note?.let { put("note", it) }
+            }))
+        }
+        pushNow(context)
+        row
+    }
+
     // The discount picked on the register and waiting for the payment: one of
     // the back office's, or one typed in ("custom:percent:10").
     // Whoever approved it follows an "@".
@@ -211,7 +257,7 @@ class TicketRepository @Inject constructor(
     // stock counts arrive with inventory (Phase 9).
     // course: which course of the meal the line belongs to (table service), or
     // null on an order that is not split into courses.
-    suspend fun addItem(itemId: String, qty: Int, mods: List<ModPick>, note: String?, course: Int? = null): Result<Unit> =
+    suspend fun addItem(itemId: String, qty: Int, mods: List<ModPick>, note: String?, course: Int? = null, seat: Int? = null): Result<Unit> =
         runCatching {
             require(qty > 0) { "bad qty" }
             val t = ensureTicket()
@@ -226,7 +272,7 @@ class TicketRepository @Inject constructor(
             }
             val modIds = mods.map { it.id }.sorted()
             val lines = db.tickets().lines(t.id).first()
-            val match = lines.filter { it.voided_at == null && it.sent_to_kitchen_at == null && it.item_id == itemId && (it.note ?: "") == (note ?: "") && it.course == course }
+            val match = lines.filter { it.voided_at == null && it.sent_to_kitchen_at == null && it.item_id == itemId && (it.note ?: "") == (note ?: "") && it.course == course && it.seat == seat }
                 .firstOrNull { db.tickets().modIds(it.id).sorted() == modIds }
             if (match != null) {
                 setQty(match.id, match.qty + qty, "quantity change")
@@ -243,13 +289,13 @@ class TicketRepository @Inject constructor(
             }
             db.withTransaction {
                 db.tickets().upsertLines(listOf(
-                    TicketLineEntity(lineId, tenant, t.id, itemId, null, item.name, item.price, qty, note, course),
+                    TicketLineEntity(lineId, tenant, t.id, itemId, null, item.name, item.price, qty, note, course, seat = seat),
                 ))
                 db.tickets().upsertLineMods(mods.map { TicketLineModEntity(lineId, it.id, it.name, it.price) })
                 db.catalog().upsertLineTaxes(taxes.map { TicketLineTaxEntity(lineId, it.id, it.rate_bp, it.type) })
                 db.outbox().enqueue(op("ticket.add_line", buildJsonObject {
                     put("id", lineId); put("ticket_id", t.id); put("item_id", itemId)
-                    put("qty", qty); note?.let { put("note", it) }; course?.let { put("course", it) }
+                    put("qty", qty); note?.let { put("note", it) }; course?.let { put("course", it) }; seat?.let { put("seat", it) }
                     put("unit_price", item.price); put("name_snapshot", item.name)
                     put("modifiers", modArr)
                 }))
@@ -266,7 +312,7 @@ class TicketRepository @Inject constructor(
                 db.catalog().modifiersForItem(line.item_id ?: return@mapNotNull null).firstOrNull { it.id == mid }
                     ?.let { ModPick(it.id, it.name, it.price) }
             }
-            addItem(line.item_id ?: error("bad line"), qty, mods, line.note, line.course).getOrThrow()
+            addItem(line.item_id ?: error("bad line"), qty, mods, line.note, line.course, line.seat).getOrThrow()
         }
     }
 

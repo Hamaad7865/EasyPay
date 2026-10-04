@@ -21,6 +21,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.restopos.core.database.CashMoveEntity
 import com.restopos.core.database.CategoryEntity
+import com.restopos.core.database.CustomerEntity
 import com.restopos.core.database.DayCloseEntity
 import com.restopos.core.database.DeviceEntity
 import com.restopos.core.database.DiningOptionEntity
@@ -95,6 +96,7 @@ class PullWorker @AssistedInject constructor(
                         db.tables().clearTables()
                         db.ops().clearPrinters()
                         db.ops().clearSettings()
+                        db.customers().clear()
                         db.sync().saveCursor(SyncStateEntity(store, 0, pageEpochs))
                     }
                     cursor = 0
@@ -248,6 +250,11 @@ class PullWorker @AssistedInject constructor(
                         id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "device_id") ?: "", str(it, "shift_id"), str(it, "employee_id"),
                         str(it, "type") ?: "out", lng(it, "amount") ?: 0, str(it, "reason"), at, str(it, "deleted_at"), lng(it, "server_seq"),
                     )
+                })
+            }
+            changes["customers"]?.let { rows ->
+                db.customers().upsert(rows.map {
+                    CustomerEntity(id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", str(it, "phone"), str(it, "email"), str(it, "note"), str(it, "deleted_at"), lng(it, "server_seq"))
                 })
             }
             changes["drawer_counts"]?.let { rows ->

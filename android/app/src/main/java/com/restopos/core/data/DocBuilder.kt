@@ -38,7 +38,8 @@ class DocBuilder @Inject constructor(
     fun decode(text: String?): ReceiptDoc? = text?.let { runCatching { json.decodeFromString(ReceiptDoc.serializer(), it) }.getOrNull() }
 
     suspend fun orderName(t: TicketEntity): String =
-        t.name ?: t.table_id?.let { db.tables().table(it)?.name }?.let { tableLabel(it) } ?: "Direct sale"
+        t.name ?: t.table_id?.let { db.tables().table(it)?.name }?.let { tableLabel(it) }
+            ?: t.customer_id?.let { db.customers().customer(it)?.name } ?: "Direct sale"
 
     private suspend fun employee(id: String?): String? = id?.let { db.staff().employee(it)?.name }
     private suspend fun dining(t: TicketEntity): String? = t.dining_option_id?.let { db.ops().dining(it)?.name }
@@ -47,7 +48,7 @@ class DocBuilder @Inject constructor(
         DocLine(
             l.qty, l.name_snapshot, Calc.lineAmount(l.unit_price, l.qty) + db.tickets().modSum(l.id),
             db.tickets().modNames(l.id), l.note, l.course,
-            l.item_id?.let { db.ops().categoryOfItem(it)?.name },
+            l.item_id?.let { db.ops().categoryOfItem(it)?.name }, l.seat,
         )
     }
 
@@ -81,6 +82,7 @@ class DocBuilder @Inject constructor(
         time: Long,
     ): ReceiptDoc = ReceiptDoc(
         kind = kind, number = number, time = time, order = orderName(t), dining = dining(t),
+        customer = t.customer_id?.let { db.customers().customer(it)?.name },
         cashier = staff.current.value?.employee?.name, waiter = employee(t.opened_by), covers = t.covers, note = t.note,
         lines = lines(rows), subtotal = totals.subtotal, discounts = discounts, taxes = taxes(rows, totals.discount),
         rounding = totals.rounding, total = totals.total, payments = payments,

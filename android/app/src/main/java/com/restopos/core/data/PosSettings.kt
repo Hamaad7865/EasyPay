@@ -25,6 +25,7 @@ data class PosSettings(
     val vat: String = "",
     val address: String = "",
     val phone: String = "",
+    val quickPay: String = "card", // what the register's quick payment key takes: card or cash
 ) {
     fun shop(fallbackName: String): Shop =
         Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer)
@@ -53,6 +54,7 @@ data class PosSettings(
                 vat = c.str("vat") ?: "",
                 address = c.str("address") ?: "",
                 phone = c.str("phone") ?: "",
+                quickPay = d.str("quickPay")?.takeIf { it == "cash" || it == "card" } ?: "card",
             )
         }
     }

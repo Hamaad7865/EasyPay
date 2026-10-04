@@ -32,6 +32,14 @@ async function saveGeneral(f: FormData) {
   });
 }
 
+async function saveQuick(f: FormData) {
+  "use server";
+  await act("settings.device", PATH + "?tab=payments", async (c, ctx) => {
+    await saveSettings(c, ctx.tenantId, { quickPay: f.get("quickPay") === "cash" ? "cash" : "card" });
+    return "Saved. The tills pick it up the next time they sync.";
+  });
+}
+
 async function addPayment(f: FormData) {
   "use server";
   await act("settings.device", PATH + "?tab=payments", async (c, ctx) => {
@@ -200,6 +208,15 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
 
       {tab === "payments" && (
         <>
+          <Card title="Quick payment key" lede="The green key beside the register's keypad pays the whole order in one tap. Choose what it takes. Every other way of paying is on the payment screen.">
+            <form action={saveQuick} className="bo-toolbar" style={{ margin: 0 }}>
+              <select name="quickPay" defaultValue={s.quickPay} aria-label="Quick payment key">
+                <option value="card">Card</option>
+                <option value="cash">Cash (a number typed first is the amount received)</option>
+              </select>
+              <button type="submit">Save</button>
+            </form>
+          </Card>
           <Card title="Payment options" lede="What a cashier can pick on the payment screen, in this order. The cash drawer opens only for the ones ticked." flush>
             <table>
               <thead>

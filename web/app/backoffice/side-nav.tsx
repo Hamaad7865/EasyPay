@@ -8,6 +8,7 @@ import {
   Building2,
   CalendarCheck,
   ClipboardList,
+  Contact,
   Database,
   FileText,
   LayoutDashboard,
@@ -56,6 +57,7 @@ const SECTIONS: { title: string | null; links: { href: string; label: string; ic
     title: "Restaurant",
     links: [
       { href: "/backoffice/tables", label: "Tables", icon: LayoutGrid },
+      { href: "/backoffice/customers", label: "Customers", icon: Contact },
       { href: "/backoffice/printers", label: "Printers", icon: Printer },
       { href: "/backoffice/receipt-design", label: "Receipt design", icon: ReceiptText },
     ],

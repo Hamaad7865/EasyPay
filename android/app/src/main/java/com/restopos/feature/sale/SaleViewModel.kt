@@ -13,10 +13,12 @@ import com.restopos.core.data.ModPick
 import com.restopos.core.data.NeedsApproval
 import com.restopos.core.data.OrderOps
 import com.restopos.core.data.PayInput
+import com.restopos.core.data.PosSettings
 import com.restopos.core.data.StaffMember
 import com.restopos.core.data.StaffSession
 import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.CategoryEntity
+import com.restopos.core.database.CustomerEntity
 import com.restopos.core.database.DiningOptionEntity
 import com.restopos.core.database.DiscountEntity
 import com.restopos.core.database.EmployeeEntity
@@ -67,6 +69,15 @@ sealed interface SaleAction {
     data object OpenTable : SaleAction // the table whose name is on the keypad
     data class SetGuests(val guests: Int) : SaleAction
     data class ByCourse(val on: Boolean) : SaleAction // the order shown course by course, or as rung up
+    data object BySeat : SaleAction // the order shown seat by seat
+    data class PickSeat(val seat: Int?) : SaleAction // the seat new items are for; null is the table
+    data object AddSeat : SaleAction
+    // moves lines to another seat (moveSeat, with seat null for the table) and/or course
+    data class PlaceLines(val lineIds: List<String>, val moveSeat: Boolean, val seat: Int?, val course: Int?) : SaleAction
+    data class RemoveLines(val lineIds: List<String>) : SaleAction
+    data object OnHold : SaleAction // puts the order away without sending it
+    data object CancelOrder : SaleAction // clears the order; the register is back on a new direct sale
+    data class SetCustomer(val customerId: String?) : SaleAction
     data class PickCourse(val course: Int) : SaleAction // the course new items go to
     data object AddCourse : SaleAction
     data object NewTicket : SaleAction
@@ -140,6 +151,25 @@ class SaleViewModel @Inject constructor(
     val course: StateFlow<Int> = _course
     private val _courses = MutableStateFlow(1)
     val courses: StateFlow<Int> = _courses
+
+    // Seats: who at the table an item is for. The seat new items go to (null:
+    // the table), how many the seat bar offers, and whether the order is
+    // listed seat by seat.
+    private val _seat = MutableStateFlow<Int?>(null)
+    val seat: StateFlow<Int?> = _seat
+    private val _seats = MutableStateFlow(0)
+    val seats: StateFlow<Int> = _seats
+    private val _bySeat = MutableStateFlow(false)
+    val bySeat: StateFlow<Boolean> = _bySeat
+
+    // Who the order is for, when a customer was put on it.
+    private val _customer = MutableStateFlow<CustomerEntity?>(null)
+    val customer: StateFlow<CustomerEntity?> = _customer
+
+    // The key beside the keypad that pays in one tap: the kind it takes (card
+    // or cash, set in the back office) and what the key says.
+    private val _quick = MutableStateFlow("card" to "Card")
+    val quick: StateFlow<Pair<String, String>> = _quick
 
     // Who the order can be handed to.
     private val _waiters = MutableStateFlow<List<EmployeeEntity>>(emptyList())
@@ -238,7 +268,10 @@ class SaleViewModel @Inject constructor(
         val before = _ticket.value?.id
         _ticket.value = tickets.activeTicket()
         val changed = _ticket.value?.id != before
-        if (changed) { _selected.value = null; _buffer.value = ""; _course.value = 1; _courses.value = 1 }
+        if (changed) { _selected.value = null; _buffer.value = ""; _course.value = 1; _courses.value = 1; _seat.value = null; _seats.value = 0 }
+        _customer.value = _ticket.value?.customer_id?.let { db.customers().customer(it) }
+        val kind = PosSettings.parse(db.ops().settings()).quickPay
+        _quick.value = kind to (db.catalog().paymentTypes().first().firstOrNull { it.kind == kind }?.name ?: if (kind == "cash") "Cash" else "Card")
         _tableName.value = (_ticket.value?.table_id ?: session.pendingTable())?.let { db.tables().table(it)?.name }
         // Every discount is offered: one this person may not give asks for
         // someone who may when it is picked. On a till without staff PINs
@@ -265,6 +298,8 @@ class SaleViewModel @Inject constructor(
         if (rows.none { it.id == _selected.value && !it.paid }) _selected.value = null
         // never fewer course headings than the order has courses
         _courses.value = maxOf(_courses.value, rows.maxOfOrNull { it.course ?: 1 } ?: 1)
+        // nor fewer seats than it has items for
+        _seats.value = maxOf(_seats.value, rows.maxOfOrNull { it.seat ?: 0 } ?: 0)
         val calcLines = rows.filter { it.voided_at == null && !it.paid }.map { l ->
             val taxes = db.catalog().lineTaxes(l.id)
             val mods = dao.modSum(l.id)
@@ -287,7 +322,7 @@ class SaleViewModel @Inject constructor(
                 val groups = db.catalog().groupsForItem(a.item.id)
                 _buffer.value = ""
                 if (groups.isEmpty()) {
-                    tickets.addItem(a.item.id, qty * 1000, emptyList(), null, courseForNewLine())
+                    tickets.addItem(a.item.id, qty * 1000, emptyList(), null, courseForNewLine(), _seat.value)
                         .onFailure { _toast.value = it.message }
                     reload()
                 } else {
@@ -297,7 +332,7 @@ class SaleViewModel @Inject constructor(
             is SaleAction.ConfirmMods -> {
                 val item = _sheet.value?.item ?: return@launch
                 _sheet.value = null
-                tickets.addItem(item.id, a.qty * 1000, a.picks, a.note.ifBlank { null }, courseForNewLine())
+                tickets.addItem(item.id, a.qty * 1000, a.picks, a.note.ifBlank { null }, courseForNewLine(), _seat.value)
                     .onFailure { _toast.value = it.message }
                 reload()
             }
@@ -342,7 +377,26 @@ class SaleViewModel @Inject constructor(
                 tickets.setCovers(a.guests.coerceIn(1, 99)).onFailure { _toast.value = it.message }
                 reload()
             }
-            is SaleAction.ByCourse -> _byCourse.value = a.on
+            is SaleAction.ByCourse -> { _byCourse.value = a.on; _bySeat.value = false }
+            is SaleAction.BySeat -> { _bySeat.value = true; _byCourse.value = false }
+            is SaleAction.PickSeat -> _seat.value = a.seat?.coerceIn(1, 99)
+            is SaleAction.AddSeat -> if (_seats.value < 99) { _seats.value += 1; _seat.value = _seats.value }
+            is SaleAction.PlaceLines -> {
+                tickets.placeLines(a.lineIds, a.moveSeat, a.seat, a.course).onFailure { _toast.value = it.message }
+                a.seat?.let { _seats.value = maxOf(_seats.value, it) }
+                a.course?.let { _courses.value = maxOf(_courses.value, it) }
+                reload()
+            }
+            is SaleAction.RemoveLines -> approved { by ->
+                // a line already taken off (the first try, before the approval) is skipped
+                runCatching { a.lineIds.forEach { id -> if (db.tickets().line(id)?.voided_at == null) orderOps.remove(id, by).getOrThrow() } }
+            }
+            is SaleAction.OnHold -> hold()
+            is SaleAction.CancelOrder -> cancelOrder()
+            is SaleAction.SetCustomer -> {
+                tickets.setCustomer(a.customerId).onFailure { _toast.value = it.message }
+                reload()
+            }
             is SaleAction.PickCourse -> _course.value = a.course.coerceIn(1, _courses.value)
             is SaleAction.AddCourse -> { _courses.value += 1; _course.value = _courses.value }
             is SaleAction.QuickPay -> quickPay(a.kind)
@@ -386,14 +440,51 @@ class SaleViewModel @Inject constructor(
                     session.setPendingDiscount(null)
                     reload()
                     _saved.value = true
+                    _toast.value = "Sent. The order is under Orders" + "."
                 }
             },
             onFailure = { _toast.value = it.message },
         )
     }
 
-    private fun courseForNewLine(): Int? =
-        if (_byCourse.value && (_ticket.value?.name != null || _tableName.value != null)) _course.value else null
+    // Every order has courses; new items go to the one that is lit.
+    private fun courseForNewLine(): Int? = _course.value
+
+    // On hold: the order is put away as it is, nothing goes to the kitchen,
+    // and the register is free for the next one. It waits under Orders.
+    private suspend fun hold() {
+        if (_lines.value.isEmpty()) { _toast.value = "Add an item first"; return }
+        tickets.newTicket()
+        session.setPendingDiscount(null)
+        reload()
+        _toast.value = "On hold. The order is under Orders."
+    }
+
+    // Cancel order: every item comes off (the kitchen is told about the ones
+    // it has, and that needs someone allowed to void them), the order lets go
+    // of its table, name and customer, and the register is back on a new
+    // direct sale. An order that is partly paid cannot be cancelled.
+    private suspend fun cancelOrder() {
+        val t = tickets.activeTicket()
+        if (t == null) {
+            tickets.newTicket()
+            session.setPendingDiscount(null)
+            reload()
+            return
+        }
+        if (db.tickets().allLines(t.id).any { it.paid && it.voided_at == null }) {
+            _toast.value = "Part of this order is already paid, so it cannot be cancelled. Take payment for the rest."
+            return
+        }
+        approved("Order cancelled.") { by ->
+            runCatching {
+                db.tickets().allLines(t.id).filter { it.voided_at == null }.forEach { orderOps.remove(it.id, by).getOrThrow() }
+                if (t.table_id != null || t.name != null || t.customer_id != null) tickets.release().getOrThrow()
+                tickets.newTicket()
+                session.setPendingDiscount(null)
+            }
+        }
+    }
 
     private fun press(key: String) {
         val b = _buffer.value

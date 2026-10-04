@@ -18,6 +18,7 @@ data class DocLine(
     val note: String? = null,
     val course: Int? = null,
     val cat: String? = null, // its category, for the day closing; never printed on a receipt
+    val seat: Int? = null, // the seat it is for, on the kitchen ticket
 )
 
 @Serializable
@@ -49,6 +50,7 @@ data class ReceiptDoc(
     val payments: List<DocPayment> = emptyList(),
     val refundOf: String? = null,
     val reason: String? = null,
+    val customer: String? = null,
 )
 
 data class KitchenDoc(
@@ -182,6 +184,7 @@ object Docs {
         (d.cashier ?: d.waiter)?.let { p.row("Served by", it) }
         if (d.waiter != null && d.cashier != null && d.waiter != d.cashier) p.row("Waiter", d.waiter)
         d.covers?.let { p.row("Guests", it.toString()) }
+        d.customer?.takeIf { it.isNotBlank() && it != d.order }?.let { p.row("Customer", it) }
         d.refundOf?.let { p.row("Refund of", it) }
         d.reason?.takeIf { it.isNotBlank() }?.let { p.wrapped("Reason: $it") }
         p.rule()
@@ -226,14 +229,17 @@ object Docs {
         if (extra.isNotBlank()) p.line(extra.replace("·", "-"))
         p.rule('=')
         var course: Int? = null
+        // an order that is all course 1 needs no course heading
+        val courses = d.lines.any { (it.course ?: 1) > 1 }
         d.lines.forEach { l ->
-            if (l.course != null && l.course != course) {
+            if (courses && l.course != null && l.course != course) {
                 course = l.course
                 p.align(EscPos.Align.Center).line("--- Course ${l.course} ---").align(EscPos.Align.Left)
             }
             p.bold(true).tall(true)
             EscPos.wrap("${qty(l.qty)} x ${l.name}", paper.columns).forEach { p.line(it) }
             p.tall(false).bold(false)
+            l.seat?.let { p.line("   Seat $it") }
             l.mods.forEach { m -> p.wrapped("+ $m", indent = "   ") }
             l.note?.takeIf { it.isNotBlank() }?.let { p.bold(true).wrapped("! $it", indent = "   ").bold(false) }
         }
