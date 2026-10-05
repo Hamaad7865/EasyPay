@@ -2,19 +2,25 @@ import Link from "next/link";
 import { SlidersHorizontal } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
-import { act, int, Refused, text, uuid } from "@/lib/action";
+import { act, int, Refused, text, UUID, uuid } from "@/lib/action";
 import { parseRs } from "@/lib/money";
 import { loadSettings, money } from "@/lib/settings";
-import { Card, Empty, Flash, PageHead, type Search } from "../ui";
+import { Card, Empty, Flash, one, PageHead, type Search } from "../ui";
+import { AddonsTable, type Choice, type Group } from "./table";
 
 const PATH = "/backoffice/addons";
+// After a save the page comes back with the group that was being worked on
+// still open: nobody wants to find it again after every choice they add.
+const back = (group: FormDataEntryValue | null | string) => (typeof group === "string" && UUID.test(group) ? `${PATH}?open=${group}` : PATH);
 
 async function addGroup(f: FormData) {
   "use server";
-  await act("items.edit", PATH, async (c, ctx) => {
+  // its id is made here so the page can come back with the new group open
+  const id = crypto.randomUUID();
+  await act("items.edit", back(id), async (c, ctx) => {
     const name = text(f, "name", 40);
     if (!name) throw new Refused("Give the group a name, for example Extras or Cooking.");
-    await c.query(`insert into modifier_groups (tenant_id, name, min_select, max_select) values ($1, $2, 0, 0)`, [ctx.tenantId, name]);
+    await c.query(`insert into modifier_groups (id, tenant_id, name, min_select, max_select) values ($1, $2, $3, 0, 0)`, [id, ctx.tenantId, name]);
     return `${name} added. Now add its choices.`;
   });
 }
@@ -22,7 +28,7 @@ async function addGroup(f: FormData) {
 // min 0 = optional, min 1 = the waiter must pick; max 0 = as many as they like.
 async function saveGroup(f: FormData) {
   "use server";
-  await act("items.edit", PATH, async (c, ctx) => {
+  await act("items.edit", f.get("remove") === "1" ? PATH : back(f.get("id")), async (c, ctx) => {
     const id = uuid(f, "id");
     if (f.get("remove") === "1") {
       await c.query(`update item_modifier_groups set deleted_at = now() where tenant_id = $1 and group_id = $2 and deleted_at is null`, [ctx.tenantId, id]);
@@ -43,7 +49,7 @@ async function saveGroup(f: FormData) {
 
 async function addChoice(f: FormData) {
   "use server";
-  await act("items.edit", PATH, async (c, ctx) => {
+  await act("items.edit", back(f.get("group")), async (c, ctx) => {
     const group = uuid(f, "group");
     const name = text(f, "name", 40);
     const price = parseRs(String(f.get("price") || "0"));
@@ -60,7 +66,7 @@ async function addChoice(f: FormData) {
 
 async function saveChoice(f: FormData) {
   "use server";
-  await act("items.edit", PATH, async (c, ctx) => {
+  await act("items.edit", back(f.get("group")), async (c, ctx) => {
     const id = uuid(f, "id");
     if (f.get("remove") === "1") {
       await c.query(`update modifiers set deleted_at = now() where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id]);
@@ -73,9 +79,6 @@ async function saveChoice(f: FormData) {
     return `${name} saved.`;
   });
 }
-
-type Group = { id: string; name: string; min_select: number; max_select: number; items: number };
-type Choice = { id: string; group_id: string; name: string; price: string };
 
 export default async function AddonsPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
@@ -93,8 +96,10 @@ export default async function AddonsPage({ searchParams }: { searchParams: Searc
     ).rows as Group[],
     choices: (
       await c.query(`select id, group_id, name, price from modifiers where tenant_id = $1 and deleted_at is null order by created_at, name`, [ctx.tenantId])
-    ).rows as Choice[],
+    ).rows as Omit<Choice, "shown">[],
   }));
+  const choices: Choice[] = d.choices.map((m) => ({ ...m, price: String(m.price), shown: Number(m.price) === 0 ? "" : "+ " + money(Number(m.price), d.settings.decimals) }));
+  const open = one(sp.open);
   return (
     <div>
       <PageHead
@@ -102,70 +107,12 @@ export default async function AddonsPage({ searchParams }: { searchParams: Searc
         lede="Extras and choices the till offers when an item is tapped: extra cheese, no chili, how it is cooked. A group is attached to the items it applies to, on each item's page."
       />
       <Flash sp={sp} />
-      {d.groups.length === 0 && (
+      {d.groups.length === 0 ? (
         <Empty icon={SlidersHorizontal} title="No add-on groups yet">Create one below, then add its choices and tick it on the items it belongs to.</Empty>
+      ) : (
+        // keyed by what is open, so coming back from a save opens that group even when the page was already showing
+        <AddonsTable key={open} groups={d.groups} choices={choices} open={UUID.test(open) ? open : null} saveGroup={saveGroup} addChoice={addChoice} saveChoice={saveChoice} />
       )}
-      {d.groups.map((g) => (
-        <section key={g.id} className="card flush">
-          <form action={saveGroup} className="card-head">
-            <input type="hidden" name="id" value={g.id} />
-            <div className="bo-toolbar" style={{ margin: 0 }}>
-              <input name="name" defaultValue={g.name} required maxLength={40} aria-label="Group name" style={{ fontWeight: 600 }} />
-              <label className="inline muted">
-                Pick at least
-                <input name="min" type="number" min={0} max={20} defaultValue={g.min_select} className="narrow" style={{ width: 64 }} />
-              </label>
-              <label className="inline muted">
-                at most
-                <input name="max" type="number" min={0} max={20} defaultValue={g.max_select} className="narrow" style={{ width: 64 }} />
-                <span>(0 = any)</span>
-              </label>
-            </div>
-            <span className="row-actions">
-              <span className="badge">{g.items === 0 ? "On no item" : `On ${g.items} ${g.items === 1 ? "item" : "items"}`}</span>
-              <button type="submit" className="btn-quiet btn-sm">Save</button>
-              <button type="submit" name="remove" value="1" className="btn-link danger">Remove</button>
-            </span>
-          </form>
-          <table>
-            <thead>
-              <tr>
-                <th>Choice</th>
-                <th>Extra price (Rs)</th>
-                <th className="num">Shown as</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {d.choices.filter((m) => m.group_id === g.id).map((m) => (
-                <tr key={m.id}>
-                  <td><input form={"m" + m.id} name="name" defaultValue={m.name} required maxLength={40} aria-label="Choice" /></td>
-                  <td><input form={"m" + m.id} name="price" defaultValue={(Number(m.price) / 100).toString()} className="narrow" inputMode="decimal" aria-label="Extra price" /></td>
-                  <td className="num">{Number(m.price) === 0 ? <span className="muted">Free</span> : "+ " + money(Number(m.price), d.settings.decimals)}</td>
-                  <td>
-                    <form id={"m" + m.id} action={saveChoice} className="row-actions">
-                      <input type="hidden" name="id" value={m.id} />
-                      <button type="submit" className="btn-quiet btn-sm">Save</button>
-                      <button type="submit" name="remove" value="1" className="btn-link danger">Remove</button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-              <tr>
-                <td><input form={"n" + g.id} name="name" placeholder="New choice, for example Extra cheese" required maxLength={40} aria-label="New choice" style={{ minWidth: 260 }} /></td>
-                <td><input form={"n" + g.id} name="price" placeholder="0" className="narrow" inputMode="decimal" aria-label="Extra price" /></td>
-                <td />
-                <td>
-                  <form id={"n" + g.id} action={addChoice} className="row-actions">
-                    <input type="hidden" name="group" value={g.id} />
-                    <button type="submit" className="btn-sm">Add choice</button>
-                  </form>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-      ))}
       <Card title="Add a group">
         <form action={addGroup} className="bo-toolbar" style={{ margin: 0 }}>
           <input name="name" placeholder="Name, for example Extras" required maxLength={40} style={{ minWidth: 260 }} />

@@ -454,6 +454,31 @@ details.card[open] > summary.card-head { background: #fafbfc; }
 .grid-3.even { align-items: stretch; }
 .card-link { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
 .card-link svg { width: 14px; height: 14px; }
+/* ---- a table whose rows open ----
+   The row is the summary; the row under it holds what it opens. Used where a
+   list of things each has a list of its own (add-on groups and their choices),
+   so the page is as long as the list and no longer. */
+.table-search { position: relative; display: block; flex: none; }
+.table-search svg { position: absolute; left: 10px; top: 50%; width: 15px; height: 15px; transform: translateY(-50%); color: var(--ink3); pointer-events: none; }
+.bo-main .table-search input { width: 280px; padding-left: 32px !important; }
+.rows-open tr.row { cursor: pointer; }
+.rows-open tr.row > td:first-child, .rows-open thead th:first-child { width: 44px; padding-right: 0; }
+.bo-main .rows-open button.chev {
+  width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; box-shadow: none; color: var(--ink3);
+  display: grid; place-items: center;
+}
+.bo-main .rows-open button.chev:hover { background: #eef0f3; color: var(--ink); }
+.rows-open button.chev svg { width: 16px; height: 16px; transition: transform 0.12s; }
+.rows-open tr.row.on button.chev svg { transform: rotate(90deg); color: var(--accent); }
+.bo-main .rows-open tr.row.on > td { background: var(--accent-soft); }
+.rows-open td.clip { max-width: 0; width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rows-open .count { display: inline-block; min-width: 22px; margin-right: 8px; padding: 1px 7px; border-radius: 999px; background: #eef0f3; color: var(--ink2); font-size: 12px; font-weight: 600; text-align: center; }
+.bo-main .rows-open tr.open-body > td { padding: 0; background: #fafbfc; }
+.open-panel { padding: 16px 20px 18px 60px; border-left: 3px solid var(--accent); }
+.bo-main .open-panel table { margin: 14px 0 0; box-shadow: none; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.bo-main .open-panel td { padding: 8px 14px; }
+.bo-main .open-panel th { padding: 8px 14px; }
+
 .dash-empty { color: var(--ink3); font-size: 13px; text-align: center; padding: 22px 0; margin: 0 !important; }
 
 .rank { list-style: none; margin: 0; padding: 0; }
