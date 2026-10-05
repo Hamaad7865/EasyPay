@@ -394,6 +394,7 @@ private val PENDING_COVERS = intPreferencesKey("pending_covers")
 private val PENDING_DINING = stringPreferencesKey("pending_dining")
 private val PERIOD_SEQ = intPreferencesKey("period_seq")
 private val PAY_CHECK = intPreferencesKey("pay_check")
+private val SPLIT_SHARES = stringPreferencesKey("split_shares")
 private val LEFT_HANDED = booleanPreferencesKey("left_handed")
 private val KEEP_AWAKE = booleanPreferencesKey("keep_awake")
 private val LIGHT = booleanPreferencesKey("light_mode_v2")
@@ -454,6 +455,12 @@ class SessionStore(private val context: Context) {
     // once by the payment screen and cleared.
     suspend fun payCheck(): Int? = store.data.map { it[PAY_CHECK] }.first()
     suspend fun setPayCheck(n: Int?) { store.edit { if (n == null) it.remove(PAY_CHECK) else it[PAY_CHECK] = n } }
+    // The shares of a bill split equally that have been taken and not yet
+    // recorded (the receipt goes out when the last guest has paid), with the
+    // order they are for. Kept here so that a tablet that dies between two
+    // guests still knows what the first ones paid.
+    suspend fun splitShares(): String? = store.data.map { it[SPLIT_SHARES] }.first()
+    suspend fun setSplitShares(json: String?) { store.edit { if (json == null) it.remove(SPLIT_SHARES) else it[SPLIT_SHARES] = json } }
     // How this tablet is set up for the people using it (Settings, Display).
     val leftHanded: Flow<Boolean> = store.data.map { it[LEFT_HANDED] ?: false }
     suspend fun setLeftHanded(on: Boolean) { store.edit { it[LEFT_HANDED] = on } }
