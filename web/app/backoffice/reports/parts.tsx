@@ -1,5 +1,5 @@
 import type { Filters, Lists } from "@/lib/report";
-import { PrintButton } from "./print-button";
+import { CsvButton, PrintButton } from "./print-button";
 
 // The filter bar the reports share. Each report says which filters it has.
 export function ReportFilters({
@@ -81,6 +81,7 @@ export function ReportFilters({
       )}
       <button type="submit">Show</button>
       <span className="spacer" />
+      <CsvButton />
       <PrintButton />
     </form>
   );
