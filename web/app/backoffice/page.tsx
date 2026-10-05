@@ -384,7 +384,7 @@ export default async function BackofficeHome({
           now.book_n === 0
             ? "None for today"
             : plural(now.book_guests, "guest", "guests") +
-              (now.book_next ? ` · next ${now.book_next.clock}, ${now.book_next.name} (${now.book_next.size})` : " · all arrived")
+              (now.book_next ? ` · next ${now.book_next.clock}, ${now.book_next.name} (${now.book_next.size})` : " · none still to come")
         }
         href="/backoffice/bookings"
       />
