@@ -104,7 +104,10 @@ app.use("*", async (c, next) => {
   await next();
 });
 
-app.get("/health", (c) => c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0059" }));
+// minTill: the oldest till build still accepted (0: every build is).
+app.get("/health", (c) =>
+  c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0059", minTill: Number(process.env.MIN_TILL_VERSION ?? "0") || 0 }),
+);
 
 // Tenant-scoped self check: only ever returns the caller's own rows.
 app.get("/me", async (c) => {
