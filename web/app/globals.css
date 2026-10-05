@@ -411,6 +411,60 @@ details.card[open] > summary.card-head { background: #fafbfc; }
 .legend { display: flex; gap: 18px; font-size: 12.5px; color: var(--ink2); margin-top: 8px; }
 .legend i { display: inline-block; width: 18px; height: 0; border-top: 3px solid var(--accent); vertical-align: middle; margin-right: 6px; }
 .legend i.prev { border-top: 2px dashed #a9b0bd; }
+.chart-wrap { position: relative; }
+.chart .guide { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 3 4; opacity: 0.6; }
+.chart .hot { fill: #fff; stroke: var(--accent); stroke-width: 2.5; }
+.chart-tip {
+  position: absolute; z-index: 3; transform: translate(-50%, calc(-100% - 12px)); pointer-events: none; white-space: nowrap;
+  background: var(--ink); color: #fff; border-radius: 8px; padding: 7px 10px; box-shadow: var(--shadow-md);
+}
+.chart-tip.below { transform: translate(-50%, 14px); }
+.chart-tip strong { display: block; font-size: 13px; font-variant-numeric: tabular-nums; }
+.chart-tip span { display: block; font-size: 11px; opacity: 0.72; }
+
+/* what is true this minute: a row of tiles, each a way into its page */
+.dash-sub { display: flex; align-items: baseline; gap: 10px; margin: 0 0 12px; }
+.dash-sub h2 { margin: 0; }
+.dash-sub span { color: var(--ink3); font-size: 12.5px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; margin-bottom: 28px; }
+.tile, .bo-main a.tile {
+  display: block; min-width: 0; padding: 16px 18px; color: var(--ink); text-decoration: none;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm);
+}
+.bo-main a.tile:hover { border-color: var(--accent); text-decoration: none; }
+.tile-label { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink3); font-weight: 500; }
+.tile-label svg { width: 16px; height: 16px; flex: none; }
+.tile-value { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin-top: 6px; }
+.tile-value span { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.tile-value small { font-size: 12.5px; color: var(--ink3); }
+.tile-hint { font-size: 12px; color: var(--ink3); margin-top: 4px; line-height: 1.45; }
+.delta { font-style: normal; font-size: 11.5px; font-weight: 700; padding: 2px 7px; border-radius: 6px; }
+.delta.up { background: var(--green-bg); color: var(--green); }
+.delta.down { background: var(--amber-bg); color: var(--amber); }
+
+.kpis.six { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dash-split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px; }
+.grid-3.even { align-items: stretch; }
+.card-link { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.card-link svg { width: 14px; height: 14px; }
+.dash-empty { color: var(--ink3); font-size: 13px; text-align: center; padding: 22px 0; margin: 0 !important; }
+
+.rank { list-style: none; margin: 0; padding: 0; }
+.rank li { padding: 11px 0; border-bottom: 1px solid var(--line); }
+.rank li:first-child { padding-top: 0; }
+.rank li:last-child { border-bottom: 0; padding-bottom: 0; }
+.rank-row { display: flex; align-items: baseline; gap: 10px; font-size: 13.5px; }
+.rank-row em { font-style: normal; color: var(--ink3); font-size: 12px; min-width: 12px; font-variant-numeric: tabular-nums; }
+.rank-row b { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-row strong { font-variant-numeric: tabular-nums; }
+.rank .bar { margin-top: 7px; }
+.rank small { display: block; color: var(--ink3); font-size: 12px; margin-top: 5px; }
+
+.hours { display: flex; align-items: flex-end; gap: 6px; height: 190px; }
+.hours div { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.hours i { display: block; width: 100%; max-width: 38px; min-height: 2px; background: #c9d3fb; border-radius: 5px 5px 0 0; }
+.hours i.peak { background: var(--accent); }
+.hours span { font-size: 11px; color: var(--ink3); margin-top: 6px; font-variant-numeric: tabular-nums; }
 
 /* ---- receipt preview (hardware) ---- */
 
@@ -444,5 +498,6 @@ details.card[open] > summary.card-head { background: #fafbfc; }
   .bo-top { padding: 0 16px; position: static; }
   .bo-main { padding: 20px 16px 40px; }
   .floor-wrap, .grid-2, .grid-3, .form-row { grid-template-columns: 1fr; }
-  .kpis, .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpis, .kpis.six, .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dash-split { grid-template-columns: 1fr; }
 }
