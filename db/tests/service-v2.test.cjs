@@ -173,6 +173,20 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     check('T7 a booking more than a week old is no longer sent', !later.changes.bookings.some((x) => x.id === bk), later.changes.bookings.length);
   }
 
+  // T8 (0058) an order's number follows its kind while the kitchen has not had it
+  {
+    const o = crypto.randomUUID();
+    const r = await push([
+      op('ticket.create', { id: o, store_id: store, order_no: 'C-7' }),
+      op('ticket.update_meta', { ticket_id: o, dining_option_id: takeaway, order_no: 'A-3' }),
+    ]);
+    const row = await q1(`select order_no from tickets where id = $1`, [o]);
+    check('T8 a counter sale turned takeaway takes the number it is sent', r.map(tag).join(' ') === 'applied applied' && row.order_no === 'A-3', r.map(tag).join(' ') + ' ' + row.order_no);
+    await push([op('ticket.update_meta', { ticket_id: o, note: 'no onions' })]);
+    const kept = await q1(`select order_no, note from tickets where id = $1`, [o]);
+    check('T8 a change that does not name the number leaves it alone', kept.order_no === 'A-3' && kept.note === 'no onions', JSON.stringify(kept));
+  }
+
   await c.query(`delete from bookings where tenant_id = $1`, [tid]);
   await devguard.cleanupTenant(c, tid);
   await devguard.cleanupTenant(c, other);

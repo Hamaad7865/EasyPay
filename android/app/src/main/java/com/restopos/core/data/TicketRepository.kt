@@ -200,11 +200,20 @@ class TicketRepository @Inject constructor(
         if (t == null) { session.setPendingDining(optionId); return@runCatching }
         setDining(optionId).getOrThrow()
         val board = type.kind == "takeaway" || type.kind == "delivery"
+        val sent = db.tickets().lines(t.id).first().any { it.sent_to_kitchen_at != null }
+        // The number's letter says what kind of order it is. One whose kind
+        // changes before the kitchen has had anything takes a number of its
+        // new kind (C-7 becomes A-3); once the kitchen knows it by a number,
+        // or part of it is paid, it keeps that number.
+        val letter = series(type.kind)
+        if (t.table_id == null && t.order_no?.startsWith("$letter-") == false && !sent && db.receipts().paidForTicket(t.id) == 0L) {
+            val no = "$letter-${session.nextNumber(letter)}"
+            updateMeta({ it.copy(order_no = no) }) { put("order_no", no) }.getOrThrow()
+        }
         // An open order that is a takeaway belongs on the board, also one that
         // was a takeaway, became a counter sale (which took it off) and is a
         // takeaway again. It goes where its kitchen tickets say it is.
         if (board && (t.stage == null || t.stage == "done")) {
-            val sent = db.tickets().lines(t.id).first().any { it.sent_to_kitchen_at != null }
             setStage(t.id, if (!sent) "new" else if (db.service().kdsOpenFor(t.id) == 0) "ready" else "kitchen").getOrThrow()
             if (t.due_at == null) {
                 setDue(t.id, System.currentTimeMillis() + PosSettings.parse(db.ops().settings()).prepMinutes * 60_000L * (if (type.kind == "delivery") 2 else 1)).getOrThrow()
