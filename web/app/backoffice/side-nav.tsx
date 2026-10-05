@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import {
+  BadgePercent,
   BarChart3,
   Boxes,
   Building2,
@@ -52,6 +53,7 @@ const SECTIONS: { title: string | null; links: { href: string; label: string; ic
       { href: "/backoffice/items", label: "Items", icon: UtensilsCrossed },
       { href: "/backoffice/addons", label: "Add-ons", icon: SlidersHorizontal },
       { href: "/backoffice/taxes", label: "Taxes", icon: FileText },
+      { href: "/backoffice/discounts", label: "Discounts", icon: BadgePercent },
       { href: "/backoffice/stock", label: "Stock", icon: Boxes },
     ],
   },
