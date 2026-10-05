@@ -807,7 +807,7 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel) {
                     Text("${clock.format(Date(j.time))} · ${j.printer.name}", color = Pos.Text3, fontSize = 13.sp)
                     j.error?.let { Text(it, color = Pos.Pink, fontSize = 13.sp) }
                     if (j.error != null && j.what.startsWith("Kitchen ticket")) {
-                        Text("Open the order and tap Save: what did not print goes to the kitchen again.", color = Pos.Text2, fontSize = 13.sp)
+                        Text("The order is on the kitchen display. Try again prints the paper once the printer answers.", color = Pos.Text2, fontSize = 13.sp)
                     }
                 }
                 when {
@@ -827,7 +827,7 @@ private fun DisplayPage(vm: SettingsViewModel) {
     val lightMode by vm.lightMode.collectAsState()
     val change = "change how this till is set up"
     Toggle("Light mode", "A pale screen with dark text, for a bright room or a terrace. Off is the dark screen.", lightMode) { vm.guard("settings.device", change) { vm.setLightMode(it) } }
-    Toggle("Left-handed register", "The order and the keypad move to the right, the menu to the left.", leftHanded) { vm.guard("settings.device", change) { vm.setLeftHanded(it) } }
+    Toggle("Left-handed order screen", "The order moves to the right, the menu to the left.", leftHanded) { vm.guard("settings.device", change) { vm.setLeftHanded(it) } }
     Toggle("Keep the screen on", "The tablet does not go to sleep while RestoPOS is open.", keepAwake) { vm.guard("settings.device", change) { vm.setKeepAwake(it) } }
     Note("These are for this tablet only.")
 }
@@ -871,16 +871,22 @@ private fun SupportPage(vm: SettingsViewModel, network: String, onSignIn: () -> 
 
 private val HELP = listOf(
     "Starting the day" to "Tap Clock in/out, pick your name and enter your PIN. If no sales period is open you count the cash in the drawer first; that opens the sales period.",
-    "Taking an order" to "Tap New order and choose the order type. Pick the table if it asks for one, then tap the items. Save sends what is new to the kitchen and puts the order away; it is back under Orders or on its table.",
-    "Taking payment" to "Open the order and tap Pay. Pick how it is paid. For cash, type what the guest gave to see the change. The receipt prints and the order closes.",
-    "Splitting the bill" to "Split check moves items onto separate checks, and each check is paid on its own. To share one bill evenly, tap Pay and choose how many guests are paying: each gets a printed receipt for their share. When items were rung up by seat, Split Check has One check per seat.",
+    "Serving a table" to "On Tables, tap a free table and the number of guests: its order opens. Tap the items, then Send to kitchen. The table turns blue and shows what it owes and how long it has been. Tap it again to add to the order, print the bill or take payment.",
+    "A counter sale" to "Tap Quick sale, tap the items, tap Pay. What was not sent goes to the kitchen when it is paid.",
+    "A takeaway or a delivery" to "On Takeaway, tap New takeaway or New delivery. Type who it is for, tap the items, and send or take payment. It then moves along the board: new, in the kitchen, ready, and off the board when it is collected. Tap its time to move it, or a delivery's address to pick the rider.",
+    "Options and notes for the kitchen" to "An item marked Options asks its questions when you tap it. Press and hold any item to add a kitchen note or several at once. More, Order note says something about the whole order.",
+    "The kitchen display" to "Every send is a ticket on Kitchen. The cooks tap a line when it is done and Bump when the ticket is at the pass; Recall last brings the last one back. A takeaway turns ready when its last ticket is bumped.",
+    "Taking payment" to "Tap Pay and pick how it is paid. For cash, tap what the guest gave, or type it, to see the change. The receipt prints and the order closes; Print gives another copy, and Email or WhatsApp hands the receipt to that app on the tablet.",
+    "Splitting the bill" to "To share a bill evenly, tap Pay, then Split equally, and set how many are paying: each share is paid its own way and each guest gets a printed copy. To let guests pay for their own items, tap Split: move items onto separate checks and pay each check on its own.",
     "Taking an item off" to "Tap the line on the order. Before it has gone to the kitchen it is simply removed. After that it is a void: the kitchen gets a void ticket, and it needs someone allowed to void.",
+    "Bookings" to "On Bookings, New booking takes the name, the guests and the time. Assign table holds a free table for them on the floor plan. When they arrive, tap Seat, or tap their table and Guests arrived.",
+    "Something has run out" to "Menu, Menu & stock, and switch the item to Sold out. It stays on the menu, greyed, on every till, until it is switched back.",
     "A refund, or the wrong payment type" to "Under Receipts, tap the receipt. Refund gives the whole receipt back. Change corrects how it was paid without changing the amount.",
     "When you are not allowed to" to "A refund, a void after the kitchen has it, opening the drawer and the like may need a manager. The till asks who approves: they tap their name and enter their own PIN, and it is done in your name with their approval on record.",
-    "Handing the drawer to someone else" to "Settings, Cash drawer, Count drawer. Count the cash and enter it: the till shows how it compares, prints a slip for both of you to sign, and the sales period carries on.",
-    "Cash in and cash out" to "Settings, Cash drawer. Type the amount and what it is for. A slip prints for the drawer and it shows on the sales period report.",
-    "Ending the day" to "Take payment for every open order. Under Settings, Cash drawer, tap Close sales period and count the cash. Then Reports, Day so far, Close the day and print.",
-    "A printer does not print" to "Settings, Printers. Check the printer says Connected and try a test print. A failed receipt or report has Try again next to it. A kitchen ticket goes again when you open the order and tap Save.",
+    "Handing the drawer to someone else" to "Menu, Cash drawer. Count the notes and coins and tap Record this count: a slip prints for both of you to sign, and the sales period carries on.",
+    "Cash in and cash out" to "Menu, Cash drawer, Cash in or Cash out. Type the amount and what it is for. A slip prints for the drawer and it shows on the sales period report.",
+    "Ending the day" to "Take payment for every open order. Under Menu, Cash drawer, count the notes and coins and tap Close shift & print Z report: it closes the sales period and, if you choose, the day.",
+    "A printer does not print" to "Settings, Printers. Check the printer says Connected and try a test print. A failed print has Try again next to it. An order still reaches the kitchen display when a kitchen printer does not answer.",
     "No internet" to "Keep selling. Everything is saved on the tablet and sent by itself when the connection is back. Printing does not need the internet, only the local network.",
 )
 

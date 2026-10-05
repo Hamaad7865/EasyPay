@@ -115,6 +115,9 @@ class OrderViewModel @Inject constructor(
     val withOptions: StateFlow<Set<String>> = db.service().itemGroups().map { rows -> rows.map { it.item_id }.toSet() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
+    // Settings, Display: the order on the right and the menu on the left
+    val leftHanded: StateFlow<Boolean> = session.leftHanded.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     private val _sheet = MutableStateFlow<OptionSheet?>(null)
     val sheet: StateFlow<OptionSheet?> = _sheet
 

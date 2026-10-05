@@ -91,10 +91,12 @@ fun OrderScreen(vm: OrderViewModel, onBack: (board: Boolean) -> Unit, onPay: () 
     val ui by vm.ui.collectAsState()
     val sheet by vm.sheet.collectAsState()
     var more by remember { mutableStateOf(false) }
+    val left by vm.leftHanded.collectAsState()
     LaunchedEffect(Unit) { vm.open() }
 
     Row(Modifier.fillMaxSize()) {
-        Column(Modifier.width(390.dp).fillMaxHeight().background(V.Panel).drawBehind { drawRect(V.Stroke, Offset(size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height)) }) {
+        if (left) Menu(ui, vm, Modifier.weight(1f))
+        Column(Modifier.width(390.dp).fillMaxHeight().background(V.Panel).drawBehind { drawRect(V.Stroke, Offset(if (left) 0f else size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height)) }) {
             Head(ui, vm) { onBack(ui.board) }
             Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
             Lines(ui, vm, Modifier.weight(1f))
@@ -120,7 +122,7 @@ fun OrderScreen(vm: OrderViewModel, onBack: (board: Boolean) -> Unit, onPay: () 
                 }
             }
         }
-        Menu(ui, vm, Modifier.weight(1f))
+        if (!left) Menu(ui, vm, Modifier.weight(1f))
     }
 
     sheet?.let { OptionsSheet(it, ui.notes, vm) }
