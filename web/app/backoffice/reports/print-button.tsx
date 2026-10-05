@@ -37,6 +37,15 @@ export function CsvButton() {
     const days = ["from", "to"].map((n) => (main.querySelector(`.filters input[name="${n}"]`) as HTMLInputElement | null)?.value ?? "").filter(Boolean);
     const out: string[] = [];
     out.push([title, ...days].map((v) => (/[",]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v)).join(","));
+    // the figures above the tables, with their notes: a list that is cut short says so there
+    const stats = [...main.querySelectorAll(".stats .stat")];
+    if (stats.length > 0) out.push("");
+    stats.forEach((st) => {
+      const part = (sel: string) => st.querySelector(sel);
+      const row = [part(".stat-label"), part(".stat-value"), part(".stat-note")].filter((e): e is Element => e !== null);
+      const cells = row.map((e) => (e.classList.contains("stat-value") ? cell(Object.assign(document.createElement("span"), { className: "num", textContent: e.textContent })) : cell(e)));
+      if (cells.length > 0) out.push(cells.join(","));
+    });
     main.querySelectorAll("table").forEach((table) => {
       // a table says what it is with the heading of its card, or the one before it
       const head = table.closest(".card")?.querySelector("h2")?.textContent?.trim();

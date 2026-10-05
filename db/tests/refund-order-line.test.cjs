@@ -69,7 +69,9 @@ const amount = (s, done, q) => {
   // a table's bill: three of one item, two of another, one of a third, 10% off, 10% service
   async function sell() {
     const tk = crypto.randomUUID(), rc = crypto.randomUUID();
-    const lines = [{ item: items[0], qty: 3000 }, { item: items[1], qty: 2000 }, { item: items[2], qty: 1000 }].map((l) => ({ id: crypto.randomUUID(), ...l, base: lineAmount(l.item.price, l.qty) }));
+    // the lines' ids in rising order, so which line is "the last" (it takes what is left of each share) is the same on every run
+    const ids = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()].sort();
+    const lines = [{ item: items[0], qty: 3000 }, { item: items[1], qty: 2000 }, { item: items[2], qty: 1000 }].map((l, i) => ({ id: ids[i], ...l, base: lineAmount(l.item.price, l.qty) }));
     const sub = lines.reduce((s, l) => s + l.base, 0n);
     const disc = (sub * 10n + 50n) / 100n;
     const svc = ((sub - disc) * 1000n + 5000n) / 10000n;
@@ -88,6 +90,8 @@ const amount = (s, done, q) => {
 
   const s = await sell();
   check('T0 the bill is stored as the till worked it out', tag(s.res[s.res.length - 1]) === 'applied' && s.row.needs_review === false, JSON.stringify(s.row));
+  // The same bill is in the till's own test (RefundCalcTest, the_bill_the_server_accepted): these figures are what both must give.
+  console.log('     lines: ' + s.lines.map((l) => `${l.item.name} x${l.qty / 1000} = ${l.base}`).join(' | '));
   const [a, b, d] = s.lines;
 
   // T1 one of the three, named by the order's line
@@ -97,6 +101,7 @@ const amount = (s, done, q) => {
     const made = await q1(`select r.total, (select json_agg(json_build_object('t', l.ticket_line_id, 'q', l.qty)) from receipt_lines l where l.receipt_id = r.id) lines
                              from receipts r where r.refund_of = $1 order by r.created_at desc limit 1`, [s.rc]);
     check('T1 one unit of a line is refunded for its exact share', tag(r[0]) === 'applied' && B(made.total) === first, tag(r[0]) + ' ' + made.total + ' vs ' + first);
+    check('T1 that share is 8910, the figure the till\'s own test holds', first === 8910n, String(first));
     check('T1 the refund says which line and how many', made.lines.length === 1 && made.lines[0].t === a.id && made.lines[0].q === 1000, JSON.stringify(made.lines));
   }
 
@@ -112,6 +117,7 @@ const amount = (s, done, q) => {
     const amt = amount(s.sh[a.id], 1000n, 1000n) + amount(s.sh[b.id], 0n, 2000n);
     const r = await push([refund(s.rc, [{ ticket_line_id: a.id, qty: 1000 }, { ticket_line_id: b.id, qty: 2000 }], amt)]);
     check('T3 several lines in one refund, counting what was already given back', tag(r[0]) === 'applied', tag(r[0]) + ' ' + amt);
+    check('T3 that refund is 76230, as in the till\'s test', amt === 76230n, String(amt));
   }
 
   // T4 what cannot be: more than is left, a line twice, a line of another order, no id at all
@@ -137,6 +143,7 @@ const amount = (s, done, q) => {
     const r = await push([refund(s.rc, null, rest)]);
     const after = B((await q1(`select coalesce(sum(total), 0)::text s from receipts where refund_of = $1`, [s.rc])).s);
     check('T5 what is left is what the remaining lines add up to', rest === expected, rest + ' vs ' + expected);
+    check('T5 and it is 56430, as in the till\'s test', rest === 56430n, String(rest));
     check('T5 "the rest" is refunded and the receipt is given back exactly', tag(r[0]) === 'applied' && after === B(s.row.total), tag(r[0]) + ' ' + after + ' of ' + s.row.total);
     const more = await push([refund(s.rc, [{ ticket_line_id: d.id, qty: 1000 }], 100n)]);
     check('T5 nothing more comes back afterwards', tag(more[0]) === 'rejected:bad-qty', tag(more[0]));

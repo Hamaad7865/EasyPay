@@ -84,6 +84,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 
@@ -161,13 +163,13 @@ class PayViewModel @Inject constructor(
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    // Leaving the screen on purpose gives the shares back (the cashier was
-    // asked first). What was written down for this order goes with them.
+    // Leaving the screen clears what is on it, not what was written down: a
+    // cashier who goes to another table between two guests finds the shares
+    // again on coming back to this bill. They are only thrown away when they
+    // are given back (the cashier is asked first) or recorded.
     fun reset() {
-        val had = shares.isNotEmpty()
         shares = emptyList()
         _ui.value = PayUi()
-        if (had) viewModelScope.launch { session.setSplitShares(null) }
     }
 
     fun open() = viewModelScope.launch {
@@ -184,7 +186,7 @@ class PayViewModel @Inject constructor(
             if (s.gone || shares.sumOf { it.input.amount } >= s.pending + s.remaining) {
                 // the bill is no longer bigger than what was taken: start again, and say so
                 shares = emptyList()
-                session.setSplitShares(null)
+                keep(kept.ticket, 0)
                 show(s.copy(split = "full"))
                 Toaster.say("${Money.format(kept.shares.sumOf { it.amount })} was taken on this bill before the till stopped. The bill has changed since: check it with the guests.")
             } else {
@@ -194,19 +196,27 @@ class PayViewModel @Inject constructor(
         }
     }
 
-    // The shares written down for the order on the register, if any. Shares
-    // written down for an order that is closed since are thrown away.
+    // What is written down, one entry per order: two bills can be half paid at
+    // the same time (two tables each splitting), and neither loses its shares.
+    private val keptSerializer = MapSerializer(String.serializer(), KeptSplit.serializer())
+    private suspend fun allKept(): Map<String, KeptSplit> =
+        session.splitShares()?.let { runCatching { json.decodeFromString(keptSerializer, it) }.getOrNull() } ?: emptyMap()
+    private suspend fun saveKept(all: Map<String, KeptSplit>) = session.setSplitShares(if (all.isEmpty()) null else json.encodeToString(keptSerializer, all))
+
+    // The shares written down for the order on the register, if any. Those of
+    // an order that has been closed since are thrown away.
     private suspend fun kept(): KeptSplit? {
-        val saved = session.splitShares()?.let { runCatching { json.decodeFromString<KeptSplit>(it) }.getOrNull() } ?: return null
-        if (saved.shares.isEmpty() || db.tickets().openTicket(saved.ticket) == null) { session.setSplitShares(null); return null }
-        return saved.takeIf { it.ticket == tickets.activeTicket()?.id }
+        val all = allKept()
+        val live = all.filter { (id, k) -> k.shares.isNotEmpty() && db.tickets().openTicket(id) != null }
+        if (live.size != all.size) saveKept(live)
+        return live[tickets.activeTicket()?.id]
     }
 
+    // Writes down the shares taken so far on this order, or forgets them when there are none.
     private fun keep(ticketId: String?, n: Int) = viewModelScope.launch {
-        session.setSplitShares(
-            if (ticketId == null || shares.isEmpty()) null
-            else json.encodeToString(KeptSplit.serializer(), KeptSplit(ticketId, n, shares.map { KeptShare(it.type, it.input.paymentTypeId, it.input.amount, it.input.tendered, it.input.change, it.input.reference) })),
-        )
+        val id = ticketId ?: return@launch
+        val now = shares.map { KeptShare(it.type, it.input.paymentTypeId, it.input.amount, it.input.tendered, it.input.change, it.input.reference) }
+        saveKept(if (now.isEmpty()) allKept() - id else allKept() + (id to KeptSplit(id, n, now)))
     }
 
     private fun totalsFor(ids: Collection<String>): Calc.Totals {
@@ -299,7 +309,7 @@ class PayViewModel @Inject constructor(
     fun tender(cents: Long) { _ui.value = _ui.value.copy(tend = ((cents + 99) / 100).toString()) }
 
     // The shares taken so far are given back and the bill starts again.
-    fun giveBack() { shares = emptyList(); keep(null, 0); show(_ui.value.copy(tend = "")) }
+    fun giveBack() { shares = emptyList(); keep(ticketId, 0); show(_ui.value.copy(tend = "")) }
 
     fun charge() {
         val s = _ui.value
@@ -341,7 +351,7 @@ class PayViewModel @Inject constructor(
         tickets.pay(payments, listOfNotNull(discount), servicePct, covered).fold(
             onSuccess = { receipt ->
                 shares = emptyList()
-                session.setSplitShares(null)
+                keep(ticketId, 0)
                 orderOps.afterPay(receipt, perGuest = s.split == "equal" && with.size >= 2)
                 if (tickets.activeTicket() == null) {
                     session.setPendingDiscount(null)

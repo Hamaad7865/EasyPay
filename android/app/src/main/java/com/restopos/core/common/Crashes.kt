@@ -9,13 +9,11 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import java.io.File
-import java.io.PrintWriter
-import java.io.StringWriter
 import java.time.Instant
 
 // When the till stops unexpectedly it writes down where: the stack trace, its
 // version and the tablet, one small file per crash. Nothing of a sale and no
-// name goes in. The next sync sends the files to the restaurant's own server
+// name goes in: not even the error's own message. The next sync sends the files to the restaurant's own server
 // and deletes them, so EasyPay hears of a crash before the restaurant has to
 // call. Android's own handler runs afterwards, exactly as before.
 object Crashes {
@@ -43,7 +41,24 @@ object Crashes {
         put("android", Build.VERSION.RELEASE ?: "")
         put("model", listOfNotNull(Build.MANUFACTURER, Build.MODEL).joinToString(" "))
         put("thread", thread)
-        put("trace", StringWriter().also { error.printStackTrace(PrintWriter(it)) }.toString().take(20_000))
+        put("trace", where(error))
+    }
+
+    // Where it stopped: the kind of error and the path through the program,
+    // for the error and whatever caused it. An error's own message is left
+    // out on purpose: it can quote what was being worked on (a customer's
+    // name in a line that could not be read, say), and that stays on the tablet.
+    fun where(error: Throwable): String {
+        val out = StringBuilder()
+        var e: Throwable? = error
+        var depth = 0
+        while (e != null && depth < 6) {
+            out.append(if (depth == 0) "" else "Caused by: ").append(e.javaClass.name).append('\n')
+            e.stackTrace.take(60).forEach { out.append("\tat ").append(it.toString()).append('\n') }
+            e = e.cause?.takeIf { it !== e }
+            depth++
+        }
+        return out.toString().take(20_000)
     }
 
     // The reports waiting to be sent, oldest first, each with its file. A file

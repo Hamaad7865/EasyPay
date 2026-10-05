@@ -39,6 +39,23 @@ class RefundCalcTest {
         assertEquals(29700L, RefundCalc.parts(a, 0, 1000).total)
     }
 
+    // The bill of db/tests/refund-order-line.test.cjs, line for line: 3 Alouda,
+    // 2 Bol renverse, 1 Briyani mouton, 10% off, 10% service. The server took
+    // refunds of exactly these amounts, in this order, and refused any other.
+    @Test fun the_bill_the_server_accepted() {
+        val rc = RefundCalc.Receipt(subtotal = 143000, discount = 14300, service = 12870, rounding = 0, taxTotal = 16788, total = 141570)
+        val s = RefundCalc.shares(
+            listOf(RefundCalc.Line("01", 27000, 3000, vat), RefundCalc.Line("02", 68000, 2000, vat), RefundCalc.Line("03", 48000, 1000, vat)), rc,
+        ).associateBy { it.line.id }
+        val first = RefundCalc.parts(s.getValue("01"), 0, 1000).total
+        val second = RefundCalc.parts(s.getValue("01"), 1000, 1000).total + RefundCalc.parts(s.getValue("02"), 0, 2000).total
+        val rest = RefundCalc.parts(s.getValue("01"), 2000, 1000).total + RefundCalc.parts(s.getValue("03"), 0, 1000).total
+        assertEquals(8910L, first)
+        assertEquals(76230L, second)
+        assertEquals(56430L, rest)
+        assertEquals(rc.total, first + second + rest)
+    }
+
     @Test fun the_order_the_lines_are_given_in_does_not_matter() {
         val one = RefundCalc.shares(lines, bill).associate { it.line.id to it }
         val other = RefundCalc.shares(lines.reversed(), bill).associate { it.line.id to it }

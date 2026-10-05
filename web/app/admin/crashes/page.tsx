@@ -37,8 +37,9 @@ export default async function CrashesPage() {
     <div>
       <h1>Crashes</h1>
       <p>
-        The last 60 days. A till writes a report when it stops unexpectedly and sends it the next time it syncs; nothing of a sale or a customer is in
-        it.
+        The last 60 days. A till writes a report when it stops unexpectedly and sends it the next time it syncs. A report says what kind of error it
+        was and where in the program, with the version and the tablet; the error&apos;s own message is left out, so nothing of a sale or a customer is
+        in it.
       </p>
       {rows.length === 0 ? (
         <p>No till has reported a crash.</p>
