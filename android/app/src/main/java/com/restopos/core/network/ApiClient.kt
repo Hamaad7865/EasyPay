@@ -114,6 +114,17 @@ class ApiClient(baseUrl: String, private val auth: AuthClient, private val versi
             }
         }.body()
 
+    // What the till wrote down when it stopped unexpectedly (core/common/Crashes).
+    suspend fun crashes(reports: List<kotlinx.serialization.json.JsonObject>) {
+        authed { token ->
+            http.post("$functionUrl/crash") {
+                bearerAuth(token)
+                contentType(ContentType.Application.Json)
+                setBody(kotlinx.serialization.json.buildJsonObject { put("reports", kotlinx.serialization.json.JsonArray(reports)) })
+            }
+        }
+    }
+
     suspend fun seedDemo() {
         authed { token -> http.post("$functionUrl/seed-demo") { bearerAuth(token) } }
     }

@@ -17,6 +17,8 @@ class RestoPosApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        // before anything else can go wrong: a crash is written down for the next sync to send
+        com.restopos.core.common.Crashes.install(this)
         // how many decimals amounts are shown with, before the first screen draws them
         printing.scope.launch { runCatching { printing.settings() } }
     }

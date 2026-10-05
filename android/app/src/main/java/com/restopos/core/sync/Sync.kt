@@ -82,6 +82,19 @@ class PullWorker @AssistedInject constructor(
         // Anything still waiting to go up goes with every sync: a push that
         // ended on an error is not left until the next sale to try again.
         if (db.outbox().pendingCount() > 0) pushNow(applicationContext)
+        // What the till wrote down if it stopped unexpectedly goes up too. A
+        // server that does not take it yet, or no network, leaves the files
+        // for the next sync; it never holds the sync itself up.
+        runCatching {
+            val waiting = com.restopos.core.common.Crashes.waiting(applicationContext)
+            if (waiting.isNotEmpty()) {
+                val device = session.deviceId()
+                api.crashes(waiting.map { (_, r) ->
+                    if (device == null) r else kotlinx.serialization.json.JsonObject(r + ("device_id" to kotlinx.serialization.json.JsonPrimitive(device)))
+                })
+                waiting.forEach { (file, _) -> file.delete() }
+            }
+        }
         return try {
             val saved = db.sync().cursor(store)
             var cursor = saved?.cursor ?: 0

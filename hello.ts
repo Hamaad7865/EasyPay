@@ -49,7 +49,7 @@ async function requireAuth(req: Request): Promise<Authed> {
   return { authUserId: sub, tenantId: found.rows[0].tenant_id, employeeId: found.rows[0].id, status: found.rows[0].status };
 }
 
-const SUSPENDED = { error: "This account is suspended. Sales already made still sync; contact RestoPOS to reactivate." };
+const SUSPENDED = { error: "This account is suspended. Sales already made still sync; contact EasyPay to reactivate." };
 function suspended(auth: Authed): boolean {
   return auth.status !== "active";
 }
@@ -104,7 +104,7 @@ app.use("*", async (c, next) => {
   await next();
 });
 
-app.get("/health", (c) => c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0057" }));
+app.get("/health", (c) => c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0059" }));
 
 // Tenant-scoped self check: only ever returns the caller's own rows.
 app.get("/me", async (c) => {
@@ -169,7 +169,7 @@ app.post("/devices/register", async (c) => {
       q(`select deleted_at is not null as deactivated from pos_devices where id = $1 and tenant_id = $2`, [deviceId, auth.tenantId]).then((r) => r.rows),
     );
     if (known[0]?.deactivated) {
-      return c.json({ error: "This till was deactivated. Contact RestoPOS to reactivate it." }, 403);
+      return c.json({ error: "This till was deactivated. Contact EasyPay to reactivate it." }, 403);
     }
     const rows = await asTenant<{ id: string; last_receipt_seq: string }>(auth.tenantId, (q) =>
       q(
@@ -237,6 +237,29 @@ app.get("/sync/pull", async (c) => {
     return c.json(out[0].r);
   } catch (err) {
     return c.json({ error: "pull failed" }, syncFailure("pull", err));
+  }
+});
+
+// What a till wrote down when it stopped unexpectedly, sent the next time it
+// runs: where in the program, which version, which tablet. At most ten at a
+// time, each cut to size by report_crashes; the same report twice is kept once.
+app.post("/crash", async (c) => {
+  let auth: Authed;
+  try {
+    auth = await requireAuth(c.req.raw);
+  } catch (res) {
+    return res as Response;
+  }
+  const body: { reports?: unknown } = await c.req.json<{ reports?: unknown }>().catch((): { reports?: unknown } => ({}));
+  if (!Array.isArray(body.reports) || body.reports.length < 1) return c.json({ error: "reports must be a list" }, 400);
+  const reports = body.reports.slice(0, 10);
+  try {
+    const out = await asTenant<{ n: number }>(auth.tenantId, (q) =>
+      q(`select report_crashes($1::uuid, $2::jsonb) as n`, [auth.employeeId, JSON.stringify(reports)]).then((r) => r.rows),
+    );
+    return c.json({ kept: out[0].n });
+  } catch (err) {
+    return c.json({ error: "the reports could not be kept" }, syncFailure("crash", err));
   }
 });
 
