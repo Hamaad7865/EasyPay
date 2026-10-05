@@ -77,9 +77,20 @@ export async function asTenant<T>(tenantId: string, fn: (q: (text: string, param
   }
 }
 
+// How a failed sync call is answered. What the till cannot fix by trying again
+// (a batch that is not a batch, a store or a login that is not there) is 400,
+// and the till stops. Anything else is the database being busy, asleep or cut
+// off: 503, which the till retries with a growing pause, so nothing waits in
+// its outbox until the next sale.
+function syncFailure(what: string, err: unknown): 400 | 503 {
+  const msg = (err as Error)?.message ?? "";
+  console.error(what + " failed:", msg);
+  return /unknown-employee|bad-batch|unknown store|invalid input syntax/.test(msg) ? 400 : 503;
+}
+
 const app = new Hono();
 
-app.get("/health", (c) => c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "admin-0046" }));
+app.get("/health", (c) => c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0057" }));
 
 // Tenant-scoped self check: only ever returns the caller's own rows.
 app.get("/me", async (c) => {
@@ -188,8 +199,7 @@ app.post("/sync/push", async (c) => {
     );
     return c.json(out[0].r);
   } catch (err) {
-    console.error("push failed:", (err as Error).message);
-    return c.json({ error: "push failed" }, 400);
+    return c.json({ error: "push failed" }, syncFailure("push", err));
   }
 });
 
@@ -205,14 +215,14 @@ app.get("/sync/pull", async (c) => {
   const cursor = Number(c.req.query("cursor") ?? "0");
   const limit = Number(c.req.query("limit") ?? "200");
   if (!/^[0-9a-f-]{36}$/i.test(storeId)) return c.json({ error: "storeId required" }, 400);
+  if (!Number.isInteger(cursor) || cursor < 0 || !Number.isInteger(limit)) return c.json({ error: "cursor and limit must be whole numbers" }, 400);
   try {
     const out = await asTenant<{ r: unknown }>(auth.tenantId, (q) =>
       q(`select sync_pull($1::uuid, $2::bigint, $3::int) as r`, [storeId, cursor, limit]).then((r) => r.rows),
     );
     return c.json(out[0].r);
   } catch (err) {
-    console.error("pull failed:", (err as Error).message);
-    return c.json({ error: "pull failed" }, 400);
+    return c.json({ error: "pull failed" }, syncFailure("pull", err));
   }
 });
 

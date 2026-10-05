@@ -79,6 +79,9 @@ class PullWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         // Nothing to pull until a store is chosen; not a failure.
         val store = session.storeId() ?: return Result.success()
+        // Anything still waiting to go up goes with every sync: a push that
+        // ended on an error is not left until the next sale to try again.
+        if (db.outbox().pendingCount() > 0) pushNow(applicationContext)
         return try {
             val saved = db.sync().cursor(store)
             var cursor = saved?.cursor ?: 0

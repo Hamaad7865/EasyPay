@@ -188,6 +188,11 @@ class PayViewModel @Inject constructor(
         val kind = type?.kind ?: if (table != null) "dine" else "counter"
         val methods = db.catalog().paymentTypes().first()
         val cur = _ui.value
+        // One check of a split check: an amount off the bill comes off the
+        // first check that has something on it, which is where the split
+        // screen and the printed checks show it. Paying another check first
+        // does not take it.
+        if (cur.check != null && discount?.type == "amount" && cur.check != unpaid.minOfOrNull { it.line.check_no }) discount = null
         val title = (if (table != null) "${tableLabel(table.name)} · ${t.covers ?: 1} ${L.covers}"
         else listOfNotNull(if (kind == "counter") L.quick else type?.name, t.order_no, t.name).joinToString(" ")) + (cur.check?.let { " · Check $it" } ?: "")
         show(cur.copy(

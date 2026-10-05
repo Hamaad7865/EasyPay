@@ -222,6 +222,9 @@ class OrderViewModel @Inject constructor(
         if (s.busy) return@launch
         if (s.unsent == 0) { Toaster.say(if (s.empty) "Add an item first" else "Everything on this order is already in the kitchen"); return@launch }
         _ui.value = s.copy(busy = true)
+        // the name just typed goes on the kitchen ticket
+        contactJob?.cancel()
+        saveContact()
         val out = orderOps.save()
         out.fold(
             onSuccess = { r ->
@@ -257,15 +260,34 @@ class OrderViewModel @Inject constructor(
     }
 
     // Who a takeaway is for. Typing is not saved letter by letter: it waits
-    // for a pause.
+    // for a pause. What was typed in one box is kept while the next is typed
+    // in, and all of it is saved together.
     private var contactJob: Job? = null
+    private var typed: Triple<String?, String?, String?>? = null
+    private var typedOn: Pair<String?, Int>? = null // the order it was typed on: its id, or the screen's turn if it had none yet
     fun contact(name: String? = null, phone: String? = null, address: String? = null) {
+        val was = typed
+        typed = Triple(name ?: was?.first, phone ?: was?.second, address ?: was?.third)
+        if (typedOn == null) typedOn = _ui.value.ticket?.id to _ui.value.session
         contactJob?.cancel()
         contactJob = viewModelScope.launch {
             delay(700)
-            tickets.setContact(name?.trim(), phone?.trim(), address?.trim()).onFailure { Toaster.say(it.message) }
+            saveContact()
             reload()
         }
+    }
+
+    // Saves what was typed, if the order it was typed on is still the one on
+    // the register. Someone who typed a name and left for another order within
+    // the pause does not get that name put on the other order.
+    private suspend fun saveContact() {
+        val what = typed ?: return
+        val (forTicket, forTurn) = typedOn ?: (null to _ui.value.session)
+        typed = null
+        typedOn = null
+        val active = tickets.activeTicket()?.id
+        if (if (forTicket != null) active != forTicket else _ui.value.session != forTurn) return
+        tickets.setContact(what.first?.trim(), what.second?.trim(), what.third?.trim()).onFailure { Toaster.say(it.message) }
     }
 
     fun mayPay(): Boolean {
@@ -323,8 +345,9 @@ class OrderViewModel @Inject constructor(
     fun reprintKitchen() = viewModelScope.launch { approved("Sent to the kitchen printer again") { by -> orderOps.reprintKitchen(by) } }
 
     // Cancel order: every item comes off (the kitchen is told about the ones
-    // it has, which needs someone allowed to void them), and the order lets go
-    // of its table and leaves the board. One that is partly paid cannot be cancelled.
+    // it has, which needs someone allowed to void them), and the order is
+    // closed: it lets go of its table and leaves the board. One that is partly
+    // paid cannot be cancelled.
     fun cancel(then: () -> Unit) = viewModelScope.launch {
         val t = tickets.activeTicket()
         if (t == null) { tickets.newTicket(); then(); return@launch }
@@ -335,8 +358,7 @@ class OrderViewModel @Inject constructor(
         approved("Order cancelled", then = then) { by ->
             runCatching {
                 removeAll(db.tickets().allLines(t.id).map { it.id }, by)
-                if (t.stage != null && t.stage != "done") tickets.setStage(t.id, "done").getOrThrow()
-                if (t.table_id != null || t.name != null || t.customer_id != null) tickets.release().getOrThrow()
+                tickets.cancelOrder(t.id).getOrThrow()
                 tickets.newTicket()
                 session.setPendingDiscount(null)
             }

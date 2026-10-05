@@ -169,10 +169,9 @@ class FloorViewModel @Inject constructor(
         )
     }
 
-    // A table seated by mistake, with nothing ordered: the order lets go of it.
+    // A table seated by mistake, with nothing ordered: its order is closed.
     fun free(order: OrderInfo) = viewModelScope.launch {
-        tickets.select(order.id)
-        tickets.release().fold(
+        tickets.cancelOrder(order.id).fold(
             onSuccess = { tickets.newTicket(); selected.value = null; Toaster.say("${order.label} is free again") },
             onFailure = { Toaster.say(it.message) },
         )

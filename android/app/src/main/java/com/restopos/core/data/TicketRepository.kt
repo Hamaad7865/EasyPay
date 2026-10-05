@@ -200,9 +200,15 @@ class TicketRepository @Inject constructor(
         if (t == null) { session.setPendingDining(optionId); return@runCatching }
         setDining(optionId).getOrThrow()
         val board = type.kind == "takeaway" || type.kind == "delivery"
-        if (board && t.stage == null) {
-            setStage(t.id, "new").getOrThrow()
-            setDue(t.id, System.currentTimeMillis() + PosSettings.parse(db.ops().settings()).prepMinutes * 60_000L * (if (type.kind == "delivery") 2 else 1)).getOrThrow()
+        // An open order that is a takeaway belongs on the board, also one that
+        // was a takeaway, became a counter sale (which took it off) and is a
+        // takeaway again. It goes where its kitchen tickets say it is.
+        if (board && (t.stage == null || t.stage == "done")) {
+            val sent = db.tickets().lines(t.id).first().any { it.sent_to_kitchen_at != null }
+            setStage(t.id, if (!sent) "new" else if (db.service().kdsOpenFor(t.id) == 0) "ready" else "kitchen").getOrThrow()
+            if (t.due_at == null) {
+                setDue(t.id, System.currentTimeMillis() + PosSettings.parse(db.ops().settings()).prepMinutes * 60_000L * (if (type.kind == "delivery") 2 else 1)).getOrThrow()
+            }
         }
         if (!board && t.stage != null && t.stage != "done") setStage(t.id, "done").getOrThrow()
     }
@@ -290,10 +296,18 @@ class TicketRepository @Inject constructor(
     suspend fun setCustomer(customerId: String?) =
         updateMeta({ it.copy(customer_id = customerId) }) { if (customerId == null) put("customer_id", JsonNull) else put("customer_id", customerId) }
 
-    // Takes an order off its table, its name and its customer: what is left of
-    // a cancelled order holds no table and shows nowhere.
-    suspend fun release() = updateMeta({ it.copy(name = null, table_id = null, customer_id = null) }) {
-        put("name", ""); put("table_id", JsonNull); put("customer_id", JsonNull)
+    // An order given up: a table seated by mistake, or an order cancelled once
+    // everything on it was taken off. It is closed for good, here and on the
+    // server, and lets go of its table and of the board. Nothing is deleted.
+    suspend fun cancelOrder(ticketId: String): Result<Unit> = runCatching {
+        val t = db.tickets().openTicket(ticketId) ?: return@runCatching
+        require(db.tickets().lines(ticketId).first().isEmpty()) { "Take the items off this order first" }
+        db.withTransaction {
+            db.tickets().upsertTicket(t.copy(status = "cancelled", table_id = null, stage = t.stage?.let { "done" }, updated_at = System.currentTimeMillis()))
+            db.outbox().enqueue(op("ticket.cancel", buildJsonObject { put("ticket_id", ticketId) }))
+        }
+        if (session.activeTicket() == ticketId) session.clearActiveTicket()
+        pushNow(context)
     }
 
     // Moves lines of the order on the register to another seat (null: the
@@ -370,16 +384,19 @@ class TicketRepository @Inject constructor(
     // stock counts arrive with inventory (Phase 9).
     // course: which course of the meal the line belongs to (table service), or
     // null on an order that is not split into courses.
-    suspend fun addItem(itemId: String, qty: Int, mods: List<ModPick>, note: String?, course: Int? = null, seat: Int? = null): Result<Unit> =
+    // again: the line is one already on the order being put back with another
+    // quantity, so what was true when it was rung up (the item was on sale,
+    // its options were offered) is not asked a second time.
+    suspend fun addItem(itemId: String, qty: Int, mods: List<ModPick>, note: String?, course: Int? = null, seat: Int? = null, again: Boolean = false): Result<Unit> =
         runCatching {
             require(qty > 0) { "bad qty" }
             val t = ensureTicket()
             val (tenant, _, _) = ctx()
             val dao = db.catalog()
             val item = dao.item(itemId) ?: error("unknown item")
-            require(item.is_available) { "${item.name} is sold out" }
+            require(item.is_available || again) { "${item.name} is sold out" }
             val taxes = dao.taxesForItem(itemId)
-            if (mods.isNotEmpty()) {
+            if (mods.isNotEmpty() && !again) {
                 val linked = dao.modifiersForItem(itemId).map { it.id }.toSet()
                 mods.forEach { require(linked.contains(it.id)) { "bad modifier" } }
             }
@@ -420,14 +437,16 @@ class TicketRepository @Inject constructor(
     suspend fun setQty(lineId: String, qty: Int, reason: String): Result<Unit> = runCatching {
         val lines = currentLines()
         val line = lines.firstOrNull { it.id == lineId } ?: error("bad line")
+        val itemId = line.item_id ?: error("bad line")
+        // Everything that could refuse the new line is checked before the old
+        // one comes off: more of something that has run out is refused here,
+        // and fewer of it is always allowed.
+        val item = db.catalog().item(itemId) ?: error("unknown item")
+        require(qty <= line.qty || item.is_available) { "${item.name} is sold out" }
+        // its options as they were rung up, at the prices charged then
+        val mods = db.tickets().lineMods(lineId).map { ModPick(it.modifier_id, it.name_snapshot, it.price) }
         voidLine(lineId, reason).getOrThrow()
-        if (qty > 0) {
-            val mods = db.tickets().modIds(lineId).mapNotNull { mid ->
-                db.catalog().modifiersForItem(line.item_id ?: return@mapNotNull null).firstOrNull { it.id == mid }
-                    ?.let { ModPick(it.id, it.name, it.price) }
-            }
-            addItem(line.item_id ?: error("bad line"), qty, mods, line.note, line.course, line.seat).getOrThrow()
-        }
+        if (qty > 0) addItem(itemId, qty, mods, line.note, line.course, line.seat, again = true).getOrThrow()
     }
 
     // Split check: takes `units` off a line and puts them on a new line of the

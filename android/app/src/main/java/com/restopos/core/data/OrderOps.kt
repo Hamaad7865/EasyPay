@@ -153,7 +153,7 @@ class OrderOps @Inject constructor(
         val t = tickets.activeTicket() ?: error("No order is open")
         val rows = db.tickets().lines(t.id).first().filter { !it.paid && lineIds.contains(it.id) }
         require(rows.isNotEmpty()) { "Nothing on this check" }
-        val bill = docs.bill(t, rows, discount)
+        val bill = docs.bill(t, rows, discount, service.servicePct(t))
         docs.print(bill.copy(order = "${bill.order} - Check $check")).getOrThrow()
     }
 

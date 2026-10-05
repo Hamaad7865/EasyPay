@@ -41,6 +41,7 @@ import com.restopos.core.common.tableLabel
 import com.restopos.core.data.Calc
 import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.OrderOps
+import com.restopos.core.data.ServiceRepository
 import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.sync.SessionStore
@@ -81,6 +82,7 @@ class SplitViewModel @Inject constructor(
     private val orders: OrderOps,
     private val db: TillDatabase,
     private val session: SessionStore,
+    private val service: ServiceRepository,
 ) : ViewModel() {
     private val _ui = MutableStateFlow(SplitUi())
     val ui: StateFlow<SplitUi> = _ui
@@ -101,13 +103,15 @@ class SplitViewModel @Inject constructor(
         val totals = HashMap<Int, Long>()
         // a percentage comes off every check; an amount comes off the first check that has something on it
         val first = lines.minOfOrNull { it.check }
+        // a table's service charge is on every check, as it will be on its receipt
+        val servicePct = service.servicePct(t)
         for (n in 1..checks) {
             val mine = rows.filter { it.check_no == n }
             val d = discount?.takeIf { it.type == "percent" || n == first }
             val calc = mine.map { l ->
                 Calc.Line(Calc.lineAmount(l.unit_price, l.qty) + db.tickets().modSum(l.id), db.catalog().lineTaxes(l.id).map { Calc.TaxRate(it.rate_bp, it.type) })
             }
-            totals[n] = Calc.totalsRounded(calc, listOfNotNull(d?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) })).total
+            totals[n] = Calc.totalsRounded(calc, listOfNotNull(d?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) }), servicePct).total
         }
         val name = t.name ?: t.table_id?.let { db.tables().table(it)?.name }?.let { tableLabel(it) }
             ?: t.customer_id?.let { db.customers().customer(it)?.name } ?: "Direct sale"
