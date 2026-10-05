@@ -314,6 +314,9 @@
   .till.piece { --u: 2.9; }
 }
 @media (max-width: 620px) {
+  /* on a phone the tablet is shown larger and runs off the side of its
+     stage, so the half that is seen can be read */
+  .stage--hero .tablet { width: 190%; max-width: none; margin: 0; }
   .till.piece { --u: 3.3; }
   .v-kitchen, .v-pay { grid-template-columns: minmax(0, 1fr); gap: 1.6em; }
   .v-kitchen .paper-wrap, .v-pay .paper-wrap { width: 78%; margin: 0 auto; }
