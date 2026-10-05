@@ -138,7 +138,7 @@ fun BookingsScreen(vm: BookingsViewModel, serviceLine: String, onAssign: (Bookin
     val live = ui.rows.map { it.booking }.filter { it.status != "noshow" }
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            ScreenHead(serviceLine, L.t("Bookings", "Réservations"))
+            ScreenHead(serviceLine, L.t("Bookings", "Réservations", "Rezervasion"))
             Gap()
             VBtn("New booking", bg = V.Blue, fg = Color.White, height = 52.dp, radius = 14.dp, pad = 22.dp, icon = VI.Plus) { adding = true }
         }

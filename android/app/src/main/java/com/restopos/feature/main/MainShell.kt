@@ -245,7 +245,7 @@ fun MainShell(
     var confirmSignOut by remember { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(10_000) } }
-    LaunchedEffect(lang) { L.fr = lang == "fr" }
+    LaunchedEffect(lang) { L.lang = lang }
     val clockAhead by shell.clockAhead.collectAsState()
     val updateRequired by shell.updateRequired.collectAsState()
     // Left alone for the minutes set in the back office, the till goes back to
@@ -405,7 +405,11 @@ private fun SideMenu(
             BACK.forEach { n -> Entry(n, lit == n.screen, 0, V.Red) { onGo(n.screen) } }
             Caps(L.language, modifier = Modifier.padding(start = 12.dp, top = 16.dp, bottom = 8.dp))
             Seg(
-                listOf(SegOption("English", lang != "fr") { shell.setLang("en") }, SegOption("Français", lang == "fr") { shell.setLang("fr") }),
+                listOf(
+                    SegOption("English", lang != "fr" && lang != "mfe") { shell.setLang("en") },
+                    SegOption("Français", lang == "fr") { shell.setLang("fr") },
+                    SegOption("Kreol", lang == "mfe") { shell.setLang("mfe") },
+                ),
                 Modifier.fillMaxWidth().padding(horizontal = 4.dp), V.Well, 44.dp, 12.dp, fill = true,
             )
             if (team.isNotEmpty()) {

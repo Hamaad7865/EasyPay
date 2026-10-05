@@ -250,7 +250,7 @@ private fun Totals(ui: OrderUi) {
             T(Money.format(t.total), 28.sp, 800, spacing = (-0.6).sp)
         }
         Row {
-            T(L.t("of which tax", "dont taxes"), 13.sp, 600, V.Text3)
+            T(L.t("of which tax", "dont taxes", "ladan tax"), 13.sp, 600, V.Text3)
             Gap()
             T(Money.format(t.tax), 13.sp, 600, V.Text3)
         }

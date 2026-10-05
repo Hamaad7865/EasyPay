@@ -467,7 +467,7 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                     Row { T(L.total, 15.sp, 600, V.Dim); Gap(); T(Money.format(ui.total), 15.sp, 800, V.Dim) }
                     ui.paid.forEach { p -> Row { T("Paid · ${p.label}", 14.sp, 700, V.GreenText); Gap(); T("− ${Money.format(p.amount)}", 14.sp, 700, V.GreenText) } }
                     Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.Bottom) { T("Remaining", 16.sp, 700); Gap(); T(Money.format(ui.remaining), 26.sp, 800, spacing = (-0.5).sp) }
-                    Row { T(L.t("of which tax", "dont taxes"), 13.sp, 600, V.Text3); Gap(); T(Money.format(ui.tax), 13.sp, 600, V.Text3) }
+                    Row { T(L.t("of which tax", "dont taxes", "ladan tax"), 13.sp, 600, V.Text3); Gap(); T(Money.format(ui.tax), 13.sp, 600, V.Text3) }
                 }
             }
             Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = 24.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
