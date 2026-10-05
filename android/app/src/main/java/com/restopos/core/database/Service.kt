@@ -140,6 +140,13 @@ interface ServiceDao {
     @Query("UPDATE tickets SET bill_at = :at WHERE id = :id")
     suspend fun setBill(id: String, at: Long?)
 
+    // what earlier receipts of an order were paid with
+    @Query(
+        """SELECT p.* FROM receipt_payments p JOIN receipts r ON r.id = p.receipt_id
+           WHERE r.ticket_id = :ticket AND r.type = 'sale' AND r.deleted_at IS NULL ORDER BY r.device_time""",
+    )
+    suspend fun paymentsForTicket(ticket: String): List<ReceiptPaymentEntity>
+
     // ---- bookings ----
     @Upsert suspend fun upsertBookings(rows: List<BookingEntity>)
 

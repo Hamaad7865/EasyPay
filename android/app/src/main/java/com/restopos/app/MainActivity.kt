@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var staffRepo: com.restopos.core.data.StaffRepository
     @Inject lateinit var db: com.restopos.core.database.TillDatabase
 
-    // The screens are drawn for a 1024 x 720dp landscape tablet and scaled to
+    // The screens are drawn for a 1280 x 720dp landscape tablet and scaled to
     // the tablet they run on: a 15-inch till shows the same layout larger,
     // instead of the same sizes lost in empty space. The smaller of the two
     // ratios is used, so a wide 16:10 tablet keeps the height the order list
@@ -52,7 +52,7 @@ class MainActivity : ComponentActivity() {
         val base = newBase.resources.configuration
         val width = maxOf(base.screenWidthDp, base.screenHeightDp)
         val height = minOf(base.screenWidthDp, base.screenHeightDp)
-        val scale = minOf(width / 1024f, height / 720f).coerceIn(0.75f, 2f)
+        val scale = minOf(width / 1280f, height / 720f).coerceIn(0.6f, 2f)
         applyOverrideConfiguration(Configuration().apply {
             densityDpi = (base.densityDpi * scale).toInt()
             screenWidthDp = (base.screenWidthDp / scale).toInt()

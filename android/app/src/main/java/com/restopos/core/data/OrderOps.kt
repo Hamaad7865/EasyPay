@@ -183,6 +183,39 @@ class OrderOps @Inject constructor(
         docs.print(docFor(r)).getOrThrow()
     }
 
+    // Another copy of a receipt that has just been issued, for the guest who
+    // asks for one. Unlike a reprint from the receipt list it needs no
+    // permission: it is the same sale, still on the screen.
+    suspend fun printCopy(receiptId: String): Result<Unit> = runCatching {
+        val r = db.ops().receipt(receiptId) ?: error("That receipt is not on this tablet")
+        docs.print(docFor(r)).getOrThrow()
+    }
+
+    // The receipt as plain text, to send by e-mail or message.
+    suspend fun receiptText(receiptId: String): String? {
+        val r = db.ops().receipt(receiptId) ?: return null
+        val d = docFor(r)
+        val shop = printing.shop()
+        val out = ArrayList<String>()
+        out += shop.name
+        if (shop.address.isNotBlank()) out += shop.address
+        if (shop.vat.isNotBlank()) out += "VAT " + shop.vat
+        out += "Receipt " + d.number + " · " + java.text.SimpleDateFormat("d MMM yyyy HH:mm", java.util.Locale.UK).format(java.util.Date(d.time))
+        out += ""
+        d.lines.forEach { l ->
+            out += "" + (l.qty + 500) / 1000 + " x " + l.name + "  " + docs.money(l.amount)
+            l.mods.forEach { m -> out += "   + $m" }
+        }
+        out += ""
+        d.discounts.forEach { out += "Discount " + it.name + "  -" + docs.money(it.amount) }
+        if (d.service != 0L) out += "Service charge  " + docs.money(d.service)
+        d.taxes.forEach { t -> out += t.name + (if (t.included) " (included)  " else "  ") + docs.money(t.amount) }
+        out += "TOTAL  " + docs.money(d.total)
+        d.payments.forEach { pay -> out += pay.name + "  " + docs.money(pay.amount) }
+        if (shop.footer.isNotBlank()) { out += ""; out += shop.footer }
+        return out.joinToString("\n")
+    }
+
     // A receipt issued before this version has no stored print: it is put
     // together from what the tablet kept (no add-ons, no tax lines).
     private suspend fun docFor(r: ReceiptEntity): ReceiptDoc {
