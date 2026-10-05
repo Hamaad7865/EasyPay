@@ -57,21 +57,42 @@ body {
 .auth-brand { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 24px; }
 .auth-card h1 { font-size: 21px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 6px; }
 .auth-lede { color: var(--ink2); margin: 0 0 22px; line-height: 1.5; }
-.auth-card label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 14px; }
+.auth-card label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
 .auth-card input {
-  display: block; width: 100%; margin-top: 6px; font: inherit; font-size: 14px; height: 40px; padding: 0 12px;
+  display: block; width: 100%; margin-bottom: 14px; font: inherit; font-size: 14px; height: 40px; padding: 0 12px;
   border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: #fff; color: var(--ink);
 }
 .auth-card input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(63, 132, 67, 0.18); }
-.auth-card button {
+.auth-card button, .auth-card a.auth-button {
   width: 100%; height: 40px; margin-top: 6px; font: inherit; font-size: 14px; font-weight: 600; color: #fff;
   background: var(--accent); border: 1px solid var(--accent); border-radius: var(--radius-sm); cursor: pointer;
   box-shadow: 0 1px 2px rgba(63, 132, 67, 0.25);
 }
-.auth-card button:hover { background: var(--accent-hover); }
+.auth-card a.auth-button { display: grid; place-items: center; text-decoration: none; }
+.auth-card button:hover, .auth-card a.auth-button:hover { background: var(--accent-hover); }
 .auth-card button:disabled { opacity: 0.6; cursor: default; }
+.auth-card button:focus-visible, .auth-card a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .auth-error { color: var(--red); background: var(--red-bg); border-radius: var(--radius-sm); padding: 9px 12px; font-size: 13px; margin: 0 0 12px; }
+.auth-note { color: var(--ink2); background: var(--accent-soft); border-radius: var(--radius-sm); padding: 9px 12px; font-size: 13px; line-height: 1.5; margin: 0 0 12px; }
 .auth-foot { color: var(--ink3); font-size: 12.5px; margin: 20px 0 0; text-align: center; }
+
+/* a password box and the eye that shows what was typed */
+.pw-field { position: relative; display: block; }
+.auth-card .pw-field input { padding-right: 44px; }
+.auth-card button.pw-eye {
+  position: absolute; top: 4px; right: 4px; width: 32px; height: 32px; margin: 0; padding: 0;
+  display: grid; place-items: center; color: var(--ink3); background: transparent; border: 0; border-radius: 6px; box-shadow: none;
+}
+.auth-card button.pw-eye:hover { color: var(--ink); background: var(--bg); }
+
+/* a quiet link under a field or under the card's button */
+.auth-aside { margin: -6px 0 14px; text-align: right; }
+.auth-aside-center { margin: 14px 0 0; text-align: center; }
+.auth-card button.auth-link {
+  width: auto; height: auto; margin: 0; padding: 2px 0; font-size: 13px; font-weight: 600; color: var(--accent);
+  background: none; border: 0; border-radius: 4px; box-shadow: none;
+}
+.auth-card button.auth-link:hover { color: var(--accent-hover); background: none; text-decoration: underline; }
 
 /* ---- shell ---- */
 
