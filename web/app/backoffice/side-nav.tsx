@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 import {
   BarChart3,
   Boxes,
@@ -79,8 +80,19 @@ const SECTIONS: { title: string | null; links: { href: string; label: string; ic
 export function SideNav() {
   const path = usePathname();
   const isOn = (href: string) => (href === "/backoffice" ? path === href : path === href || path.startsWith(href + "/"));
+  // The list scrolls without a bar, so the page that is open is brought into view.
+  const nav = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = nav.current;
+    const on = el?.querySelector("a.on");
+    if (!el || !on) return;
+    const box = el.getBoundingClientRect();
+    const r = on.getBoundingClientRect();
+    if (r.top < box.top) el.scrollTop -= box.top - r.top + 8;
+    else if (r.bottom > box.bottom) el.scrollTop += r.bottom - box.bottom + 8;
+  }, [path]);
   return (
-    <nav className="bo-nav">
+    <nav className="bo-nav" ref={nav}>
       {SECTIONS.map((s) => (
         <div key={s.title ?? "top"}>
           {s.title && <div className="bo-nav-group">{s.title}</div>}

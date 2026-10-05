@@ -79,9 +79,14 @@ body {
 .bo-side {
   background: var(--surface);
   border-right: 1px solid var(--line);
-  padding: 16px 12px 24px;
-  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  padding: 16px 12px 0;
+  position: sticky; top: 0; height: 100vh;
+  display: flex; flex-direction: column;
 }
+/* the name and the restaurant stay put; only the list of pages scrolls, with no bar */
+.bo-brand, .bo-restaurant { flex: none; }
+.bo-nav { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 24px; scrollbar-width: none; }
+.bo-nav::-webkit-scrollbar { display: none; }
 .bo-brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 16px; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
 .bo-brand-logo { height: 30px; width: auto; display: block; }
 .bo-brand-pos { color: #1787fc; }
@@ -434,7 +439,8 @@ details.card[open] > summary.card-head { background: #fafbfc; }
 
 @media (max-width: 1000px) {
   .bo { grid-template-columns: 1fr; }
-  .bo-side { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .bo-side { position: static; height: auto; display: block; border-right: 0; border-bottom: 1px solid var(--line); }
+  .bo-nav { overflow: visible; }
   .bo-top { padding: 0 16px; position: static; }
   .bo-main { padding: 20px 16px 40px; }
   .floor-wrap, .grid-2, .grid-3, .form-row { grid-template-columns: 1fr; }
