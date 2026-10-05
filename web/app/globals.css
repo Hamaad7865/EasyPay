@@ -130,7 +130,10 @@ body {
 .bo-top-user small { display: block; font-weight: 400; color: var(--ink3); font-size: 12px; }
 .bo-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 700; font-size: 13px; }
 
-.bo-main { padding: 28px 36px 64px; max-width: 1280px; width: 100%; }
+/* The page uses the width of the window, like the bar above it. The cap only
+   comes in on a very wide monitor, where a table three metres across helps
+   nobody; fields and paragraphs keep their own, narrower limits. */
+.bo-main { padding: 28px 36px 64px; max-width: 1800px; width: 100%; }
 
 /* ---- notices ---- */
 
@@ -280,6 +283,8 @@ details.card[open] > summary.card-head { background: #fafbfc; }
 .setting:first-child { border-top: 0; padding-top: 0; }
 .setting:last-child { padding-bottom: 0; }
 .setting > div:first-child { max-width: 520px; }
+/* a box to type a few short lines in does not need the width of the page */
+.setting textarea { max-width: 460px; }
 .setting strong { display: block; font-size: 13.5px; }
 .setting small { display: block; color: var(--ink3); font-size: 12.5px; margin-top: 2px; line-height: 1.45; }
 .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); overflow: hidden; background: #fff; box-shadow: var(--shadow-sm); }
