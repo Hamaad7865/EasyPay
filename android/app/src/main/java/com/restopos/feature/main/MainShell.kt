@@ -273,7 +273,8 @@ fun MainShell(
             ) {
                 IconKey(VI.Menu, 48.dp, V.Panel, V.Text, icon = 22.dp) { drawer = true }
                 Wordmark()
-                Row(Modifier.weight(1f, fill = false).clip(RoundedCornerShape(14.dp)).background(V.Panel).padding(4.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Box(Modifier.weight(1f)) {
+                  Row(Modifier.clip(RoundedCornerShape(14.dp)).background(V.Panel).padding(4.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     SERVICE.forEach { n ->
                         val on = lit == n.screen
                         val count = when (n.screen) { Screen.Takeaway -> badges.takeaway; Screen.Kitchen -> badges.kitchen; Screen.Bookings -> badges.bookings; else -> 0 }
@@ -286,8 +287,8 @@ fun MainShell(
                             if (count > 0) Badge(count, when (n.screen) { Screen.Takeaway -> V.Red; Screen.Kitchen -> V.Blue; else -> Color(0xFF6243C8) })
                         }
                     }
+                  }
                 }
-                Gap()
                 if (pending > 0 || rejected > 0 || needsSignIn) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(if (rejected > 0 || needsSignIn) V.Red else V.Amber))
                 }

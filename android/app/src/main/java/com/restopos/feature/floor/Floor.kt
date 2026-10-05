@@ -250,10 +250,16 @@ fun FloorScreen(
                 }
                 val cw = maxWidth - 96.dp
                 val ch = maxHeight - 88.dp
-                // the back office draws on a 100 x 60 plan; it is fitted into the room
-                val unit = minOf(cw / 100f, ch / 60f)
-                val ox = 48.dp + (cw - unit * 100f) / 2
-                val oy = 44.dp + (ch - unit * 60f) / 2
+                // The back office draws on a 100 x 60 plan. What this room uses of
+                // it is fitted into the canvas and centred, up to a size at which
+                // a table for four is still a table and not a billboard.
+                val minX = here.minOfOrNull { it.table.x } ?: 0
+                val minY = here.minOfOrNull { it.table.y } ?: 0
+                val spanX = ((here.maxOfOrNull { it.table.x + it.table.w } ?: 100) - minX).coerceAtLeast(10)
+                val spanY = ((here.maxOfOrNull { it.table.y + it.table.h } ?: 60) - minY).coerceAtLeast(10)
+                val unit = minOf(cw / spanX.toFloat(), ch / spanY.toFloat(), 11.dp)
+                val ox = 48.dp + (cw - unit * spanX.toFloat()) / 2 - unit * minX.toFloat()
+                val oy = 44.dp + (ch - unit * spanY.toFloat()) / 2 - unit * minY.toFloat()
                 here.forEach { t ->
                     val w = unit * t.table.w.toFloat()
                     val h = unit * t.table.h.toFloat()

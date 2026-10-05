@@ -8,6 +8,12 @@ export type PosSettings = {
   dayCloseDetailed: boolean;
   // what the quick payment key beside the register's keypad takes
   quickPay: "card" | "cash";
+  // a service charge on orders served at a table, in percent; 0 is none
+  servicePct: number;
+  // the notes a waiter can tick when adding an item ("No onion", "Rush")
+  kitchenNotes: string[];
+  // minutes after it is rung up that a takeaway is due (a delivery gets twice that)
+  prepMinutes: number;
   receipt: { header: string; footer: string; logo: string | null; showLogo: boolean };
   company: { name: string; brn: string; vat: string; address: string; phone: string };
 };
@@ -17,6 +23,9 @@ export const DEFAULT_SETTINGS: PosSettings = {
   billNumbering: "continuous",
   dayCloseDetailed: true,
   quickPay: "card",
+  servicePct: 0,
+  kitchenNotes: ["No onion", "Less salt", "Nut allergy", "Extra chutney", "Rush"],
+  prepMinutes: 15,
   receipt: { header: "", footer: "Thank you. See you again soon.", logo: null, showLogo: true },
   company: { name: "", brn: "", vat: "", address: "", phone: "" },
 };
@@ -35,6 +44,11 @@ export function withDefaults(raw: unknown): PosSettings {
     billNumbering: d.billNumbering === "reset" ? "reset" : "continuous",
     dayCloseDetailed: d.dayCloseDetailed === false ? false : true,
     quickPay: d.quickPay === "cash" ? "cash" : "card",
+    servicePct: typeof d.servicePct === "number" && d.servicePct >= 0 && d.servicePct <= 30 ? Math.round(d.servicePct) : 0,
+    kitchenNotes: Array.isArray(d.kitchenNotes) && d.kitchenNotes.some((n) => typeof n === "string" && n.trim())
+      ? (d.kitchenNotes as unknown[]).filter((n): n is string => typeof n === "string" && n.trim() !== "").map((n) => n.trim()).slice(0, 12)
+      : DEFAULT_SETTINGS.kitchenNotes,
+    prepMinutes: typeof d.prepMinutes === "number" && d.prepMinutes >= 1 && d.prepMinutes <= 180 ? Math.round(d.prepMinutes) : 15,
     receipt: {
       header: str(r.header, DEFAULT_SETTINGS.receipt.header),
       footer: str(r.footer, DEFAULT_SETTINGS.receipt.footer),

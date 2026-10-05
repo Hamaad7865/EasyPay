@@ -13,8 +13,15 @@ const KINDS = [
   ["qr", "QR payment"],
   ["other", "Other"],
 ] as const;
+const ORDER_KINDS = [
+  ["dine", "At a table"],
+  ["counter", "Counter sale (Quick sale)"],
+  ["takeaway", "Takeaway (on the board)"],
+  ["delivery", "Delivery (on the board, with an address)"],
+  ["tab", "Named tab"],
+] as const;
 const KITCHEN = [
-  ["save", "When Save is pressed"],
+  ["save", "When Send is pressed"],
   ["pay", "When the bill is paid"],
   ["off", "Never"],
 ] as const;
@@ -27,16 +34,11 @@ async function saveGeneral(f: FormData) {
       decimals,
       billNumbering: f.get("billNumbering") === "reset" ? "reset" : "continuous",
       dayCloseDetailed: on(f, "dayCloseDetailed"),
+      servicePct: int(f, "servicePct", 0, 30, 0),
+      prepMinutes: int(f, "prepMinutes", 1, 180, 15),
+      kitchenNotes: String(f.get("kitchenNotes") ?? "").split("\n").map((n) => n.trim().slice(0, 40)).filter(Boolean).slice(0, 12),
     });
     return "Settings saved. The tills pick them up the next time they sync.";
-  });
-}
-
-async function saveQuick(f: FormData) {
-  "use server";
-  await act("settings.device", PATH + "?tab=payments", async (c, ctx) => {
-    await saveSettings(c, ctx.tenantId, { quickPay: f.get("quickPay") === "cash" ? "cash" : "card" });
-    return "Saved. The tills pick it up the next time they sync.";
   });
 }
 
@@ -85,11 +87,13 @@ async function addDining(f: FormData) {
   "use server";
   await act("settings.device", PATH + "?tab=orders", async (c, ctx) => {
     const name = text(f, "name", 40);
+    const kind = String(f.get("kind"));
     if (!name) throw new Refused("Give the order type a name.");
+    if (!ORDER_KINDS.some(([k]) => k === kind)) throw new Refused("Pick what kind of order it is.");
     await c.query(
-      `insert into dining_options (tenant_id, name, needs_table, kitchen, sort_order)
-       values ($1, $2, $3, $4, (select coalesce(max(sort_order), -1) + 1 from dining_options where tenant_id = $1))`,
-      [ctx.tenantId, name, on(f, "needs_table"), on(f, "needs_table") ? "save" : "pay"],
+      `insert into dining_options (tenant_id, name, kind, needs_table, kitchen, sort_order)
+       values ($1, $2, $3, $4, $5, (select coalesce(max(sort_order), -1) + 1 from dining_options where tenant_id = $1))`,
+      [ctx.tenantId, name, kind, kind === "dine", kind === "dine" || kind === "tab" ? "save" : "pay"],
     );
     return `${name} added.`;
   });
@@ -107,14 +111,16 @@ async function saveDining(f: FormData) {
     }
     const name = text(f, "name", 40);
     const kitchen = String(f.get("kitchen"));
+    const kind = String(f.get("kind"));
     if (!name || !KITCHEN.some(([k]) => k === kitchen)) throw new Refused("An order type needs a name.");
+    if (!ORDER_KINDS.some(([k]) => k === kind)) throw new Refused("Pick what kind of order it is.");
     if (on(f, "is_default")) {
       await c.query(`update dining_options set is_default = false where tenant_id = $1 and is_default and id <> $2`, [ctx.tenantId, id]);
     }
     await c.query(
-      `update dining_options set name = $3, needs_table = $4, kitchen = $5, is_default = is_default or $6
+      `update dining_options set name = $3, needs_table = $4, kitchen = $5, is_default = is_default or $6, kind = $7
         where tenant_id = $1 and id = $2 and deleted_at is null`,
-      [ctx.tenantId, id, name, on(f, "needs_table"), kitchen, on(f, "is_default")],
+      [ctx.tenantId, id, name, kind === "dine", kitchen, on(f, "is_default"), kind],
     );
     return `${name} saved.`;
   });
@@ -135,11 +141,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     ).rows as { id: string; name: string; kind: string; opens_drawer: boolean; is_active: boolean; sort_order: number }[],
     dining: (
       await c.query(
-        `select id, name, needs_table, kitchen, is_default from dining_options
+        `select id, name, kind, needs_table, kitchen, is_default from dining_options
           where tenant_id = $1 and deleted_at is null order by sort_order, name`,
         [ctx.tenantId],
       )
-    ).rows as { id: string; name: string; needs_table: boolean; kitchen: string; is_default: boolean }[],
+    ).rows as { id: string; name: string; kind: string; needs_table: boolean; kitchen: string; is_default: boolean }[],
   }));
   const s = data.settings;
   return (
@@ -202,21 +208,40 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
               </div>
             </div>
           </Card>
+          <Card title="Service">
+            <div className="setting">
+              <div>
+                <strong>Service charge</strong>
+                <small>A percentage added to orders served at a table, shown on the bill and the receipt as its own line. 0 means none. Counter sales, takeaways and deliveries never carry it.</small>
+              </div>
+              <label className="check" style={{ margin: 0 }}>
+                <input name="servicePct" type="number" min={0} max={30} defaultValue={s.servicePct} className="narrow" aria-label="Service charge percent" />%
+              </label>
+            </div>
+            <div className="setting">
+              <div>
+                <strong>Takeaway time</strong>
+                <small>How many minutes after it is rung up a takeaway is due on the till&apos;s board. A delivery gets twice as long. The time can be moved on the board.</small>
+              </div>
+              <label className="check" style={{ margin: 0 }}>
+                <input name="prepMinutes" type="number" min={1} max={180} defaultValue={s.prepMinutes} className="narrow" aria-label="Takeaway minutes" />
+                minutes
+              </label>
+            </div>
+            <div className="setting">
+              <div>
+                <strong>Kitchen notes</strong>
+                <small>What a waiter can tick when adding an item, one per line, up to twelve. They print on the kitchen ticket and show on the kitchen display.</small>
+              </div>
+              <textarea name="kitchenNotes" rows={5} defaultValue={s.kitchenNotes.join("\n")} aria-label="Kitchen notes" style={{ minWidth: 260 }} />
+            </div>
+          </Card>
           <button type="submit">Save settings</button>
         </form>
       )}
 
       {tab === "payments" && (
         <>
-          <Card title="Quick payment key" lede="The green key beside the register's keypad pays the whole order in one tap. Choose what it takes. Every other way of paying is on the payment screen.">
-            <form action={saveQuick} className="bo-toolbar" style={{ margin: 0 }}>
-              <select name="quickPay" defaultValue={s.quickPay} aria-label="Quick payment key">
-                <option value="card">Card</option>
-                <option value="cash">Cash (a number typed first is the amount received)</option>
-              </select>
-              <button type="submit">Save</button>
-            </form>
-          </Card>
           <Card title="Payment options" lede="What a cashier can pick on the payment screen, in this order. The cash drawer opens only for the ones ticked." flush>
             <table>
               <thead>
@@ -269,14 +294,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
         <>
           <Card
             title="Order types"
-            lede="What the till asks when an order starts. One that needs a table opens the floor plan first. The kitchen column says when its items print on the kitchen and bar printers."
+            lede="The kinds of order the tills take. At a table: opened from the floor plan. Counter sale: the Quick sale key. Takeaway and delivery: on the takeaway board until they have left. The kitchen column says when an order's items go to the kitchen printers and the kitchen display."
             flush
           >
             <table>
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Needs a table</th>
+                  <th>Kind</th>
                   <th>Send to the kitchen</th>
                   <th>Default</th>
                   <th />
@@ -286,7 +311,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                 {data.dining.map((d) => (
                   <tr key={d.id}>
                     <td><input form={"d" + d.id} name="name" defaultValue={d.name} required maxLength={40} aria-label="Name" /></td>
-                    <td><input form={"d" + d.id} name="needs_table" type="checkbox" defaultChecked={d.needs_table} aria-label="Needs a table" /></td>
+                    <td>
+                      <select form={"d" + d.id} name="kind" defaultValue={d.kind} aria-label="Kind">
+                        {ORDER_KINDS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                      </select>
+                    </td>
                     <td>
                       <select form={"d" + d.id} name="kitchen" defaultValue={d.kitchen} aria-label="Send to the kitchen">
                         {KITCHEN.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
@@ -315,10 +344,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
           <Card title="Add an order type">
             <form action={addDining} className="bo-toolbar" style={{ margin: 0 }}>
               <input name="name" placeholder="Name, for example Delivery" required maxLength={40} style={{ minWidth: 260 }} />
-              <label className="check" style={{ margin: 0 }}>
-                <input type="checkbox" name="needs_table" />
-                Needs a table
-              </label>
+              <select name="kind" defaultValue="takeaway" aria-label="Kind">
+                {ORDER_KINDS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              </select>
               <button type="submit">Add</button>
             </form>
           </Card>

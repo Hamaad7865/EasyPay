@@ -28,6 +28,7 @@ const GROUPS: { title: string; perms: [string, string][] }[] = [
       ["ticket.view_all", "See everyone's orders"],
       ["ticket.reassign", "Change the waiter on an order"],
       ["ticket.split_merge", "Transfer an order to another table"],
+      ["items.availability", "Mark an item sold out or back on sale on the till"],
     ],
   },
   {
