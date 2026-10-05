@@ -34,6 +34,33 @@ android {
         buildConfigField("String", "FUNCTION_URL", "\"${endpoint("functionUrl")}\"")
         buildConfigField("String", "AUTH_URL", "\"${endpoint("authUrl")}\"")
     }
+    // The build that goes on a restaurant's tablets. It is signed with
+    // RestoPOS's own key, which is never in the repository: these lines in
+    // android/local.properties say where it is.
+    //   keystoreFile=C:/keys/restopos.jks
+    //   keystorePassword=...
+    //   keyAlias=restopos
+    //   keyPassword=...
+    // Without them `assembleRelease` still builds, unsigned. A release build
+    // cannot be opened with a debugger or `adb run-as`, which a debug build
+    // can: the debug build is for the emulator only.
+    val keystore = (localProps.getProperty("keystoreFile") ?: "").trim()
+    signingConfigs {
+        if (keystore.isNotEmpty()) create("release") {
+            storeFile = file(keystore)
+            storePassword = localProps.getProperty("keystorePassword")
+            keyAlias = localProps.getProperty("keyAlias")
+            keyPassword = localProps.getProperty("keyPassword")
+        }
+    }
+    buildTypes {
+        release {
+            // Not shrunk: nothing in the till has been run through R8, and a
+            // few megabytes cost less than a crash only the release build has.
+            isMinifyEnabled = false
+            if (keystore.isNotEmpty()) signingConfig = signingConfigs.getByName("release")
+        }
+    }
     buildFeatures { buildConfig = true; compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

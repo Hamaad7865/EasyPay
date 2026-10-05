@@ -22,8 +22,9 @@ handoff (`feature/main/MainShell.kt` holds every screen):
   seated. Beside the plan: the orders in progress and who arrives next. Tap a
   free table and a number of guests: the order is opened there and then
   (`TicketRepository.seat`). Tap a seated one: its order, Print bill, Pay,
-  Open order; with nothing ordered, Free the table. Tap a reserved one: the
-  booking, "Guests arrived · seat now", Release table.
+  Open order; with nothing ordered, Free the table, which closes the empty
+  order (`ticket.cancel`). Tap a reserved one: the booking, "Guests arrived ·
+  seat now", Release table.
 - **Order:** the order on the left, split into what the kitchen has and what
   is new. A table's order has a covers stepper; any other order has its kind
   (Counter, Takeaway, Delivery, a tab), and a takeaway or delivery has the
@@ -164,6 +165,29 @@ checks below are the first thing to do on a real tablet.
 4. `./gradlew :app:testDebugUnitTest` checks that the till's totals match the
    figures the server stores for the same sales.
 
+### The build for a restaurant's tablets
+
+A debug build is for the emulator: anyone with a USB cable can read its
+database (`adb run-as`). Tablets in a restaurant get the release build.
+
+1. Make the signing key once, and keep the file and its passwords somewhere
+   safe: every later version must be signed with the same key, or the tablets
+   will refuse the update.
+   ```
+   keytool -genkeypair -v -keystore C:/keys/restopos.jks -alias restopos -keyalg RSA -keysize 2048 -validity 10000
+   ```
+2. Say where it is in `android/local.properties`, and put the production
+   `functionUrl` and `authUrl` there:
+   ```
+   keystoreFile=C:/keys/restopos.jks
+   keystorePassword=...
+   keyAlias=restopos
+   keyPassword=...
+   ```
+3. Raise `versionCode` (and `versionName`) in `app/build.gradle.kts` for every
+   build that goes out, then `./gradlew :app:assembleRelease`. The APK lands
+   in `app/build/outputs/apk/release/`.
+
 ## Check on a device (Phase 1 exit)
 
 1. Web: edit an item price, save.
@@ -183,7 +207,9 @@ checks below are the first thing to do on a real tablet.
   If the session itself is gone, the worker stops and the next sign-in resumes.
 - **Push:** outbox rows go up in order, 50 at a time. `applied` removes the
   row, `rejected` moves it to the dead-letter state with the server's code,
-  `retry` leaves it queued. A line carries the price and modifier prices this
+  `retry` leaves it queued. A push that ends on a server error is tried again
+  with a growing pause, and every sync (at least every 15 minutes) sends what
+  is still waiting. A line carries the price and modifier prices this
   till charged, and a discount carries the amount it took off, so the server
   stores the receipt as printed.
 - **Receipt numbers:** the sequence is kept on the device row and only moves

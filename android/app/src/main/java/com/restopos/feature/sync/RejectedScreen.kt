@@ -53,6 +53,22 @@ private fun what(type: String): String = when (type) {
     "ticket.merge" -> "Orders merged"
     "receipt.create" -> "Payment"
     "refund.create" -> "Refund"
+    "ticket.send" -> "Order sent to the kitchen"
+    "ticket.split_line" -> "Line divided between checks"
+    "ticket.place_lines" -> "Items moved to a seat or a course"
+    "ticket.stage" -> "Takeaway moved along the board"
+    "ticket.cancel" -> "Order cancelled"
+    "kitchen.mark" -> "Kitchen display: a line ticked or a ticket bumped"
+    "booking.upsert" -> "Booking"
+    "item.set_available" -> "Item marked sold out or back on sale"
+    "customer.upsert" -> "Customer"
+    "payment.correct" -> "Payment type corrected"
+    "shift.open" -> "Sales period opened"
+    "shift.close" -> "Sales period closed"
+    "day.close" -> "Day closing"
+    "cash.move" -> "Cash in or out"
+    "drawer.count" -> "Drawer count"
+    "timeclock.punch" -> "Clock in or out"
     else -> type
 }
 
@@ -69,6 +85,13 @@ private fun why(code: String?): String = when (code) {
     "bad-qty" -> "More was refunded than was sold."
     "bad-device" -> "This till is not registered for the store."
     "conflict" -> "The server already has a different record with the same number."
+    "already-refunded" -> "The receipt was already refunded."
+    "shift-closed" -> "The sales period was already closed."
+    "bad-shift" -> "The sales period does not exist on the server."
+    "bad-employee" -> "That member of staff is not known to the server."
+    "bad-store" -> "This till's store is not known to the server."
+    "bad-payload" -> "The server did not understand it. Check that the till is up to date."
+    "unknown-op" -> "The server is older than this till and does not know this kind of change yet. Contact RestoPOS."
     "error", null -> "The server could not process it."
     else -> code
 }
