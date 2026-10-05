@@ -187,6 +187,35 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     check('T8 a change that does not name the number leaves it alone', kept.order_no === 'A-3' && kept.note === 'no onions', JSON.stringify(kept));
   }
 
+  // T9 the till changes a quantity by taking the line off and putting it back
+  // with the new quantity. That must go through whatever happened to the menu
+  // in between: the item marked sold out, its option unticked. Otherwise the
+  // line is gone on the server and the payment that names it is refused.
+  {
+    const withOption = await q1(
+      `select g.item_id, m.id as mod, m.name, m.price from item_modifier_groups g
+         join modifiers m on m.tenant_id = g.tenant_id and m.group_id = g.group_id and m.deleted_at is null
+        where g.tenant_id = $1 and g.deleted_at is null limit 1`, [tid]);
+    check('T9 the demo menu has an item with an option', !!withOption, JSON.stringify(withOption));
+    const o = crypto.randomUUID(), l1 = crypto.randomUUID(), l2 = crypto.randomUUID();
+    const mods = [{ modifier_id: withOption.mod, price: Number(withOption.price), name: withOption.name }];
+    await push([
+      op('ticket.create', { id: o, store_id: store }),
+      op('ticket.add_line', { id: l1, ticket_id: o, item_id: withOption.item_id, qty: 3000, modifiers: mods }),
+    ]);
+    await push([op('item.set_available', { item_id: withOption.item_id, available: false })]);
+    await c.query(`update item_modifier_groups set deleted_at = now() where tenant_id = $1 and item_id = $2`, [tid, withOption.item_id]);
+    await c.query(`update modifiers set deleted_at = now() where tenant_id = $1 and id = $2`, [tid, withOption.mod]);
+    const r = await push([
+      op('ticket.void_line', { line_id: l1, reason: 'quantity change' }),
+      op('ticket.add_line', { id: l2, ticket_id: o, item_id: withOption.item_id, qty: 2000, modifiers: mods }),
+    ]);
+    const live = (await c.query(`select l.id, l.qty, (select count(*)::int from ticket_line_modifiers m where m.line_id = l.id) mods
+                                   from ticket_lines l where l.ticket_id = $1 and l.voided_at is null`, [o])).rows;
+    check('T9 fewer of a sold-out item with an unticked option: both steps go through', r.map(tag).join(' ') === 'applied applied', r.map(tag).join(' '));
+    check('T9 the order has the one line, with its option, at the new quantity', live.length === 1 && live[0].id === l2 && live[0].qty === 2000 && live[0].mods === 1, JSON.stringify(live));
+  }
+
   await c.query(`delete from bookings where tenant_id = $1`, [tid]);
   await devguard.cleanupTenant(c, tid);
   await devguard.cleanupTenant(c, other);

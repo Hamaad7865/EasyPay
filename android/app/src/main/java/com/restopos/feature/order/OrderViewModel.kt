@@ -292,6 +292,9 @@ class OrderViewModel @Inject constructor(
 
     fun mayPay(): Boolean {
         if (_ui.value.empty) { Toaster.say("Add items before paying"); return false }
+        // a name typed a moment ago is on the order before it is paid: a
+        // takeaway's kitchen ticket prints when it is paid
+        if (typed != null) viewModelScope.launch { contactJob?.cancel(); saveContact() }
         return true
     }
 

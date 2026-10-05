@@ -122,7 +122,8 @@ interface ServiceDao {
     )
     fun board(store: String): Flow<List<TicketEntity>>
 
-    @Query("SELECT COUNT(*) FROM tickets WHERE store_id = :store AND stage = 'done' AND updated_at > :since")
+    // handed over and paid: not one that was cancelled, or turned into a counter sale
+    @Query("SELECT COUNT(*) FROM tickets WHERE store_id = :store AND stage = 'done' AND status = 'paid' AND updated_at > :since")
     fun boardDone(store: String, since: Long): Flow<Int>
 
     @Query("SELECT * FROM tickets WHERE id IN (:ids)")
