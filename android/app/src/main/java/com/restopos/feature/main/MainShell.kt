@@ -143,8 +143,8 @@ class ShellViewModel @Inject constructor(
 
     val badges: StateFlow<Badges> = store.flatMapLatest { s ->
         if (s == null) emptyFlow()
-        else combine(db.service().board(s), db.service().kdsOpen(), service.bookingsToday(s)) { board, kds, bookings ->
-            Badges(board.count { it.stage == "new" }, kds.size, bookings.count { it.status == "confirmed" || it.status == "pending" })
+        else combine(db.service().board(s), db.service().kdsLines(), service.bookingsToday(s)) { board, kitchen, bookings ->
+            Badges(board.count { it.stage == "new" }, kitchen.mapNotNull { it.kds_id }.distinct().size, bookings.count { it.status == "confirmed" || it.status == "pending" })
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Badges())
 
