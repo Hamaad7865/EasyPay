@@ -250,7 +250,7 @@ fun OrdersScreen(vm: OrdersViewModel = hiltViewModel(), onOpen: () -> Unit) {
                 Column(Modifier.fillMaxWidth().padding(vertical = 44.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(PosIcons.Receipt, contentDescription = null, tint = Pos.Text3, modifier = Modifier.size(30.dp))
                     Text(if (q.isEmpty()) "No open orders" else "No open order matches that search", Modifier.padding(top = 10.dp), color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                    Text(if (q.isEmpty()) "New order, top right, starts one." else "Try the table's number or the waiter's name.", Modifier.padding(top = 2.dp), color = Pos.Text3, fontSize = 13.sp)
+                    Text(if (q.isEmpty()) "Quick sale, or a free table, starts one." else "Try the table's number or the waiter's name.", Modifier.padding(top = 2.dp), color = Pos.Text3, fontSize = 13.sp)
                 }
             } else {
                 LazyColumn(Modifier.weight(1f, fill = false)) {

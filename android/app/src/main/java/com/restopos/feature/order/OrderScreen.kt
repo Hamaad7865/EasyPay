@@ -106,6 +106,8 @@ fun OrderScreen(vm: OrderViewModel, onBack: (board: Boolean) -> Unit, onPay: () 
             Column(Modifier.fillMaxWidth().background(V.PanelFoot).padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (ui.dine) Fn(L.printBill, VI.Print, V.Soft, Modifier.weight(1f)) { vm.printBill() }
+                    // a counter sale can wait while the next customer is served
+                    else if (ui.kind == "counter" || ui.kind == "tab") Fn(L.newSale, VI.Plus, if (!ui.empty) V.Soft else V.Off, Modifier.weight(1f)) { vm.newSale() }
                     Fn(L.split, VI.Split, V.Soft, Modifier.weight(1f)) { if (vm.mayPay()) onSplit() }
                     Fn(L.clearNew, VI.Close, if (ui.unsent > 0) V.RedText else V.Off, Modifier.weight(1f)) { vm.clearNew() }
                     Fn(L.more, VI.More, V.Soft, Modifier.weight(1f)) { more = true }

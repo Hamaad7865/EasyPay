@@ -176,7 +176,7 @@ class ShellViewModel @Inject constructor(
         val open = tickets.activeTicket()
         val kind = open?.dining_option_id?.let { id -> types.firstOrNull { it.id == id }?.kind } ?: if (open?.table_id != null) "dine" else "counter"
         if (open == null || kind != "counter") {
-            tickets.startOrder((types.firstOrNull { it.kind == "counter" } ?: types.firstOrNull { !it.needs_table && it.kind != "takeaway" && it.kind != "delivery" })?.id)
+            tickets.startOrder(tickets.counterTypeId())
         }
         screen.value = Screen.Order
         then()

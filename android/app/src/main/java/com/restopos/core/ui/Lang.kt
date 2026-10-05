@@ -54,6 +54,7 @@ object L {
     val discount get() = t("Discount", "Remise", "Rabe")
     val empty get() = t("Tap items to start the order", "Touchez un article pour commencer", "Tap lor enn artik pou koumans komand")
     val printBill get() = t("Print bill", "Addition", "Inprim bil")
+    val newSale get() = t("New sale", "Nouvelle vente", "Nouvo lavant")
     val split get() = t("Split", "Diviser", "Partaz")
     val clearNew get() = t("Clear new", "Effacer", "Efase")
     val more get() = t("More", "Plus", "Plis")

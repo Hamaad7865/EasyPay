@@ -872,7 +872,7 @@ private fun SupportPage(vm: SettingsViewModel, network: String, onSignIn: () -> 
 private val HELP = listOf(
     "Starting the day" to "Tap Clock in/out, pick your name and enter your PIN. If no sales period is open you count the cash in the drawer first; that opens the sales period.",
     "Serving a table" to "On Tables, tap a free table and the number of guests: its order opens. Tap the items, then Send to kitchen. The table turns blue and shows what it owes and how long it has been. Tap it again to add to the order, print the bill or take payment.",
-    "A counter sale" to "Tap Quick sale, tap the items, tap Pay. What was not sent goes to the kitchen when it is paid.",
+    "A counter sale" to "Tap Quick sale, tap the items, tap Pay. What was not sent goes to the kitchen when it is paid. To serve someone else before it is paid, tap New sale: the order waits under Orders, and tapping it there brings it back.",
     "A takeaway or a delivery" to "On Takeaway, tap New takeaway or New delivery. Type who it is for, tap the items, and send or take payment. It then moves along the board: new, in the kitchen, ready, and off the board when it is collected. Tap its time to move it, or a delivery's address to pick the rider.",
     "Options and notes for the kitchen" to "An item marked Options asks its questions when you tap it. Press and hold any item to add a kitchen note or several at once. More, Order note says something about the whole order.",
     "The kitchen display" to "Every send is a ticket on Kitchen. The cooks tap a line when it is done and Bump when the ticket is at the pass; Recall last brings the last one back. A takeaway turns ready when its last ticket is bumped.",

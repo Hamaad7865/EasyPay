@@ -250,6 +250,23 @@ class OrderViewModel @Inject constructor(
         )
     }
 
+    // New sale: the counter order on screen is parked as it is (it waits under
+    // Orders, with what it has not sent still not sent) and an empty one of the
+    // same kind takes its place. One with nothing on it is already a new sale.
+    fun newSale() = viewModelScope.launch {
+        val s = _ui.value
+        if (s.busy) return@launch
+        if (s.empty) { Toaster.say("This sale is empty. Tap items to start it."); return@launch }
+        // a name typed a moment ago stays with the order it was typed on
+        contactJob?.cancel()
+        saveContact()
+        tickets.startOrder(s.typeId ?: tickets.counterTypeId())
+        query.value = ""
+        _sheet.value = null
+        reload(fresh = true)
+        Toaster.say("${s.ticket?.order_no ?: "Sale"} parked · it waits under ${L.orders}" + if (s.unsent > 0) " · ${s.unsent} not sent to the kitchen" else "")
+    }
+
     fun printBill() = viewModelScope.launch {
         if (_ui.value.empty) { Toaster.say("Add an item first"); return@launch }
         orderOps.printBill(_ui.value.discount).fold(

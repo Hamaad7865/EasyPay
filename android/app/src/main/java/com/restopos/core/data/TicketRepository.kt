@@ -237,6 +237,13 @@ class TicketRepository @Inject constructor(
         session.setPendingDining(diningId)
     }
 
+    // The order type a counter sale is: the back office's counter one, else
+    // the first that needs no table and is not a takeaway or a delivery.
+    suspend fun counterTypeId(): String? {
+        val types = db.catalog().diningOptions()
+        return (types.firstOrNull { it.kind == "counter" } ?: types.firstOrNull { !it.needs_table && it.kind != "takeaway" && it.kind != "delivery" })?.id
+    }
+
     // Brings a parked order back onto the register.
     suspend fun select(ticketId: String) {
         if (db.tickets().openTicket(ticketId) != null) {
