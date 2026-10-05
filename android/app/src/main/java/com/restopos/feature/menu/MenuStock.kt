@@ -23,6 +23,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,10 +48,13 @@ import com.restopos.core.ui.Field
 import com.restopos.core.ui.L
 import com.restopos.core.ui.Pos
 import com.restopos.core.ui.ScreenHead
+import com.restopos.core.ui.Sheet
+import com.restopos.core.ui.SheetHead
 import com.restopos.core.ui.T
 import com.restopos.core.ui.Toaster
 import com.restopos.core.ui.Toggle
 import com.restopos.core.ui.V
+import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.VI
 import com.restopos.core.ui.VIcon
 import com.restopos.core.ui.panel
@@ -70,8 +76,9 @@ import javax.inject.Inject
 data class MenuRow(val item: ItemEntity, val category: CategoryEntity?, val index: Int, val station: String, val options: String)
 
 // The menu as the floor needs it during service: what there is, where it is
-// made, and whether it can still be sold. Prices and everything else are the
-// back office's.
+// made, whether it can still be sold, and what it costs. A price can be
+// changed here by someone allowed to edit the menu; the rest of an item is
+// the back office's.
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class MenuViewModel @Inject constructor(
@@ -99,6 +106,27 @@ class MenuViewModel @Inject constructor(
             items.map { i -> MenuRow(i, byId[i.category_id], index[i.category_id] ?: 0, stationOf[i.category_id].orEmpty().ifEmpty { "—" }, options[i.id].orEmpty().ifEmpty { "—" }) }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // The item whose price is being changed, or none.
+    val pricing = MutableStateFlow<ItemEntity?>(null)
+
+    // A new price for an item, as typed ("120", "99.50"). Someone who may not
+    // change prices asks someone who may; the sheet closes while they do.
+    fun setPrice(item: ItemEntity, typed: String, by: StaffMember? = null) {
+        val price = Money.parseRs(typed)
+        if (price == null) { Toaster.say("Type the price as a number, for example 120 or 99.50"); return }
+        viewModelScope.launch {
+            val out = service.setPrice(item.id, price, by)
+            val need = out.exceptionOrNull() as? NeedsApproval
+            if (need != null && by == null) {
+                pricing.value = null
+                approvals.ask(need.permission, need.what) { approver -> setPrice(item, typed, approver) }
+            } else out.fold(
+                { pricing.value = null; Toaster.say(if (price == item.price) "${item.name} stays at ${Money.format(price)}" else "${item.name} is now ${Money.format(price)}") },
+                { Toaster.say(it.message) },
+            )
+        }
+    }
+
     // Sold out, or back on sale. Someone who may not asks someone who may.
     fun toggle(item: ItemEntity, by: StaffMember? = null) {
         viewModelScope.launch {
@@ -123,6 +151,7 @@ fun MenuStockScreen(vm: MenuViewModel) {
     val rows by vm.rows.collectAsState()
     val total by vm.total.collectAsState()
     val soldOut by vm.soldOut.collectAsState()
+    val pricing by vm.pricing.collectAsState()
 
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -148,7 +177,7 @@ fun MenuStockScreen(vm: MenuViewModel) {
                 Caps("Category", V.Text2, Modifier.weight(1f))
                 Caps("Station", V.Text2, Modifier.weight(0.8f))
                 Caps("Options", V.Text2, Modifier.weight(1f))
-                Box(Modifier.width(110.dp), contentAlignment = Alignment.CenterEnd) { Caps("Price", V.Text2) }
+                Box(Modifier.width(130.dp), contentAlignment = Alignment.CenterEnd) { Caps("Price · tap to change", V.Text2) }
                 Caps("Availability", V.Text2, Modifier.width(170.dp))
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
@@ -164,7 +193,12 @@ fun MenuStockScreen(vm: MenuViewModel) {
                         }
                         T(r.station, 15.sp, 500, V.Dim, Modifier.weight(0.8f))
                         T(r.options, 14.sp, 500, V.Text2, Modifier.weight(1f), lines = 2)
-                        Box(Modifier.width(110.dp), contentAlignment = Alignment.CenterEnd) { T(Money.format(r.item.price), 15.sp, 500) }
+                        // the price is a key: tapping it changes what the item costs
+                        Box(
+                            Modifier.width(130.dp).height(44.dp).clip(RoundedCornerShape(10.dp)).background(V.Key2).border(1.dp, V.Stroke, RoundedCornerShape(10.dp))
+                                .clickable { vm.pricing.value = r.item }.padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.CenterEnd,
+                        ) { T(Money.format(r.item.price), 15.sp, 700) }
                         Row(
                             Modifier.width(170.dp).height(48.dp).clip(RoundedCornerShape(12.dp)).clickable { vm.toggle(r.item) },
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -175,6 +209,22 @@ fun MenuStockScreen(vm: MenuViewModel) {
                     }
                     Box(Modifier.fillMaxWidth().height(1.dp).background(V.RowLine))
                 }
+            }
+        }
+    }
+
+    pricing?.let { item ->
+        // what it costs now, as a number to type over: "120" or "99.50"
+        var typed by remember(item.id) { mutableStateOf(if (item.price % 100 == 0L) (item.price / 100).toString() else "%d.%02d".format(item.price / 100, item.price % 100)) }
+        Sheet(onDismiss = { vm.pricing.value = null }, width = 520.dp) {
+            SheetHead("Price of ${item.name}", "Now ${Money.format(item.price)}. Orders already open keep the price they were rung up at.") { vm.pricing.value = null }
+            Field(
+                typed, { v -> typed = v.filter { it.isDigit() || it == '.' }.take(9) }, "New price", Modifier.fillMaxWidth(), height = 60.dp, number = true, size = 22.sp,
+                leading = { T("Rs", 18.sp, 700, V.Text2) }, onDone = { vm.setPrice(item, typed) },
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                VBtn("Cancel", Modifier.weight(1f), height = 60.dp) { vm.pricing.value = null }
+                VBtn("Save price", Modifier.weight(1f), V.Blue, Color.White, 60.dp, weight = 800) { vm.setPrice(item, typed) }
             }
         }
     }

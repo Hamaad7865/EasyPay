@@ -177,6 +177,9 @@ interface ServiceDao {
     @Query("UPDATE items SET is_available = :on WHERE id = :id")
     suspend fun setAvailable(id: String, on: Boolean)
 
+    @Query("UPDATE items SET price = :price WHERE id = :id")
+    suspend fun setPrice(id: String, price: Long)
+
     @Query("SELECT COUNT(*) FROM items WHERE deleted_at IS NULL")
     fun itemCount(): Flow<Int>
 

@@ -86,6 +86,11 @@ handoff (`feature/main/MainShell.kt` holds every screen):
 - **Menu & stock:** every item with its category, station, options and price,
   and a switch for sold out (`item.set_available`; needs `items.availability`
   or `items.edit`, or an approval). A sold-out item stays on the menu, greyed.
+  Tapping an item's price changes what it costs (`item.set_price`; needs
+  `items.edit`, or an approval): at once on this tablet, on the others when
+  they sync. Orders already open keep the price each line was rung up at. The
+  server writes every change of a price down (`item_price_changes`: from, to,
+  when, who, who approved), and the item's page in the back office lists them.
 - **Cash drawer:** the drawer counted by note and coin (Rs 2,000 to Rs 1),
   with what it should hold and the difference for those who may see the
   figures (others count blind). Open drawer, Cash in, Cash out, Print X

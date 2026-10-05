@@ -4,6 +4,8 @@ import { tenantContext } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
 import { act, on, Refused, text, UUID } from "@/lib/action";
 import { parseRs } from "@/lib/money";
+import { loadSettings, money } from "@/lib/settings";
+import { clock } from "@/lib/report";
 import { Card, Flash, one, PageHead, type Search } from "../../ui";
 
 // One item: what it is called, what it costs, which tax it carries, which
@@ -85,6 +87,22 @@ export default async function ItemEditPage({ searchParams }: { searchParams: Sea
       groups: (await c.query(`select id, name, (select count(*)::int from modifiers m where m.tenant_id = g.tenant_id and m.group_id = g.id and m.deleted_at is null) as n from modifier_groups g where g.tenant_id = $1 and g.deleted_at is null order by g.name`, [ctx.tenantId])).rows as { id: string; name: string; n: number }[],
       itemTax: item ? ((await c.query(`select tax_id from item_taxes where tenant_id = $1 and item_id = $2 and deleted_at is null limit 1`, [ctx.tenantId, item.id])).rows[0]?.tax_id as string | undefined) : undefined,
       itemGroups: item ? (await c.query(`select group_id from item_modifier_groups where tenant_id = $1 and item_id = $2 and deleted_at is null`, [ctx.tenantId, item.id])).rows.map((r) => r.group_id as string) : [],
+      // every change of this item's price, here or on a till, newest first
+      prices: item
+        ? ((
+            await c.query(
+              `select pc.old_price, pc.new_price, pc.created_at, pc.source, e.name as who, a.name as approver
+                 from item_price_changes pc
+                 left join employees e on e.tenant_id = pc.tenant_id and e.id = pc.changed_by
+                 left join employees a on a.tenant_id = pc.tenant_id and a.id = pc.approved_by
+                where pc.tenant_id = $1 and pc.item_id = $2 and pc.deleted_at is null
+                order by pc.created_at desc limit 12`,
+              [ctx.tenantId, item.id],
+            )
+          ).rows as { old_price: string; new_price: string; created_at: string; source: string; who: string | null; approver: string | null }[])
+        : [],
+      settings: await loadSettings(c, ctx.tenantId),
+      tz: ((await c.query(`select timezone from stores where tenant_id = $1 and deleted_at is null order by created_at limit 1`, [ctx.tenantId])).rows[0]?.timezone as string | undefined) ?? "Indian/Mauritius",
     };
   });
   if (UUID.test(id) && !d.item) redirect("/backoffice/items");
@@ -170,6 +188,35 @@ export default async function ItemEditPage({ searchParams }: { searchParams: Sea
           {it && <button type="submit" name="remove" value="1" className="btn-danger" formNoValidate>Remove item</button>}
         </div>
       </form>
+      {d.prices.length > 0 && (
+        <Card title="Price changes" lede="Every time this item's price was changed, here or on a till. Receipts keep the price they were sold at." flush>
+          <table>
+            <thead>
+              <tr>
+                <th>When</th>
+                <th className="num">From</th>
+                <th className="num">To</th>
+                <th>Where</th>
+                <th>Who</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.prices.map((c, i) => (
+                <tr key={i}>
+                  <td>{clock(d.tz)(c.created_at)}</td>
+                  <td className="num">{money(Number(c.old_price), d.settings.decimals)}</td>
+                  <td className="num strong">{money(Number(c.new_price), d.settings.decimals)}</td>
+                  <td>{c.source === "till" ? "On a till" : "Back office"}</td>
+                  <td>
+                    {c.who ?? <span className="muted">Not recorded</span>}
+                    {c.approver && <span className="muted"> · approved by {c.approver}</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
     </div>
   );
 }

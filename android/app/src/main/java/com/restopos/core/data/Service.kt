@@ -178,4 +178,24 @@ class ServiceRepository @Inject constructor(
         }
         pushNow(context)
     }
+
+    // An item's price, changed from the till by someone allowed to edit the
+    // menu, or with their approval. It is on this tablet at once and on the
+    // others when they next sync; the server writes down who changed it, from
+    // what to what. Orders already open keep the price each line was rung up
+    // at: a line carries its own.
+    suspend fun setPrice(itemId: String, price: Long, approver: StaffMember? = null): Result<Unit> = runCatching {
+        require(price in 0..100_000_000L) { "That is not a price" }
+        staff.allow("items.edit", "change a price", approver)
+        val item = db.catalog().item(itemId) ?: error("That item is gone")
+        if (item.price == price) return@runCatching
+        db.withTransaction {
+            db.service().setPrice(itemId, price)
+            db.outbox().enqueue(op("item.set_price", buildJsonObject {
+                put("item_id", itemId); put("price", price)
+                staff.approvedBy("items.edit", approver)?.let { put("approved_by", it) }
+            }))
+        }
+        pushNow(context)
+    }
 }

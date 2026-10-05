@@ -61,6 +61,7 @@ private fun what(type: String): String = when (type) {
     "kitchen.mark" -> "Kitchen display: a line ticked or a ticket bumped"
     "booking.upsert" -> "Booking"
     "item.set_available" -> "Item marked sold out or back on sale"
+    "item.set_price" -> "Item price changed"
     "customer.upsert" -> "Customer"
     "payment.correct" -> "Payment type corrected"
     "shift.open" -> "Sales period opened"
