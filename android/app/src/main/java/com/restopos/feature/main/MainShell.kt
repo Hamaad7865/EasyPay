@@ -1,10 +1,13 @@
 package com.restopos.feature.main
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,11 +27,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,8 +44,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -58,6 +67,8 @@ import com.restopos.core.ui.Caps
 import com.restopos.core.ui.Gap
 import com.restopos.core.ui.IconKey
 import com.restopos.core.ui.L
+import com.restopos.core.ui.Motion
+import com.restopos.core.ui.PillRow
 import com.restopos.core.ui.Seg
 import com.restopos.core.ui.SegOption
 import com.restopos.core.ui.Sheet
@@ -70,6 +81,7 @@ import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.VI
 import com.restopos.core.ui.VIcon
 import com.restopos.core.ui.Wordmark
+import com.restopos.core.ui.press
 import com.restopos.core.ui.quietTap
 import com.restopos.feature.board.BoardScreen
 import com.restopos.feature.board.BoardViewModel
@@ -268,12 +280,23 @@ fun MainShell(
     val said by more.message.collectAsState()
     LaunchedEffect(said) { said?.let { Toaster.say(it); more.messageShown() } }
 
-    val go: (Screen) -> Unit = { s -> drawer = false; if (s == Screen.Order) shell.quick { order.open() } else shell.go(s) }
-    // the key that is lit: the place, or for an order where that order lives
-    val lit = when (screen) {
-        Screen.Order, Screen.Pay, Screen.Split -> when (orderUi.kind) { "dine" -> Screen.Floor; "takeaway", "delivery" -> Screen.Takeaway; else -> Screen.Order }
-        else -> screen
+    // Quick sale was tapped with the order screen at this turn: its key is lit at once, before the sale is read
+    var quickAt by remember { mutableIntStateOf(-1) }
+    val go: (Screen) -> Unit = { s -> drawer = false; if (s == Screen.Order) { quickAt = orderUi.session; shell.quick { order.open() } } else shell.go(s) }
+    // The key that is lit: the place, or for an order where that order lives.
+    // An order screen that has only just opened still holds the order before
+    // it until the new one is read, so the key that was lit stays lit until
+    // then: the pill goes to its key once, never by way of the wrong one.
+    val inOrder = screen == Screen.Order || screen == Screen.Pay || screen == Screen.Split
+    val entered = remember(inOrder) { orderUi.session }
+    val litBefore = remember { arrayOf(Screen.Floor) }
+    val lit = when {
+        quickAt == orderUi.session -> Screen.Order
+        !inOrder -> screen
+        orderUi.session == entered -> litBefore[0]
+        else -> when (orderUi.kind) { "dine" -> Screen.Floor; "takeaway", "delivery" -> Screen.Takeaway; else -> Screen.Order }
     }
+    SideEffect { litBefore[0] = lit }
     val cal = remember(now / 60_000) { Calendar.getInstance() }
     val date = remember(now / 3_600_000, lang) { SimpleDateFormat("EEE d MMM", if (L.fr) Locale.FRANCE else Locale.UK).format(Date(now)) }
     val serviceLine = (if (cal.get(Calendar.HOUR_OF_DAY) < 16) L.lunch else L.dinner) + " · " + date
@@ -301,23 +324,21 @@ fun MainShell(
                     .drawBehind { drawRect(V.HeaderLine, Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx())) }.padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                IconKey(VI.Menu, 48.dp, V.Panel, V.Text, icon = 22.dp) { drawer = true }
+                Box(Modifier.size(48.dp).press { drawer = true }.clip(RoundedCornerShape(12.dp)).background(V.Panel), contentAlignment = Alignment.Center) {
+                    VIcon(VI.Menu, 22.dp, V.Text)
+                }
                 Wordmark()
+                // the service screens, straight on the bar: the lit one on a pill that slides to whichever is tapped
                 Box(Modifier.weight(1f)) {
-                  Row(Modifier.clip(RoundedCornerShape(14.dp)).background(V.Panel).padding(4.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    SERVICE.forEach { n ->
-                        val on = lit == n.screen
+                    PillRow(SERVICE.size, SERVICE.indexOfFirst { it.screen == lit }, { go(SERVICE[it].screen) }, scroll = rememberScrollState()) { i, onPill, m ->
+                        val n = SERVICE[i]
                         val count = when (n.screen) { Screen.Takeaway -> badges.takeaway; Screen.Kitchen -> badges.kitchen; Screen.Bookings -> badges.bookings; else -> 0 }
-                        Row(
-                            Modifier.height(42.dp).clip(RoundedCornerShape(10.dp)).background(if (on) V.On else Color.Transparent).clickable { go(n.screen) }.padding(horizontal = 13.dp),
-                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            VIcon(n.icon, 19.dp, if (on) V.OnText else V.Text2)
-                            T(n.label(), 15.sp, 700, if (on) V.OnText else V.Text2)
+                        Row(m.height(42.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            VIcon(n.icon, 19.dp, if (onPill) V.OnText else V.Text2)
+                            T(n.label(), 15.sp, 700, if (onPill) V.OnText else V.Text2)
                             if (count > 0) Badge(count, when (n.screen) { Screen.Takeaway -> V.Red; Screen.Kitchen -> V.Blue; else -> Color(0xFF6243C8) })
                         }
                     }
-                  }
                 }
                 if (pending > 0 || rejected > 0 || needsSignIn) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(if (rejected > 0 || needsSignIn) V.Red else V.Amber))
@@ -328,7 +349,7 @@ fun MainShell(
                 }
                 val name = user?.employee?.name ?: "Till"
                 Row(
-                    Modifier.height(48.dp).clip(RoundedCornerShape(24.dp)).background(V.Panel).clickable { drawer = true }.padding(start = 6.dp, end = 16.dp),
+                    Modifier.height(48.dp).press { drawer = true }.clip(RoundedCornerShape(24.dp)).background(V.Panel).padding(start = 6.dp, end = 16.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Box(Modifier.size(36.dp).clip(CircleShape).background(V.Blue), contentAlignment = Alignment.Center) { T(name.take(1).uppercase(), 15.sp, 800, Color.White) }
@@ -362,7 +383,7 @@ fun MainShell(
                 }
             }
         }
-        if (drawer) SideMenu(shell, lit, badges, user, lang, onGo = go, onLock = { drawer = false; onLock() }, onClose = { drawer = false })
+        SideMenu(drawer, shell, lit, badges, user, lang, onGo = go, onLock = { drawer = false; onLock() }, onClose = { drawer = false })
         ToastHost()
     }
 
@@ -377,17 +398,45 @@ fun MainShell(
     }
 }
 
-// The side menu: every screen, the language, and who is at the till.
+// The side menu: every screen, the language, and who is at the till. It
+// slides out from the left as the screen behind it dims, follows a finger
+// that drags it, and goes back the way it came: let go on its way shut, or
+// flicked shut, it closes; otherwise it comes back out.
 @Composable
 private fun SideMenu(
-    shell: ShellViewModel, lit: Screen, badges: Badges, user: StaffMember?, lang: String,
+    open: Boolean, shell: ShellViewModel, lit: Screen, badges: Badges, user: StaffMember?, lang: String,
     onGo: (Screen) -> Unit, onLock: () -> Unit, onClose: () -> Unit,
 ) {
+    val wide = with(LocalDensity.current) { 340.dp.toPx() }
+    val out = remember { Animatable(0f) } // how far out it is: 0 is off the screen, 1 is all the way
+    val flick = remember { floatArrayOf(0f) } // the speed a finger let it go at
+    LaunchedEffect(open) {
+        val v = flick[0]
+        flick[0] = 0f
+        when {
+            v != 0f -> out.animateTo(if (open) 1f else 0f, Motion.Settle, v)
+            open -> out.animateTo(1f, Motion.enter())
+            else -> out.animateTo(0f, Motion.exit())
+        }
+    }
+    val gone by remember { derivedStateOf { out.value == 0f } }
+    if (!open && gone) return
+
     val team by shell.team.collectAsState()
     var asking by remember { mutableStateOf<StaffMember?>(null) }
-    Box(Modifier.fillMaxSize().background(Color(0x8C000000)).quietTap(onClose)) {
+    val scope = rememberCoroutineScope()
+    val drag = rememberDraggableState { by -> scope.launch { out.snapTo((out.value + by / wide).coerceIn(0f, 1f)) } }
+    Box(
+        Modifier.fillMaxSize().drawBehind { drawRect(Color.Black, alpha = 0.55f * out.value) }
+            .draggable(drag, Orientation.Horizontal, enabled = open, onDragStopped = { v ->
+                if (v < -900f || out.value < 0.6f) { flick[0] = v / wide; onClose() } else out.animateTo(1f, Motion.Settle, v / wide)
+            })
+            // once it is on its way shut, a tap goes to the screen behind it
+            .then(if (open) Modifier.quietTap(onClose) else Modifier),
+    ) {
         Column(
-            Modifier.width(340.dp).fillMaxHeight().background(V.Panel).drawBehind { drawRect(V.Stroke, Offset(size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height)) }
+            Modifier.width(340.dp).fillMaxHeight().graphicsLayer { translationX = (out.value - 1f) * wide }.background(V.Panel)
+                .drawBehind { drawRect(V.Stroke, Offset(size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height)) }
                 .quietTap {}.verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {

@@ -1,9 +1,19 @@
 package com.restopos.core.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.TweenSpec
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -34,22 +44,34 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -66,6 +88,7 @@ import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 // The redesigned till's colours. Dark is the design; light keeps the same
 // roles on a pale screen, for a till that stands in daylight.
@@ -229,21 +252,136 @@ fun IconKey(d: String, size: Dp = 44.dp, bg: Color = V.Key, tint: Color = V.Dim,
     }
 }
 
+// How the till moves. What comes onto the screen arrives fast and settles;
+// what leaves goes quicker than it came; what travels (the pill under a lit
+// key) is on a spring, so a second tap part-way turns it without a jerk.
+// None of it makes anyone wait: a tap counts the moment it lands.
+object Motion {
+    private val Arrive = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
+    private val Leave = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
+    fun enter(ms: Int = 300): TweenSpec<Float> = tween(ms, easing = Arrive)
+    fun exit(ms: Int = 200): TweenSpec<Float> = tween(ms, easing = Leave)
+    // the two edges of a pill on its way: the one in front goes ahead, the one behind catches up
+    val Lead = spring(dampingRatio = 0.85f, stiffness = 620f, visibilityThreshold = 0.5f)
+    val Trail = spring(dampingRatio = 0.85f, stiffness = 400f, visibilityThreshold = 0.5f)
+    // something let go of mid-drag carries on at the finger's speed and comes to rest
+    val Settle = spring(dampingRatio = 1f, stiffness = 500f, visibilityThreshold = 0.001f)
+}
+
+// How far a key has given under the finger: 1 at rest, a little less while
+// it is held. A quick tap is still seen going down before it comes back.
+@Composable
+fun rememberPress(source: InteractionSource, to: Float = 0.96f): Animatable<Float, AnimationVector1D> {
+    val s = remember { Animatable(1f) }
+    LaunchedEffect(source) {
+        source.interactions.collect { i ->
+            when (i) {
+                is PressInteraction.Press -> launch { s.animateTo(to, tween(90)) }
+                is PressInteraction.Release -> launch {
+                    if (s.value > (1f + to) / 2f) s.animateTo(to, tween(70))
+                    s.animateTo(1f, spring(dampingRatio = 0.6f, stiffness = 700f))
+                }
+                is PressInteraction.Cancel -> launch { s.animateTo(1f, spring(stiffness = 700f)) }
+            }
+        }
+    }
+    return s
+}
+
+// A key that gives under the finger, in place of the ripple.
+@Composable
+fun Modifier.press(to: Float = 0.96f, onClick: () -> Unit): Modifier {
+    val source = remember { MutableInteractionSource() }
+    val s = rememberPress(source, to)
+    return graphicsLayer { scaleX = s.value; scaleY = s.value }.clickable(interactionSource = source, indication = null, onClick = onClick)
+}
+
+// A row of keys with one pill under the lit one (lit is its place in the row,
+// or -1 for none). Tap another and the pill slides to it, its front edge a
+// little ahead, so it stretches on the way and gathers itself as it lands.
+// Each key is drawn twice, as it reads off the pill and as it reads on it, and
+// the second is cut to the pill: a label is in the pill's ink exactly where
+// the pill is under it, however far across it has got.
+@Composable
+fun PillRow(
+    count: Int, lit: Int, onTap: (Int) -> Unit, modifier: Modifier = Modifier, gap: Dp = 4.dp, radius: Dp = 12.dp, fill: Boolean = false,
+    scroll: ScrollState? = null, cell: @Composable (index: Int, onPill: Boolean, modifier: Modifier) -> Unit,
+) {
+    val spots = remember(count) { mutableStateMapOf<Int, Pair<Float, Float>>() } // each key's left and right edge
+    val left = remember { Animatable(0f) }
+    val right = remember { Animatable(0f) }
+    val shown = remember { Animatable(0f) }
+    val at = remember { intArrayOf(-1, 0) } // the key the pill is on or on its way to, and whether it has ever been shown
+    val sources = remember(count) { List(count) { MutableInteractionSource() } }
+    val presses = sources.map { rememberPress(it) }
+    val spot = spots[lit]
+    LaunchedEffect(lit, spot) {
+        if (spot == null) { at[0] = -1; shown.animateTo(0f, tween(120)); return@LaunchedEffect }
+        val (l, r) = spot
+        if (scroll != null) launch {
+            // a lit key that is off the edge of a row that scrolls is brought back on
+            if (l < scroll.value) scroll.animateScrollTo(l.toInt()) else if (r > scroll.value + scroll.viewportSize) scroll.animateScrollTo((r - scroll.viewportSize).toInt())
+        }
+        if (at[0] == -1 || at[0] == lit) {
+            // Nowhere to travel from (the first time, or back from a screen with
+            // no key here), or the row was laid out afresh under it (a count
+            // appeared, the language changed): the pill is simply there.
+            left.snapTo(l); right.snapTo(r)
+            at[0] = lit
+            if (at[1] == 0) { at[1] = 1; shown.snapTo(1f) } else shown.animateTo(1f, tween(160))
+        } else {
+            at[0] = lit
+            val forward = l > left.value
+            launch { shown.animateTo(1f, tween(160)) }
+            launch { left.animateTo(l, if (forward) Motion.Trail else Motion.Lead) }
+            launch { right.animateTo(r, if (forward) Motion.Lead else Motion.Trail) }
+        }
+    }
+    val ink = V.On
+    val cut = remember { Path() }
+    Box(if (scroll != null) modifier.horizontalScroll(scroll) else modifier) {
+        val row = if (fill) Modifier.fillMaxWidth() else Modifier
+        Row(row, horizontalArrangement = Arrangement.spacedBy(gap)) {
+            repeat(count) { i ->
+                cell(
+                    i, false,
+                    (if (fill) Modifier.weight(1f) else Modifier)
+                        .onPlaced { c -> val x = c.positionInParent().x; val v = x to x + c.size.width; if (spots[i] != v) spots[i] = v }
+                        .graphicsLayer { val s = presses[i].value; scaleX = s; scaleY = s }
+                        .clickable(interactionSource = sources[i], indication = null) { onTap(i) },
+                )
+            }
+        }
+        Row(
+            row.clearAndSetSemantics {}.graphicsLayer { alpha = shown.value }.drawWithContent {
+                if (right.value > left.value) {
+                    val r = CornerRadius(radius.toPx())
+                    drawRoundRect(ink, Offset(left.value, 0f), Size(right.value - left.value, size.height), r)
+                    cut.rewind()
+                    cut.addRoundRect(RoundRect(left.value, 0f, right.value, size.height, r))
+                    clipPath(cut) { this@drawWithContent.drawContent() }
+                }
+            },
+            horizontalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            repeat(count) { i -> cell(i, true, (if (fill) Modifier.weight(1f) else Modifier).graphicsLayer { val s = presses[i].value; scaleX = s; scaleY = s }) }
+        }
+    }
+}
+
 class SegOption(val label: String, val on: Boolean, val sub: String? = null, val onClick: () -> Unit)
 
-// A row of choices in a dip, the chosen one lit.
+// A row of choices in a dip, the chosen one lit: the pill slides to it.
 @Composable
 fun Seg(options: List<SegOption>, modifier: Modifier = Modifier, well: Color = V.Panel, height: Dp = 44.dp, radius: Dp = 14.dp, fill: Boolean = false, size: TextUnit = 15.sp, pad: Dp = 16.dp) {
-    Row(modifier.clip(RoundedCornerShape(radius)).background(well).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        options.forEach { o ->
-            Row(
-                (if (fill) Modifier.weight(1f) else Modifier).height(height).clip(RoundedCornerShape(radius - 4.dp))
-                    .background(if (o.on) V.On else Color.Transparent).clickable(onClick = o.onClick).padding(horizontal = if (fill) 6.dp else pad),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
-            ) {
-                T(o.label, size, 700, if (o.on) V.OnText else V.Dim)
-                if (o.sub != null) { Spacer(Modifier.width(8.dp)); T(o.sub, 12.sp, 700, if (o.on) V.OnSub else V.Text3) }
-            }
+    PillRow(
+        options.size, options.indexOfFirst { it.on }, { options.getOrNull(it)?.onClick?.invoke() },
+        modifier.clip(RoundedCornerShape(radius)).background(well).padding(4.dp), radius = radius - 4.dp, fill = fill,
+    ) { i, onPill, m ->
+        val o = options[i]
+        Row(m.height(height).padding(horizontal = if (fill) 6.dp else pad), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            T(o.label, size, 700, if (onPill) V.OnText else V.Dim)
+            if (o.sub != null) { Spacer(Modifier.width(8.dp)); T(o.sub, 12.sp, 700, if (onPill) V.OnSub else V.Text3) }
         }
     }
 }
