@@ -116,12 +116,9 @@ class BoardViewModel @Inject constructor(
                 tickets.select(o.id)
                 orderOps.save().fold(
                     onSuccess = { r ->
-                        if (r.errors.isNotEmpty()) Toaster.say(r.errors.first())
-                        else {
-                            // nothing left to send still means the kitchen has it all
-                            if (db.tickets().ticket(o.id)?.stage == "new") tickets.setStage(o.id, "kitchen")
-                            Toaster.say("${o.label} · sent to kitchen")
-                        }
+                        // nothing left to send still means the kitchen has it all
+                        if (db.tickets().ticket(o.id)?.stage == "new") tickets.setStage(o.id, "kitchen")
+                        Toaster.say(if (r.errors.isNotEmpty()) r.errors.first() + " ${o.label} is on the kitchen display." else "${o.label} · sent to kitchen")
                     },
                     onFailure = { Toaster.say(it.message) },
                 )

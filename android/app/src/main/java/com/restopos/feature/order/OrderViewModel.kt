@@ -223,12 +223,12 @@ class OrderViewModel @Inject constructor(
         out.fold(
             onSuccess = { r ->
                 when {
-                    r.errors.isNotEmpty() -> Toaster.say(r.errors.first() + " Send again to try what is left.")
+                    r.errors.isNotEmpty() -> Toaster.say(r.errors.first() + " The order is on the kitchen display. Print it again from More once the printer answers.")
                     r.sent == 0 -> Toaster.say("This order type is set never to go to the kitchen (back office, Settings).")
                     else -> Toaster.say("${s.unsent} item${if (s.unsent == 1) "" else "s"} sent to kitchen" + (s.tableName?.let { " · $it" } ?: ""))
                 }
                 reload()
-                if (r.errors.isEmpty() && r.sent > 0 && s.dine) sentFromTable()
+                if (r.sent > 0 && s.dine) sentFromTable()
             },
             onFailure = { Toaster.say(it.message); reload() },
         )

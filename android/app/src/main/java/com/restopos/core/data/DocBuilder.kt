@@ -20,7 +20,10 @@ import kotlinx.serialization.json.jsonPrimitive
 import javax.inject.Inject
 import javax.inject.Singleton
 
-// What reached the kitchen: the lines that printed everywhere they should
+// What went to the kitchen: every line asked for (they are on the kitchen
+// display whatever the printers did), and what a printer said if its paper
+// did not come out. Before the display existed this was only the lines that
+// printed everywhere they should
 // (or have nowhere to print), and what went wrong with the rest.
 data class KitchenOutcome(val printed: List<String>, val errors: List<String>)
 
@@ -137,9 +140,10 @@ class DocBuilder @Inject constructor(
         for ((pid, ls) in perPrinter) {
             val p = printers[pid] ?: continue
             val doc = KitchenDoc(title, order, System.currentTimeMillis(), waiter, dining(t), t.covers, remark(t), lines(ls), p.name)
-            printing.send(p, Docs.kitchen(doc, printing.paper(p)), "Kitchen ticket, $order", again = null).onFailure { failed.add(pid); errors.add(it.message ?: "${p.name} did not print") }
+            // a ticket that did not print can be sent again from Settings, Printers
+            printing.send(p, Docs.kitchen(doc, printing.paper(p)), "Kitchen ticket, $order").onFailure { failed.add(pid); errors.add(it.message ?: "${p.name} did not print") }
         }
-        return KitchenOutcome(rows.filter { l -> where[l.id].orEmpty().none { failed.contains(it) } }.map { it.id }, errors)
+        return KitchenOutcome(rows.map { it.id }, errors)
     }
 
     fun money(cents: Long) = Money.format(cents)

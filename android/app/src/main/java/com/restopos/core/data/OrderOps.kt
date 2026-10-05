@@ -49,10 +49,11 @@ class OrderOps @Inject constructor(
 ) {
     private fun op(type: String, payload: JsonObject) = OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
 
-    // Save: what the kitchen has not had yet is printed where its category
-    // prints, then marked as sent. Opening the order again and saving again
-    // sends only what was added since. A printer that does not answer keeps
-    // its lines unsent, so the next Save tries them again.
+    // Send: what the kitchen has not had yet goes onto the kitchen display as
+    // one ticket and is printed where its category prints, then marked as
+    // sent. Sending again sends only what was added since. A printer that
+    // does not answer does not hold the order back: it is on the display, the
+    // till says which printer failed, and the paper can be printed again.
     suspend fun save(): Result<SaveResult> = runCatching {
         val t = tickets.activeTicket() ?: return@runCatching SaveResult(0, emptyList())
         // an order type set to never go to the kitchen is only put away

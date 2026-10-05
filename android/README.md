@@ -37,9 +37,13 @@ handoff (`feature/main/MainShell.kt` holds every screen):
   Split, Clear new, More (discount, move to another table, change server,
   order note, customer, print the kitchen order again, cancel the order),
   then Send to kitchen and Pay.
-- **Send to kitchen** prints what the kitchen has not had on the printers its
-  categories are ticked for, marks it sent, and puts it on the kitchen display
-  as one ticket. An order on a table then goes back to the floor.
+- **Send to kitchen** puts what the kitchen has not had on the kitchen display
+  as one ticket, prints it on the printers its categories are ticked for, and
+  marks it sent. A printer that does not answer does not hold the order back:
+  it is on the display, the till names the printer, and the paper can be sent
+  again (Settings > Printers, or More > Print the kitchen order again). An
+  order on a table then goes back to the floor. An order paid without being
+  sent goes to the kitchen when it is paid.
 - **Split** opens the split check: the order's unpaid lines in checks side by
   side, a line moved or divided between them, one check per seat, a bill and
   a payment per check.
