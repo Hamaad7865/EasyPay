@@ -6,7 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Uuid7
 import com.restopos.core.network.ApiClient
 import com.restopos.core.network.ApiError
+import com.restopos.app.BuildConfig
 import com.restopos.core.network.AuthClient
+import com.restopos.core.network.AuthRefused
 import com.restopos.core.network.dto.RegisterDeviceRequest
 import com.restopos.core.network.dto.StoreDto
 import com.restopos.core.sync.SessionStore
@@ -17,6 +19,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.io.IOException
 import javax.inject.Inject
 
 // --- Auth (spec 7.1 steps 1-2; PIN screen is Phase 4) ---
@@ -27,10 +30,24 @@ sealed interface AuthUiState {
     data object Busy : AuthUiState
     data object SignedIn : AuthUiState
     data class Error(val message: String) : AuthUiState
+    // the link for choosing a new password was asked for
+    data class LinkSent(val email: String) : AuthUiState
 }
 
 sealed interface AuthAction {
     data class SignIn(val email: String, val password: String) : AuthAction
+    data class Forgot(val email: String) : AuthAction
+    // back to the empty form, with whatever was said cleared
+    data object Clear : AuthAction
+}
+
+// What the screen says when signing in, or asking for a reset link, fails.
+// The service's own words are kept only where nothing here covers the case.
+internal fun authProblem(e: Throwable?, fallback: String): String = when {
+    e is AuthRefused && e.status == 429 -> "Too many tries. Wait a minute, then try again."
+    e is AuthRefused && e.status == 401 -> "That email and password do not match. Check both and try again."
+    e is IOException -> "Cannot reach EasyPay. Check the tablet's internet connection and try again."
+    else -> e?.message?.takeIf { it.isNotBlank() } ?: fallback
 }
 
 @HiltViewModel
@@ -43,13 +60,31 @@ class AuthViewModel @Inject constructor(
     private val _state = MutableStateFlow<AuthUiState>(AuthUiState.Form)
     val state: StateFlow<AuthUiState> = _state
 
+    // The page a reset link opens is the back office's (backOfficeUrl in
+    // local.properties). Until the back office has an address there is nowhere
+    // for the link to land, and the screen does not offer it.
+    private val resetPage = BuildConfig.BACK_OFFICE_URL.trimEnd('/').takeIf { it.isNotBlank() }?.let { "$it/reset-password" }
+    val canReset: Boolean get() = resetPage != null
+
     fun onAction(a: AuthAction) = viewModelScope.launch {
-        _state.value = AuthUiState.Busy
-        val r = when (a) {
-            is AuthAction.SignIn -> auth.signIn(a.email.trim(), a.password)
+        if (a is AuthAction.Clear) {
+            _state.value = AuthUiState.Form
+            return@launch
         }
+        _state.value = AuthUiState.Busy
+        if (a is AuthAction.Forgot) {
+            val email = a.email.trim()
+            val page = resetPage
+            _state.value = if (page == null) AuthUiState.Form else auth.requestPasswordReset(email, page).fold(
+                onSuccess = { AuthUiState.LinkSent(email) },
+                onFailure = { AuthUiState.Error(authProblem(it, "The link could not be sent. Try again in a minute.")) },
+            )
+            return@launch
+        }
+        a as AuthAction.SignIn
+        val r = auth.signIn(a.email.trim(), a.password)
         if (r.isFailure) {
-            _state.value = AuthUiState.Error(r.exceptionOrNull()?.message ?: "Sign-in failed")
+            _state.value = AuthUiState.Error(authProblem(r.exceptionOrNull(), "Sign-in failed"))
             return@launch
         }
         // Signing in again on a tablet that is already set up (the session

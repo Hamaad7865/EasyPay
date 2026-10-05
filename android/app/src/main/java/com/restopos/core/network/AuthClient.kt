@@ -54,6 +54,9 @@ private const val ENTRY_SEPARATOR = "\u001e"
 /** The session is gone (or was never there): the user has to sign in again. */
 class AuthRequired(message: String = "Please sign in again") : Exception(message)
 
+/** The sign-in service answered, and the answer was no (401 for a wrong email or password). */
+class AuthRefused(val status: Int, message: String) : Exception(message)
+
 // Session cookies survive a restart, encrypted. Ktor's own storage is memory
 // only, which meant the token could never be refreshed after the app was
 // closed. Each entry is "<request url>\n<Set-Cookie header>".
@@ -145,9 +148,21 @@ class AuthClient(private val context: Context, baseUrl: String) {
             contentType(ContentType.Application.Json)
             setBody(AuthRequest(email, password))
         }
-        if (!res.status.isSuccess()) error(failure(res, "Sign-in failed"))
+        if (!res.status.isSuccess()) throw AuthRefused(res.status.value, failure(res, "Sign-in failed"))
         refreshJwt()
         Unit
+    }
+
+    // Asks the service to email a link for choosing a new password. The link
+    // opens [resetPage] (the back office's /reset-password) on whatever device
+    // the email is read on. The answer is the same whether or not the email
+    // has a login, so nobody can test which emails do.
+    suspend fun requestPasswordReset(email: String, resetPage: String): Result<Unit> = runCatching {
+        val res = http.post("$authUrl/request-password-reset") {
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("email" to email, "redirectTo" to resetPage))
+        }
+        if (!res.status.isSuccess()) throw AuthRefused(res.status.value, failure(res, "The link could not be sent"))
     }
 
     // Works offline: the server call is best effort, local state always goes.

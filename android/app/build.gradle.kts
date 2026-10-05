@@ -12,6 +12,8 @@ plugins {
 // Endpoints live in android/local.properties (never committed):
 //   functionUrl=https://br-...-api.compute.....neon.tech
 //   authUrl=https://ep-....neonauth.....neon.tech/neondb/auth
+//   backOfficeUrl=https://...   (the back office's address; "Forgot password?"
+//                                on the sign-in screen is hidden while it is empty)
 // findProperty() does not read local.properties, so it is loaded here;
 // -PfunctionUrl=... on the command line still wins.
 val localProps = Properties().apply {
@@ -33,6 +35,7 @@ android {
         versionName = "0.2.0"
         buildConfigField("String", "FUNCTION_URL", "\"${endpoint("functionUrl")}\"")
         buildConfigField("String", "AUTH_URL", "\"${endpoint("authUrl")}\"")
+        buildConfigField("String", "BACK_OFFICE_URL", "\"${endpoint("backOfficeUrl")}\"")
     }
     // The build that goes on a restaurant's tablets. It is signed with
     // RestoPOS's own key, which is never in the repository: these lines in

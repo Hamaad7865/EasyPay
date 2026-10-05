@@ -185,7 +185,12 @@ checks below are the first thing to do on a real tablet.
    sdk.dir=C:/Users/<you>/AppData/Local/Android/Sdk
    functionUrl=https://br-...-api.compute.c-4.ap-southeast-1.aws.neon.tech
    authUrl=https://ep-....neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth
+   backOfficeUrl=https://...
    ```
+   `backOfficeUrl` is the back office's address (on this PC,
+   `http://localhost:3000`). The sign-in screen's "Forgot password?" asks for
+   a link that opens its `/reset-password` page; while the line is missing the
+   screen does not offer it.
    The URLs are `NEON_FUNCTION_API_BASE_URL` and `NEON_AUTH_BASE_URL` from the
    root `.env.local`. They become `BuildConfig` fields; a trailing slash is
    fine. Use the dev branch values unless you mean to point a build at
