@@ -63,7 +63,7 @@ fun RoleBadge(role: String?) {
     val manager = role.equals("Owner", true) || role.equals("Manager", true)
     Text(
         role.uppercase(),
-        Modifier.clip(RoundedCornerShape(3.dp)).background(if (manager) Color(0xFF7FA8D9) else Color(0xFFD9A441)).padding(horizontal = 6.dp, vertical = 3.dp),
+        Modifier.clip(RoundedCornerShape(3.dp)).background(if (manager) Color(0xFF8CC79A) else Color(0xFFD9A441)).padding(horizontal = 6.dp, vertical = 3.dp),
         color = if (manager) Color(0xFF10233D) else Color(0xFF3A2600), fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1,
     )
 }
@@ -120,7 +120,7 @@ fun PinPad(member: StaffMember, check: suspend (String) -> PinCheck, onOk: () ->
                         }
                     }
                 }
-                Text("Cancel", Modifier.padding(top = 18.dp).clickable(onClick = onDismiss).padding(10.dp), color = Color(0xFF8FA6FF), fontSize = 15.sp)
+                Text("Cancel", Modifier.padding(top = 18.dp).clickable(onClick = onDismiss).padding(10.dp), color = Color(0xFF9FD4A8), fontSize = 15.sp)
             }
         }
     }

@@ -15,8 +15,8 @@ import androidx.compose.ui.unit.dp
 import com.restopos.core.common.CssColor
 
 // The till's look, in two lights. Dark: near-black screens with dark grey
-// panels. Light: a pale grey screen with white panels. Blue categories and
-// blue and green action keys in both. One place for every colour so screens
+// panels. Light: a pale grey screen with white panels. The accent is the
+// logo's green in both (the names that say Blue are from before it was). One place for every colour so screens
 // never hard-code one, and one switch (Settings, Display) that every colour
 // reads: a screen follows it the moment it changes.
 object Pos {
@@ -32,22 +32,22 @@ object Pos {
     val Line: Color get() = of(0xFF0D0F13, 0xFFC8CCD6)
     val Stroke: Color get() = of(0xFF2B3039, 0xFFD9DCE4) // the hairline around a card and between its rows
     val Tile: Color get() = of(0xFF22262E, 0xFFFFFFFF)
-    val TileEdge: Color get() = of(0xFF1A6EF5, 0xFF1A6EF5)
-    val Blue: Color get() = of(0xFF1A6EF5, 0xFF1A6EF5)
+    val TileEdge: Color get() = of(0xFF3F8443, 0xFF3F8443)
+    val Blue: Color get() = of(0xFF3F8443, 0xFF3F8443) // the accent: the logo's green
     val Green: Color get() = of(0xFF12A36A, 0xFF0F8050)
     val Pink: Color get() = of(0xFFE5484D, 0xFFC0272D)
     val Violet: Color get() = of(0xFF8B6CFF, 0xFF5B3FD6)
     val Text: Color get() = of(0xFFF2F4F7, 0xFF1A1C21)
     val Text2: Color get() = of(0xFFA6AEBB, 0xFF4B5261)
     val Text3: Color get() = of(0xFF79818F, 0xFF7A8191)
-    val Selected: Color get() = of(0xFF232A38, 0xFFE3ECFD)
-    val NavOn: Color get() = of(0xFF5AA2FF, 0xFF1A5FD6)
+    val Selected: Color get() = of(0xFF222E26, 0xFFE3F1E3)
+    val NavOn: Color get() = of(0xFF74B884, 0xFF2F6B33)
     // behind text in the screen's own text colour: the void keys, the sync notices
     val Danger: Color get() = of(0xFF5A2226, 0xFFFBE0E1)
-    val CategoryDefault: Color get() = of(0xFF2459C9, 0xFF2459C9)
-    val Link: Color get() = of(0xFF8CC0FF, 0xFF1A5FD6) // text you can tap: Log out, New order, the sorted column
-    val TabOn: Color get() = of(0xFF1A6EF5, 0xFF1A6EF5)
-    val ChipOpen: Color get() = of(0xFF8CC0FF, 0xFF1A5FD6)
+    val CategoryDefault: Color get() = of(0xFF2F7438, 0xFF2F7438)
+    val Link: Color get() = of(0xFF9FD4A8, 0xFF2F6B33) // text you can tap: Log out, New order, the sorted column
+    val TabOn: Color get() = of(0xFF3F8443, 0xFF3F8443)
+    val ChipOpen: Color get() = of(0xFF9FD4A8, 0xFF2F6B33)
     val Ok: Color get() = of(0xFF12B76A, 0xFF0F8050)
     val Warn: Color get() = of(0xFFF5A524, 0xFF9A6200)
 

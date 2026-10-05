@@ -94,12 +94,15 @@ object V {
     val On: Color get() = of(0xFFF2F4F7, 0xFF1A1C21)
     val OnText: Color get() = of(0xFF0D0F13, 0xFFFFFFFF)
     val OnSub: Color get() = of(0xFF5B6577, 0xFFB9C0CC)
-    val Blue = Color(0xFF1A6EF5)
-    val BlueText: Color get() = of(0xFF5AA2FF, 0xFF1A5FD6)
-    val BlueSoft: Color get() = of(0xFF8CC0FF, 0xFF1A5FD6)
-    val BlueWash: Color get() = of(0xFF13294F, 0xFFDCE8FD)
-    val RowOn: Color get() = of(0xFF232A38, 0xFFE3ECFD)
-    val Cyan = Color(0xFF22C8F5)
+    // The accent: the logo's green, a shade deeper so white lettering on a key reads.
+    // The names still say Blue: they name the role (the key that is on, the
+    // table that is seated), which was blue in the design this came from.
+    val Blue = Color(0xFF3F8443)
+    val BlueText: Color get() = of(0xFF74B884, 0xFF2F6B33)
+    val BlueSoft: Color get() = of(0xFF9FD4A8, 0xFF2F6B33)
+    val BlueWash: Color get() = of(0xFF173321, 0xFFDDEFDD)
+    val RowOn: Color get() = of(0xFF222E26, 0xFFE3F1E3)
+    val Cyan = Color(0xFF74B884) // the green of the logo's hand and note
     val Green = Color(0xFF2BD48A)
     val GreenInk = Color(0xFF052A1B)
     val GreenWash: Color get() = of(0xFF0F2A1F, 0xFFD9F5E7)
@@ -126,7 +129,7 @@ object V {
     val SeatOff: Color get() = of(0xFF22262E, 0xFFE4E7ED)
     val SeatOffLine: Color get() = of(0xFF4A515E, 0xFFB5BBC7)
     val Scrim = Color(0x99000000)
-    val LogoBrush = Brush.linearGradient(listOf(Color(0xFF22C8F5), Color(0xFF1A6EF5)))
+    val LogoBrush = Brush.linearGradient(listOf(Color(0xFF74B884), Color(0xFF3F8443)))
 }
 
 // The design's icons: 24-unit line drawings, kept as their path data.

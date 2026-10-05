@@ -136,7 +136,7 @@ class TodayViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TodayUi())
 }
 
-private val MIX = listOf(0xFFF2F4F7, 0xFF1A6EF5, 0xFFE5484D, 0xFF12B76A, 0xFF7C5CFA, 0xFFF5A524, 0xFF22C8F5).map { Color(it) }
+private val MIX = listOf(0xFFF2F4F7, 0xFF5FB56A, 0xFFE5484D, 0xFF3B82C4, 0xFF7C5CFA, 0xFFF5A524, 0xFF22C8F5).map { Color(it) }
 private fun short(cents: Long): String = if (cents >= 100_000) "Rs %.1fk".format(Locale.US, cents / 100_000.0) else Money.format(cents)
 
 @Composable
