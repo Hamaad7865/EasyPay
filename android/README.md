@@ -111,21 +111,46 @@ handoff (`feature/main/MainShell.kt` holds every screen):
   the server acts as them. What the server would refuse is refused on the
   till before money is recorded.
 - **Receipts:** tap one to see it, print it again (the same paper: what a
-  receipt printed is kept with it), refund it (the whole receipt, with a
-  reason and how the money goes back), or correct its payment type.
+  receipt printed is kept with it), refund it, or correct its payment type. A
+  refund is the whole receipt or part of it: the sheet lists the lines, with
+  how many of each come back, a reason and how the money goes back. The till
+  works the amount out as the server does (`RefundCalc`, its figures pinned
+  by tests on both sides), and a receipt can be refunded again until nothing
+  of it is left. A receipt issued before version 8 of the tablet's database
+  can only be refunded whole.
 - **Customers:** search, add, edit; More > Customer puts one on an order.
 - **Settings:** this till, notifications, reports (past periods and day
   closings), payments, printers with a test print and the print jobs, the
   display (light mode, keep the screen on), support and help.
+- **Barcodes:** a scanner that behaves as a keyboard (USB, or Bluetooth
+  paired as a keyboard) adds the item whose barcode it reads while the order
+  screen is open. The barcode is typed or scanned on the item in the back
+  office. Scanning with the tablet's camera is not built.
+- **Locking:** POS settings in the back office can lock the till after so
+  many minutes without a touch. It returns to the start screen with the order
+  kept; the kitchen display and a payment under way do not lock.
+- **Language:** the till's own words in English, French and Kreol Morisien
+  (side menu). The Kreol is waiting for a native speaker to read it through.
+- **What the till says about itself:** a strip under the top bar when its
+  clock is five minutes or more from the server's (receipts carry the
+  tablet's time), and when the server says this build is too old to sync
+  (`MIN_TILL_VERSION` on the API, see `neon.ts`): it keeps selling and keeps
+  its sales until it is updated. A crash is written to a small file (where in
+  the program, the version, the tablet; nothing of a sale) and sent at the
+  next sync; the admin area lists them under Crashes.
+- **Splitting equally** keeps the shares already taken on the tablet between
+  guests, so a tablet that stops in the middle still knows what was paid.
 - **Printing** is done by the tablet itself over the local network (a
   printer's IP address, port 9100) or a USB cable, in ESC/POS, for 58 mm and
   80 mm paper. It does not need the internet.
 
-Not built yet: tips, refunding part of a receipt, barcode scanning, locking
-after inactivity, QR sign-in, card terminals (a card payment is recorded by
-hand once the terminal has approved it), a discount on one item, changing an
-item's price on the order, fixtures on the floor plan (a bar, the entrance),
-charging a hotel room, sending a receipt by e-mail or SMS from a server.
+Not built yet: tips, a discount on one item (the server's payment function
+only knows discounts on the whole bill), merging two orders into one,
+Bluetooth printers, scanning a barcode with the camera, QR sign-in, card
+terminals (a card payment is recorded by hand once the terminal has approved
+it), changing an item's price on the order, fixtures on the floor plan (a
+bar, the entrance), charging a hotel room, sending a receipt by e-mail or SMS
+from a server.
 
 A till only shows its own orders, kitchen tickets and receipts: the pull does
 not bring other tills' tickets down. So a table that is taken on one tablet
