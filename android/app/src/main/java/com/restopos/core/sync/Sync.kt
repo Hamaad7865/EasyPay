@@ -20,6 +20,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.restopos.core.database.CashMoveEntity
+import com.restopos.core.database.BookingEntity
 import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.CustomerEntity
 import com.restopos.core.database.DayCloseEntity
@@ -146,7 +147,8 @@ class PullWorker @AssistedInject constructor(
             }
             changes["items"]?.let { rows ->
                 dao.upsertItems(rows.map {
-                    ItemEntity(id(it), str(it, "tenant_id") ?: "", str(it, "category_id"), str(it, "name") ?: "", lng(it, "price") ?: 0, bool(it, "is_available", true), str(it, "tile_color"), str(it, "image_path"), str(it, "deleted_at"), lng(it, "server_seq"))
+                    ItemEntity(id(it), str(it, "tenant_id") ?: "", str(it, "category_id"), str(it, "name") ?: "", lng(it, "price") ?: 0, bool(it, "is_available", true), str(it, "tile_color"), str(it, "image_path"), str(it, "deleted_at"), lng(it, "server_seq"),
+                        tags = (it.jsonObject["dietary_tags"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { t -> runCatching { t.jsonPrimitive.contentOrNull }.getOrNull() }?.joinToString(",") ?: "")
                 })
             }
             changes["modifier_groups"]?.let { rows ->
@@ -174,6 +176,7 @@ class PullWorker @AssistedInject constructor(
                     DiningOptionEntity(
                         id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", bool(it, "is_default", false), (lng(it, "sort_order") ?: 0).toInt(), str(it, "deleted_at"), lng(it, "server_seq"),
                         needs_table = bool(it, "needs_table", false), kitchen = str(it, "kitchen") ?: "save",
+                        kind = str(it, "kind") ?: if (bool(it, "needs_table", false)) "dine" else "counter",
                     )
                 })
             }
@@ -285,6 +288,19 @@ class PullWorker @AssistedInject constructor(
                     )
                 })
             }
+            // Bookings are the same on every till of the store. One changed here
+            // and not sent yet is on its way up; the copy that comes back after
+            // it has landed is the one that counts.
+            changes["bookings"]?.let { rows ->
+                db.service().upsertBookings(rows.mapNotNull {
+                    val at = time(it, "booked_for") ?: return@mapNotNull null
+                    BookingEntity(
+                        id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, at, str(it, "name") ?: "", (lng(it, "size") ?: 1).toInt(),
+                        str(it, "phone"), str(it, "area"), str(it, "table_id"), str(it, "tags"), str(it, "status") ?: "confirmed", str(it, "ticket_id"),
+                        str(it, "deleted_at"), lng(it, "server_seq"),
+                    )
+                })
+            }
             val staff = db.staff()
             changes["roles"]?.let { rows ->
                 staff.upsertRoles(rows.map {
@@ -379,6 +395,8 @@ private val LEFT_HANDED = booleanPreferencesKey("left_handed")
 private val KEEP_AWAKE = booleanPreferencesKey("keep_awake")
 private val LIGHT = booleanPreferencesKey("light_mode")
 private val LAST_PULL = longPreferencesKey("last_pull")
+private val LANG = stringPreferencesKey("lang")
+private val SEQ_DAY = stringPreferencesKey("seq_day")
 private val Context.sessionPrefs by preferencesDataStore("device")
 
 // Which tenant, store and device this tablet is. Set once at device setup and
@@ -443,5 +461,26 @@ class SessionStore(private val context: Context) {
     // When this tablet last heard from the server.
     val lastPull: Flow<Long?> = store.data.map { it[LAST_PULL] }
     suspend fun setLastPull(at: Long) { store.edit { it[LAST_PULL] = at } }
+    // The language of the till's own words: "en" or "fr".
+    val lang: Flow<String> = store.data.map { it[LANG] ?: "en" }
+    suspend fun setLang(code: String) { store.edit { it[LANG] = code } }
+
+    // A number that counts up through the day and starts again the next:
+    // "C" for counter orders, "A" takeaways, "D" deliveries, "K" kitchen tickets.
+    suspend fun nextNumber(series: String): Int {
+        val today = java.time.LocalDate.now().toString()
+        var out = 1
+        store.edit {
+            val key = intPreferencesKey("seq_$series")
+            if (it[SEQ_DAY] != today) {
+                listOf("C", "A", "D", "K").forEach { s -> it.remove(intPreferencesKey("seq_$s")) }
+                it[SEQ_DAY] = today
+            }
+            out = (it[key] ?: 0) + 1
+            it[key] = out
+        }
+        return out
+    }
+
     suspend fun clear() { store.edit { it.clear() } }
 }

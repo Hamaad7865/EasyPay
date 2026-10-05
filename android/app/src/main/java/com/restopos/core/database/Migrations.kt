@@ -78,4 +78,32 @@ object Migrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_drawer_counts_shift_id` ON `drawer_counts` (`shift_id`)")
         }
     }
+
+    // 6 -> 7: an order type's kind, an item's tags, the takeaway board's
+    // details on an order, kitchen display tickets and bookings.
+    val V6_V7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `items` ADD COLUMN `tags` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `dining_options` ADD COLUMN `kind` TEXT NOT NULL DEFAULT 'counter'")
+            db.execSQL("UPDATE `dining_options` SET `kind` = 'dine' WHERE `needs_table` = 1")
+            db.execSQL("ALTER TABLE `tickets` ADD COLUMN `order_no` TEXT")
+            db.execSQL("ALTER TABLE `tickets` ADD COLUMN `phone` TEXT")
+            db.execSQL("ALTER TABLE `tickets` ADD COLUMN `address` TEXT")
+            db.execSQL("ALTER TABLE `tickets` ADD COLUMN `due_at` INTEGER")
+            db.execSQL("ALTER TABLE `tickets` ADD COLUMN `stage` TEXT")
+            db.execSQL("ALTER TABLE `tickets` ADD COLUMN `rider` TEXT")
+            db.execSQL("ALTER TABLE `tickets` ADD COLUMN `source` TEXT")
+            db.execSQL("ALTER TABLE `tickets` ADD COLUMN `bill_at` INTEGER")
+            db.execSQL("ALTER TABLE `ticket_lines` ADD COLUMN `kds_id` TEXT")
+            db.execSQL("ALTER TABLE `ticket_lines` ADD COLUMN `kitchen_done` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `kds_tickets` (`id` TEXT NOT NULL, `ticket_id` TEXT NOT NULL, `no` INTEGER NOT NULL, `label` TEXT NOT NULL, `kind` TEXT NOT NULL, `covers` INTEGER, `created_at` INTEGER NOT NULL, `bumped_at` INTEGER, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_kds_tickets_ticket_id` ON `kds_tickets` (`ticket_id`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `bookings` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `booked_for` INTEGER NOT NULL, `name` TEXT NOT NULL, `size` INTEGER NOT NULL, `phone` TEXT, `area` TEXT, `table_id` TEXT, `tags` TEXT, `status` TEXT NOT NULL, `ticket_id` TEXT, `deleted_at` TEXT, `server_seq` INTEGER, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_bookings_store_id` ON `bookings` (`store_id`)")
+            // The server has more to say about what is already here (each order
+            // type's kind, each item's tags) and bookings to send: pull again
+            // from the start.
+            db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
+        }
+    }
 }

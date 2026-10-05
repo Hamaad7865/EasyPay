@@ -48,6 +48,7 @@ data class ReceiptDoc(
     val rounding: Long = 0,
     val total: Long = 0,
     val payments: List<DocPayment> = emptyList(),
+    val service: Long = 0, // the service charge, when the restaurant adds one
     val refundOf: String? = null,
     val reason: String? = null,
     val customer: String? = null,
@@ -198,8 +199,9 @@ object Docs {
             l.note?.takeIf { it.isNotBlank() }?.let { p.wrapped("* $it", indent = "  ") }
         }
         p.rule()
-        if (d.discounts.isNotEmpty() || d.rounding != 0L) p.row("Subtotal", n(d.subtotal))
+        if (d.discounts.isNotEmpty() || d.rounding != 0L || d.service != 0L) p.row("Subtotal", n(d.subtotal))
         d.discounts.forEach { p.row("Discount: ${it.name}", "-" + n(it.amount)) }
+        if (d.service != 0L) p.row("Service charge", n(d.service))
         d.taxes.forEach { t ->
             val rate = if (t.rateBp % 100 == 0) "${t.rateBp / 100}" else "%.2f".format(Locale.US, t.rateBp / 100.0)
             p.row("${t.name} $rate%" + if (t.included) " (incl.)" else "", n(t.amount))

@@ -49,6 +49,8 @@ data class ItemEntity(
     val image_path: String? = null,
     val deleted_at: String? = null,
     val server_seq: Long? = null,
+    // what the back office says about it ("Veg", "Signature"), comma separated
+    val tags: String = "",
 )
 
 @Entity(tableName = "modifier_groups")
@@ -98,6 +100,8 @@ data class DiningOptionEntity(
     val needs_table: Boolean = false,
     // when its items go to the kitchen: save | pay | off
     val kitchen: String = "save",
+    // what it is: dine | counter | takeaway | delivery | tab
+    val kind: String = "counter",
 )
 
 @Entity(tableName = "payment_types")

@@ -43,6 +43,8 @@ class OrderOps @Inject constructor(
     private val tickets: TicketRepository,
     private val docs: DocBuilder,
     private val printing: Printing,
+    private val kitchen: Kitchen,
+    private val service: ServiceRepository,
     @ApplicationContext private val context: Context,
 ) {
     private fun op(type: String, payload: JsonObject) = OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
@@ -66,13 +68,17 @@ class OrderOps @Inject constructor(
     private suspend fun markSent(ticketId: String, ids: List<String>) {
         if (ids.isEmpty()) return
         val now = Instant.now().toString()
+        // the same lines as one ticket on the kitchen display
+        val onScreen = kitchen.prepare(ticketId)
         db.withTransaction {
             db.tickets().markSent(ids, now)
+            kitchen.put(onScreen, ids)
             db.outbox().enqueue(op("ticket.send", buildJsonObject {
                 put("ticket_id", ticketId); put("sent_at", now)
                 put("line_ids", buildJsonArray { ids.forEach { add(it) } })
             }))
         }
+        kitchen.afterSend(ticketId)
         pushNow(context)
     }
 
@@ -131,11 +137,14 @@ class OrderOps @Inject constructor(
 
     // The bill, as many times as it is asked for. Nothing is recorded: it is
     // the order as it stands.
+    // The table is marked as waiting to pay whether or not the paper came out:
+    // the guests asked for the bill either way.
     suspend fun printBill(discount: DiscountPick?): Result<Unit> = runCatching {
         val t = tickets.activeTicket() ?: error("No order is open")
         val unpaid = db.tickets().lines(t.id).first().filter { !it.paid }
         require(unpaid.isNotEmpty()) { "Nothing to pay on this order" }
-        docs.print(docs.bill(t, unpaid, discount)).getOrThrow()
+        if (t.table_id != null) tickets.setBill(t.id, System.currentTimeMillis())
+        docs.print(docs.bill(t, unpaid, discount, service.servicePct(t))).getOrThrow()
     }
 
     // The bill of one check of a split check.

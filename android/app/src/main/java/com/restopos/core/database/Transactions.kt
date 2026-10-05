@@ -33,6 +33,19 @@ data class TicketEntity(
     val opened_by: String? = null,
     // who the order is for, when a customer was put on it
     val customer_id: String? = null,
+    // the short number of an order that has no table: C-12, A-7, D-3
+    val order_no: String? = null,
+    // a takeaway or delivery: who to ring, where to bring it, when it is due,
+    // where it is on the board (new | kitchen | ready | done), who brings it
+    // and how it came in
+    val phone: String? = null,
+    val address: String? = null,
+    val due_at: Long? = null,
+    val stage: String? = null,
+    val rider: String? = null,
+    val source: String? = null,
+    // when the bill was printed for the table ("bill asked" on the floor)
+    val bill_at: Long? = null,
 )
 
 @Entity(
@@ -65,6 +78,10 @@ data class TicketLineEntity(
     val check_no: Int = 1,
     // the seat the item is for; null when it is for the table
     val seat: Int? = null,
+    // the kitchen display ticket the line went out on, and whether the
+    // kitchen has ticked it off
+    val kds_id: String? = null,
+    val kitchen_done: Boolean = false,
 )
 
 @Entity(tableName = "ticket_line_modifiers", primaryKeys = ["line_id", "modifier_id"])

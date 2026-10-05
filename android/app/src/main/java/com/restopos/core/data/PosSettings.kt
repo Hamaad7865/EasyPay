@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -26,11 +27,15 @@ data class PosSettings(
     val address: String = "",
     val phone: String = "",
     val quickPay: String = "card", // what the register's quick payment key takes: card or cash
+    val servicePct: Int = 0, // a service charge on orders served at a table, in percent; 0 is none
+    val kitchenNotes: List<String> = DEFAULT_NOTES, // the notes offered when an item is added
+    val prepMinutes: Int = 15, // how long after it is rung up a takeaway is due
 ) {
     fun shop(fallbackName: String): Shop =
         Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer)
 
     companion object {
+        val DEFAULT_NOTES = listOf("No onion", "Less salt", "Nut allergy", "Extra chutney", "Rush")
         private val json = Json { ignoreUnknownKeys = true }
 
         fun parse(text: String?): PosSettings {
@@ -55,6 +60,10 @@ data class PosSettings(
                 address = c.str("address") ?: "",
                 phone = c.str("phone") ?: "",
                 quickPay = d.str("quickPay")?.takeIf { it == "cash" || it == "card" } ?: "card",
+                servicePct = runCatching { d["servicePct"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 0..30 } ?: 0,
+                kitchenNotes = runCatching { d["kitchenNotes"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf { n -> n.isNotEmpty() } } }
+                    .getOrNull()?.takeIf { it.isNotEmpty() }?.take(12) ?: DEFAULT_NOTES,
+                prepMinutes = runCatching { d["prepMinutes"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..180 } ?: 15,
             )
         }
     }

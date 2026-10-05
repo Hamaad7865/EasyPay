@@ -82,12 +82,25 @@ class TicketRepository @Inject constructor(
         val table = session.pendingTable()
         val covers = session.pendingCovers()
         // and the order type picked when it was started (Dine in, Take away)
-        val dining = session.pendingDining()?.takeIf { db.ops().dining(it)?.deleted_at == null && db.ops().dining(it) != null }
+        val type = session.pendingDining()?.let { db.ops().dining(it) }?.takeIf { it.deleted_at == null } ?: if (table != null) dineType() else null
+        val dining = type?.id
+        val kind = type?.kind ?: if (table != null) "dine" else "counter"
+        // An order with no table is known by a short number that counts up
+        // through the day. A takeaway or delivery also goes on the board: new,
+        // and due when the kitchen has had its time.
+        val no = if (table == null) series(kind).let { "$it-${session.nextNumber(it)}" } else null
+        val board = kind == "takeaway" || kind == "delivery"
+        val due = if (board) System.currentTimeMillis() + PosSettings.parse(db.ops().settings()).prepMinutes * 60_000L * (if (kind == "delivery") 2 else 1) else null
         db.withTransaction {
-            db.tickets().upsertTicket(TicketEntity(id, tenant, store, table_id = table, dining_option_id = dining, covers = covers, opened_by = staff.id()))
+            db.tickets().upsertTicket(TicketEntity(
+                id, tenant, store, table_id = table, dining_option_id = dining, covers = covers, opened_by = staff.id(),
+                order_no = no, due_at = due, stage = if (board) "new" else null, source = if (board) "Counter" else null,
+            ))
             db.outbox().enqueue(op("ticket.create", buildJsonObject {
                 put("id", id); put("store_id", store); table?.let { put("table_id", it) }; covers?.let { put("covers", it) }
                 dining?.let { put("dining_option_id", it) }
+                no?.let { put("order_no", it) }
+                if (board) { put("stage", "new"); put("source", "Counter"); due?.let { put("due_at", java.time.Instant.ofEpochMilli(it).toString()) } }
             }))
         }
         session.setActiveTicket(id)
@@ -95,6 +108,103 @@ class TicketRepository @Inject constructor(
         session.setPendingDining(null)
         pushNow(context)
         return db.tickets().ticket(id)!!
+    }
+
+    // the letter an order's number starts with
+    private fun series(kind: String) = when (kind) { "takeaway" -> "A"; "delivery" -> "D"; else -> "C" }
+
+    // the order type of an order served at a table
+    private suspend fun dineType() = db.catalog().diningOptions().let { all ->
+        all.firstOrNull { it.kind == "dine" && it.is_default } ?: all.firstOrNull { it.kind == "dine" } ?: all.firstOrNull { it.needs_table }
+    }
+
+    // Seating a table: the order is opened there and then, with its guests, so
+    // the floor shows the table taken and how long it has been. A table that
+    // already has an order gets that order back.
+    suspend fun seat(tableId: String, covers: Int): Result<TicketEntity> = runCatching {
+        session.setPendingTable(null)
+        session.setPendingDining(null)
+        db.tickets().openTicketForTable(tableId)?.let { session.setActiveTicket(it.id); return@runCatching it }
+        val (tenant, store, _) = ctx()
+        val id = Uuid7.next()
+        val dining = dineType()?.id
+        val row = TicketEntity(id, tenant, store, table_id = tableId, dining_option_id = dining, covers = covers.coerceIn(1, 99), opened_by = staff.id())
+        db.withTransaction {
+            db.tickets().upsertTicket(row)
+            db.outbox().enqueue(op("ticket.create", buildJsonObject {
+                put("id", id); put("store_id", store); put("table_id", tableId); put("covers", row.covers)
+                dining?.let { put("dining_option_id", it) }
+            }))
+        }
+        session.setActiveTicket(id)
+        pushNow(context)
+        row
+    }
+
+    // Where a takeaway or delivery is on the board, and who is bringing it.
+    // Works on an order that is already paid: it is collected later.
+    suspend fun setStage(ticketId: String, stage: String, rider: String? = null): Result<Unit> = runCatching {
+        db.withTransaction {
+            db.service().setStage(ticketId, stage, System.currentTimeMillis())
+            if (rider != null) db.service().setRider(ticketId, rider.ifBlank { null })
+            db.outbox().enqueue(op("ticket.stage", buildJsonObject { put("ticket_id", ticketId); put("stage", stage); rider?.let { put("rider", it) } }))
+        }
+        pushNow(context)
+    }
+
+    suspend fun setRider(ticketId: String, rider: String): Result<Unit> = runCatching {
+        db.withTransaction {
+            db.service().setRider(ticketId, rider.ifBlank { null })
+            db.outbox().enqueue(op("ticket.stage", buildJsonObject { put("ticket_id", ticketId); put("rider", rider) }))
+        }
+        pushNow(context)
+    }
+
+    // when a takeaway is wanted; moved a few minutes at a time from the board
+    suspend fun setDue(ticketId: String, at: Long): Result<Unit> = runCatching {
+        db.withTransaction {
+            db.service().setDue(ticketId, at)
+            db.outbox().enqueue(op("ticket.stage", buildJsonObject { put("ticket_id", ticketId); put("due_at", java.time.Instant.ofEpochMilli(at).toString()) }))
+        }
+        pushNow(context)
+    }
+
+    // The bill was printed for the table (or the table was added to since).
+    suspend fun setBill(ticketId: String, at: Long?): Result<Unit> = runCatching {
+        val t = db.tickets().openTicket(ticketId) ?: return@runCatching
+        if ((t.bill_at == null) == (at == null)) return@runCatching
+        db.withTransaction {
+            db.service().setBill(ticketId, at)
+            db.outbox().enqueue(op("ticket.update_meta", buildJsonObject {
+                put("ticket_id", ticketId)
+                if (at == null) put("bill_at", JsonNull) else put("bill_at", java.time.Instant.ofEpochMilli(at).toString())
+            }))
+        }
+        pushNow(context)
+    }
+
+    // Who a takeaway is for and how to reach them. The name does not take the
+    // order off anything: it has no table.
+    suspend fun setContact(name: String? = null, phone: String? = null, address: String? = null): Result<Unit> =
+        updateMeta({ it.copy(name = if (name != null) name.ifBlank { null } else it.name, phone = if (phone != null) phone.ifBlank { null } else it.phone,
+            address = if (address != null) address.ifBlank { null } else it.address) }) {
+            name?.let { put("name", it) }; phone?.let { put("phone", it) }; address?.let { put("address", it) }
+        }
+
+    // Changes what kind of order this is (counter, takeaway, delivery). One
+    // that becomes a takeaway goes on the board; one that stops being one
+    // comes off it.
+    suspend fun setType(optionId: String): Result<Unit> = runCatching {
+        val type = db.ops().dining(optionId) ?: error("That order type is gone")
+        val t = activeTicket()
+        if (t == null) { session.setPendingDining(optionId); return@runCatching }
+        setDining(optionId).getOrThrow()
+        val board = type.kind == "takeaway" || type.kind == "delivery"
+        if (board && t.stage == null) {
+            setStage(t.id, "new").getOrThrow()
+            setDue(t.id, System.currentTimeMillis() + PosSettings.parse(db.ops().settings()).prepMinutes * 60_000L * (if (type.kind == "delivery") 2 else 1)).getOrThrow()
+        }
+        if (!board && t.stage != null && t.stage != "done") setStage(t.id, "done").getOrThrow()
     }
 
     // Parks the current order (it stays open, under Orders) and leaves the
@@ -117,6 +227,7 @@ class TicketRepository @Inject constructor(
         if (db.tickets().openTicket(ticketId) != null) {
             session.setActiveTicket(ticketId)
             session.setPendingTable(null)
+            session.setPendingDining(null)
         }
     }
 
@@ -224,7 +335,9 @@ class TicketRepository @Inject constructor(
     // the back office's, or one typed in ("custom:percent:10").
     // Whoever approved it follows an "@".
     suspend fun pendingDiscount(): DiscountPick? {
-        val saved = session.pendingDiscount() ?: return null
+        val raw = session.pendingDiscount() ?: return null
+        // kept with the order it was picked on: another order does not get it
+        val saved = if (raw.contains('#')) { if (raw.substringBefore('#') != session.activeTicket()) return null; raw.substringAfter('#') } else raw
         val v = saved.substringBefore('@')
         val by = saved.substringAfter('@', "").ifEmpty { null }
         if (v.startsWith("custom:")) {
@@ -236,7 +349,7 @@ class TicketRepository @Inject constructor(
         return db.catalog().discount(v)?.takeIf { it.deleted_at == null }?.let { DiscountPick(it.id, it.type, it.value, it.name, by) }
     }
     suspend fun setPendingDiscount(d: DiscountPick?) {
-        session.setPendingDiscount(d?.let { (it.discountId ?: "custom:${it.type}:${it.value}") + (it.approvedBy?.let { by -> "@$by" } ?: "") })
+        session.setPendingDiscount(d?.let { (session.activeTicket()?.let { t -> "$t#" } ?: "") + (it.discountId ?: "custom:${it.type}:${it.value}") + (it.approvedBy?.let { by -> "@$by" } ?: "") })
     }
 
     // Whether a member of staff, by id, may do something: for an approval
@@ -264,7 +377,7 @@ class TicketRepository @Inject constructor(
             val (tenant, _, _) = ctx()
             val dao = db.catalog()
             val item = dao.item(itemId) ?: error("unknown item")
-            require(item.is_available) { "sold out" }
+            require(item.is_available) { "${item.name} is sold out" }
             val taxes = dao.taxesForItem(itemId)
             if (mods.isNotEmpty()) {
                 val linked = dao.modifiersForItem(itemId).map { it.id }.toSet()
@@ -300,6 +413,7 @@ class TicketRepository @Inject constructor(
                     put("modifiers", modArr)
                 }))
             }
+            if (t.bill_at != null) setBill(t.id, null)
             pushNow(context)
         }
 

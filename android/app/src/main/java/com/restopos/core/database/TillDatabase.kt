@@ -13,6 +13,9 @@ import androidx.room.RoomDatabase
 // closings, where a category prints, when an order type goes to the kitchen,
 // which payment types open the drawer, and what each receipt printed.
 // Version 5 adds the check a line is on, for a split check.
+// Version 6 adds drawer counts, seats and customers.
+// Version 7 adds what the service screens need: an order type's kind, the
+// takeaway board's details on an order, kitchen display tickets and bookings.
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -26,9 +29,9 @@ import androidx.room.RoomDatabase
         RoleEntity::class, EmployeeEntity::class, EmployeeStoreEntity::class,
         ShiftEntity::class, PunchEntity::class, TableEntity::class,
         PrinterEntity::class, SettingsEntity::class, CashMoveEntity::class, DayCloseEntity::class, DrawerCountEntity::class,
-        CustomerEntity::class,
+        CustomerEntity::class, KdsTicketEntity::class, BookingEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
@@ -41,4 +44,5 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun tables(): TableDao
     abstract fun ops(): OpsDao
     abstract fun customers(): CustomerDao
+    abstract fun service(): ServiceDao
 }

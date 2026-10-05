@@ -37,9 +37,16 @@ class DocBuilder @Inject constructor(
     fun encode(doc: ReceiptDoc): String = json.encodeToString(ReceiptDoc.serializer(), doc)
     fun decode(text: String?): ReceiptDoc? = text?.let { runCatching { json.decodeFromString(ReceiptDoc.serializer(), it) }.getOrNull() }
 
-    suspend fun orderName(t: TicketEntity): String =
-        t.name ?: t.table_id?.let { db.tables().table(it)?.name }?.let { tableLabel(it) }
-            ?: t.customer_id?.let { db.customers().customer(it)?.name } ?: "Direct sale"
+    // The table; else the order's number and who it is for; else a direct sale.
+    suspend fun orderName(t: TicketEntity): String {
+        t.table_id?.let { db.tables().table(it)?.name }?.let { return tableLabel(it) }
+        val who = t.name ?: t.customer_id?.let { db.customers().customer(it)?.name }
+        return listOfNotNull(t.order_no, who).joinToString(" · ").ifEmpty { "Direct sale" }
+    }
+    // what the kitchen and the receipt are told besides the items: the remark,
+    // and for a takeaway or delivery who to ring and where it goes
+    private fun remark(t: TicketEntity): String? =
+        listOfNotNull(t.note, t.phone?.let { "Tel $it" }, t.address).joinToString(" · ").ifEmpty { null }
 
     private suspend fun employee(id: String?): String? = id?.let { db.staff().employee(it)?.name }
     private suspend fun dining(t: TicketEntity): String? = t.dining_option_id?.let { db.ops().dining(it)?.name }
@@ -83,17 +90,17 @@ class DocBuilder @Inject constructor(
     ): ReceiptDoc = ReceiptDoc(
         kind = kind, number = number, time = time, order = orderName(t), dining = dining(t),
         customer = t.customer_id?.let { db.customers().customer(it)?.name },
-        cashier = staff.current.value?.employee?.name, waiter = employee(t.opened_by), covers = t.covers, note = t.note,
+        cashier = staff.current.value?.employee?.name, waiter = employee(t.opened_by), covers = t.covers, note = remark(t),
         lines = lines(rows), subtotal = totals.subtotal, discounts = discounts, taxes = taxes(rows, totals.discount),
-        rounding = totals.rounding, total = totals.total, payments = payments,
+        rounding = totals.rounding, total = totals.total, payments = payments, service = totals.service,
     )
 
     // The bill: what is still to pay on the order, as the receipt will show it.
-    suspend fun bill(t: TicketEntity, rows: List<TicketLineEntity>, discount: DiscountPick?): ReceiptDoc {
+    suspend fun bill(t: TicketEntity, rows: List<TicketLineEntity>, discount: DiscountPick?, servicePct: Int = 0): ReceiptDoc {
         val calc = rows.map { l ->
             Calc.Line(Calc.lineAmount(l.unit_price, l.qty) + db.tickets().modSum(l.id), db.catalog().lineTaxes(l.id).map { Calc.TaxRate(it.rate_bp, it.type) })
         }
-        val totals = Calc.totalsRounded(calc, listOfNotNull(discount?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) }))
+        val totals = Calc.totalsRounded(calc, listOfNotNull(discount?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) }), servicePct)
         val discounts = if (discount != null && totals.discount > 0) listOf(DocAmount(discount.name, totals.discount)) else emptyList()
         return receipt("bill", t, rows, totals, discounts, emptyList(), "", System.currentTimeMillis())
     }
@@ -129,7 +136,7 @@ class DocBuilder @Inject constructor(
         val waiter = employee(t.opened_by) ?: staff.current.value?.employee?.name
         for ((pid, ls) in perPrinter) {
             val p = printers[pid] ?: continue
-            val doc = KitchenDoc(title, order, System.currentTimeMillis(), waiter, dining(t), t.covers, t.note, lines(ls), p.name)
+            val doc = KitchenDoc(title, order, System.currentTimeMillis(), waiter, dining(t), t.covers, remark(t), lines(ls), p.name)
             printing.send(p, Docs.kitchen(doc, printing.paper(p)), "Kitchen ticket, $order", again = null).onFailure { failed.add(pid); errors.add(it.message ?: "${p.name} did not print") }
         }
         return KitchenOutcome(rows.filter { l -> where[l.id].orEmpty().none { failed.contains(it) } }.map { it.id }, errors)
