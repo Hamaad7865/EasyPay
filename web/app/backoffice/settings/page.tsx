@@ -36,6 +36,8 @@ async function saveGeneral(f: FormData) {
       dayCloseDetailed: on(f, "dayCloseDetailed"),
       servicePct: int(f, "servicePct", 0, 30, 0),
       prepMinutes: int(f, "prepMinutes", 1, 180, 15),
+      lockMinutes: int(f, "lockMinutes", 0, 120, 0),
+      kitchenSound: on(f, "kitchenSound"),
       kitchenNotes: String(f.get("kitchenNotes") ?? "").split("\n").map((n) => n.trim().slice(0, 40)).filter(Boolean).slice(0, 12),
     });
     return "Settings saved. The tills pick them up the next time they sync.";
@@ -234,6 +236,28 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                 <small>What a waiter can tick when adding an item, one per line, up to twelve. They print on the kitchen ticket and show on the kitchen display.</small>
               </div>
               <textarea name="kitchenNotes" rows={5} defaultValue={s.kitchenNotes.join("\n")} aria-label="Kitchen notes" style={{ minWidth: 260 }} />
+            </div>
+            <div className="setting">
+              <div>
+                <strong>Sound on the kitchen display</strong>
+                <small>A short sound when an order arrives on a tablet that is showing the kitchen display.</small>
+              </div>
+              <label className="check" style={{ margin: 0 }}>
+                <input type="checkbox" name="kitchenSound" defaultChecked={s.kitchenSound} />
+                Play it
+              </label>
+            </div>
+          </Card>
+          <Card title="Security">
+            <div className="setting">
+              <div>
+                <strong>Lock the till when it is left alone</strong>
+                <small>After this many minutes without a touch the till goes back to its start screen, where a name and its PIN open it again. The order on screen is kept. 0 means never. The kitchen display and a payment in progress do not lock.</small>
+              </div>
+              <label className="check" style={{ margin: 0 }}>
+                <input name="lockMinutes" type="number" min={0} max={120} defaultValue={s.lockMinutes} className="narrow" aria-label="Lock after minutes" />
+                minutes
+              </label>
             </div>
           </Card>
           <button type="submit">Save settings</button>

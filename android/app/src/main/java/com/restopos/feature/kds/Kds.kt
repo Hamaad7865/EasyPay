@@ -27,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,6 +59,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -70,7 +72,7 @@ import javax.inject.Inject
 data class KdsLine(val info: LineInfo, val stations: Set<String>)
 data class KdsCard(val ticket: KdsTicketEntity, val lines: List<KdsLine>)
 data class Station(val id: String, val name: String)
-data class KdsUi(val cards: List<KdsCard> = emptyList(), val stations: List<Station> = emptyList(), val canRecall: Boolean = false)
+data class KdsUi(val cards: List<KdsCard> = emptyList(), val stations: List<Station> = emptyList(), val canRecall: Boolean = false, val loaded: Boolean = false)
 
 // The kitchen display. A station is one of the back office's kitchen printers
 // ("Grill", "Bar"): a line belongs to the stations its category prints at, so
@@ -106,10 +108,15 @@ class KdsViewModel @Inject constructor(
             tickets.mapNotNull { t -> rows[t.id]?.takeIf { it.isNotEmpty() }?.let { KdsCard(t, it) } },
             printers.filter { used.contains(it.id) }.map { Station(it.id, it.name) },
             bumped > 0,
+            loaded = true,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), KdsUi())
 
     private data class Quad<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
+
+    // POS settings: a short sound when an order arrives
+    val sound: StateFlow<Boolean> = db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).kitchenSound }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     init { viewModelScope.launch { kitchen.prune() } }
 
@@ -123,6 +130,24 @@ class KdsViewModel @Inject constructor(
 fun KdsScreen(vm: KdsViewModel) {
     val ui by vm.ui.collectAsState()
     val picked by vm.station.collectAsState()
+    // A ticket that was not on the screen a moment ago makes a sound. The ones
+    // already there when the screen opens do not.
+    val sound by vm.sound.collectAsState()
+    val ids = ui.cards.map { it.ticket.id }
+    var seen by remember { mutableStateOf<Set<String>?>(null) }
+    LaunchedEffect(ui.loaded, ids) {
+        if (!ui.loaded) return@LaunchedEffect
+        val before = seen
+        seen = ids.toSet()
+        if (sound && before != null && ids.any { it !in before }) {
+            runCatching {
+                val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 90)
+                tone.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 300)
+                delay(600)
+                tone.release()
+            }
+        }
+    }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(1000) } }
     val station = picked?.takeIf { id -> ui.stations.any { it.id == id } }

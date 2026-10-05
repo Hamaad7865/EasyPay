@@ -14,6 +14,10 @@ export type PosSettings = {
   kitchenNotes: string[];
   // minutes after it is rung up that a takeaway is due (a delivery gets twice that)
   prepMinutes: number;
+  // minutes without a touch after which a till locks itself; 0 is never
+  lockMinutes: number;
+  // a short sound on the kitchen display when an order arrives
+  kitchenSound: boolean;
   receipt: { header: string; footer: string; logo: string | null; showLogo: boolean };
   company: { name: string; brn: string; vat: string; address: string; phone: string };
 };
@@ -26,6 +30,8 @@ export const DEFAULT_SETTINGS: PosSettings = {
   servicePct: 0,
   kitchenNotes: ["No onion", "Less salt", "Nut allergy", "Extra chutney", "Rush"],
   prepMinutes: 15,
+  lockMinutes: 0,
+  kitchenSound: true,
   receipt: { header: "", footer: "Thank you. See you again soon.", logo: null, showLogo: true },
   company: { name: "", brn: "", vat: "", address: "", phone: "" },
 };
@@ -49,6 +55,8 @@ export function withDefaults(raw: unknown): PosSettings {
       ? (d.kitchenNotes as unknown[]).filter((n): n is string => typeof n === "string" && n.trim() !== "").map((n) => n.trim()).slice(0, 12)
       : DEFAULT_SETTINGS.kitchenNotes,
     prepMinutes: typeof d.prepMinutes === "number" && d.prepMinutes >= 1 && d.prepMinutes <= 180 ? Math.round(d.prepMinutes) : 15,
+    lockMinutes: typeof d.lockMinutes === "number" && d.lockMinutes >= 0 && d.lockMinutes <= 120 ? Math.round(d.lockMinutes) : 0,
+    kitchenSound: d.kitchenSound === false ? false : true,
     receipt: {
       header: str(r.header, DEFAULT_SETTINGS.receipt.header),
       footer: str(r.footer, DEFAULT_SETTINGS.receipt.footer),

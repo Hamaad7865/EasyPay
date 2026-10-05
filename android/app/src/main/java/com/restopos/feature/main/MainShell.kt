@@ -37,6 +37,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -134,8 +136,14 @@ class ShellViewModel @Inject constructor(
     private val staffRepo: StaffRepository,
     private val tickets: TicketRepository,
     private val service: ServiceRepository,
+    api: com.restopos.core.network.ApiClient,
 ) : ViewModel() {
     val screen = MutableStateFlow(Screen.Floor)
+    val clockAhead: StateFlow<Long?> = api.clockAhead
+    val updateRequired: StateFlow<Boolean> = api.updateRequired
+    // POS settings, Security: minutes without a touch before the till locks; 0 is never
+    val lockMinutes: StateFlow<Int> = db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).lockMinutes }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     // a booking waiting to be given a table on the floor plan
     val assigning = MutableStateFlow<BookingEntity?>(null)
     val user: StateFlow<StaffMember?> = staff.current
@@ -238,6 +246,22 @@ fun MainShell(
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(10_000) } }
     LaunchedEffect(lang) { L.fr = lang == "fr" }
+    val clockAhead by shell.clockAhead.collectAsState()
+    val updateRequired by shell.updateRequired.collectAsState()
+    // Left alone for the minutes set in the back office, the till goes back to
+    // its start screen, where a name and its PIN open it again. The order on
+    // the register is kept. The kitchen display is read, not touched, so it
+    // never locks; nor does a payment that is under way.
+    val lockAfter by shell.lockMinutes.collectAsState()
+    var touched by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(lockAfter, screen) {
+        if (lockAfter <= 0 || screen == Screen.Kitchen || screen == Screen.Pay) return@LaunchedEffect
+        touched = System.currentTimeMillis()
+        while (true) {
+            delay(15_000)
+            if (System.currentTimeMillis() - touched >= lockAfter * 60_000L) { onLock(); break }
+        }
+    }
     LaunchedEffect(screen) { if (screen == Screen.Pay || screen == Screen.Split) order.open() }
     // what a printer said when it could not print behind the scenes, and what Settings has to say
     LaunchedEffect(Unit) { more.load(); more.problems.collect { Toaster.say(it) } }
@@ -266,7 +290,11 @@ fun MainShell(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(V.Bg)) {
+    Box(
+        Modifier.fillMaxSize().background(V.Bg)
+            // any finger anywhere counts as someone being at the till
+            .pointerInput(Unit) { awaitPointerEventScope { while (true) { awaitPointerEvent(PointerEventPass.Initial); touched = System.currentTimeMillis() } } },
+    ) {
         Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().height(64.dp).background(V.Header)
@@ -307,7 +335,7 @@ fun MainShell(
                     T(name.substringBefore(' '), 15.sp, 700, modifier = Modifier.widthIn(max = 96.dp))
                 }
             }
-            SyncNotices(needsSignIn, pending, rejected, onSignIn, onRejected)
+            SyncNotices(needsSignIn, pending, rejected, onSignIn, onRejected, clockAhead, updateRequired)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (screen) {
                     Screen.Floor -> FloorScreen(floor, assigning, onAssigned = { shell.assigning.value = null }, onOrder = { shell.go(Screen.Order) }, onPay = { shell.go(Screen.Pay) }, onBookings = { shell.go(Screen.Bookings) })
@@ -421,7 +449,28 @@ private fun Entry(n: Nav, on: Boolean, count: Int, badge: Color, onClick: () -> 
 // What the till needs someone to know about syncing, in a strip under the top
 // bar. Selling carries on in every one of these states.
 @Composable
-private fun SyncNotices(needsSignIn: Boolean, pending: Long, rejected: Long, onSignIn: () -> Unit, onRejected: () -> Unit) {
+private fun SyncNotices(needsSignIn: Boolean, pending: Long, rejected: Long, onSignIn: () -> Unit, onRejected: () -> Unit, clockAhead: Long?, updateRequired: Boolean) {
+    if (updateRequired) {
+        Row(Modifier.fillMaxWidth().background(V.RedWash).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            T(
+                "This till is too old to sync: it must be updated. It keeps selling and keeps every sale" +
+                    (if (pending > 0) " ($pending waiting)" else "") + " until then. Ask RestoPOS for the new version.",
+                13.sp, 600, V.RedText, Modifier.weight(1f), lines = 2,
+            )
+        }
+    }
+    // Five minutes is past any honest drift. A receipt carries the tablet's
+    // time, so a clock that is hours out books sales to the wrong day.
+    val off = clockAhead?.let { kotlin.math.abs(it) / 60_000 } ?: 0
+    if (off >= 5) {
+        val by = if (off >= 120) "${off / 60} hours" else "$off minutes"
+        Row(Modifier.fillMaxWidth().background(V.RedWash).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            T(
+                "This tablet's clock is $by ${if ((clockAhead ?: 0) > 0) "fast" else "slow"}. Receipts carry the tablet's time: set the date and time in the tablet's own settings (automatic date and time).",
+                13.sp, 600, V.RedText, Modifier.weight(1f), lines = 2,
+            )
+        }
+    }
     if (needsSignIn) {
         Row(Modifier.fillMaxWidth().background(V.RedWash).padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             T(

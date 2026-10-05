@@ -25,7 +25,7 @@ object AppModule {
 
     @Provides @Singleton
     fun apiClient(auth: AuthClient): ApiClient =
-        ApiClient(BuildConfig.FUNCTION_URL, auth)
+        ApiClient(BuildConfig.FUNCTION_URL, auth, BuildConfig.VERSION_CODE)
 
     @Provides @Singleton
     fun database(@ApplicationContext ctx: Context): TillDatabase =

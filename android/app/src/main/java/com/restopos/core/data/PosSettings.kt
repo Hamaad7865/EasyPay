@@ -30,6 +30,8 @@ data class PosSettings(
     val servicePct: Int = 0, // a service charge on orders served at a table, in percent; 0 is none
     val kitchenNotes: List<String> = DEFAULT_NOTES, // the notes offered when an item is added
     val prepMinutes: Int = 15, // how long after it is rung up a takeaway is due
+    val lockMinutes: Int = 0, // minutes without a touch before the till locks itself; 0 is never
+    val kitchenSound: Boolean = true, // a short sound on the kitchen display when an order arrives
 ) {
     fun shop(fallbackName: String): Shop =
         Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer)
@@ -64,6 +66,8 @@ data class PosSettings(
                 kitchenNotes = runCatching { d["kitchenNotes"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf { n -> n.isNotEmpty() } } }
                     .getOrNull()?.takeIf { it.isNotEmpty() }?.take(12) ?: DEFAULT_NOTES,
                 prepMinutes = runCatching { d["prepMinutes"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..180 } ?: 15,
+                lockMinutes = runCatching { d["lockMinutes"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 0..120 } ?: 0,
+                kitchenSound = d.bool("kitchenSound") ?: true,
             )
         }
     }

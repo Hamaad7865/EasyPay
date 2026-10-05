@@ -90,6 +90,20 @@ function syncFailure(what: string, err: unknown): 400 | 503 {
 
 const app = new Hono();
 
+// A till says which build it is (X-Till-Version: its versionCode). When
+// MIN_TILL_VERSION is set and the till is older, every call is answered 426:
+// the till shows "must be updated", keeps selling and keeps its outbox, and
+// syncs again once it is updated. With the setting absent, or from a till
+// that does not say its version, nothing changes.
+app.use("*", async (c, next) => {
+  const min = Number(process.env.MIN_TILL_VERSION ?? "0");
+  const has = c.req.header("x-till-version");
+  if (min > 0 && has !== undefined && Number(has) < min) {
+    return c.json({ error: "This till must be updated before it can sync.", min }, 426);
+  }
+  await next();
+});
+
 app.get("/health", (c) => c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0057" }));
 
 // Tenant-scoped self check: only ever returns the caller's own rows.
