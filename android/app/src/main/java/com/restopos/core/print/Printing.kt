@@ -149,7 +149,7 @@ class Printing @Inject constructor(
                 if (android.os.Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0,
             )
             manager.requestPermission(device, ask)
-            throw PrintError("Allow RestoPOS to use the USB printer (the tablet is asking now), then print again.")
+            throw PrintError("Allow EasyPay to use the USB printer (the tablet is asking now), then print again.")
         }
         val (iface, out) = printerInterface(device) ?: throw PrintError("That USB device is not a printer.")
         val conn = manager.openDevice(device) ?: throw PrintError("The USB printer could not be opened. Unplug it and plug it in again.")

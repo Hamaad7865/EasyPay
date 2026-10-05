@@ -828,7 +828,7 @@ private fun DisplayPage(vm: SettingsViewModel) {
     val change = "change how this till is set up"
     Toggle("Light mode", "A pale screen with dark text, for a bright room or a terrace. Off is the dark screen.", lightMode) { vm.guard("settings.device", change) { vm.setLightMode(it) } }
     Toggle("Left-handed order screen", "The order moves to the right, the menu to the left.", leftHanded) { vm.guard("settings.device", change) { vm.setLeftHanded(it) } }
-    Toggle("Keep the screen on", "The tablet does not go to sleep while RestoPOS is open.", keepAwake) { vm.guard("settings.device", change) { vm.setKeepAwake(it) } }
+    Toggle("Keep the screen on", "The tablet does not go to sleep while EasyPay is open.", keepAwake) { vm.guard("settings.device", change) { vm.setKeepAwake(it) } }
     Note("These are for this tablet only.")
 }
 
@@ -845,7 +845,7 @@ private fun SupportPage(vm: SettingsViewModel, network: String, onSignIn: () -> 
         Figure("Business", facts.business ?: "—")
         Figure("Store", facts.store ?: "—")
         Figure("Till", facts.device ?: "Not set up")
-        Figure("Version", "RestoPOS ${BuildConfig.VERSION_NAME}")
+        Figure("Version", "EasyPay ${BuildConfig.VERSION_NAME}")
         Figure("Tablet", "${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}")
         Figure("Network", network)
         Figure("Last heard from the back office", lastPull?.let { stamp.format(Date(it)) } ?: "Not yet")

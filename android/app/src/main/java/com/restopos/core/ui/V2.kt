@@ -278,12 +278,14 @@ fun Badge(n: Int, bg: Color, size: Dp = 20.dp) {
 @Composable
 fun Wordmark() {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(V.LogoBrush), contentAlignment = Alignment.Center) {
-            Text("P", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, fontStyle = FontStyle.Italic)
-        }
+        // the logo's own mark (the hand holding a note), as it was sent
+        androidx.compose.foundation.Image(
+            androidx.compose.ui.res.painterResource(com.restopos.app.R.drawable.logo_mark), contentDescription = null,
+            modifier = Modifier.height(36.dp), contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+        )
         Spacer(Modifier.width(9.dp))
-        Text("Resto", color = V.Text, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, fontStyle = FontStyle.Italic, letterSpacing = (-0.4).sp)
-        Text("POS", color = Color(0xFF2E9BFF), fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, fontStyle = FontStyle.Italic, letterSpacing = (-0.4).sp)
+        Text("Easy", color = V.Text, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.4).sp)
+        Text("Pay", color = Color(0xFF74B884), fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.4).sp)
     }
 }
 

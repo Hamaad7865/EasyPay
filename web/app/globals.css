@@ -1,4 +1,4 @@
-/* RestoPOS back office. One stylesheet, no UI library. A light shell (white
+/* EasyPay back office. One stylesheet, no UI library. A light shell (white
    sidebar and top bar on a pale grey page), white cards with soft borders,
    one accent colour. The pages are written with plain headings, tables,
    forms and buttons; the classes below are the few components they share. */
@@ -88,9 +88,10 @@ body {
 .bo-nav { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 24px; scrollbar-width: none; }
 .bo-nav::-webkit-scrollbar { display: none; }
 .bo-brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 16px; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
-.bo-brand-logo { height: 30px; width: auto; display: block; }
-.bo-brand-pos { color: #1787fc; }
-.bo-brand, .auth-brand { font-style: italic; font-weight: 800; }
+.bo-brand-logo { height: 34px; width: auto; display: block; }
+/* the green of the logo's ring */
+.bo-brand-pos { color: #5f9a52; }
+.bo-brand, .auth-brand { font-weight: 800; }
 .bo-brand-mark { width: 30px; height: 30px; border-radius: 9px; background: var(--accent); color: #fff; display: grid; place-items: center; font-size: 15px; font-weight: 800; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.16); }
 .bo-restaurant {
   display: flex; align-items: center; gap: 10px;

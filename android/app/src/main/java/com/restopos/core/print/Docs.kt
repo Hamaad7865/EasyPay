@@ -401,7 +401,7 @@ object Docs {
 
     fun test(printer: String, paper: Paper): ByteArray {
         val p = EscPos(paper.columns)
-        p.align(EscPos.Align.Center).bold(true).big(true).line("RestoPOS").big(false).bold(false)
+        p.align(EscPos.Align.Center).bold(true).big(true).line("EasyPay").big(false).bold(false)
         p.line("Test print").line(printer).align(EscPos.Align.Left)
         p.rule()
         p.row("Width", "${paper.columns} characters")

@@ -264,7 +264,7 @@ private fun Facts(info: TillInfo, network: String, sync: String) {
     Fact("Business name", info.business ?: "—")
     Fact("Store", info.store ?: "—")
     Fact("Device info", info.device ?: "—")
-    Fact("Software version", "RestoPOS ${BuildConfig.VERSION_NAME}")
+    Fact("Software version", "EasyPay ${BuildConfig.VERSION_NAME}")
     Fact("Network", network)
     Fact("Sync", sync)
 }

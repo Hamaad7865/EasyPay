@@ -454,7 +454,7 @@ private fun SyncNotices(needsSignIn: Boolean, pending: Long, rejected: Long, onS
         Row(Modifier.fillMaxWidth().background(V.RedWash).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             T(
                 "This till is too old to sync: it must be updated. It keeps selling and keeps every sale" +
-                    (if (pending > 0) " ($pending waiting)" else "") + " until then. Ask RestoPOS for the new version.",
+                    (if (pending > 0) " ($pending waiting)" else "") + " until then. Ask EasyPay for the new version.",
                 13.sp, 600, V.RedText, Modifier.weight(1f), lines = 2,
             )
         }

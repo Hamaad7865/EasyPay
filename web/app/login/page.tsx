@@ -33,7 +33,7 @@ export default function LoginPage() {
         <div className="auth-brand">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-mark.png" alt="" className="bo-brand-logo" />
-          <span>Resto<span className="bo-brand-pos">POS</span></span>
+          <span>Easy<span className="bo-brand-pos">Pay</span></span>
         </div>
         <h1>Sign in to your back office</h1>
         <p className="auth-lede">Your menu, your reports and your settings, wherever you are.</p>
@@ -55,7 +55,7 @@ export default function LoginPage() {
             {busy ? "Signing in…" : "Sign in"}
           </button>
         </form>
-        <p className="auth-foot">No login yet? Restaurants are set up by RestoPOS. Contact us.</p>
+        <p className="auth-foot">No login yet? Restaurants are set up by EasyPay. Contact us.</p>
       </div>
     </main>
   );

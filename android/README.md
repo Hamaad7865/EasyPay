@@ -1,4 +1,4 @@
-# Android — RestoPOS till
+# Android — EasyPay till
 
 Kotlin + Compose + Hilt + Room + WorkManager + Ktor (OkHttp). Min SDK 26,
 compile SDK 36.

@@ -1,7 +1,7 @@
 import { requirePerm } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
 
-// A backup the owner can keep: everything the restaurant has in RestoPOS, as
+// A backup the owner can keep: everything the restaurant has in EasyPay, as
 // one JSON file. PINs are left out (they are stored hashed and are of no use
 // outside the system).
 const TABLES = [

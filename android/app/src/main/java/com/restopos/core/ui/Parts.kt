@@ -35,13 +35,13 @@ import com.restopos.app.R
 
 val CardShape = RoundedCornerShape(14.dp)
 
-// RestoPOS's own logo: the mark above the name. The name is white on the dark
-// screen and dark on the light one.
+// The logo as it was sent: the round badge. Its inside is white, so it reads
+// the same on the dark screen and on the light one.
 @Composable
 fun Logo(modifier: Modifier = Modifier) {
     Image(
         painterResource(if (Pos.light) R.drawable.logo_full_light else R.drawable.logo_full_dark),
-        contentDescription = "RestoPOS", modifier = modifier, contentScale = ContentScale.Fit,
+        contentDescription = "EasyPay", modifier = modifier, contentScale = ContentScale.Fit,
     )
 }
 

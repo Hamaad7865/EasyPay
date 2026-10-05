@@ -14,7 +14,7 @@ export type TenantContext = {
 export const isSuspended = (ctx: TenantContext) => ctx.status !== "active";
 
 // Session -> employees.auth_user_id -> tenant. A login with no restaurant goes
-// to /onboarding, which explains that restaurants are set up by RestoPOS (and
+// to /onboarding, which explains that restaurants are set up by EasyPay (and
 // sends a platform admin to the admin area).
 export async function tenantContext(): Promise<TenantContext> {
   const { data } = await auth.getSession();

@@ -74,12 +74,12 @@ export default async function DataPage({ searchParams }: { searchParams: Search 
         <Card title="Automatic backup">
           <p>
             The database keeps a continuous history of recent changes. If something is deleted or changed by mistake, contact
-            RestoPOS support as soon as you can: the sooner you ask, the more can be recovered.
+            EasyPay support as soon as you can: the sooner you ask, the more can be recovered.
           </p>
           <p className="muted">Nothing to switch on: it is always running. For a copy that is yours to keep, use the manual backup.</p>
         </Card>
         <Card title="Manual backup">
-          <p>Download everything this restaurant has in RestoPOS as one file: the menu, staff, orders, receipts, sales periods and stock.</p>
+          <p>Download everything this restaurant has in EasyPay as one file: the menu, staff, orders, receipts, sales periods and stock.</p>
           <a href="/backoffice/data/export" className="btn" download>
             <Download aria-hidden="true" />
             Download a backup

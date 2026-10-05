@@ -42,7 +42,7 @@ fun AuthScreen(
         Logo(Modifier.width(220.dp))
         Text(
             if (reauth) "Sign in again to sync. Everything sold on this tablet is saved and will go up once you are signed in."
-            else "Sign in with the login RestoPOS gave you. Staff PIN arrives in Phase 4.",
+            else "Sign in with the login EasyPay gave you.",
         )
         OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), label = { Text("Email") }, singleLine = true)
         OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation())

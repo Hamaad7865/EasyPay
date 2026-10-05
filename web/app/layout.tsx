@@ -4,7 +4,7 @@ import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-sans" });
 
-export const metadata: Metadata = { title: "RestoPOS back office" };
+export const metadata: Metadata = { title: "EasyPay back office" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

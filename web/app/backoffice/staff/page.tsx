@@ -73,7 +73,7 @@ async function setPin(formData: FormData) {
 }
 
 // Only staff who have no login of their own: a login is switched on and off by
-// RestoPOS, and switching off your own would lock you out of this page.
+// EasyPay, and switching off your own would lock you out of this page.
 async function setActive(formData: FormData) {
   "use server";
   const ctx = await guard();

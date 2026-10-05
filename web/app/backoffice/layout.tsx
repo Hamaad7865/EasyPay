@@ -28,7 +28,7 @@ export default async function BackofficeLayout({ children }: { children: React.R
         <div className="bo-brand">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-mark.png" alt="" className="bo-brand-logo" />
-          <span>Resto<span className="bo-brand-pos">POS</span></span>
+          <span>Easy<span className="bo-brand-pos">Pay</span></span>
         </div>
         <div className="bo-restaurant" title={restaurant}>
           <Store aria-hidden="true" />
@@ -39,7 +39,7 @@ export default async function BackofficeLayout({ children }: { children: React.R
       <div className="bo-body">
         <header className="bo-top">
           <span className="bo-top-name">{restaurant}</span>
-          {/* the start of the restaurant's id: what to quote to RestoPOS support */}
+          {/* the start of the restaurant's id: what to quote to EasyPay support */}
           <span className="bo-top-id">ID: {ctx.tenantId.slice(0, 8).toUpperCase()}</span>
           <span className="bo-top-spacer" />
           <span className="bo-top-user">
@@ -61,7 +61,7 @@ export default async function BackofficeLayout({ children }: { children: React.R
             <div className="bo-banner danger">
               <strong>This account is suspended{ctx.statusReason ? ` (${ctx.statusReason})` : ""}.</strong>
               You can still see your data, and sales already made on the tills still sync, but nothing can be changed
-              here. Contact RestoPOS to reactivate.
+              here. Contact EasyPay to reactivate.
             </div>
           )}
           {children}

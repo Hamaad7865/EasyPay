@@ -91,7 +91,7 @@ private fun why(code: String?): String = when (code) {
     "bad-employee" -> "That member of staff is not known to the server."
     "bad-store" -> "This till's store is not known to the server."
     "bad-payload" -> "The server did not understand it. Check that the till is up to date."
-    "unknown-op" -> "The server is older than this till and does not know this kind of change yet. Contact RestoPOS."
+    "unknown-op" -> "The server is older than this till and does not know this kind of change yet. Contact EasyPay."
     "error", null -> "The server could not process it."
     else -> code
 }
