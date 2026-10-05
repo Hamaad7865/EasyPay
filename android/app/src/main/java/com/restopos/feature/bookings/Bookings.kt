@@ -225,18 +225,21 @@ private fun NewBooking(areas: List<String>, vm: BookingsViewModel, onDismiss: ()
                     key = 48.dp, width = 120.dp, big = 16.sp, onDown = { day = (day - 1).coerceAtLeast(0) }, onUp = { day = (day + 1).coerceAtMost(60) },
                 )
             }
+        }
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Caps("Time")
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Stepper(hour.toString().padStart(2, '0'), key = 48.dp, width = 40.dp, big = 20.sp, onDown = { hour = (hour + 23) % 24 }, onUp = { hour = (hour + 1) % 24 })
+                    T(":", 20.sp, 800, V.Text2)
                     Stepper(minute.toString().padStart(2, '0'), key = 48.dp, width = 40.dp, big = 20.sp, onDown = { minute = (minute + 45) % 60 }, onUp = { minute = (minute + 15) % 60 })
                 }
             }
-        }
-        if (areas.size > 1) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Caps("Where")
-                Seg(areas.take(5).map { a -> SegOption(a, a == area) { area = a } }, well = V.Well)
+            if (areas.size > 1) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Caps("Where")
+                    Seg(areas.take(3).map { a -> SegOption(a, a == area) { area = a } }, well = V.Well, height = 48.dp, pad = 12.dp)
+                }
             }
         }
         Field(tags, { tags = it.take(120) }, "Notes · e.g. Birthday cake 21:00, nut allergy, high chair", Modifier.fillMaxWidth(), height = 54.dp)

@@ -238,6 +238,7 @@ fun MainShell(
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(10_000) } }
     LaunchedEffect(lang) { L.fr = lang == "fr" }
+    LaunchedEffect(screen) { if (screen == Screen.Pay || screen == Screen.Split) order.open() }
     // what a printer said when it could not print behind the scenes, and what Settings has to say
     LaunchedEffect(Unit) { more.load(); more.problems.collect { Toaster.say(it) } }
     val said by more.message.collectAsState()
@@ -312,7 +313,7 @@ fun MainShell(
                     Screen.Floor -> FloorScreen(floor, assigning, onAssigned = { shell.assigning.value = null }, onOrder = { shell.go(Screen.Order) }, onPay = { shell.go(Screen.Pay) }, onBookings = { shell.go(Screen.Bookings) })
                     Screen.Order -> OrderScreen(order, onBack = home, onPay = { shell.go(Screen.Pay) }, onSplit = { shell.go(Screen.Split) }, onSent = { shell.go(Screen.Floor) }, onGone = home)
                     Screen.Pay -> PayScreen(pay, onBack = { shell.go(Screen.Order) }, onSplit = { shell.go(Screen.Split) }) { kind ->
-                        when (kind) { "dine" -> shell.go(Screen.Floor); "takeaway", "delivery" -> shell.go(Screen.Takeaway); else -> shell.quick { order.open() } }
+                        when (kind) { "dine" -> { floor.pick(null); shell.go(Screen.Floor) }; "takeaway", "delivery" -> shell.go(Screen.Takeaway); else -> shell.quick { order.open() } }
                     }
                     Screen.Split -> SplitScreen(onBack = { shell.go(Screen.Order) }, onPay = { shell.go(Screen.Pay) })
                     Screen.Takeaway -> { val vm: BoardViewModel = hiltViewModel(); BoardScreen(vm, onOrder = { shell.go(Screen.Order) }, onPay = { shell.go(Screen.Pay) }) }

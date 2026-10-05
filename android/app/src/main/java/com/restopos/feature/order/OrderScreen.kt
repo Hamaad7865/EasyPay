@@ -264,12 +264,12 @@ private fun Small(label: String, value: String, color: Color = V.Text2, weight: 
 @Composable
 private fun Fn(label: String, icon: String, fg: Color, modifier: Modifier, onClick: () -> Unit) {
     Row(
-        modifier.height(48.dp).clip(RoundedCornerShape(10.dp)).background(V.Key).clickable(onClick = onClick).padding(horizontal = 4.dp),
+        modifier.height(48.dp).clip(RoundedCornerShape(10.dp)).background(V.Key).clickable(onClick = onClick).padding(horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
     ) {
-        VIcon(icon, 16.dp, fg)
-        Spacer(Modifier.width(5.dp))
-        T(label, 13.sp, 700, fg)
+        VIcon(icon, 14.dp, fg)
+        Spacer(Modifier.width(4.dp))
+        T(label, 12.5.sp, 700, fg)
     }
 }
 
