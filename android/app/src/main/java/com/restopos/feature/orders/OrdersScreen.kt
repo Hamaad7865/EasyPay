@@ -116,7 +116,8 @@ class OrdersViewModel @Inject constructor(
             val table = t.table_id?.let { tables[it] }
             OrderRow(
                 id = t.id,
-                label = t.name ?: table?.let { tableLabel(it.name) } ?: t.customer_id?.let { db.customers().customer(it)?.name } ?: "Direct sale",
+                // a sale with no name, table or customer is told from the next by its number
+                label = t.name ?: table?.let { tableLabel(it.name) } ?: t.customer_id?.let { db.customers().customer(it)?.name } ?: listOfNotNull("Direct sale", t.order_no).joinToString(" "),
                 floor = table?.area,
                 user = t.opened_by?.let { id -> names.getOrPut(id) { db.staff().employee(id)?.name } },
                 covers = t.covers,
