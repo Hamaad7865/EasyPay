@@ -4,187 +4,140 @@ Kotlin + Compose + Hilt + Room + WorkManager + Ktor (OkHttp). Min SDK 26,
 compile SDK 36.
 
 Built: sign-in, store and device setup, the menu mirrored into Room by the
-pull worker, a start screen, and the screens behind the top bar:
+pull worker, a start screen, and behind it the till as designed in the v2
+handoff (`feature/main/MainShell.kt` holds every screen):
 
-- **Tabs along the bottom:** Register, Tables, Orders, Customers, Receipts,
-  Settings, and at the end three dots for the sync (green: nothing waiting
-  here; amber: changes waiting; red: refused changes or a sign-in needed; the
-  till does not test the network itself). The bar along the top says who is
-  signed in; on the register it also has the magnifier. Log out is at the top
-  of Settings.
-- **The register always holds an order:** the one opened from Tables or
-  Orders, or a new direct sale. Send, On hold, a payment and Cancel order all
-  leave it on a new one. Actions has New order, naming the order, the bill,
-  the remark, the waiter and the discounts.
-- **Beside the keypad:** Edit order (the keypad makes way for the whole order;
-  tick items, then move them to a seat or a course, or remove them), On hold
-  (the order is put away without going to the kitchen), Tables (Switch Table
-  when the order is on one) and the quick payment key (card or cash, set in
-  the back office under POS settings, Payment options).
-- **C** clears what is typed; with nothing typed it asks to cancel the order.
-  Yes takes every item off (the kitchen gets a void for what it already has,
-  which needs someone allowed to void), frees the table, and puts the register
-  back on a direct sale. A partly paid order cannot be cancelled.
-- **Seats:** "Select a seat" above the items says who the next items are for:
-  the table, a seat, or a new seat (+). The order can be listed by course, by
-  seat, or as rung up. The seat prints on the kitchen ticket, and Split Check
-  has "One check per seat".
-- **Customers:** the Customers tab lists them (search, New customer, tap to
-  change). Assign customer on the register puts one on the order; their name
-  is the order's name when it has no table or tab name, and prints on the bill
-  and the receipt. They are also kept in the back office, under Customers.
+- **Top bar:** the menu key, the service screens (Tables, Quick sale,
+  Takeaway, Kitchen, Bookings, Orders) with a count on the ones that have
+  something waiting, the clock, and who is signed in. A dot beside the clock
+  is amber while changes wait to sync and red when the till needs someone.
+- **Side menu:** the service screens again, then Today's sales, Menu & stock,
+  Cash drawer, Receipts, Customers and Settings; the language (English or
+  French, for the till's own words); Switch staff (tap a name, enter its
+  PIN); Lock the till.
+- **Tables (the floor):** one tab per area of the floor plan with how many of
+  its tables are taken. A table is free, seated (blue, with what it owes and
+  how long it has been), waiting for its bill (amber) or reserved (violet,
+  dashed, with the booking's time). Its chairs light up for the guests
+  seated. Beside the plan: the orders in progress and who arrives next. Tap a
+  free table and a number of guests: the order is opened there and then
+  (`TicketRepository.seat`). Tap a seated one: its order, Print bill, Pay,
+  Open order; with nothing ordered, Free the table. Tap a reserved one: the
+  booking, "Guests arrived · seat now", Release table.
+- **Order:** the order on the left, split into what the kitchen has and what
+  is new. A table's order has a covers stepper; any other order has its kind
+  (Counter, Takeaway, Delivery, a tab), and a takeaway or delivery has the
+  customer's name, phone and address. Tap a new line for minus, plus and
+  Remove; tap a sent line for Void (the kitchen gets a VOID ticket; needs
+  `sale.void_sent_line` or an approval). The menu is on the right: categories
+  in their colours, a search over the whole menu, items as tiles with their
+  price, a tag, OPTIONS, SOLD OUT, and how many are on the order unsent. An
+  item with add-on groups asks its options; press and hold any item to add a
+  kitchen note or several at once. Under the order: Print bill (tables),
+  Split, Clear new, More (discount, move to another table, change server,
+  order note, customer, print the kitchen order again, cancel the order),
+  then Send to kitchen and Pay.
+- **Send to kitchen** prints what the kitchen has not had on the printers its
+  categories are ticked for, marks it sent, and puts it on the kitchen display
+  as one ticket. An order on a table then goes back to the floor.
+- **Split** opens the split check: the order's unpaid lines in checks side by
+  side, a line moved or divided between them, one check per seat, a bill and
+  a payment per check.
+- **Pay:** the amount to charge, the restaurant's payment types, and for cash
+  a keypad, the amount tendered, round amounts and the change. Full bill is
+  one payment for what is left. Split equally takes the amount in equal
+  shares, each paid its own way; the shares are kept until they add up and
+  then go out as ONE receipt, with a printed copy per guest. Split check goes
+  to the split check screen, and a check paid from there is a receipt of its
+  own. When everything is paid: the change to give, Print (another copy),
+  Email and WhatsApp (the receipt as text, handed to the tablet's own mail or
+  WhatsApp app), and on to the next sale, the floor or the board.
+- **Service charge:** the back office's percentage (POS settings) on orders
+  served at a table, on the bill and the receipt as its own line. The server
+  works the amount out from the percentage.
+- **Kitchen display:** every send is a ticket: where it is for, how long it
+  has waited (amber from 8 minutes, red from 15), its lines with their
+  options and notes. Tap a line when it is done; Bump when the ticket is at
+  the pass; Recall last brings the last one back. A station is a kitchen
+  printer of the back office, so the screen and the paper agree on who cooks
+  what. "All day" adds up what is still to cook.
+- **Takeaway & delivery:** a board with New, In the kitchen and Ready. An
+  order gets a number that counts up through the day (A-1, D-1; counter sales
+  are C-1) and a time it is due (POS settings, Takeaway time). It moves to
+  the kitchen when it is sent, to ready when its last kitchen ticket is
+  bumped (or with the key on its card), and off the board when it is
+  collected; one collected unpaid goes through the payment first. Tap the due
+  time or a delivery's address to move the time or pick the rider.
+- **Bookings:** today's bookings with their covers, table and notes: New
+  booking, Confirm, No-show, Assign table (pick a free table on the floor),
+  Seat (opens the table's order with the party's size). The back office has
+  the days ahead.
+- **Orders:** every order opened on this tablet that is not fully paid, as a
+  list to search and sort.
+- **Today's sales:** this till's receipts today: net sales against the same
+  hours a week ago, covers, average check, what is still open, sales by hour,
+  payment mix, best sellers and sales by order type. Needs
+  `shift.view_report`, or someone who has it to show them.
+- **Menu & stock:** every item with its category, station, options and price,
+  and a switch for sold out (`item.set_available`; needs `items.availability`
+  or `items.edit`, or an approval). A sold-out item stays on the menu, greyed.
+- **Cash drawer:** the drawer counted by note and coin (Rs 2,000 to Rs 1),
+  with what it should hold and the difference for those who may see the
+  figures (others count blind). Open drawer, Cash in, Cash out, Print X
+  report, Record this count (a handover), and Close shift & print Z report:
+  the sales period is closed from the count and, if chosen, the day with it.
 - **Approval:** something the person signed in may not do (a refund, a void
   after the kitchen has it, opening the drawer, cash in and out, closing the
-  shift or the day, a discount, the reports) asks who approves. They tap their
-  name and enter their own PIN; it is done in the cashier's name with
-  `approved_by` on the op.
-
+  period or the day, a discount, marking an item sold out, the figures) asks
+  who approves. They tap their name and enter their own PIN; it is done in
+  the cashier's name with `approved_by` on the op.
 - **Start screen:** what the app opens on once the tablet is set up, and
-  where Log out returns. Three states:
+  where Lock returns. Three states:
   - nobody has a PIN (set in the back office, under Staff): one button, Open
-    register, as before. An update never locks a restaurant out.
+    register. An update never locks a restaurant out.
   - staff have PINs and nobody is clocked in: "Sales period is closed" (or
     "No one is clocked in") with Clock in/out.
   - someone is clocked in: their names as tiles. Tap yours, enter your PIN.
     If no sales period is open, someone with `shift.open_close` confirms the
-    cash in the drawer (the cash count) and that opens it.
+    cash in the drawer and that opens it.
 - **Clock in/out:** two columns, each name needs its PIN. A punch is one row,
   never changed; "clocked in" is "the last punch was in".
-- **Sales period:** one per till (the code and the server call it a shift). Closed from Settings with a blind count;
-  the till then shows opening amount, cash taken, expected, counted and the
-  difference. The server works out the same expected figure.
 - **Who did it:** every outbox op carries the signed-in member of staff, and
-  the server acts as them. The register shows their name. What the server
-  would refuse (payment or a discount without the permission, a restricted
-  discount without someone allowed to give it) is refused on the till before
-  money is recorded.
-- **Register:** the order and a keypad on the left, the categories two across
-  in the middle (all in the till's blue), the open category's items on the
-  right, and Send, Split Check and Pay along the bottom. A number typed on the
-  keypad is used by what is tapped next: an item (that many), the × key (the
-  selected line's quantity), Tables (that table), or the quick payment key
-  when it takes cash (the amount received; nothing typed means exact). The
-  quick payment key pays everything unpaid in one receipt. The name, guests,
-  the order type and the customer are stored on the ticket. The magnifier
-  searches the whole menu. When the categories do not all fit, the grid pages
-  and its last row is a down arrow; the item grid shows the same arrows past a
-  screenful.
-- **Order header:** the order's name top left (the tab name, else its table,
-  else its customer, else "Direct sale"). Under it: how the order is listed
-  (By course, By seat, As ordered), the guests, the order type and Assign
-  customer. Every order has courses: lines sit under Course 1, Course 2, ...
-  with "Add a course", new items go to the course that is lit, and the course
-  is sent with the line (the kitchen ticket only says the course when the
-  order has more than the first). Naming an order (Actions) takes it off its
-  table: the name is what the guest's bill will carry.
-- **Floor plan:** the store's floor plan, as laid out in the back office (Floor plans),
-  scaled to the screen, one tab per area. Each table shows its name and,
-  under a line, what the view chosen bottom left says: Covers (a dot per
-  seat, lit per guest), Total, Time or Status. A table with something to pay
-  has a green marker. Tap a free table to start an order on it (it asks how
-  many guests; the order is created with its first item), tap an occupied one
-  to bring its order back. On the register, the Tables key opens
-  the plan, or the table whose name was typed on the keypad first. Actions
-  has "Move to another table".
-- **Orders:** the orders opened on this tablet that are not fully paid, as a
-  table: a tab per dining option with its count (an order with none counts
-  under the default), a search (order, floor or waiter), and the columns
-  Order, Floor, User, Covers, Created, Last edit, Course, Total, Payment.
-  Tap a column to sort by it, tap an order to put it back on the register.
-  Last edit is the newer of the order's own change and its newest line, as
-  an age: green, amber from 30 minutes, red from an hour.
-- **Receipts:** the receipts issued on this tablet.
-- **Settings:** a menu down the left, the chosen page on the right.
-  - This till: who is signed in, Cash in, Cash out, Open drawer and Close
-    shift, and the state of the sync, the shift, the printers and the network.
-  - Notifications: what needs attention for as long as it is true (sign-in
-    needed, refused changes, no receipt printer, failed print jobs) and what
-    the printers reported while nobody was looking.
-  - Cash drawer: Cash in, Cash out, Open drawer, Close shift (the blind count;
-    there is no count that leaves the shift open), the shift's cash and its
-    cash in and out. What the
-    drawer should hold is only shown with `shift.view_report`.
-  - Reports (`shift.view_report`): the shift, the day so far (also by
-    category and by staff) with Close the day, and closed shifts and day
-    closings to print again.
-  - Payments (`receipts.view_all`): every payment since the last day closing;
-    tap one for its receipt (print again, refund, correct the payment type).
-  - Printers: each printer, whether it answers, what prints on it, a test
-    print, and the print jobs since the app opened. A failed receipt, bill,
-    slip or report has Try again (a receipt goes again without opening the
-    drawer). A kitchen ticket is not re-sent from here: Save sends it again
-    and marks the lines sent.
-  - Display (`settings.device`): light mode, left-handed register, keep the
-    screen on. Kept on the tablet. Every colour is a getter on `Pos` that
-    reads `Pos.light`, so nothing on a screen may hard-code a colour that
-    assumes a dark background (the PIN pad is the one dark sheet in both).
-  - Support: the till's details, Sync now, refused changes, and signing the
-    tablet out (`settings.device`).
-  - Help: how the till's own flows work.
-
-Pay (the bar under the items) opens the payment screen, titled with the
-order's name and what is due. Left, the order summary: with more than one
-line, tap a line to leave it for another guest's payment (split by item).
-Middle, the payment types from the back office, grouped Cash / Cards / Other.
-Right: the payment amount, the amount received (cash: exact, the next notes
-up, or Custom on a number pad; other types: an optional reference), the
-change, and Pay. Cancel goes back to the order. Pay ignores taps in its first
-moment on screen, because it sits where Pay on the register was.
-
-- **Starting an order:** the register is always ready for one. The order type
-  chip (the back office's order types: Dine-in, Takeaway, ...) changes its
-  type; Tables, or a table tapped on the Tables tab, puts it on a table.
-- **Send (to the kitchen):** under the items, next to Split Check and Pay. It
-  prints what the kitchen has not had yet, each line on the printers ticked on its category
-  (back office > Categories), with the table, the time and the waiter, marks
-  those lines sent (`ticket.send`), and puts the order away. Opening the order
-  again and saving again sends only what was added. A printer that does not
-  answer keeps its lines unsent and says so; Send again retries them. An
-  order paid without ever being sent prints its kitchen ticket after payment.
-- **On hold** puts the order away as it is, with nothing sent; it waits under
-  Orders.
-- **Delete and void:** a line the kitchen has not had is deleted (and its
-  quantity can still change); one it has is voided, which prints a VOID ticket
-  where the line printed. Neither asks for a reason.
-- **Actions:** new order, name the order, transfer to another table, change
-  waiter (`ticket.reassign`), a remark (prints on the kitchen order and the
-  receipt), print the bill (the order as it stands, as often as asked; nothing
-  is recorded), print the kitchen order again, a discount in % or Rs.
-- **Payment:** the receipt prints by itself on the cashier's printer and the
-  drawer opens if the payment type is set to open it. A remark can be added
-  on the payment screen. With no decimals (or one), the total is rounded and
-  the rounding is kept on the receipt. A bill split evenly between guests is
-  still one receipt with one number, and each guest gets a printed copy that
-  says their share and the tax in it. Items rung up by seat can instead go on
-  one check per seat (Split Check), each paid on its own receipt.
-- **Cash drawer and closings** are in Settings: opening the drawer without a
-  sale (recorded), cash in and cash out with an amount and a reason (a slip
-  prints and it counts in the drawer's expected cash), Count drawer (a count
-  for a handover that leaves the sales period open), Close sales period (the
-  blind count), and under Reports the day closing (the Z): it needs the sales
-  period closed and no unpaid order, fixes the figures, prints, and with
-  "start again each day" restarts bill numbers.
+  the server acts as them. What the server would refuse is refused on the
+  till before money is recorded.
 - **Receipts:** tap one to see it, print it again (the same paper: what a
   receipt printed is kept with it), refund it (the whole receipt, with a
   reason and how the money goes back), or correct its payment type.
+- **Customers:** search, add, edit; More > Customer puts one on an order.
+- **Settings:** this till, notifications, reports (past periods and day
+  closings), payments, printers with a test print and the print jobs, the
+  display (light mode, keep the screen on), support and help.
 - **Printing** is done by the tablet itself over the local network (a
   printer's IP address, port 9100) or a USB cable, in ESC/POS, for 58 mm and
-  80 mm paper. It does not need the internet. Settings > Printers has a test
-  print for each printer.
+  80 mm paper. It does not need the internet.
 
-Not built yet: a kitchen screen, tips, service charge, refunding part of a
-receipt, barcode scanning, locking after inactivity, QR sign-in, card
-terminals, a discount on one item, changing an item's price on the order. A till only shows its own orders and
-receipts: the pull does not bring other tills' tickets down. So a table that
-is occupied on one tablet shows as free on another. The server already sends
-the store's open tickets (0048); applying them on the till is the next step.
+Not built yet: tips, refunding part of a receipt, barcode scanning, locking
+after inactivity, QR sign-in, card terminals (a card payment is recorded by
+hand once the terminal has approved it), a discount on one item, changing an
+item's price on the order, fixtures on the floor plan (a bar, the entrance),
+charging a hotel room, sending a receipt by e-mail or SMS from a server.
+
+A till only shows its own orders, kitchen tickets and receipts: the pull does
+not bring other tills' tickets down. So a table that is taken on one tablet
+shows as free on another, and the kitchen display shows what was sent from
+the tablet it is on. The server already sends the store's open tickets;
+applying them on the till, and pulling often enough for a kitchen tablet, is
+the next step. Bookings, the menu and sold-out items are shared between tills.
 
 Printing has unit tests that read the printed bytes back, but has not been
 run against a real printer.
 
-The layout is drawn for a 1024 x 720dp landscape tablet and scaled to the
+The layout is drawn for a 1280 x 720dp landscape tablet and scaled to the
 screen it runs on (`MainActivity.attachBaseContext`); the app is locked to
-landscape. Colours live in `core/ui/PosTheme.kt`.
+landscape. The redesign's colours, icons and shared controls live in
+`core/ui/V2.kt`; `core/ui/PosTheme.kt` gives the older screens the same
+palette. The design asks for the Manrope typeface; the till uses the
+tablet's own until the font file is added to `res/font`.
 
 It has been run on a 2560 x 1600 emulator against the dev branch. The three
 checks below are the first thing to do on a real tablet.

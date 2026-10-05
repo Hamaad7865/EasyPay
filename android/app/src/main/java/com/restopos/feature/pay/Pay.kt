@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -148,6 +149,8 @@ class PayViewModel @Inject constructor(
     private var calc: Map<String, Calc.Line> = emptyMap()
     private var earlier: List<PaidRow> = emptyList()
     private var earlierTotal = 0L
+
+    fun reset() { shares = emptyList(); _ui.value = PayUi() }
 
     fun open() = viewModelScope.launch {
         shares = emptyList()
@@ -345,6 +348,7 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
     val ui by vm.ui.collectAsState()
     var leaving by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.open() }
+    DisposableEffect(Unit) { onDispose { vm.reset() } }
     // one check of a split check is paid and others are not: back to the checks
     LaunchedEffect(ui.checkPaid) { if (ui.checkPaid) onSplit() }
     // someone else paid or cancelled this order: there is nothing to do here

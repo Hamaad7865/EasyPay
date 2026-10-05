@@ -163,7 +163,7 @@ class ShellViewModel @Inject constructor(
     }
 
     // Quick sale: the counter order that is open comes back; otherwise a new one starts.
-    fun quick() = viewModelScope.launch {
+    fun quick(then: () -> Unit = {}) = viewModelScope.launch {
         val types = db.catalog().diningOptions()
         val open = tickets.activeTicket()
         val kind = open?.dining_option_id?.let { id -> types.firstOrNull { it.id == id }?.kind } ?: if (open?.table_id != null) "dine" else "counter"
@@ -171,6 +171,7 @@ class ShellViewModel @Inject constructor(
             tickets.startOrder((types.firstOrNull { it.kind == "counter" } ?: types.firstOrNull { !it.needs_table && it.kind != "takeaway" && it.kind != "delivery" })?.id)
         }
         screen.value = Screen.Order
+        then()
     }
 
     fun assign(b: BookingEntity) { assigning.value = b; screen.value = Screen.Floor }
@@ -242,7 +243,7 @@ fun MainShell(
     val said by more.message.collectAsState()
     LaunchedEffect(said) { said?.let { Toaster.say(it); more.messageShown() } }
 
-    val go: (Screen) -> Unit = { s -> drawer = false; if (s == Screen.Order) shell.quick() else shell.go(s) }
+    val go: (Screen) -> Unit = { s -> drawer = false; if (s == Screen.Order) shell.quick { order.open() } else shell.go(s) }
     // the key that is lit: the place, or for an order where that order lives
     val lit = when (screen) {
         Screen.Order, Screen.Pay, Screen.Split -> when (orderUi.kind) { "dine" -> Screen.Floor; "takeaway", "delivery" -> Screen.Takeaway; else -> Screen.Order }
@@ -311,7 +312,7 @@ fun MainShell(
                     Screen.Floor -> FloorScreen(floor, assigning, onAssigned = { shell.assigning.value = null }, onOrder = { shell.go(Screen.Order) }, onPay = { shell.go(Screen.Pay) }, onBookings = { shell.go(Screen.Bookings) })
                     Screen.Order -> OrderScreen(order, onBack = home, onPay = { shell.go(Screen.Pay) }, onSplit = { shell.go(Screen.Split) }, onSent = { shell.go(Screen.Floor) }, onGone = home)
                     Screen.Pay -> PayScreen(pay, onBack = { shell.go(Screen.Order) }, onSplit = { shell.go(Screen.Split) }) { kind ->
-                        when (kind) { "dine" -> shell.go(Screen.Floor); "takeaway", "delivery" -> shell.go(Screen.Takeaway); else -> shell.quick() }
+                        when (kind) { "dine" -> shell.go(Screen.Floor); "takeaway", "delivery" -> shell.go(Screen.Takeaway); else -> shell.quick { order.open() } }
                     }
                     Screen.Split -> SplitScreen(onBack = { shell.go(Screen.Order) }, onPay = { shell.go(Screen.Pay) })
                     Screen.Takeaway -> { val vm: BoardViewModel = hiltViewModel(); BoardScreen(vm, onOrder = { shell.go(Screen.Order) }, onPay = { shell.go(Screen.Pay) }) }

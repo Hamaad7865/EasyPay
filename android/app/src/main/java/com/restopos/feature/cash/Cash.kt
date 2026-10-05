@@ -103,7 +103,7 @@ class CashViewModel @Inject constructor(
     fun load() = viewModelScope.launch {
         val shift = cash.currentShift()
         val cur = _ui.value
-        if (shift == null) { _ui.value = cur.copy(loaded = true, shift = null, doc = null, info = "No sales period is open on this till"); return@launch }
+        if (shift == null) { _ui.value = cur.copy(loaded = true, shift = null, doc = null, closed = null, info = "No sales period is open on this till"); return@launch }
         val doc = cash.shiftDoc(shift)
         _ui.value = cur.copy(
             loaded = true, shift = shift, doc = doc, figures = cur.figures || staff.can("shift.view_report"),

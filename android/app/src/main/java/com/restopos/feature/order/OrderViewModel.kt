@@ -147,7 +147,7 @@ class OrderViewModel @Inject constructor(
             sub = if (table != null) listOfNotNull(table.area, waiter).joinToString(" · ")
             else listOfNotNull(waiter, t?.let { "opened ${HM.format(Date(Uuid7.millis(it.id) ?: it.updated_at))}" } ?: "new order").joinToString(" · "),
             tableName = table?.name,
-            modes = types.filter { it.kind != "dine" },
+            modes = types.filter { it.kind != "dine" }.sortedBy { listOf("counter", "takeaway", "delivery", "tab").indexOf(it.kind) },
             sent = lines.filter { it.line.sent_to_kitchen_at != null || it.line.paid },
             fresh = lines.filter { it.line.sent_to_kitchen_at == null && !it.line.paid },
             totals = service.dueOf(lines, service.servicePct(t), discount),
