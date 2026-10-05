@@ -6,6 +6,7 @@ import { act, int, on, Refused, text, uuid } from "@/lib/action";
 import { Card, Empty, Flash, PageHead, type Search } from "../ui";
 
 const PATH = "/backoffice/printers";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const IP = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}(:\d{2,5})?$/;
 
 type Row = {
@@ -19,7 +20,17 @@ type Row = {
   cut: boolean;
   is_active: boolean;
   categories: number;
+  cats: string[]; // the categories whose items print here
 };
+type Cat = { id: string; name: string };
+
+// Which categories print on a printer, set from the printer's side: the ones
+// ticked get it, the others lose it. The same list the Categories page edits.
+const ROUTE = `update categories set printer_ids = case
+           when id = any($3::uuid[]) then (case when $2::uuid = any(printer_ids) then printer_ids else array_append(printer_ids, $2::uuid) end)
+           else array_remove(printer_ids, $2::uuid) end
+     where tenant_id = $1 and deleted_at is null and (id = any($3::uuid[]) or $2::uuid = any(printer_ids))`;
+const ticked = (f: FormData) => f.getAll("cat").map(String).filter((v) => UUID.test(v));
 
 function fields(f: FormData) {
   const name = text(f, "name", 40);
@@ -46,12 +57,17 @@ async function addPrinter(f: FormData) {
     if (store.rowCount !== 1) throw new Refused("This restaurant has no store yet.");
     // one printer per store is where the cashier's receipts come out
     if (v.receipt) await c.query(`update printers set is_receipt = false where tenant_id = $1 and store_id = $2 and is_receipt`, [ctx.tenantId, store.rows[0].id]);
-    await c.query(
+    const made = await c.query(
       `insert into printers (tenant_id, store_id, name, kind, address, paper_mm, is_receipt, feed_lines, cut, sort_order)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, (select coalesce(max(sort_order), -1) + 1 from printers where tenant_id = $1))`,
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, (select coalesce(max(sort_order), -1) + 1 from printers where tenant_id = $1))
+       returning id`,
       [ctx.tenantId, store.rows[0].id, v.name, v.kind, v.address, v.paper, v.receipt, v.feed, v.cut],
     );
-    return `${v.name} added. Tick it on the categories that should print there.`;
+    const cats = ticked(f);
+    if (cats.length > 0) await c.query(ROUTE, [ctx.tenantId, made.rows[0].id, cats]);
+    return cats.length > 0
+      ? `${v.name} added. Orders for ${cats.length} ${cats.length === 1 ? "category" : "categories"} print there once the tills have synced.`
+      : `${v.name} added. Tick the categories whose orders should print there.`;
   });
 }
 
@@ -77,11 +93,12 @@ async function savePrinter(f: FormData) {
         where tenant_id = $1 and id = $2 and deleted_at is null`,
       [ctx.tenantId, id, v.name, v.kind, v.address, v.paper, v.receipt, v.feed, v.cut, on(f, "is_active")],
     );
+    await c.query(ROUTE, [ctx.tenantId, id, ticked(f)]);
     return `${v.name} saved.`;
   });
 }
 
-function Form({ p }: { p?: Row }) {
+function Form({ p, cats }: { p?: Row; cats: Cat[] }) {
   return (
     <>
       <div className="form-row">
@@ -136,6 +153,25 @@ function Form({ p }: { p?: Row }) {
           )}
         </div>
       </div>
+      <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
+        <legend style={{ padding: 0, fontWeight: 600 }}>Prints the orders of</legend>
+        <span className="help">
+          The categories whose items come out here when an order is sent: food on the kitchen printer, drinks on the bar printer. A category can print
+          in more than one place. Each printer that prints orders is also a station on the till&apos;s kitchen display.
+        </span>
+        {cats.length === 0 ? (
+          <span className="muted">No categories yet. Add them under Categories first.</span>
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", marginTop: 8 }}>
+            {cats.map((k) => (
+              <label key={k.id} className="check" style={{ margin: 0 }}>
+                <input type="checkbox" name="cat" value={k.id} defaultChecked={p?.cats.includes(k.id) ?? false} />
+                {k.name}
+              </label>
+            ))}
+          </div>
+        )}
+      </fieldset>
     </>
   );
 }
@@ -143,21 +179,23 @@ function Form({ p }: { p?: Row }) {
 export default async function PrintersPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const rows = await withTenant(ctx.tenantId, (c) =>
-    c
-      .query(
+  const { rows, cats } = await withTenant(ctx.tenantId, async (c) => ({
+    rows: (
+      await c.query(
         `select p.id, p.name, p.kind, p.address, p.paper_mm, p.is_receipt, p.feed_lines, p.cut, p.is_active,
-                (select count(*)::int from categories k where k.tenant_id = p.tenant_id and k.deleted_at is null and p.id = any(k.printer_ids)) as categories
+                (select count(*)::int from categories k where k.tenant_id = p.tenant_id and k.deleted_at is null and p.id = any(k.printer_ids)) as categories,
+                (select coalesce(array_agg(k.id::text), '{}') from categories k where k.tenant_id = p.tenant_id and k.deleted_at is null and p.id = any(k.printer_ids)) as cats
            from printers p where p.tenant_id = $1 and p.deleted_at is null order by p.sort_order, p.name`,
         [ctx.tenantId],
       )
-      .then((r) => r.rows as Row[]),
-  );
+    ).rows as Row[],
+    cats: (await c.query(`select id, name from categories where tenant_id = $1 and deleted_at is null order by sort_order, name`, [ctx.tenantId])).rows as Cat[],
+  }));
   return (
     <div>
       <PageHead
         title="Printers"
-        lede="The receipt printer at the till, and the kitchen and bar printers that orders are sent to. The tablet prints to them directly, so they work without internet."
+        lede="The receipt printer at the till, and the kitchen and bar printers that orders are sent to. Add one for each place food or drink is made, and tick what it prints. The tablet prints to them directly, so they work without internet."
       />
       <Flash sp={sp} />
       {rows.length === 0 && (
@@ -184,7 +222,7 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
           <form action={savePrinter}>
             <input type="hidden" name="id" value={p.id} />
             <div className="card-body">
-              <Form p={p} />
+              <Form p={p} cats={cats} />
             </div>
             <div className="card-foot">
               <button type="submit" name="remove" value="1" className="btn-danger" formNoValidate>Remove</button>
@@ -193,14 +231,15 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
           </form>
         </details>
       ))}
-      <Card title="Add a printer" lede="After adding a kitchen or bar printer, tick it on the categories it should print.">
+      <Card title="Add a printer" lede="A kitchen printer, a bar printer, a pastry printer: name it after where it stands and tick what it prints.">
         <form action={addPrinter}>
-          <Form />
+          <Form cats={cats} />
           <button type="submit">Add printer</button>
         </form>
       </Card>
       <p className="muted">
-        Which categories print where is set under <Link href="/backoffice/categories">Categories</Link>. A test print is on the tablet, under Settings.
+        Where a category prints can also be set from its side, under <Link href="/backoffice/categories">Categories</Link>. A test print for each printer is
+        on the tablet, under Settings, Printers.
       </p>
     </div>
   );

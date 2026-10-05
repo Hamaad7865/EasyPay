@@ -73,7 +73,7 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
     <div>
       <PageHead
         title="Categories"
-        lede="The buttons down the middle of the till. The sequence is their order, the colour is the button, and the printers are where a category's items come out when an order is sent."
+        lede="The groups of the menu, shown above the items on the till's order screen. The sequence is their order, the colour is the colour of the group and of its items, and the printers are where a category's items come out when an order is sent (and its stations on the kitchen display)."
       />
       <Flash sp={sp} />
       {d.rows.length === 0 ? (
