@@ -163,7 +163,7 @@ interface ServiceDao {
     @Query(
         """SELECT * FROM items WHERE deleted_at IS NULL
            AND (:cat IS NULL OR category_id = :cat)
-           AND (:q = '' OR name LIKE '%' || :q || '%')
+           AND (:q = '' OR name LIKE '%' || :q || '%' OR barcode = :q)
            ORDER BY name COLLATE NOCASE LIMIT 600""",
     )
     fun items(cat: String?, q: String): Flow<List<ItemEntity>>

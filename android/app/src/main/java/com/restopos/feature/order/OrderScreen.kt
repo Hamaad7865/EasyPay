@@ -93,6 +93,8 @@ fun OrderScreen(vm: OrderViewModel, onBack: (board: Boolean) -> Unit, onPay: () 
     var more by remember { mutableStateOf(false) }
     val left by vm.leftHanded.collectAsState()
     LaunchedEffect(Unit) { vm.open() }
+    // while this screen is open, a scanned barcode adds its item
+    LaunchedEffect(Unit) { com.restopos.core.common.Scanner.codes.collect { vm.scanned(it) } }
 
     Row(Modifier.fillMaxSize()) {
         if (left) Menu(ui, vm, Modifier.weight(1f))

@@ -51,6 +51,8 @@ data class ItemEntity(
     val server_seq: Long? = null,
     // what the back office says about it ("Veg", "Signature"), comma separated
     val tags: String = "",
+    // what a scanner reads off the packet, when the item has one
+    val barcode: String? = null,
 )
 
 @Entity(tableName = "modifier_groups")

@@ -25,17 +25,27 @@ async function save(f: FormData) {
     if (price === null) throw new Refused("The price is not a number.");
     if (!UUID.test(tax)) throw new Refused("Pick the tax this item carries.");
     const groups = f.getAll("group").map(String).filter((g) => UUID.test(g));
+    // what a scanner reads off the packet; two items with the same one would leave the till guessing
+    const barcode = text(f, "barcode", 64).replace(/\s+/g, "") || null;
+    if (barcode) {
+      const taken = await c.query(`select name from items where tenant_id = $1 and barcode = $2 and deleted_at is null and ($3::uuid is null or id <> $3::uuid) limit 1`, [
+        ctx.tenantId,
+        barcode,
+        editing ? id : null,
+      ]);
+      if (taken.rowCount) throw new Refused(`${taken.rows[0].name} already has that barcode.`);
+    }
     let item = id;
     if (editing) {
       await c.query(
-        `update items set name = $3, price = $4, category_id = $5, is_available = $6, track_stock = $7
+        `update items set name = $3, price = $4, category_id = $5, is_available = $6, track_stock = $7, barcode = $8
           where tenant_id = $1 and id = $2 and deleted_at is null`,
-        [ctx.tenantId, id, name, price, UUID.test(category) ? category : null, on(f, "available"), on(f, "track_stock")],
+        [ctx.tenantId, id, name, price, UUID.test(category) ? category : null, on(f, "available"), on(f, "track_stock"), barcode],
       );
     } else {
       const r = await c.query(
-        `insert into items (tenant_id, category_id, name, price, is_available, track_stock) values ($1, $2, $3, $4, $5, $6) returning id`,
-        [ctx.tenantId, UUID.test(category) ? category : null, name, price, on(f, "available"), on(f, "track_stock")],
+        `insert into items (tenant_id, category_id, name, price, is_available, track_stock, barcode) values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+        [ctx.tenantId, UUID.test(category) ? category : null, name, price, on(f, "available"), on(f, "track_stock"), barcode],
       );
       item = r.rows[0].id as string;
     }
@@ -64,8 +74,8 @@ export default async function ItemEditPage({ searchParams }: { searchParams: Sea
   const ctx = await tenantContext();
   const d = await withTenant(ctx.tenantId, async (c) => {
     const item = UUID.test(id)
-      ? ((await c.query(`select id, name, price, category_id, is_available, track_stock from items where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id])).rows[0] as
-          | { id: string; name: string; price: string; category_id: string | null; is_available: boolean; track_stock: boolean }
+      ? ((await c.query(`select id, name, price, category_id, is_available, track_stock, barcode from items where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id])).rows[0] as
+          | { id: string; name: string; price: string; category_id: string | null; is_available: boolean; track_stock: boolean; barcode: string | null }
           | undefined)
       : undefined;
     return {
@@ -106,6 +116,11 @@ export default async function ItemEditPage({ searchParams }: { searchParams: Sea
                 </select>
               </label>
             </div>
+            <label className="field">
+              Barcode
+              <input name="barcode" defaultValue={it?.barcode ?? ""} maxLength={64} placeholder="Scan it here, or leave empty" autoComplete="off" />
+              <span className="help">For bottled drinks and packets. With a scanner plugged into the tablet, scanning it on the till adds the item to the order.</span>
+            </label>
             <label className="check">
               <input type="checkbox" name="available" defaultChecked={it?.is_available ?? true} />
               <span>

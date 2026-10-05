@@ -164,7 +164,8 @@ class PullWorker @AssistedInject constructor(
             changes["items"]?.let { rows ->
                 dao.upsertItems(rows.map {
                     ItemEntity(id(it), str(it, "tenant_id") ?: "", str(it, "category_id"), str(it, "name") ?: "", lng(it, "price") ?: 0, bool(it, "is_available", true), str(it, "tile_color"), str(it, "image_path"), str(it, "deleted_at"), lng(it, "server_seq"),
-                        tags = (it.jsonObject["dietary_tags"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { t -> runCatching { t.jsonPrimitive.contentOrNull }.getOrNull() }?.joinToString(",") ?: "")
+                        tags = (it.jsonObject["dietary_tags"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { t -> runCatching { t.jsonPrimitive.contentOrNull }.getOrNull() }?.joinToString(",") ?: "",
+                        barcode = str(it, "barcode")?.trim()?.ifEmpty { null })
                 })
             }
             changes["modifier_groups"]?.let { rows ->

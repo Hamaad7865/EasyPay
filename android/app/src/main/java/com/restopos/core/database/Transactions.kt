@@ -168,4 +168,8 @@ data class ReceiptLineEntity(
     val name_snapshot: String,
     val unit_price: Long,
     val qty: Int,
+    // The line of the order this line of the receipt paid for. It is how a
+    // refund of part of a receipt names what comes back; a receipt issued
+    // before version 8 has none and can only be refunded whole.
+    val ticket_line_id: String? = null,
 )

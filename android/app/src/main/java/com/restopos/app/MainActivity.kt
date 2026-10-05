@@ -61,6 +61,20 @@ class MainActivity : ComponentActivity() {
         })
     }
 
+    // Keys from a keyboard or a scanner go to the screen as always. The Enter
+    // that ends a scan is kept from it (it would press whatever has the focus)
+    // and the code goes to the order screen instead.
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN && event.device?.isVirtual == false) {
+            val enter = event.keyCode == android.view.KeyEvent.KEYCODE_ENTER || event.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
+            com.restopos.core.common.Scanner.key(event.unicodeChar, enter, event.eventTime)?.let { code ->
+                com.restopos.core.common.Scanner.scanned(code)
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SyncScheduler.pullNow(this)

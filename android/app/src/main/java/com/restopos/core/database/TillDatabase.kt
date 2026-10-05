@@ -31,7 +31,7 @@ import androidx.room.RoomDatabase
         PrinterEntity::class, SettingsEntity::class, CashMoveEntity::class, DayCloseEntity::class, DrawerCountEntity::class,
         CustomerEntity::class, KdsTicketEntity::class, BookingEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {

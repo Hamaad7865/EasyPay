@@ -264,7 +264,7 @@ class OrderOps @Inject constructor(
         )
         db.withTransaction {
             db.receipts().insertReceipt(refund)
-            db.receipts().insertLines(db.receipts().lines(orig.id).map { ReceiptLineEntity(Uuid7.next(), tenant, id, it.name_snapshot, it.unit_price, it.qty) })
+            db.receipts().insertLines(db.receipts().lines(orig.id).map { ReceiptLineEntity(Uuid7.next(), tenant, id, it.name_snapshot, it.unit_price, it.qty, it.ticket_line_id) })
             if (orig.total > 0) db.receipts().insertPayments(listOf(ReceiptPaymentEntity(Uuid7.next(), tenant, id, type.id, orig.total)))
             db.catalog().upsertDevices(listOf(device.copy(last_receipt_seq = seq)))
             db.outbox().enqueue(op("refund.create", buildJsonObject {

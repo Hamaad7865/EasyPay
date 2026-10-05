@@ -179,6 +179,16 @@ class OrderViewModel @Inject constructor(
 
     fun closeSheet() { _sheet.value = null }
 
+    // A barcode read by the scanner: the item that carries it goes on the
+    // order, as if it had been tapped. What the scanner typed into the search
+    // box on its way is cleared.
+    fun scanned(code: String) = viewModelScope.launch {
+        query.value = ""
+        val item = db.catalog().itemByBarcode(code.trim())
+        if (item == null) { Toaster.say("No item has the barcode $code. It is set on the item in the back office."); return@launch }
+        tap(item)
+    }
+
     fun confirm(qty: Int, picks: List<ModPick>, note: String) = viewModelScope.launch {
         val item = _sheet.value?.item ?: return@launch
         _sheet.value = null

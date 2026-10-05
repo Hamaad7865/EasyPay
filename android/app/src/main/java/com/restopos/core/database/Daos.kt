@@ -52,6 +52,9 @@ interface CatalogDao {
     @Query("SELECT * FROM items WHERE id = :id")
     suspend fun item(id: String): ItemEntity?
 
+    @Query("SELECT * FROM items WHERE barcode = :code AND deleted_at IS NULL LIMIT 1")
+    suspend fun itemByBarcode(code: String): ItemEntity?
+
     @Query("SELECT * FROM pos_devices WHERE id = :id")
     suspend fun device(id: String): DeviceEntity?
 

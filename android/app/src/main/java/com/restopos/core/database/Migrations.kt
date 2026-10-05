@@ -106,4 +106,16 @@ object Migrations {
             db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
         }
     }
+
+    // 7 -> 8: an item's barcode (for a scanner plugged into the tablet), and
+    // which line of the order each line of a receipt paid for (to refund part
+    // of a receipt).
+    val V7_V8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `items` ADD COLUMN `barcode` TEXT")
+            db.execSQL("ALTER TABLE `receipt_lines` ADD COLUMN `ticket_line_id` TEXT")
+            // the barcodes are on the server already: pull the menu again
+            db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
+        }
+    }
 }

@@ -604,7 +604,7 @@ class TicketRepository @Inject constructor(
                     device_time = now, doc = doc),
             )
             db.receipts().insertLines(payLines.map {
-                ReceiptLineEntity(Uuid7.next(), tenant, receiptId, it.name_snapshot, it.unit_price, it.qty)
+                ReceiptLineEntity(Uuid7.next(), tenant, receiptId, it.name_snapshot, it.unit_price, it.qty, it.id)
             })
             db.receipts().insertPayments(payments.map {
                 ReceiptPaymentEntity(Uuid7.next(), tenant, receiptId, it.paymentTypeId, it.amount, it.tendered, it.change, it.reference)
