@@ -73,8 +73,12 @@ data class ReceiptDetail(
     val receipt: ReceiptEntity,
     val doc: ReceiptDoc?,
     val payments: List<ReceiptPaymentEntity>,
-    val refunded: Boolean,
-)
+    val refunded: Long, // how much of it has been given back
+    // what can still be given back, line by line; null when it can only be refunded whole
+    val lines: List<com.restopos.core.data.RefundLine>?,
+) {
+    val canRefund: Boolean get() = receipt.type == "sale" && (lines?.any { it.left > 0 } ?: (refunded == 0L))
+}
 
 @HiltViewModel
 class ReceiptsViewModel @Inject constructor(
@@ -115,7 +119,11 @@ class ReceiptsViewModel @Inject constructor(
     fun show(r: ReceiptEntity?) = viewModelScope.launch {
         _open.value = r?.let {
             val row = db.ops().receipt(it.id) ?: it
-            ReceiptDetail(row, docs.decode(row.doc), db.receipts().payments(row.id), row.type == "sale" && db.ops().refundedOf(row.id) > 0)
+            ReceiptDetail(
+                row, docs.decode(row.doc), db.receipts().payments(row.id),
+                if (row.type == "sale") db.ops().refundedOf(row.id) else 0,
+                if (row.type == "sale") orders.refundable(row.id) else null,
+            )
         }
     }
 
@@ -135,7 +143,10 @@ class ReceiptsViewModel @Inject constructor(
     }
 
     fun reprint(id: String) = run("Sent to the printer.") { by -> orders.reprint(id, by) }
-    fun refund(id: String, reason: String, type: String) = run("Refunded. The refund is in the list.") { by -> orders.refund(id, reason, type, by) }
+    // picks: order line id to quantity (thousandths); null gives back everything that is left
+    fun refund(id: String, reason: String, type: String, picks: Map<String, Int>? = null) =
+        run("Refunded. The refund is in the list.") { by -> orders.refund(id, reason, type, by, picks) }
+    suspend fun quote(id: String, picks: Map<String, Int>): Long = orders.refundQuote(id, picks)
     fun correct(id: String, from: String, to: String) = run("Payment type corrected.") { by -> orders.correctPayment(id, from, to, by) }
 }
 
@@ -252,13 +263,18 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                         }
                     }
                 }
-                if (d.refunded) Text("This receipt was refunded.", Modifier.padding(top = 8.dp), color = Pos.Warn, fontSize = 13.sp)
+                if (d.refunded > 0 || (r.type == "sale" && !d.canRefund)) {
+                    Text(
+                        if (d.canRefund) "${Money.format(d.refunded)} of this receipt was refunded." else "This receipt was refunded.",
+                        Modifier.padding(top = 8.dp), color = Pos.Warn, fontSize = 13.sp,
+                    )
+                }
                 if (r.needs_review) Text("Flagged for a check in the back office.", Modifier.padding(top = 8.dp), color = Pos.Pink, fontSize = 13.sp)
             }
         },
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (r.type == "sale" && !d.refunded) {
+                if (d.canRefund) {
                     OutlinedButton(onClick = { refunding = true }, enabled = !busy) { Text("Refund", color = Pos.Pink) }
                 }
                 Button(onClick = { vm.reprint(r.id) }, enabled = !busy) { Text("Print again") }
@@ -270,18 +286,46 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
     if (refunding) {
         var reason by remember { mutableStateOf("") }
         var type by remember { mutableStateOf(d.payments.firstOrNull()?.payment_type_id ?: types.firstOrNull()?.id) }
+        // what comes back of each line: everything that is left, until the cashier takes some off
+        val lines = d.lines?.filter { it.left > 0 }
+        var picks by remember { mutableStateOf<Map<String, Int>>(lines?.associate { it.id to it.left } ?: emptyMap()) }
+        val everything = lines == null || lines.all { picks[it.id] == it.left }
+        var amount by remember { mutableStateOf(r.total - d.refunded) }
+        LaunchedEffect(picks) { if (lines != null) amount = vm.quote(r.id, picks) }
         AlertDialog(
             onDismissRequest = { refunding = false },
-            title = { Text("Refund ${Money.format(r.total)}") },
+            title = { Text("Refund ${Money.format(amount)}") },
             text = {
-                Column {
-                    Text("The whole receipt is refunded. Pick how the money goes back.", Modifier.padding(bottom = 10.dp), color = Pos.Text2, fontSize = 13.sp)
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    if (lines == null) {
+                        Text("The whole receipt is refunded. Pick how the money goes back.", Modifier.padding(bottom = 10.dp), color = Pos.Text2, fontSize = 13.sp)
+                    } else {
+                        Text("What comes back. Take off what the guest keeps.", Modifier.padding(bottom = 6.dp), color = Pos.Text2, fontSize = 13.sp)
+                        lines.forEach { l ->
+                            val q = picks[l.id] ?: 0
+                            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(l.name, Modifier.weight(1f), color = if (q > 0) Pos.Text else Pos.Text3, fontSize = 14.sp, maxLines = 1)
+                                if (l.whole) {
+                                    OutlinedButton(onClick = { picks = picks + (l.id to (q - 1000).coerceAtLeast(0)) }, enabled = q > 0) { Text("−") }
+                                    Text("${q / 1000} of ${l.left / 1000}", color = Pos.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                    OutlinedButton(onClick = { picks = picks + (l.id to (q + 1000).coerceAtMost(l.left)) }, enabled = q < l.left) { Text("+") }
+                                } else {
+                                    // sold by weight: all of it or none of it
+                                    OutlinedButton(onClick = { picks = picks + (l.id to (if (q > 0) 0 else l.left)) }) { Text(if (q > 0) "Comes back" else "Kept") }
+                                }
+                            }
+                        }
+                        Text("Pick how the money goes back.", Modifier.padding(top = 8.dp, bottom = 8.dp), color = Pos.Text2, fontSize = 13.sp)
+                    }
                     TypeGrid(types, type) { type = it }
                     OutlinedTextField(reason, { reason = it.take(120) }, Modifier.fillMaxWidth().padding(top = 10.dp), label = { Text("Reason") }, singleLine = true)
                 }
             },
             confirmButton = {
-                Button(enabled = !busy && reason.isNotBlank() && type != null, onClick = { refunding = false; vm.refund(r.id, reason, type!!) }) { Text("Refund") }
+                Button(
+                    enabled = !busy && reason.isNotBlank() && type != null && (lines == null || picks.values.any { it > 0 }),
+                    onClick = { refunding = false; vm.refund(r.id, reason, type!!, if (everything) null else picks.filterValues { it > 0 }) },
+                ) { Text("Refund") }
             },
             dismissButton = { OutlinedButton(onClick = { refunding = false }) { Text("Cancel") } },
         )

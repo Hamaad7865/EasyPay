@@ -148,6 +148,17 @@ interface OpsDao {
     @Query("SELECT COALESCE(SUM(total), 0) FROM receipts WHERE refund_of = :id AND deleted_at IS NULL")
     suspend fun refundedOf(id: String): Long
 
+    @Query("SELECT COUNT(*) FROM receipts WHERE refund_of = :id AND deleted_at IS NULL")
+    suspend fun refundCount(id: String): Int
+
+    // how much of each line of a receipt its refunds have already given back
+    @Query(
+        """SELECT rl.ticket_line_id AS line_id, COALESCE(SUM(rl.qty), 0) AS total FROM receipt_lines rl
+           JOIN receipts r ON r.id = rl.receipt_id
+           WHERE r.refund_of = :id AND r.deleted_at IS NULL AND rl.ticket_line_id IS NOT NULL GROUP BY rl.ticket_line_id""",
+    )
+    suspend fun refundedQty(id: String): List<LineSum>
+
     @Query("UPDATE receipt_payments SET payment_type_id = :to WHERE receipt_id = :receipt AND payment_type_id = :from")
     suspend fun retypePayments(receipt: String, from: String, to: String): Int
 

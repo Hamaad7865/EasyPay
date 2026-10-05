@@ -31,6 +31,14 @@ import javax.inject.Singleton
 // if it could not print.
 data class SaveResult(val sent: Int, val errors: List<String>)
 
+// A line of a receipt, for the refund sheet: how many it sold and how many of
+// them have been given back already. Quantities in thousandths.
+data class RefundLine(val id: String, val name: String, val qty: Int, val done: Int) {
+    val left: Int get() = qty - done
+    // sold by weight or volume: it comes back whole or not at all
+    val whole: Boolean get() = qty % 1000 == 0 && done % 1000 == 0
+}
+
 // What a waiter and a cashier do to an order besides adding items and taking
 // payment: send it to the kitchen, print the bill, take an item off, hand the
 // order to another waiter, refund a receipt, correct how a bill was paid.
@@ -230,17 +238,70 @@ class OrderOps @Inject constructor(
         )
     }
 
-    // A refund gives a whole receipt back, in the payment type chosen. The
-    // server works the refund out from the receipt itself; the till sends the
-    // same total, which it knows because it issued the receipt.
-    suspend fun refund(receiptId: String, reason: String, paymentTypeId: String, approver: StaffMember? = null): Result<ReceiptEntity> = runCatching {
+    // What a receipt charged, line by line, in the form the refund arithmetic
+    // takes. Null for a receipt issued before the till kept which line of the
+    // order each of its lines paid for: that one can only be refunded whole.
+    private suspend fun shares(orig: ReceiptEntity): List<RefundCalc.Share>? {
+        val rows = db.receipts().lines(orig.id)
+        if (rows.isEmpty() || rows.any { it.ticket_line_id == null }) return null
+        val lines = rows.map { l ->
+            val id = l.ticket_line_id!!
+            RefundCalc.Line(
+                id, Calc.lineAmount(l.unit_price, l.qty) + db.tickets().modSum(id), l.qty,
+                db.catalog().lineTaxes(id).map { Calc.TaxRate(it.rate_bp, it.type) },
+            )
+        }
+        return RefundCalc.shares(lines, RefundCalc.Receipt(orig.subtotal, orig.discount_total, orig.service_charge, orig.rounding, orig.tax_total, orig.total))
+    }
+
+    // The lines of a receipt that can still be given back, or null when the
+    // receipt can only be refunded whole.
+    suspend fun refundable(receiptId: String): List<RefundLine>? {
+        val orig = db.ops().receipt(receiptId) ?: return null
+        if (shares(orig) == null) return null
+        val done = db.ops().refundedQty(receiptId).associate { it.line_id to it.total.toInt() }
+        return db.receipts().lines(receiptId).map { RefundLine(it.ticket_line_id!!, it.name_snapshot, it.qty, done[it.ticket_line_id] ?: 0) }
+    }
+
+    // What giving these back comes to: line id to quantity, in thousandths.
+    suspend fun refundQuote(receiptId: String, picks: Map<String, Int>): Long {
+        val orig = db.ops().receipt(receiptId) ?: return 0
+        val shares = shares(orig) ?: return 0
+        val done = db.ops().refundedQty(receiptId).associate { it.line_id to it.total.toInt() }
+        return shares.sumOf { s -> picks[s.line.id]?.takeIf { it > 0 }?.let { q -> RefundCalc.parts(s, done[s.line.id] ?: 0, q).total } ?: 0L }
+    }
+
+    // A refund gives a receipt back, whole or in part, in the payment type
+    // chosen. picks names what comes back (order line id to quantity, in
+    // thousandths); with none, everything not yet given back does. The server
+    // works the amount out from the receipt itself and refuses one that is a
+    // cent off; the till works out the same amount (RefundCalc), because it is
+    // what the cashier hands over, online or not.
+    suspend fun refund(receiptId: String, reason: String, paymentTypeId: String, approver: StaffMember? = null, picks: Map<String, Int>? = null): Result<ReceiptEntity> = runCatching {
         require(reason.isNotBlank()) { "Say why it is refunded" }
         staff.allow("sale.refund", "refund", approver)
         val orig = db.ops().receipt(receiptId) ?: error("That receipt is not on this tablet")
         require(orig.type == "sale") { "A refund cannot be refunded" }
-        require(db.ops().refundedOf(receiptId) == 0L) { "This receipt was already refunded" }
+        val already = db.ops().refundedOf(receiptId)
+        val shares = shares(orig)
+        val done = db.ops().refundedQty(receiptId).associate { it.line_id to it.total.toInt() }
+        // what comes back of each line; without the lines, the whole receipt and only once
+        val back: List<Pair<RefundCalc.Share, Int>>? = shares?.mapNotNull { s ->
+            val left = s.line.qty - (done[s.line.id] ?: 0)
+            val q = if (picks == null) left else (picks[s.line.id] ?: 0)
+            require(q in 0..left) { "More than is left of a line cannot be refunded" }
+            if (q > 0) s to q else null
+        }
+        if (back == null) {
+            require(picks == null) { "This receipt can only be refunded whole" }
+            require(db.ops().refundCount(receiptId) == 0) { "This receipt was already refunded" }
+        } else {
+            require(back.isNotEmpty()) { if (picks == null) "This receipt was already refunded" else "Pick what is refunded" }
+        }
+        val parts = back?.fold(RefundCalc.Parts()) { acc, (s, q) -> acc + RefundCalc.parts(s, done[s.line.id] ?: 0, q) }
+        val amount = parts?.total ?: orig.total
         val paid = db.receipts().payments(receiptId).sumOf { it.amount }
-        require(paid >= orig.total) { "This receipt was not paid in full. Check it in the back office first." }
+        require(paid >= orig.total && already + amount <= paid) { "This receipt was not paid in full. Check it in the back office first." }
         val type = db.ops().paymentType(paymentTypeId) ?: error("Pick how the money goes back")
         val tenant = session.tenantId() ?: error("no tenant")
         val store = session.storeId() ?: error("no store")
@@ -252,27 +313,60 @@ class OrderOps @Inject constructor(
         val id = Uuid7.next()
         val now = System.currentTimeMillis()
         val was = docFor(orig)
+        val sold = db.receipts().lines(orig.id)
+        // the slip says what came back: the lines given back, with what each was charged
+        val slipLines = if (back == null) was.lines else back.map { (s, q) ->
+            val i = sold.indexOfFirst { it.ticket_line_id == s.line.id }
+            val name = sold.getOrNull(i)?.name_snapshot ?: "Item"
+            val amount = RefundCalc.parts(s, done[s.line.id] ?: 0, q).sub
+            (was.lines.getOrNull(i)?.takeIf { was.lines.size == sold.size } ?: com.restopos.core.print.DocLine(q, name, amount)).copy(qty = q, amount = amount)
+        }
+        val partial = parts != null && amount != orig.total
+        val names = db.ops().allTaxes().associateBy { it.id }
+        val slipTaxes = if (!partial) was.taxes else {
+            val out = LinkedHashMap<String, com.restopos.core.print.DocTax>()
+            back!!.forEach { (s, q) ->
+                val p = RefundCalc.parts(s, done[s.line.id] ?: 0, q)
+                val rows = db.catalog().lineTaxes(s.line.id)
+                val one = rows.singleOrNull()
+                val key = one?.tax_id ?: "tax"
+                val cur = out[key]
+                out[key] = com.restopos.core.print.DocTax(one?.let { names[it.tax_id]?.name } ?: "Tax", one?.rate_bp ?: 0, (cur?.amount ?: 0) + p.tax, rows.none { it.type == "added" })
+            }
+            out.values.filter { it.amount != 0L }
+        }
         val doc = was.copy(
             kind = "refund", number = number, time = now, cashier = staff.current.value?.employee?.name,
-            payments = if (orig.total > 0) listOf(DocPayment(type.name, orig.total)) else emptyList(),
+            lines = slipLines, taxes = slipTaxes,
+            subtotal = parts?.sub ?: was.subtotal,
+            discounts = if (!partial) was.discounts else listOfNotNull(parts!!.disc.takeIf { it != 0L }?.let { com.restopos.core.print.DocAmount("Discount", it) }),
+            service = parts?.svc ?: was.service, rounding = parts?.rnd ?: was.rounding, total = amount,
+            payments = if (amount > 0) listOf(DocPayment(type.name, amount)) else emptyList(),
             refundOf = orig.number, reason = reason.trim(),
         )
         val refund = ReceiptEntity(
             id, tenant, store, deviceId, orig.ticket_id, number, type = "refund", refund_of = orig.id,
-            subtotal = orig.subtotal, discount_total = orig.discount_total, tax_total = orig.tax_total,
-            service_charge = orig.service_charge, rounding = orig.rounding, total = orig.total, device_time = now, doc = docs.encode(doc),
+            subtotal = parts?.sub ?: orig.subtotal, discount_total = parts?.disc ?: orig.discount_total, tax_total = parts?.tax ?: orig.tax_total,
+            service_charge = parts?.svc ?: orig.service_charge, rounding = parts?.rnd ?: orig.rounding, total = amount, device_time = now, doc = docs.encode(doc),
         )
         db.withTransaction {
             db.receipts().insertReceipt(refund)
-            db.receipts().insertLines(db.receipts().lines(orig.id).map { ReceiptLineEntity(Uuid7.next(), tenant, id, it.name_snapshot, it.unit_price, it.qty, it.ticket_line_id) })
-            if (orig.total > 0) db.receipts().insertPayments(listOf(ReceiptPaymentEntity(Uuid7.next(), tenant, id, type.id, orig.total)))
+            db.receipts().insertLines(
+                if (back == null) sold.map { ReceiptLineEntity(Uuid7.next(), tenant, id, it.name_snapshot, it.unit_price, it.qty, it.ticket_line_id) }
+                else back.mapNotNull { (s, q) -> sold.firstOrNull { it.ticket_line_id == s.line.id }?.let { ReceiptLineEntity(Uuid7.next(), tenant, id, it.name_snapshot, it.unit_price, q, s.line.id) } },
+            )
+            if (amount > 0) db.receipts().insertPayments(listOf(ReceiptPaymentEntity(Uuid7.next(), tenant, id, type.id, amount)))
             db.catalog().upsertDevices(listOf(device.copy(last_receipt_seq = seq)))
             db.outbox().enqueue(op("refund.create", buildJsonObject {
                 put("id", id); put("refund_of", orig.id); put("store_id", store); put("device_id", deviceId)
                 put("number", number); put("device_seq", seq); put("reason", reason.trim())
                 put("device_time", Instant.ofEpochMilli(now).toString())
+                // named lines only when some of the receipt stays: with none the server gives back everything that is left
+                if (picks != null && back != null) put("lines", buildJsonArray {
+                    back.forEach { (s, q) -> add(buildJsonObject { put("ticket_line_id", s.line.id); put("qty", q) }) }
+                })
                 put("payments", buildJsonArray {
-                    if (orig.total > 0) add(buildJsonObject { put("payment_type_id", type.id); put("amount", orig.total) })
+                    if (amount > 0) add(buildJsonObject { put("payment_type_id", type.id); put("amount", amount) })
                 })
                 staff.approvedBy("sale.refund", approver)?.let { put("approved_by", it) }
             }))
