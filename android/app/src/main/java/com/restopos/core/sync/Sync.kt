@@ -95,6 +95,11 @@ class PullWorker @AssistedInject constructor(
                 waiting.forEach { (file, _) -> file.delete() }
             }
         }
+        // A till set up before tills had keys of their own, or whose key was
+        // ended, asks for one while its login is still good. From then on its
+        // syncing no longer depends on that login's session. No network, or
+        // no session, leaves it for the next sync.
+        if (!api.hasTillKey()) session.deviceId()?.let { device -> runCatching { api.fetchTillKey(device) } }
         return try {
             val saved = db.sync().cursor(store)
             var cursor = saved?.cursor ?: 0
@@ -126,6 +131,8 @@ class PullWorker @AssistedInject constructor(
                 if (!page.hasMore) break
             }
             session.setLastPull(System.currentTimeMillis())
+            // the server took this till: whatever asked for a sign-in before is over
+            session.setNeedsSignIn(false)
             Result.success()
         } catch (e: AuthRequired) {
             // The session is gone. Nothing is lost: the tablet shows a sign-in

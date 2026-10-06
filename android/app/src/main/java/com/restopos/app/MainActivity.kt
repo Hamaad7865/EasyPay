@@ -37,6 +37,7 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
     @Inject lateinit var session: SessionStore
     @Inject lateinit var auth: AuthClient
+    @Inject lateinit var api: com.restopos.core.network.ApiClient
     @Inject lateinit var staff: com.restopos.core.data.StaffSession
     @Inject lateinit var staffRepo: com.restopos.core.data.StaffRepository
     @Inject lateinit var db: com.restopos.core.database.TillDatabase
@@ -125,6 +126,7 @@ class MainActivity : ComponentActivity() {
                                 return@launch
                             }
                             SyncScheduler.stop(this@MainActivity)
+                            api.endTillKey() // the till's own key ends with the sign-out
                             auth.signOut() // best effort on the server, always clears locally
                             session.clear()
                             // clearAllTables() blocks; Room refuses it on the main thread.

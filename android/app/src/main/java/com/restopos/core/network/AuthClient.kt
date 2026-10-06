@@ -49,6 +49,7 @@ private val LEGACY_COOKIES = stringSetPreferencesKey("cookies")
 
 private const val KEY_JWT = "jwt"
 private const val KEY_COOKIES = "cookies"
+private const val KEY_TILL = "till_key"
 private const val ENTRY_SEPARATOR = "\u001e"
 
 /** The session is gone (or was never there): the user has to sign in again. */
@@ -164,6 +165,15 @@ class AuthClient(private val context: Context, baseUrl: String) {
         }
         if (!res.status.isSuccess()) throw AuthRefused(res.status.value, failure(res, "The link could not be sent"))
     }
+
+    // The till's own key for syncing, as "<deviceId>:<key>". The server gives
+    // it when the till is set up. Unlike the session it does not lapse, so a
+    // till that was without a connection for weeks still sends its sales. It
+    // is kept through a sign-in that fails or a session that ends: only
+    // signing the tablet out, or the server refusing it, takes it away.
+    suspend fun tillKey(): String? = withContext(Dispatchers.IO) { secrets.get(KEY_TILL) }
+    suspend fun saveTillKey(deviceId: String, key: String) = withContext(Dispatchers.IO) { secrets.put(KEY_TILL, "$deviceId:$key") }
+    suspend fun clearTillKey() = withContext(Dispatchers.IO) { secrets.remove(KEY_TILL) }
 
     // Works offline: the server call is best effort, local state always goes.
     suspend fun signOut() {

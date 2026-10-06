@@ -55,7 +55,14 @@ data class RegisterDeviceRequest(
 )
 
 @Serializable
-data class RegisterDeviceResponse(val deviceId: String, val lastReceiptSeq: Long = 0)
+data class RegisterDeviceResponse(val deviceId: String, val lastReceiptSeq: Long = 0, val syncKey: String? = null)
+
+// The till's own key for syncing: asked for by a till that has none yet.
+@Serializable
+data class TillKeyRequest(val deviceId: String)
+
+@Serializable
+data class TillKeyResponse(val deviceId: String, val syncKey: String)
 
 // --- sync/pull: { changes: { table: [rows] }, next_cursor, has_more, epochs } ---
 // epochs: per-table counter the server bumps when it rewrites a table's
