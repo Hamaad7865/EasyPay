@@ -7,11 +7,17 @@ import { Pool, type PoolClient } from "pg";
 // used to be closed after ten idle seconds, so most clicks in the back office
 // paid for a new one. It is now kept for five minutes; a keep-alive tells the
 // two ends when the other has gone.
+//
+// `pipeline`: questions put to one connection without waiting for each other
+// (a Promise.all of c.query) go out together and their answers come back
+// together, one round trip for all of them. The database still answers them
+// in the order they were asked, inside the same transaction; code that waits
+// for each answer before asking the next is not changed by it.
 const g = globalThis as unknown as { __easypayPool?: Pool };
 
 export function db() {
   if (!g.__easypayPool) {
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5, idleTimeoutMillis: 5 * 60_000, keepAlive: true });
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5, idleTimeoutMillis: 5 * 60_000, keepAlive: true, pipeline: true });
     // A connection the server closed while it sat idle is dropped by the pool;
     // without a listener that event would stop the whole server.
     pool.on("error", () => {});

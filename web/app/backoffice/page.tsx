@@ -4,7 +4,7 @@ import { ArrowUpRight, Boxes, CalendarClock, ClipboardList, type LucideIcon, Tre
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { fmtRs } from "@/lib/money";
-import { clock, fmtQty, RECEIPTS } from "@/lib/report";
+import { clock, fmtQty, RECEIPTS, today } from "@/lib/report";
 import { SalesChart, type Day } from "./dash-chart";
 import { Card } from "./ui";
 
@@ -308,6 +308,10 @@ function Shares({ rows, total, none, count }: { rows: Split[]; total: number; no
   );
 }
 
+// Each store's time zone as its last draw found it, so the next one knows the
+// day there before it has asked.
+const zones = new Map<string, string>();
+
 const CALENDAR =
   "M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z";
 
@@ -319,9 +323,9 @@ export default async function BackofficeHome({
   const sp = await searchParams;
   const ctx = await tenantContext();
   const compare = sp.compare === "1";
-  const data = await readTenant(ctx.tenantId, async (c) => {
-    const now = (await c.query(NOW, [ctx.tenantId, ctx.employeeId])).rows[0] as Now;
-    const options = presets(now.today);
+  // The days asked for, given what day it is at the store.
+  const picked = (day: string) => {
+    const options = presets(day);
     // default: this month. A range that is malformed, backwards or longer
     // than a year falls back to it.
     let { from, to } = options.find((o) => o.label === "This month")!;
@@ -331,11 +335,27 @@ export default async function BackofficeHome({
     }
     const prevTo = addDays(from, -1);
     const prevFrom = addDays(prevTo, -(span(from, to) - 1));
-    if (!now.can) return { now, options, from, to, prevFrom, prevTo, cur: null, prev: null, recent: [] as Recent[] };
-    const cur = await loadRange(c, ctx.tenantId, from, to, true);
-    const prev = compare ? await loadRange(c, ctx.tenantId, prevFrom, prevTo, false) : null;
-    const recent = (await c.query(RECENT, [ctx.tenantId])).rows as Recent[];
-    return { now, options, from, to, prevFrom, prevTo, cur, prev, recent };
+    return { options, from, to, prevFrom, prevTo };
+  };
+  const data = await readTenant(ctx.tenantId, async (c) => {
+    const range = (d: { from: string; to: string; prevFrom: string; prevTo: string }) =>
+      Promise.all([loadRange(c, ctx.tenantId, d.from, d.to, true), compare ? loadRange(c, ctx.tenantId, d.prevFrom, d.prevTo, false) : null]);
+    // Everything is asked for at once: one trip to the database and back for
+    // the lot, instead of one each (see `pipeline` in lib/db.ts). The days
+    // depend on what day it is at the store, which only the database's answer
+    // says for sure, so they are worked out first from this server's clock.
+    const guess = picked(today(zones.get(ctx.tenantId) ?? "Indian/Mauritius"));
+    const [first, last, guessed] = await Promise.all([c.query(NOW, [ctx.tenantId, ctx.employeeId]), c.query(RECENT, [ctx.tenantId]), range(guess)]);
+    const now = first.rows[0] as Now;
+    zones.set(ctx.tenantId, now.tz);
+    const d = picked(now.today);
+    // the money is for those who may see reports: for anyone else what came back is dropped here
+    if (!now.can) return { now, ...d, cur: null, prev: null, recent: [] as Recent[] };
+    // Another day at the store than this server took it for (midnight has just
+    // passed, or a store in another time zone seen for the first time), and
+    // other days for it: those are asked for again.
+    const [cur, prev] = d.from === guess.from && d.to === guess.to ? guessed : await range(d);
+    return { now, ...d, cur, prev, recent: last.rows as Recent[] };
   });
   const { now, from, to, cur, prev } = data;
   const href = (f: string, t: string, cmp: boolean) => `/backoffice?from=${f}&to=${t}${cmp ? "&compare=1" : ""}`;
