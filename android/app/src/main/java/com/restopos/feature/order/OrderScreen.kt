@@ -84,6 +84,7 @@ import com.restopos.core.ui.VIcon
 import com.restopos.core.ui.press
 import com.restopos.core.ui.rememberPress
 import com.restopos.feature.customers.CustomerPicker
+import kotlinx.coroutines.flow.collectLatest
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -352,10 +353,21 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
                 val out = !i.is_available
                 val hue = Pos.css(i.tile_color, colorOf(byId[i.category_id], index[i.category_id] ?: 0))
                 val n = counts[i.id] ?: 0
-                val tag = i.tags.split(',').firstOrNull { it.isNotBlank() }?.trim()
+                val tag = i.tags.split(',').firstOrNull { it.isNotBlank() }?.trim()?.replaceFirstChar { it.uppercase() }
                 val rail = if (out) V.Stroke2 else hue
                 val source = remember { MutableInteractionSource() }
                 val press = rememberPress(source, 0.97f)
+                // Its count jumps when one more of it goes on the order, and only
+                // then: not when the card is merely shown again.
+                val pop = remember { Animatable(1f) }
+                LaunchedEffect(i.id) {
+                    vm.added.collectLatest { id ->
+                        if (id == i.id) {
+                            pop.snapTo(1.28f)
+                            pop.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = 500f))
+                        }
+                    }
+                }
                 Box(
                     Modifier.height(104.dp).graphicsLayer { scaleX = press.value; scaleY = press.value }
                         .clip(RoundedCornerShape(14.dp)).background(V.Panel)
@@ -375,26 +387,18 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
                         val note = if (out) "Sold out" else listOfNotNull(tag, if (withOptions.contains(i.id)) "Options" else null).joinToString(" · ")
                         if (note.isNotEmpty()) T(note, 12.sp, if (out) 700 else 600, if (out) V.RedText else V.Text3)
                     }
-                    if (n > 0) OnOrder(n, Modifier.align(Alignment.TopEnd))
+                    // how many of it are on the order and not sent yet
+                    if (n > 0) {
+                        Box(
+                            Modifier.align(Alignment.TopEnd).graphicsLayer { scaleX = pop.value; scaleY = pop.value }.heightIn(min = 26.dp).widthIn(min = 26.dp)
+                                .clip(RoundedCornerShape(13.dp)).background(V.On).padding(horizontal = 7.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { T(n.toString(), 13.sp, 800, V.OnText) }
+                    }
                 }
             }
         }
     }
-}
-
-// How many of an item are on the order and not sent yet. It jumps when one
-// more is tapped on, which is what answers the till's most frequent tap.
-@Composable
-private fun OnOrder(n: Int, modifier: Modifier) {
-    val pop = remember { Animatable(1f) }
-    LaunchedEffect(n) {
-        pop.snapTo(1.28f)
-        pop.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = 500f))
-    }
-    Box(
-        modifier.graphicsLayer { scaleX = pop.value; scaleY = pop.value }.heightIn(min = 26.dp).widthIn(min = 26.dp).clip(RoundedCornerShape(13.dp)).background(V.On).padding(horizontal = 7.dp),
-        contentAlignment = Alignment.Center,
-    ) { T(n.toString(), 13.sp, 800, V.OnText) }
 }
 
 // An item's options: one pick in each group that wants one, any of the

@@ -34,7 +34,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -121,6 +123,11 @@ class OrderViewModel @Inject constructor(
     private val _sheet = MutableStateFlow<OptionSheet?>(null)
     val sheet: StateFlow<OptionSheet?> = _sheet
 
+    // The item that has just gone onto the order, said once: its card on the
+    // menu answers the tap. Nothing is said for an order that is only shown.
+    private val _added = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val added: SharedFlow<String> = _added
+
     fun pickCat(id: String) { pickedCat.value = id; query.value = "" }
 
     // Called when the screen opens: another order may be on it now.
@@ -170,7 +177,7 @@ class OrderViewModel @Inject constructor(
         if (!item.is_available) { Toaster.say("${item.name} is sold out"); return@launch }
         val groups = db.catalog().groupsForItem(item.id)
         if (groups.isEmpty() && !ask) {
-            tickets.addItem(item.id, 1000, emptyList(), null).onFailure { Toaster.say(it.message) }
+            tickets.addItem(item.id, 1000, emptyList(), null).fold({ _added.tryEmit(item.id) }, { Toaster.say(it.message) })
             reload()
         } else {
             _sheet.value = OptionSheet(item, groups, db.catalog().modifiersForItem(item.id))
@@ -192,7 +199,7 @@ class OrderViewModel @Inject constructor(
     fun confirm(qty: Int, picks: List<ModPick>, note: String) = viewModelScope.launch {
         val item = _sheet.value?.item ?: return@launch
         _sheet.value = null
-        tickets.addItem(item.id, qty.coerceIn(1, 99) * 1000, picks, note.ifBlank { null }).onFailure { Toaster.say(it.message) }
+        tickets.addItem(item.id, qty.coerceIn(1, 99) * 1000, picks, note.ifBlank { null }).fold({ _added.tryEmit(item.id) }, { Toaster.say(it.message) })
         reload()
     }
 
