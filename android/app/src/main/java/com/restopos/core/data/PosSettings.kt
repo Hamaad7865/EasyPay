@@ -34,6 +34,8 @@ data class PosSettings(
     val kitchenSound: Boolean = true, // a short sound on the kitchen display when an order arrives
     // one printer does everything: kitchen orders print on the receipt printer, whatever the categories say
     val onePrinter: Boolean = false,
+    // the drawer is counted note by note and coin by coin, in place of typing the amount
+    val drawerByNotes: Boolean = false,
 ) {
     fun shop(fallbackName: String): Shop =
         Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer)
@@ -71,6 +73,7 @@ data class PosSettings(
                 lockMinutes = runCatching { d["lockMinutes"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 0..120 } ?: 0,
                 kitchenSound = d.bool("kitchenSound") ?: true,
                 onePrinter = d.bool("onePrinter") ?: false,
+                drawerByNotes = d.bool("drawerByNotes") ?: false,
             )
         }
     }

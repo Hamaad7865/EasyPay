@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -38,7 +40,9 @@ import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Money
 import com.restopos.core.data.Approvals
 import com.restopos.core.data.CashOps
+import com.restopos.core.data.DrawerCount
 import com.restopos.core.data.NeedsApproval
+import com.restopos.core.data.PosSettings
 import com.restopos.core.data.StaffMember
 import com.restopos.core.data.StaffRepository
 import com.restopos.core.data.StaffSession
@@ -78,17 +82,27 @@ data class CashUi(
     val doc: ShiftDoc? = null,
     val info: String = "",
     val figures: Boolean = false, // whether this person may see what the drawer should hold
+    val typed: String? = null, // the amount counted, as typed; null until a key is pressed
+    val byNotes: Boolean = false, // the restaurant counts its drawer note by note (POS settings)
     val counts: Map<Int, Int> = emptyMap(),
     val closed: Closed? = null,
     val busy: Boolean = false,
     val cashNames: Set<String> = emptySet(), // what the cash payment types are called
     val unclosed: Boolean = false, // sales from before, with no day open, that no closing covers
 ) {
-    val counted: Long get() = (NOTES + COINS).sumOf { it.toLong() * (counts[it] ?: 0) } * 100
+    // what the amount starts on: what the drawer should hold, for someone who may see it
+    val start: Long? get() = DrawerCount.start(doc?.expected, figures)
+    // the cash counted, in cents; null while there is no amount to record
+    val counted: Long? get() =
+        if (byNotes) (NOTES + COINS).sumOf { it.toLong() * (counts[it] ?: 0) } * 100 else DrawerCount.counted(typed, doc?.expected, figures)
 }
 
-// The cash drawer: count it by note and coin, see what it should hold, and
-// close the day from the count.
+private const val NO_AMOUNT = "Type the cash counted in the drawer first"
+private const val NOT_YET = "Not typed yet"
+
+// The cash drawer: type what was counted (or count it by note and coin, for a
+// restaurant set up that way), see what it should hold, and close the day
+// from the count.
 @HiltViewModel
 class CashViewModel @Inject constructor(
     private val cash: CashOps,
@@ -103,15 +117,23 @@ class CashViewModel @Inject constructor(
 
     fun load() = viewModelScope.launch {
         val shift = cash.currentShift()
-        val cur = _ui.value
-        if (shift == null) { _ui.value = cur.copy(loaded = true, shift = null, doc = null, closed = null, info = "The day is not open on this till", unclosed = cash.unclosed()); return@launch }
+        if (shift == null) {
+            val unclosed = cash.unclosed()
+            _ui.value = _ui.value.copy(loaded = true, shift = null, doc = null, closed = null, info = "The day is not open on this till", unclosed = unclosed)
+            return@launch
+        }
         val doc = cash.shiftDoc(shift)
+        val cashNames = db.ops().allPaymentTypes().filter { it.kind == "cash" }.map { it.name }.toSet()
+        val byNotes = PosSettings.parse(db.ops().settings()).drawerByNotes
+        // read here, after the waiting above, so a key pressed meanwhile is kept
+        val cur = _ui.value
+        val same = cur.shift?.id == shift.id
         _ui.value = cur.copy(
             loaded = true, shift = shift, doc = doc, figures = cur.figures || staff.can("shift.view_report"),
-            cashNames = db.ops().allPaymentTypes().filter { it.kind == "cash" }.map { it.name }.toSet(),
+            cashNames = cashNames, byNotes = byNotes,
             info = "${doc.till} · opened ${hm.format(Date(shift.opened_at))}" + (doc.openedBy?.let { " by $it" } ?: ""),
             // another day: start the count again
-            counts = if (cur.shift?.id == shift.id) cur.counts else emptyMap(), closed = null,
+            typed = if (same) cur.typed else null, counts = if (same) cur.counts else emptyMap(), closed = null,
         )
     }
 
@@ -119,6 +141,15 @@ class CashViewModel @Inject constructor(
         val c = _ui.value.counts
         _ui.value = _ui.value.copy(counts = c + (denomination to ((c[denomination] ?: 0) + by).coerceIn(0, 9999)))
     }
+
+    // a key of the pad the amount is typed on
+    fun key(k: String) {
+        val s = _ui.value
+        _ui.value = s.copy(typed = DrawerCount.key(s.typed, k, s.start, Money.decimals))
+    }
+
+    // back to what the drawer should hold
+    fun useExpected() { _ui.value = _ui.value.copy(typed = null) }
 
     // Someone who may not see the figures asks someone who may, for this visit.
     fun unlock() = approvals.ask("shift.view_report", "see the day's figures") { _ui.value = _ui.value.copy(figures = true) }
@@ -145,12 +176,14 @@ class CashViewModel @Inject constructor(
 
     // A count for a handover: recorded, and the day stays open.
     fun saveCount() = viewModelScope.launch {
-        val counted = _ui.value.counted
+        val counted = _ui.value.counted ?: run { Toaster.say(NO_AMOUNT); return@launch }
         approved("Count recorded · ${Money.format(counted)}") { by -> repo.count(counted, by) }
     }
 
-    // Before the count is asked to be final: every order has to be paid.
+    // Before the count is asked to be final: there is an amount, and every
+    // order has been paid.
     fun askClose(then: () -> Unit) = viewModelScope.launch {
+        if (_ui.value.counted == null) { Toaster.say(NO_AMOUNT); return@launch }
         val n = cash.unpaidOrders()
         if (n > 0) Toaster.say(cash.unpaid(n)) else then()
     }
@@ -159,9 +192,10 @@ class CashViewModel @Inject constructor(
     fun close(by: StaffMember? = null) {
         val s = _ui.value
         if (s.busy) return
+        val counted = s.counted ?: run { Toaster.say(NO_AMOUNT); return }
         viewModelScope.launch {
             _ui.value = s.copy(busy = true)
-            val out = cash.closeDay(s.counted, by)
+            val out = cash.closeDay(counted, by)
             val need = out.exceptionOrNull() as? NeedsApproval
             if (need != null && by == null) {
                 _ui.value = s.copy(busy = false)
@@ -171,7 +205,7 @@ class CashViewModel @Inject constructor(
             out.fold(
                 onSuccess = { (z, problem) ->
                     val day = "Day closing no. ${z.number} done. " + (problem ?: "Z report printed.")
-                    _ui.value = _ui.value.copy(busy = false, shift = null, closed = Closed(z.expected ?: 0, s.counted, day))
+                    _ui.value = _ui.value.copy(busy = false, shift = null, typed = null, counts = emptyMap(), closed = Closed(z.expected ?: 0, counted, day))
                 },
                 onFailure = { _ui.value = s.copy(busy = false); Toaster.say(it.message) },
             )
@@ -211,7 +245,7 @@ fun CashScreen(vm: CashViewModel, onOpenPeriod: () -> Unit, onClosed: () -> Unit
     }
     val doc = ui.doc
     Row(Modifier.fillMaxSize()) {
-        Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = 24.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ScreenHead(ui.info, "Count the drawer", Modifier.weight(1f))
                 VBtn("Open drawer", height = 52.dp, radius = 14.dp) { vm.openDrawer() }
@@ -219,14 +253,21 @@ fun CashScreen(vm: CashViewModel, onOpenPeriod: () -> Unit, onClosed: () -> Unit
                 VBtn("Cash out", height = 52.dp, radius = 14.dp) { moving = "out" }
                 VBtn("Print X report", height = 52.dp, radius = 14.dp, pad = 20.dp) { vm.xReport() }
             }
-            Caps("Notes", V.Text2)
-            Grid(NOTES, ui, vm)
-            Caps("Coins", V.Text2, Modifier.padding(top = 4.dp))
-            Grid(COINS, ui, vm)
+            if (ui.byNotes) {
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Caps("Notes", V.Text2)
+                    Grid(NOTES, ui, vm)
+                    Caps("Coins", V.Text2, Modifier.padding(top = 4.dp))
+                    Grid(COINS, ui, vm)
+                }
+            } else {
+                CountPad(ui, vm, Modifier.weight(1f))
+            }
         }
         Column(Modifier.width(380.dp).fillMaxHeight().background(V.Panel).drawBehind { drawRect(V.Stroke, size = Size(1.dp.toPx(), size.height)) }) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Caps("Cash", V.Text2)
+                val counted = ui.counted
                 if (doc != null && ui.figures) {
                     Line("Opening float", Money.format(doc.float))
                     Line("Cash sales", Money.format(doc.cashTaken))
@@ -234,32 +275,35 @@ fun CashScreen(vm: CashViewModel, onOpenPeriod: () -> Unit, onClosed: () -> Unit
                     Line("Pay-outs", "− " + Money.format(doc.cashOut))
                     Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
                     Line("Expected in drawer", Money.format(doc.expected), bold = true)
-                    Line("Counted", Money.format(ui.counted), bold = true)
-                    val diff = ui.counted - doc.expected
+                    Line("Counted", counted?.let { Money.format(it) } ?: NOT_YET, bold = true)
+                    val diff = (counted ?: 0) - doc.expected
                     val small = kotlin.math.abs(diff) <= 20_000
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(if (diff == 0L) V.GreenWash else if (small) V.AmberWash else V.RedWash).padding(horizontal = 18.dp, vertical = 16.dp),
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                            .background(if (counted == null) V.Key else if (diff == 0L) V.GreenWash else if (small) V.AmberWash else V.RedWash).padding(horizontal = 18.dp, vertical = 16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        val fg = if (diff == 0L) V.GreenText else if (small) V.AmberText else V.RedText
-                        T(if (diff == 0L) "Drawer balanced" else if (diff > 0) "Over" else "Short", 16.sp, 700, fg)
+                        val fg = if (counted == null) V.Text2 else if (diff == 0L) V.GreenText else if (small) V.AmberText else V.RedText
+                        T(if (counted == null) "No amount yet" else if (diff == 0L) "Drawer balanced" else if (diff > 0) "Over" else "Short", 16.sp, 700, fg)
                         Gap()
-                        T(if (diff == 0L) Money.format(0) else (if (diff > 0) "+ " else "− ") + Money.format(kotlin.math.abs(diff)), 24.sp, 700, fg)
+                        T(if (counted == null) "" else if (diff == 0L) Money.format(0) else (if (diff > 0) "+ " else "− ") + Money.format(kotlin.math.abs(diff)), 24.sp, 700, fg)
                     }
                     Caps("Other tenders", V.Text2, Modifier.padding(top = 14.dp))
                     doc.payments.filter { !ui.cashNames.contains(it.name) }.forEach { Line(it.name, Money.format(it.amount)) }
                     Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
                     Line("Total takings", Money.format(doc.payments.sumOf { it.amount }), bold = true)
                 } else {
-                    Line("Counted", Money.format(ui.counted), bold = true)
+                    Line("Counted", counted?.let { Money.format(it) } ?: NOT_YET, bold = true)
                     T("The drawer is counted without seeing what it should hold. Someone who may see the figures can show them.", 13.sp, 500, V.Text2, lines = 4, height = 19.sp)
                     VBtn("Show the figures", Modifier.fillMaxWidth()) { vm.unlock() }
                 }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
             Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                VBtn("Record this count · handover", Modifier.fillMaxWidth(), height = 48.dp, size = 14.sp) { vm.saveCount() }
-                VBtn("Close the day & print Z report", Modifier.fillMaxWidth(), V.Blue, Color.White, 66.dp, 16.dp, 16.sp) { vm.askClose { closing = true } }
+                // with no amount yet the keys read as off, and say why when tapped
+                val ready = ui.counted != null
+                VBtn("Record this count · handover", Modifier.fillMaxWidth(), fg = if (ready) V.Text else V.Off, height = 48.dp, size = 14.sp) { vm.saveCount() }
+                VBtn("Close the day & print Z report", Modifier.fillMaxWidth(), if (ready) V.Blue else V.Key, if (ready) Color.White else V.Off, 66.dp, 16.dp, 16.sp) { vm.askClose { closing = true } }
             }
         }
     }
@@ -279,9 +323,58 @@ fun CashScreen(vm: CashViewModel, onOpenPeriod: () -> Unit, onClosed: () -> Unit
     }
     if (closing) {
         Sheet(onDismiss = { closing = false }, width = 560.dp) {
-            SheetHead("Close the day?", "Counted ${Money.format(ui.counted)}. The count is final once the day is closed: its figures are fixed, the Z report prints, and the till goes back to the start screen.") { closing = false }
+            SheetHead("Close the day?", "Counted ${Money.format(ui.counted ?: 0)}. The count is final once the day is closed: its figures are fixed, the Z report prints, and the till goes back to the start screen.") { closing = false }
             VBtn("Close the day & print Z report", Modifier.fillMaxWidth(), V.Blue, Color.White, 64.dp, size = 16.sp, weight = 800) { closing = false; vm.close() }
             VBtn("Not yet", Modifier.fillMaxWidth(), height = 56.dp) { closing = false }
+        }
+    }
+}
+
+// The count as one amount: the field it shows in, and the keys it is typed
+// on. The field starts on what the drawer should hold, so a drawer that is
+// right is confirmed as it stands; the first digit typed replaces it.
+@Composable
+private fun CountPad(ui: CashUi, vm: CashViewModel, modifier: Modifier = Modifier) {
+    val typed = ui.typed
+    val start = ui.start
+    val empty = if (typed == null) start == null else typed.isEmpty()
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+        Column(Modifier.widthIn(max = 560.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(Modifier.fillMaxWidth().panel(18.dp).padding(start = 22.dp, end = 14.dp, top = 14.dp, bottom = 18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(Modifier.height(40.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Caps("Cash counted in the drawer", V.Text2, Modifier.weight(1f))
+                    if (typed != null && start != null) VBtn("Use expected", bg = V.BlueWash, fg = V.BlueSoft, height = 40.dp, size = 13.sp, pad = 14.dp) { vm.useExpected() }
+                    if (!empty) VBtn("Clear", height = 40.dp, size = 13.sp, pad = 14.dp) { vm.key("clear") }
+                }
+                T(
+                    when {
+                        typed == null -> Money.format(start ?: 0)
+                        typed.isEmpty() -> Money.format(0)
+                        else -> "Rs " + DrawerCount.shown(typed)
+                    },
+                    46.sp, 800, if (empty) V.Off else V.Text, spacing = (-1.6).sp,
+                )
+                T(
+                    when {
+                        typed == null && start != null -> "This is what the drawer should hold. If you counted something else, type it."
+                        start != null -> "The drawer should hold ${Money.format(start)}."
+                        else -> "Count the cash in the drawer and type the amount."
+                    },
+                    13.sp, 500, V.Text2, lines = 2, height = 19.sp,
+                )
+            }
+            val last = if (Money.decimals > 0) "." else "00"
+            Column(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 368.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf(last, "0", "del")).forEach { row ->
+                    Row(Modifier.weight(1f).heightIn(min = 44.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { k ->
+                            Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(14.dp)).background(V.Key2).clickable { vm.key(k) }, contentAlignment = Alignment.Center) {
+                                T(if (k == "del") "⌫" else k, 26.sp, 700)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

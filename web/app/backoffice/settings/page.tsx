@@ -34,6 +34,7 @@ async function saveGeneral(f: FormData) {
       decimals,
       billNumbering: f.get("billNumbering") === "reset" ? "reset" : "continuous",
       dayCloseDetailed: on(f, "dayCloseDetailed"),
+      drawerByNotes: on(f, "drawerByNotes"),
       servicePct: int(f, "servicePct", 0, 30, 0),
       prepMinutes: int(f, "prepMinutes", 1, 180, 15),
       lockMinutes: int(f, "lockMinutes", 0, 120, 0),
@@ -179,6 +180,19 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
             </div>
           </Card>
           <Card title="Closing the day">
+            <div className="setting">
+              <div>
+                <strong>Count the drawer by notes and coins</strong>
+                <small>
+                  Off: the cash counted is typed on the till as one amount, which starts on what the drawer should hold for someone
+                  allowed to see the day&apos;s figures. On: the till asks how many of each note and coin there are, and adds them up.
+                </small>
+              </div>
+              <label className="check" style={{ margin: 0 }}>
+                <input type="checkbox" name="drawerByNotes" defaultChecked={s.drawerByNotes} />
+                By notes and coins
+              </label>
+            </div>
             <div className="setting">
               <div>
                 <strong>Detailed day closing report</strong>

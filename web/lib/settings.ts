@@ -20,6 +20,8 @@ export type PosSettings = {
   kitchenSound: boolean;
   // one printer does everything: kitchen orders print on the receipt printer, whatever the categories say
   onePrinter: boolean;
+  // the till's drawer is counted note by note and coin by coin, in place of typing the amount
+  drawerByNotes: boolean;
   receipt: { header: string; footer: string; logo: string | null; showLogo: boolean };
   company: { name: string; brn: string; vat: string; address: string; phone: string };
 };
@@ -35,6 +37,7 @@ export const DEFAULT_SETTINGS: PosSettings = {
   lockMinutes: 0,
   kitchenSound: true,
   onePrinter: false,
+  drawerByNotes: false,
   receipt: { header: "", footer: "Thank you. See you again soon.", logo: null, showLogo: true },
   company: { name: "", brn: "", vat: "", address: "", phone: "" },
 };
@@ -61,6 +64,7 @@ export function withDefaults(raw: unknown): PosSettings {
     lockMinutes: typeof d.lockMinutes === "number" && d.lockMinutes >= 0 && d.lockMinutes <= 120 ? Math.round(d.lockMinutes) : 0,
     kitchenSound: d.kitchenSound === false ? false : true,
     onePrinter: d.onePrinter === true,
+    drawerByNotes: d.drawerByNotes === true,
     receipt: {
       header: str(r.header, DEFAULT_SETTINGS.receipt.header),
       footer: str(r.footer, DEFAULT_SETTINGS.receipt.footer),

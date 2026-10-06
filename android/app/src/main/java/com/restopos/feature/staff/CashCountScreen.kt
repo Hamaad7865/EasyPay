@@ -131,7 +131,7 @@ fun CashCountScreen(counting: Boolean = false, vm: StaffViewModel = hiltViewMode
                 BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
                     if (result == null) {
                         val keyHeight = (maxHeight / 5).coerceIn(40.dp, 72.dp)
-                        AmountPad(shown, keyHeight, Modifier.fillMaxWidth().align(Alignment.Center)) { typed = it }
+                        AmountPad(shown, keyHeight, Modifier.fillMaxWidth().align(Alignment.Center), fresh = typed == null) { typed = it }
                     }
                 }
             }

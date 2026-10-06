@@ -935,9 +935,9 @@ private val HELP = listOf(
     "Something has run out" to "Menu, Menu & stock, and switch the item to Sold out. It stays on the menu, greyed, on every till, until it is switched back.",
     "A refund, or the wrong payment type" to "Under Receipts, tap the receipt. Refund gives the whole receipt back. Change corrects how it was paid without changing the amount.",
     "When you are not allowed to" to "A refund, a void after the kitchen has it, opening the drawer and the like may need a manager. The till asks who approves: they tap their name and enter their own PIN, and it is done in your name with their approval on record.",
-    "Handing the drawer to someone else" to "Menu, Cash drawer. Count the notes and coins and tap Record this count: a slip prints for both of you to sign, and the day carries on.",
+    "Handing the drawer to someone else" to "Menu, Cash drawer. Count the cash, type the amount and tap Record this count: a slip prints for both of you to sign, and the day carries on.",
     "Cash in and cash out" to "Menu, Cash drawer, Cash in or Cash out. Type the amount and what it is for. A slip prints for the drawer and it shows on the day's reports.",
-    "Ending the day" to "Take payment for every open order. Under Menu, Cash drawer, count the notes and coins and tap Close the day & print Z report: the day's figures are fixed and the report prints. Then clock out.",
+    "Ending the day" to "Take payment for every open order. Under Menu, Cash drawer, count the cash and type the amount. If you may see the day's figures, the amount starts on what the drawer should hold: change it only if you counted something else. Tap Close the day & print Z report: the day's figures are fixed and the report prints. Then clock out.",
     "A printer does not print" to "Settings, Printers. Check the printer says Connected and try a test print. A failed print has Try again next to it. An order still reaches the kitchen display when a kitchen printer does not answer.",
     "No internet" to "Keep selling. Everything is saved on the tablet and sent by itself when the connection is back. Printing does not need the internet, only the local network.",
 )

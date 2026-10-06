@@ -126,17 +126,20 @@ fun PinPad(member: StaffMember, check: suspend (String) -> PinCheck, onOk: () ->
     }
 }
 
-// A number pad for typing an amount of money (rupees, two decimals).
+// A number pad for typing an amount of money (rupees, two decimals). With
+// `fresh`, the amount showing was offered and not typed: the first digit
+// replaces it, as on the cash drawer screen, and the delete key edits it.
 @Composable
-fun AmountPad(value: String, keyHeight: Dp, modifier: Modifier = Modifier, onChange: (String) -> Unit) {
+fun AmountPad(value: String, keyHeight: Dp, modifier: Modifier = Modifier, fresh: Boolean = false, onChange: (String) -> Unit) {
     fun press(key: String) {
+        val from = if (fresh) "" else value
         onChange(
             when (key) {
                 "C" -> ""
                 "back" -> value.dropLast(1)
-                "." -> if (value.contains('.')) value else if (value.isEmpty()) "0." else "$value."
+                "." -> if (from.contains('.')) from else if (from.isEmpty()) "0." else "$from."
                 else -> {
-                    var out = if (value == "0") "" else value
+                    var out = if (from == "0") "" else from
                     for (ch in key) {
                         val full = if (out.contains('.')) out.substringAfter('.').length >= 2 else out.length >= 7
                         if (!full && !(out.isEmpty() && ch == '0' && key.length > 1)) out += ch

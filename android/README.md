@@ -91,9 +91,11 @@ handoff (`feature/main/MainShell.kt` holds every screen):
   they sync. Orders already open keep the price each line was rung up at. The
   server writes every change of a price down (`item_price_changes`: from, to,
   when, who, who approved), and the item's page in the back office lists them.
-- **Cash drawer:** the drawer counted by note and coin (Rs 2,000 to Rs 1),
-  with what it should hold and the difference for those who may see the
-  figures (others count blind). Open drawer, Cash in, Cash out, Print X
+- **Cash drawer:** the cash counted is typed on a keypad, into a field that
+  starts on what the drawer should hold (`DrawerCount`, tested), with the
+  difference shown, for those who may see the figures; others start on
+  nothing and count blind. A restaurant can count by note and coin instead
+  (Rs 2,000 to Rs 1): POS settings, Closing the day. Open drawer, Cash in, Cash out, Print X
   report, Record this count (a handover), and Close shift & print Z report:
   the sales period is closed from the count and, if chosen, the day with it.
 - **Approval:** something the person signed in may not do (a refund, a void
