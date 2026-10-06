@@ -57,10 +57,11 @@ async function requireAuth(req: Request): Promise<Authed> {
 // A till's own key: "Authorization: Device <deviceId>:<key>". It stands for
 // the login that set the till up, so everything sync_push decides by who is
 // pushing stays as it is. A login's Bearer token is taken as before.
-//   401  not this till's key, or one that was ended: the till goes back to
-//        its login if it still has one, and is given a new key
-//   403  the till was deactivated, or the login that set it up was switched
-//        off: the till says so and keeps its sales until that is put right
+//   401  not this till's key, or one that was ended
+//   403  the till was deactivated, or the login that set it up was switched off
+// Either way the till drops the key and goes back to its login, as before
+// tills had keys: whoever is signed in on it can still send its sales, and a
+// till that is not deactivated is given a new key under that login.
 const TILL_OFF = { error: "This till was deactivated. Contact EasyPay to reactivate it." };
 const LOGIN_OFF = { error: "The login that set this till up was switched off. Sign in on the till again." };
 type KeyAnswer = { ok: boolean; why?: string; employee_id?: string; tenant_id?: string; store_id?: string; status?: string };

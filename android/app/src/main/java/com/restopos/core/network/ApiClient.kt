@@ -66,16 +66,19 @@ class ApiClient(baseUrl: String, private val auth: AuthClient, private val versi
     // Every call goes through here. A sync call (push, pull, crash reports)
     // goes with the till's own key when it has one: that key does not lapse,
     // so syncing does not wait on the login's session, which ends after a
-    // week without a connection. A key the server no longer takes is dropped
-    // and the login is used, which also gets the till a new key at its next
-    // pull. With the login, a 401 refreshes the token once and retries.
-    // Anything that is not a success becomes an ApiError instead of being
-    // parsed as if it were the expected body.
+    // week without a connection. A key the server no longer takes (401: it
+    // was ended or is not this till's; 403: the till was deactivated, or the
+    // login that set it up was switched off) is dropped and the login is
+    // used, as before tills had keys: whoever is signed in on the till can
+    // send its sales, and the next pull gets the till a new key under them.
+    // With the login, a 401 refreshes the token once and retries. Anything
+    // that is not a success becomes an ApiError instead of being parsed as if
+    // it were the expected body.
     private suspend fun authed(sync: Boolean = false, call: suspend (authorization: String) -> HttpResponse): HttpResponse {
         if (sync) {
             auth.tillKey()?.let { key ->
                 val res = call("Device $key")
-                if (res.status != HttpStatusCode.Unauthorized) return checked(res)
+                if (res.status != HttpStatusCode.Unauthorized && res.status != HttpStatusCode.Forbidden) return checked(res)
                 auth.clearTillKey()
             }
         }
