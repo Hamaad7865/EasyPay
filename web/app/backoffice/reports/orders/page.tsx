@@ -1,9 +1,9 @@
 import { Fragment } from "react";
 import { ClipboardList } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
-import { loadSettings, money } from "@/lib/settings";
-import { args, canView, clock, filters, fmtQty, lists, RECEIPTS } from "@/lib/report";
+import { readTenant } from "@/lib/db";
+import { money } from "@/lib/settings";
+import { args, clock, filters, fmtQty, RECEIPTS, reportStart } from "@/lib/report";
 import { Empty, PageHead, type Search } from "../../ui";
 import { ReportFilters, Stat } from "../parts";
 
@@ -21,10 +21,10 @@ type Disc = { receipt_id: string; name: string; amount: string };
 export default async function OrderDetails({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => {
-    const l = await lists(c, ctx.tenantId);
+  const d = await readTenant(ctx.tenantId, async (c) => {
+    const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
     const f = filters(sp, l.tz);
-    if (!(await canView(c, ctx.employeeId))) return { l, f, ok: false as const };
+    if (!ok) return { l, f, ok: false as const };
     const heads = (
       await c.query(
         `with r as (${RECEIPTS})
@@ -45,7 +45,7 @@ export default async function OrderDetails({ searchParams }: { searchParams: Sea
     const ids = heads.slice(0, LIMIT).map((h) => h.id);
     const rows = async <T,>(sql: string) => (ids.length ? ((await c.query(sql, [ctx.tenantId, ids])).rows as T[]) : []);
     return {
-      l, f, ok: true as const, s: await loadSettings(c, ctx.tenantId), heads,
+      l, f, ok: true as const, s, heads,
       lines: await rows<Line>(
         `select rl.receipt_id, rl.name_snapshot as name, rl.unit_price, rl.qty,
                 (select string_agg(m.name_snapshot, ', ') from receipt_line_modifiers m where m.tenant_id = $1 and m.receipt_line_id = rl.id) as mods,

@@ -1,8 +1,8 @@
 import { Percent } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
-import { loadSettings, money } from "@/lib/settings";
-import { args, canView, filters, fmtDay, lists, RECEIPTS } from "@/lib/report";
+import { readTenant } from "@/lib/db";
+import { money } from "@/lib/settings";
+import { args, filters, fmtDay, RECEIPTS, reportStart } from "@/lib/report";
 import { Empty, PageHead, type Search } from "../../ui";
 import { ReportFilters, Stat } from "../parts";
 
@@ -32,13 +32,13 @@ const SQL = `
 export default async function TaxReport({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => {
-    const l = await lists(c, ctx.tenantId);
+  const d = await readTenant(ctx.tenantId, async (c) => {
+    const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
     const f = { ...filters(sp, l.tz), kind: "all" as const };
-    if (!(await canView(c, ctx.employeeId))) return { l, f, ok: false as const };
+    if (!ok) return { l, f, ok: false as const };
     const rows = (await c.query(SQL, [...args(ctx.tenantId, f), f.tax])).rows as Row[];
     const t = (await c.query(`select name, brn, vat_number from tenants where id = $1`, [ctx.tenantId])).rows[0] as { name: string; brn: string | null; vat_number: string | null };
-    return { l, f, ok: true as const, s: await loadSettings(c, ctx.tenantId), rows, t };
+    return { l, f, ok: true as const, s, rows, t };
   });
   const head = <PageHead title="Tax" lede="Sales and the VAT in them, split by tax type: what the VAT return asks for. Refunds are taken off." />;
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;

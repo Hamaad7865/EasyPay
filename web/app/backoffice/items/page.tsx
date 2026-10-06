@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Plus, UtensilsCrossed } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { act, backTo, on, Refused, UUID, uuid } from "@/lib/action";
 import { parseRs } from "@/lib/money";
 import { fmtQty } from "@/lib/report";
@@ -70,7 +70,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
   const ctx = await tenantContext();
   // Every item comes down once; the table finds, filters and sorts them in
   // the browser, as you type.
-  const d = await withTenant(ctx.tenantId, async (c) => ({
+  const d = await readTenant(ctx.tenantId, async (c) => ({
     settings: await loadSettings(c, ctx.tenantId),
     cats: (
       await c.query(`select id, name from categories where deleted_at is null and tenant_id = $1 order by sort_order, name`, [ctx.tenantId])

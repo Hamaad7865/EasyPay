@@ -1,5 +1,5 @@
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { loadSettings, money } from "@/lib/settings";
 import type { Hit, HitGroup } from "./hits";
 
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
   const has = `%${literal(fold(q))}%`;
   const starts = `${literal(fold(q))}%`;
 
-  const groups = await withTenant(ctx.tenantId, async (c) => {
+  const groups = await readTenant(ctx.tenantId, async (c) => {
     const rows = async <T,>(sql: string) => (await c.query(sql, [ctx.tenantId, has, starts])).rows as T[];
     const s = await loadSettings(c, ctx.tenantId);
     const out: HitGroup[] = [];

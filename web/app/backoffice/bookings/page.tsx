@@ -1,6 +1,6 @@
 import { CalendarCheck } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { act, int, Refused, text, uuid } from "@/lib/action";
 import { Card, Empty, Flash, one, PageHead, type Search } from "../ui";
 
@@ -78,7 +78,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Sea
   const sp = await searchParams;
   const ctx = await tenantContext();
   const show = one(sp.show) === "past" ? "past" : "coming";
-  const d = await withTenant(ctx.tenantId, async (c) => ({
+  const d = await readTenant(ctx.tenantId, async (c) => ({
     stores: (await c.query(`select id, name, to_char(now() at time zone timezone, 'YYYY-MM-DD') as today from stores where tenant_id = $1 and deleted_at is null order by created_at`, [ctx.tenantId]))
       .rows as { id: string; name: string; today: string }[],
     tables: (await c.query(`select id, store_id, name, area, seats from tables where tenant_id = $1 and deleted_at is null order by area, sort_order, name`, [ctx.tenantId]))

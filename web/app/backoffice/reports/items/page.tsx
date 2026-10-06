@@ -1,8 +1,8 @@
 import { ListOrdered } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
-import { loadSettings, money } from "@/lib/settings";
-import { args, canView, filters, fmtQty, lists, RECEIPTS } from "@/lib/report";
+import { readTenant } from "@/lib/db";
+import { money } from "@/lib/settings";
+import { args, filters, fmtQty, RECEIPTS, reportStart } from "@/lib/report";
 import { Empty, PageHead, type Search } from "../../ui";
 import { ReportFilters, Stat } from "../parts";
 
@@ -11,10 +11,10 @@ type Row = { name: string; cat: string | null; qty: number; amount: string };
 export default async function ItemRank({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => {
-    const l = await lists(c, ctx.tenantId);
+  const d = await readTenant(ctx.tenantId, async (c) => {
+    const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
     const f = filters(sp, l.tz);
-    if (!(await canView(c, ctx.employeeId))) return { l, f, ok: false as const };
+    if (!ok) return { l, f, ok: false as const };
     const by = f.group === "category" ? `coalesce(c.name, 'No category')` : `rl.name_snapshot`;
     const rows = (
       await c.query(
@@ -31,7 +31,7 @@ export default async function ItemRank({ searchParams }: { searchParams: Search 
         args(ctx.tenantId, f),
       )
     ).rows as Row[];
-    return { l, f, ok: true as const, s: await loadSettings(c, ctx.tenantId), rows };
+    return { l, f, ok: true as const, s, rows };
   });
   const head = <PageHead title="Item sales" lede="What sells, ranked by what it brought in. Amounts are menu prices with add-ons, before any discount on the bill; refunds are taken off." />;
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;

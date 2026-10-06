@@ -1,8 +1,8 @@
 import { CalendarCheck } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
-import { loadSettings, money } from "@/lib/settings";
-import { canView, clock, filters, fmtQty, lists } from "@/lib/report";
+import { readTenant } from "@/lib/db";
+import { money } from "@/lib/settings";
+import { clock, filters, fmtQty, reportStart } from "@/lib/report";
 import { Empty, PageHead, type Search } from "../../ui";
 import { ReportFilters } from "../parts";
 
@@ -62,11 +62,11 @@ const SQL = `
 export default async function DayCloseReport({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => {
-    const l = await lists(c, ctx.tenantId);
+  const d = await readTenant(ctx.tenantId, async (c) => {
+    const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
     const f = filters(sp, l.tz);
-    if (!(await canView(c, ctx.employeeId))) return { l, f, ok: false as const };
-    return { l, f, ok: true as const, s: await loadSettings(c, ctx.tenantId), rows: (await c.query(SQL, [ctx.tenantId, f.from, f.to])).rows as Close[] };
+    if (!ok) return { l, f, ok: false as const };
+    return { l, f, ok: true as const, s, rows: (await c.query(SQL, [ctx.tenantId, f.from, f.to])).rows as Close[] };
   });
   const head = <PageHead title="Day closing" lede="The closing report of each day (the Z report): what was sold, how it was paid, and the cash put in and taken out. A day is closed on the till, under More." />;
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;

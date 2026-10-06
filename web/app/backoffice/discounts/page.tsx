@@ -1,5 +1,5 @@
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { act, backTo, on, Refused, text, uuid } from "@/lib/action";
 import { loadSettings, money } from "@/lib/settings";
 import { Card, Flash, PageHead, type Search, startKey, startOf } from "../ui";
@@ -71,7 +71,7 @@ type Row = { id: string; name: string; type: string; value: string; requires_app
 export default async function DiscountsPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => ({
+  const d = await readTenant(ctx.tenantId, async (c) => ({
     s: await loadSettings(c, ctx.tenantId),
     rows: (
       await c.query(

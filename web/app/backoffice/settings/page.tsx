@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { act, int, on, Refused, text, uuid } from "@/lib/action";
 import { loadSettings, money, saveSettings } from "@/lib/settings";
 import { Card, Flash, one, PageHead, type Search } from "../ui";
@@ -132,7 +132,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
   const sp = await searchParams;
   const tab = one(sp.tab) === "payments" ? "payments" : one(sp.tab) === "orders" ? "orders" : "general";
   const ctx = await tenantContext();
-  const data = await withTenant(ctx.tenantId, async (c) => ({
+  const data = await readTenant(ctx.tenantId, async (c) => ({
     settings: await loadSettings(c, ctx.tenantId),
     payments: (
       await c.query(

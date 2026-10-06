@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Printer } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { act, int, on, Refused, text, uuid } from "@/lib/action";
 import { Card, Empty, Flash, PageHead, type Search } from "../ui";
 
@@ -179,7 +179,7 @@ function Form({ p, cats }: { p?: Row; cats: Cat[] }) {
 export default async function PrintersPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const { rows, cats } = await withTenant(ctx.tenantId, async (c) => ({
+  const { rows, cats } = await readTenant(ctx.tenantId, async (c) => ({
     rows: (
       await c.query(
         `select p.id, p.name, p.kind, p.address, p.paper_mm, p.is_receipt, p.feed_lines, p.cut, p.is_active,

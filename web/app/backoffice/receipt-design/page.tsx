@@ -1,5 +1,5 @@
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { act, on, Refused } from "@/lib/action";
 import { loadSettings, saveSettings } from "@/lib/settings";
 import { Flash, PageHead, type Search } from "../ui";
@@ -28,7 +28,7 @@ async function save(f: FormData) {
 export default async function ReceiptDesignPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => {
+  const d = await readTenant(ctx.tenantId, async (c) => {
     const s = await loadSettings(c, ctx.tenantId);
     const t = (await c.query(`select name, brn, vat_number from tenants where id = $1`, [ctx.tenantId])).rows[0];
     const may = (await c.query(`select has_perm($1, 'settings.device') as ok`, [ctx.employeeId])).rows[0]?.ok as boolean;

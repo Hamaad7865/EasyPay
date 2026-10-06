@@ -1,6 +1,6 @@
 import { Download } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { act, Refused, text } from "@/lib/action";
 import { Card, Flash, PageHead, type Search } from "../ui";
 
@@ -54,7 +54,7 @@ async function deleteMenu(f: FormData) {
 export default async function DataPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => ({
+  const d = await readTenant(ctx.tenantId, async (c) => ({
     name: (await c.query(`select name from tenants where id = $1`, [ctx.tenantId])).rows[0].name as string,
     counts: (
       await c.query(

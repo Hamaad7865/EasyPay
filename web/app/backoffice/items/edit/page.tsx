@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { act, on, Refused, text, UUID } from "@/lib/action";
 import { parseRs } from "@/lib/money";
 import { loadSettings, money } from "@/lib/settings";
@@ -74,7 +74,7 @@ export default async function ItemEditPage({ searchParams }: { searchParams: Sea
   const sp = await searchParams;
   const id = one(sp.id);
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => {
+  const d = await readTenant(ctx.tenantId, async (c) => {
     const item = UUID.test(id)
       ? ((await c.query(`select id, name, price, category_id, is_available, track_stock, barcode from items where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id])).rows[0] as
           | { id: string; name: string; price: string; category_id: string | null; is_available: boolean; track_stock: boolean; barcode: string | null }

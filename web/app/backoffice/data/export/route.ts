@@ -1,5 +1,5 @@
 import { requirePerm } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 
 // A backup the owner can keep: everything the restaurant has in EasyPay, as
 // one JSON file. PINs are left out (they are stored hashed and are of no use
@@ -20,7 +20,7 @@ export async function GET() {
     if (e && typeof e === "object" && "digest" in e) throw e; // a redirect to the sign-in page
     return new Response("You are not allowed to download a backup.", { status: 403 });
   }
-  const out = await withTenant(ctx.tenantId, async (c) => {
+  const out = await readTenant(ctx.tenantId, async (c) => {
     const data: Record<string, unknown> = {};
     for (const t of TABLES) {
       const r = await c.query(`select coalesce(json_agg(x), '[]'::json) as rows from (select * from ${t} where tenant_id = $1) x`, [ctx.tenantId]);

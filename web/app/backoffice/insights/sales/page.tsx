@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { CalendarRange } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
-import { loadSettings, money } from "@/lib/settings";
-import { canView, lists, RECEIPTS } from "@/lib/report";
+import { readTenant } from "@/lib/db";
+import { money, withDefaults } from "@/lib/settings";
+import { basics, RECEIPTS } from "@/lib/report";
 import { Card, Empty, PageHead, type Search } from "../../ui";
 import { Figure, SpanPicker, Standouts, WEEKDAYS, change, longDay, pct, per, period, range, totals } from "../parts";
 
@@ -17,15 +17,16 @@ type DayRow = { day: string; amount: number };
 export default async function SalesPatterns({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => {
-    const l = await lists(c, ctx.tenantId);
-    const p = period(sp, l.tz);
-    if (!(await canView(c, ctx.employeeId))) return { p, ok: false as const };
+  const d = await readTenant(ctx.tenantId, async (c) => {
+    // the time zone, the right to see reports and the settings, in one trip
+    const b = await basics(c, ctx.tenantId, ctx.employeeId);
+    const p = period(sp, b.tz);
+    if (!b.ok) return { p, ok: false as const };
     const q = async <T,>(sql: string) => (await c.query(`with r as (${RECEIPTS}) ${sql}`, range(ctx.tenantId, p.from, p.to))).rows as T[];
     return {
       p,
       ok: true as const,
-      s: await loadSettings(c, ctx.tenantId),
+      s: withDefaults(b.settings),
       now: await totals(c, ctx.tenantId, p.from, p.to),
       before: await totals(c, ctx.tenantId, p.prevFrom, p.prevTo),
       // the weekday and the hour are the restaurant's own, not the server's

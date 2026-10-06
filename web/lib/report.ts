@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { UUID } from "@/lib/action";
+import { type PosSettings, withDefaults } from "@/lib/settings";
 
 // What every report starts from: the receipts that count as a sale or a
 // refund (a double payment does not), each with its moment on the till's own
@@ -67,16 +68,50 @@ export type Lists = {
 
 // The choices the filter bars offer. Someone who has left, or a payment type
 // that was removed, is still offered: their sales are still in the reports.
+// All five lists come back from one query: every query is a trip to the
+// database and back, and these were five of them at the top of every report.
+const list = (from: string, order: string) =>
+  `coalesce((select json_agg(json_build_object('id', x.id, 'name', x.name) order by ${order}) from ${from} x where x.tenant_id = $1), '[]'::json)`;
+const LISTS = `(select timezone from stores where tenant_id = $1 and deleted_at is null order by created_at limit 1) as tz,
+              ${list("employees", "x.name")} as employees,
+              ${list("dining_options", "x.sort_order, x.name")} as dining,
+              ${list("payment_types", "x.sort_order, x.name")} as payments,
+              ${list("taxes", "x.rate_bp desc, x.name")} as taxes`;
+type ListsRow = Omit<Lists, "tz"> & { tz: string | null };
+const asLists = (r: ListsRow): Lists => ({ tz: r.tz ?? "Indian/Mauritius", employees: r.employees, dining: r.dining, payments: r.payments, taxes: r.taxes });
+
 export async function lists(c: PoolClient, tenantId: string): Promise<Lists> {
-  const rows = async (sql: string) => (await c.query(sql, [tenantId])).rows as { id: string; name: string }[];
-  const tz = (await c.query(`select timezone from stores where tenant_id = $1 and deleted_at is null order by created_at limit 1`, [tenantId])).rows[0]?.timezone as string | undefined;
-  return {
-    tz: tz ?? "Indian/Mauritius",
-    employees: await rows(`select id, name from employees where tenant_id = $1 order by name`),
-    dining: await rows(`select id, name from dining_options where tenant_id = $1 order by sort_order, name`),
-    payments: await rows(`select id, name from payment_types where tenant_id = $1 order by sort_order, name`),
-    taxes: await rows(`select id, name from taxes where tenant_id = $1 order by rate_bp desc, name`),
-  };
+  return asLists((await c.query(`select ${LISTS}`, [tenantId])).rows[0] as ListsRow);
+}
+
+// What every report asks before its figures: the filters' choices, whether
+// this person may see reports, and the POS settings. One round trip for the
+// three, where they were seven.
+export async function reportStart(c: PoolClient, tenantId: string, employeeId: string): Promise<{ l: Lists; ok: boolean; s: PosSettings }> {
+  const r = (
+    await c.query(
+      `select ${LISTS},
+              has_perm($2, 'reports.view') as ok,
+              (select data from pos_settings where tenant_id = $1 and deleted_at is null) as settings`,
+      [tenantId, employeeId],
+    )
+  ).rows[0] as ListsRow & { ok: boolean | null; settings: unknown };
+  return { l: asLists(r), ok: Boolean(r.ok), s: withDefaults(r.settings) };
+}
+
+// What a page of figures needs before its first figure: the restaurant's
+// time zone, whether this person may see reports, and the POS settings (for
+// how money is written). One round trip.
+export async function basics(c: PoolClient, tenantId: string, employeeId: string): Promise<{ tz: string; ok: boolean; settings: unknown }> {
+  const r = (
+    await c.query(
+      `select (select timezone from stores where tenant_id = $1 and deleted_at is null order by created_at limit 1) as tz,
+              has_perm($2, 'reports.view') as ok,
+              (select data from pos_settings where tenant_id = $1 and deleted_at is null) as settings`,
+      [tenantId, employeeId],
+    )
+  ).rows[0] as { tz: string | null; ok: boolean | null; settings: unknown };
+  return { tz: r.tz ?? "Indian/Mauritius", ok: Boolean(r.ok), settings: r.settings };
 }
 
 export const fmtDay = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" });

@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { Receipt } from "lucide-react";
 import { requirePerm, tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant, withTenant } from "@/lib/db";
 import { fmtRs } from "@/lib/money";
 import { act, Refused, uuid } from "@/lib/action";
 import { loadSettings, money } from "@/lib/settings";
@@ -100,7 +100,7 @@ async function correctPayment(f: FormData) {
 export default async function ReceiptsPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => ({
+  const d = await readTenant(ctx.tenantId, async (c) => ({
     l: await lists(c, ctx.tenantId),
     s: await loadSettings(c, ctx.tenantId),
     types: (await c.query(`select id, name from payment_types where tenant_id = $1 and deleted_at is null and is_active order by sort_order, name`, [ctx.tenantId])).rows as { id: string; name: string }[],

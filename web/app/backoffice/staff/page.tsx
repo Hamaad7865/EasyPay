@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { requirePerm, tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant, withTenant } from "@/lib/db";
 import { hashPin, isPin } from "@/lib/pin";
 
 type Staff = {
@@ -100,7 +100,7 @@ export default async function StaffPage({
 }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const data = await withTenant(ctx.tenantId, async (c) => {
+  const data = await readTenant(ctx.tenantId, async (c) => {
     const staff = await c.query(
       `select e.id, e.name, r.name as role, e.pin_hash is not null as has_pin,
               e.auth_user_id is not null as has_login, e.is_active

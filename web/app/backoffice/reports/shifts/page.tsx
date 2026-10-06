@@ -1,8 +1,8 @@
 import { Timer } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
-import { loadSettings, money } from "@/lib/settings";
-import { canView, clock, filters, lists } from "@/lib/report";
+import { readTenant } from "@/lib/db";
+import { money } from "@/lib/settings";
+import { clock, filters, reportStart } from "@/lib/report";
 import { Empty, PageHead, type Search } from "../../ui";
 import { ReportFilters } from "../parts";
 
@@ -60,12 +60,12 @@ const SQL = `
 export default async function ShiftReport({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => {
-    const l = await lists(c, ctx.tenantId);
+  const d = await readTenant(ctx.tenantId, async (c) => {
+    const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
     const f = filters(sp, l.tz);
-    if (!(await canView(c, ctx.employeeId))) return { l, f, ok: false as const };
+    if (!ok) return { l, f, ok: false as const };
     return {
-      l, f, ok: true as const, s: await loadSettings(c, ctx.tenantId),
+      l, f, ok: true as const, s,
       shifts: (await c.query(SQL, [ctx.tenantId, f.from, f.to, f.employee])).rows as Shift[],
     };
   });

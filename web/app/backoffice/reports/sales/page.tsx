@@ -1,8 +1,8 @@
 import { BarChart3 } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
-import { loadSettings, money } from "@/lib/settings";
-import { args, canView, filters, fmtDay, lists, RECEIPTS } from "@/lib/report";
+import { readTenant } from "@/lib/db";
+import { money } from "@/lib/settings";
+import { args, filters, fmtDay, RECEIPTS, reportStart } from "@/lib/report";
 import { Card, Empty, PageHead, type Search } from "../../ui";
 import { ReportFilters, Stat } from "../parts";
 
@@ -12,17 +12,17 @@ type Split = { name: string | null; n: number; amount: string };
 export default async function SalesSummary({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => {
-    const l = await lists(c, ctx.tenantId);
+  const d = await readTenant(ctx.tenantId, async (c) => {
+    const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
     const f = filters(sp, l.tz);
-    if (!(await canView(c, ctx.employeeId))) return { l, f, ok: false as const };
+    if (!ok) return { l, f, ok: false as const };
     const a = args(ctx.tenantId, f);
     const q = async <T,>(sql: string) => (await c.query(`with r as (${RECEIPTS}) ${sql}`, a)).rows as T[];
     return {
       l,
       f,
       ok: true as const,
-      s: await loadSettings(c, ctx.tenantId),
+      s,
       totals: (
         await q<Totals>(
           `select count(*) filter (where type = 'sale')::int as sales, count(*) filter (where type = 'refund')::int as refunds,

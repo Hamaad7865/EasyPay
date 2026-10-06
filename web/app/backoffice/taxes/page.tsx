@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { act, on, Refused, text, uuid } from "@/lib/action";
 import { Card, Flash, PageHead, type Search } from "../ui";
 
@@ -49,7 +49,7 @@ type Row = { id: string; name: string; rate_bp: number; type: string; is_default
 export default async function TaxesPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const rows = await withTenant(ctx.tenantId, (c) =>
+  const rows = await readTenant(ctx.tenantId, (c) =>
     c
       .query(
         `select t.id, t.name, t.rate_bp, t.type, t.is_default,

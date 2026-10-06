@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Boxes } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { act, backTo, Refused, text, uuid } from "@/lib/action";
 import { Card, Empty, Flash, PageHead, type Search, startKey, startOf } from "../ui";
 import { type StockRow, StockTable } from "./table";
@@ -49,7 +49,7 @@ type Move = { at: string; item: string; qty: number; reason: string; who: string
 export default async function StockPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => ({
+  const d = await readTenant(ctx.tenantId, async (c) => ({
     rows: (
       await c.query(
         `select i.id, i.name, c.name as cat, c.sort_order as cat_order, i.stock_qty as q,

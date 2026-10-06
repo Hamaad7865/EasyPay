@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { act, Refused, text, uuid } from "@/lib/action";
 import { Card, Flash, PageHead, type Search } from "../ui";
 
@@ -98,7 +98,7 @@ type Role = { id: string; name: string; permissions: string[]; staff: number };
 export default async function RolesPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const roles = await withTenant(ctx.tenantId, (c) =>
+  const roles = await readTenant(ctx.tenantId, (c) =>
     c
       .query(
         `select r.id, r.name, r.permissions,

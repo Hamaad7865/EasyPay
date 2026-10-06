@@ -1,5 +1,4 @@
 import { isSuspended, tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
 import { auth } from "@/lib/auth/server";
 import { redirect } from "next/navigation";
 import { LogOut, Store } from "lucide-react";
@@ -7,16 +6,10 @@ import { SideNav } from "./side-nav";
 import { SearchBox } from "./search-box";
 
 export default async function BackofficeLayout({ children }: { children: React.ReactNode }) {
+  // who is signed in, with the two names shown here: the page asks the same
+  // question and the answer is shared, so the shell costs no query of its own
   const ctx = await tenantContext();
-  const who = await withTenant(ctx.tenantId, (c) =>
-    c
-      .query(
-        `select (select name from tenants where id = $1) as tenant,
-                (select name from employees where id = $2 and tenant_id = $1) as employee`,
-        [ctx.tenantId, ctx.employeeId],
-      )
-      .then((r) => r.rows[0] as { tenant: string | null; employee: string | null }),
-  );
+  const who = { tenant: ctx.tenantName, employee: ctx.employeeName };
   async function signOut() {
     "use server";
     await auth.signOut();

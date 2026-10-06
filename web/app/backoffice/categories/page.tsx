@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Tags } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { act, backTo, int, on, Refused, text, UUID, uuid } from "@/lib/action";
 import { toHex } from "@/lib/colour";
 import { Card, Empty, Flash, PageHead, type Search, startKey, startOf } from "../ui";
@@ -59,7 +59,7 @@ type Row = { id: string; name: string; color: string | null; sort_order: number;
 export default async function CategoriesPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => ({
+  const d = await readTenant(ctx.tenantId, async (c) => ({
     rows: (
       await c.query(
         `select c.id, c.name, c.color, c.sort_order, c.is_stock, c.printer_ids,

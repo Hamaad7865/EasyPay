@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { NewFloor } from "./new-floor";
 
 type Floor = { name: string; tables: number; covers: number };
@@ -10,7 +10,7 @@ type Floor = { name: string; tables: number; covers: number };
 export default async function FloorPlansPage({ searchParams }: { searchParams: Promise<{ store?: string }> }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const data = await withTenant(ctx.tenantId, async (c) => {
+  const data = await readTenant(ctx.tenantId, async (c) => {
     const stores = await c.query(`select id, name from stores where tenant_id = $1 and deleted_at is null order by created_at`, [ctx.tenantId]);
     const list = stores.rows as { id: string; name: string }[];
     const store = list.find((s) => s.id === sp.store) ?? list[0] ?? null;

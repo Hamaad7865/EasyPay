@@ -1,6 +1,6 @@
 import { Contact } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { act, backTo, Refused, text, uuid } from "@/lib/action";
 import { loadSettings, money } from "@/lib/settings";
 import { Card, Empty, Flash, PageHead, type Search, startKey, startOf } from "../ui";
@@ -51,7 +51,7 @@ const MOST = 5000;
 export default async function CustomersPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => ({
+  const d = await readTenant(ctx.tenantId, async (c) => ({
     s: await loadSettings(c, ctx.tenantId),
     rows: (
       await c.query(

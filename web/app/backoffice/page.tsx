@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { PoolClient } from "pg";
 import { ArrowUpRight, Boxes, CalendarClock, ClipboardList, type LucideIcon, TrendingUp, UtensilsCrossed } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
+import { readTenant } from "@/lib/db";
 import { fmtRs } from "@/lib/money";
 import { clock, fmtQty, RECEIPTS } from "@/lib/report";
 import { SalesChart, type Day } from "./dash-chart";
@@ -319,7 +319,7 @@ export default async function BackofficeHome({
   const sp = await searchParams;
   const ctx = await tenantContext();
   const compare = sp.compare === "1";
-  const data = await withTenant(ctx.tenantId, async (c) => {
+  const data = await readTenant(ctx.tenantId, async (c) => {
     const now = (await c.query(NOW, [ctx.tenantId, ctx.employeeId])).rows[0] as Now;
     const options = presets(now.today);
     // default: this month. A range that is malformed, backwards or longer

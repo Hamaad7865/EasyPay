@@ -1,7 +1,7 @@
 import { Clock } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
-import { withTenant } from "@/lib/db";
-import { canView, filters, fmtDay, lists } from "@/lib/report";
+import { readTenant } from "@/lib/db";
+import { filters, fmtDay, reportStart } from "@/lib/report";
 import { Empty, PageHead, type Search } from "../../ui";
 import { ReportFilters, Stat } from "../parts";
 
@@ -46,8 +46,8 @@ const decimal = (min: number) => (min / 60).toFixed(2);
 export default async function TimeCards({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await withTenant(ctx.tenantId, async (c) => {
-    const l = await lists(c, ctx.tenantId);
+  const d = await readTenant(ctx.tenantId, async (c) => {
+    const { l, ok } = await reportStart(c, ctx.tenantId, ctx.employeeId);
     // a week is the usual question; one day would hide most of it
     const f = filters(sp, l.tz);
     if (!sp.from && !sp.to) {
@@ -55,7 +55,7 @@ export default async function TimeCards({ searchParams }: { searchParams: Search
       start.setUTCDate(start.getUTCDate() - 6);
       f.from = start.toISOString().slice(0, 10);
     }
-    if (!(await canView(c, ctx.employeeId))) return { l, f, ok: false as const };
+    if (!ok) return { l, f, ok: false as const };
     return { l, f, ok: true as const, spells: (await c.query(SPELLS, [ctx.tenantId, f.from, f.to, f.employee])).rows as Spell[] };
   });
   const head = <PageHead title="Time cards" lede="Who clocked in and out on the tills, and the hours between. A spell counts for the day it started on. A clock-in that was never clocked out shows no hours." />;
