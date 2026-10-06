@@ -60,6 +60,7 @@ import com.restopos.core.ui.Toaster
 import com.restopos.core.ui.V
 import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.panel
+import com.restopos.core.ui.press
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -368,7 +369,7 @@ private fun CountPad(ui: CashUi, vm: CashViewModel, modifier: Modifier = Modifie
                 listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf(last, "0", "del")).forEach { row ->
                     Row(Modifier.weight(1f).heightIn(min = 44.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         row.forEach { k ->
-                            Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(14.dp)).background(V.Key2).clickable { vm.key(k) }, contentAlignment = Alignment.Center) {
+                            Box(Modifier.weight(1f).fillMaxHeight().press { vm.key(k) }.clip(RoundedCornerShape(14.dp)).background(V.Key2), contentAlignment = Alignment.Center) {
                                 T(if (k == "del") "⌫" else k, 26.sp, 700)
                             }
                         }
