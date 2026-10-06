@@ -12,6 +12,10 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 //   no sign-up here: a login that is not linked to a tenant gets 403.
 // - A suspended tenant keeps syncing (spec 4.4: never trap their data) but
 //   cannot register devices or change its catalog.
+// - A till that has been set up syncs with a key of its own (migration 0063),
+//   which does not lapse the way a login's session does. The key opens the
+//   sync routes only (push, pull of the till's own store, crash reports); it
+//   is made and checked in SQL, and only its SHA-256 is kept.
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5 });
 attachDatabasePool(pool);
@@ -25,7 +29,8 @@ function issuer(): string {
   return new URL(process.env.NEON_AUTH_BASE_URL!).origin;
 }
 
-type Authed = { authUserId: string; tenantId: string; employeeId: string; status: string };
+// deviceId and storeId are set when the caller is a till with its key, not a login.
+type Authed = { authUserId: string; tenantId: string; employeeId: string; status: string; deviceId?: string; storeId?: string };
 
 async function requireAuth(req: Request): Promise<Authed> {
   const h = req.headers.get("authorization") ?? "";
@@ -47,6 +52,42 @@ async function requireAuth(req: Request): Promise<Authed> {
   );
   if (found.rowCount !== 1) throw new Response("Forbidden: no tenant linked", { status: 403 });
   return { authUserId: sub, tenantId: found.rows[0].tenant_id, employeeId: found.rows[0].id, status: found.rows[0].status };
+}
+
+// A till's own key: "Authorization: Device <deviceId>:<key>". It stands for
+// the login that set the till up, so everything sync_push decides by who is
+// pushing stays as it is. A login's Bearer token is taken as before.
+//   401  not this till's key, or one that was ended: the till goes back to
+//        its login if it still has one, and is given a new key
+//   403  the till was deactivated, or the login that set it up was switched
+//        off: the till says so and keeps its sales until that is put right
+const TILL_OFF = { error: "This till was deactivated. Contact EasyPay to reactivate it." };
+const LOGIN_OFF = { error: "The login that set this till up was switched off. Sign in on the till again." };
+type KeyAnswer = { ok: boolean; why?: string; employee_id?: string; tenant_id?: string; store_id?: string; status?: string };
+
+function refused(body: { error: string }): Response {
+  return new Response(JSON.stringify(body), { status: 403, headers: { "content-type": "application/json" } });
+}
+
+async function requireTill(req: Request): Promise<Authed> {
+  const h = req.headers.get("authorization") ?? "";
+  if (!h.toLowerCase().startsWith("device ")) return requireAuth(req);
+  const m = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):([0-9a-f]{64})$/i.exec(h.slice(7).trim());
+  if (!m) throw new Response("Unauthorized", { status: 401 });
+  let r: KeyAnswer | undefined;
+  try {
+    // Runs as owner, like the login lookup: no tenant is known yet.
+    r = (await pool.query(`select device_login($1::uuid, $2) as r`, [m[1], m[2].toLowerCase()])).rows[0]?.r;
+  } catch (err) {
+    console.error("till key check failed:", (err as Error).message);
+    throw new Response("Service unavailable", { status: 503 });
+  }
+  if (!r?.ok || !r.tenant_id || !r.employee_id) {
+    if (r?.why === "till-off") throw refused(TILL_OFF);
+    if (r?.why === "login-off") throw refused(LOGIN_OFF);
+    throw new Response("Unauthorized", { status: 401 });
+  }
+  return { authUserId: "", tenantId: r.tenant_id, employeeId: r.employee_id, status: r.status ?? "active", deviceId: m[1].toLowerCase(), storeId: r.store_id };
 }
 
 const SUSPENDED = { error: "This account is suspended. Sales already made still sync; contact EasyPay to reactivate." };
@@ -106,7 +147,7 @@ app.use("*", async (c, next) => {
 
 // minTill: the oldest till build still accepted (0: every build is).
 app.get("/health", (c) =>
-  c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0059", minTill: Number(process.env.MIN_TILL_VERSION ?? "0") || 0 }),
+  c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0063", minTill: Number(process.env.MIN_TILL_VERSION ?? "0") || 0 }),
 );
 
 // Tenant-scoped self check: only ever returns the caller's own rows.
@@ -185,7 +226,15 @@ app.post("/devices/register", async (c) => {
         [deviceId, auth.tenantId, storeId, name, code, body.appVersion ?? null],
       ).then((r) => r.rows),
     );
-    return c.json({ deviceId: rows[0].id, lastReceiptSeq: Number(rows[0].last_receipt_seq) });
+    // The till's own key for syncing, given once. Without it the till still
+    // syncs with its login, as before, so a failure here is not a failed set-up.
+    let syncKey: string | undefined;
+    try {
+      syncKey = (await pool.query(`select issue_device_key($1::uuid, $2::uuid) as k`, [auth.employeeId, rows[0].id])).rows[0]?.k;
+    } catch (err) {
+      console.error("key for a new till failed:", (err as Error).message);
+    }
+    return c.json({ deviceId: rows[0].id, lastReceiptSeq: Number(rows[0].last_receipt_seq), ...(syncKey ? { syncKey } : {}) });
   } catch (err) {
     const msg = (err as Error).message;
     console.error("register failed:", msg);
@@ -196,13 +245,63 @@ app.post("/devices/register", async (c) => {
   }
 });
 
+// A key for a till that was set up before tills had keys, or whose key was
+// ended: asked for with a login, once. It replaces the key the till had.
+// A suspended restaurant's till is given one too: its sales must still sync.
+app.post("/devices/key", async (c) => {
+  let auth: Authed;
+  try {
+    auth = await requireAuth(c.req.raw);
+  } catch (res) {
+    return res as Response;
+  }
+  const body: { deviceId?: string } = await c.req.json<{ deviceId?: string }>().catch((): { deviceId?: string } => ({}));
+  const deviceId = body.deviceId ?? "";
+  if (!/^[0-9a-f-]{36}$/i.test(deviceId)) return c.json({ error: "deviceId required" }, 400);
+  try {
+    const k = await pool.query(`select issue_device_key($1::uuid, $2::uuid) as k`, [auth.employeeId, deviceId]);
+    return c.json({ deviceId, syncKey: k.rows[0].k });
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg.includes("bad-device")) return c.json({ error: "This till is not registered here, or was deactivated." }, 404);
+    console.error("key failed:", msg);
+    return c.json({ error: "the key could not be made" }, 503);
+  }
+});
+
+// The tablet is being signed out: its key ends with it. Asked by the till
+// with the key itself, or by a login for a till of its own restaurant.
+app.delete("/devices/key", async (c) => {
+  let auth: Authed;
+  try {
+    auth = await requireTill(c.req.raw);
+  } catch (res) {
+    return res as Response;
+  }
+  let deviceId = auth.deviceId;
+  if (!deviceId) {
+    const asked = c.req.query("deviceId") ?? "";
+    if (!/^[0-9a-f-]{36}$/i.test(asked)) return c.json({ error: "deviceId required" }, 400);
+    const mine = await pool.query(`select 1 from pos_devices where id = $1::uuid and tenant_id = $2::uuid`, [asked, auth.tenantId]).catch(() => ({ rowCount: 0 }));
+    if (mine.rowCount !== 1) return c.json({ error: "This till is not registered here." }, 404);
+    deviceId = asked;
+  }
+  try {
+    const out = await pool.query(`select revoke_device_key($1::uuid) as r`, [deviceId]);
+    return c.json({ ended: out.rows[0].r === true });
+  } catch (err) {
+    console.error("ending a key failed:", (err as Error).message);
+    return c.json({ error: "the key could not be ended" }, 503);
+  }
+});
+
 // Push contract for the Android outbox worker (spec 5.4). The employee comes
 // from the JWT lookup, never the body. Per-op results always 200; only
 // batch-level failures (bad shape, unknown employee) are 4xx.
 app.post("/sync/push", async (c) => {
   let auth: Authed;
   try {
-    auth = await requireAuth(c.req.raw);
+    auth = await requireTill(c.req.raw);
   } catch (res) {
     return res as Response;
   }
@@ -224,7 +323,7 @@ app.post("/sync/push", async (c) => {
 app.get("/sync/pull", async (c) => {
   let auth: Authed;
   try {
-    auth = await requireAuth(c.req.raw);
+    auth = await requireTill(c.req.raw);
   } catch (res) {
     return res as Response;
   }
@@ -232,6 +331,8 @@ app.get("/sync/pull", async (c) => {
   const cursor = Number(c.req.query("cursor") ?? "0");
   const limit = Number(c.req.query("limit") ?? "200");
   if (!/^[0-9a-f-]{36}$/i.test(storeId)) return c.json({ error: "storeId required" }, 400);
+  // a till with its key pulls the store it was set up in, and no other
+  if (auth.storeId && auth.storeId.toLowerCase() !== storeId.toLowerCase()) return c.json({ error: "a till pulls its own store" }, 400);
   if (!Number.isInteger(cursor) || cursor < 0 || !Number.isInteger(limit)) return c.json({ error: "cursor and limit must be whole numbers" }, 400);
   try {
     const out = await asTenant<{ r: unknown }>(auth.tenantId, (q) =>
@@ -249,7 +350,7 @@ app.get("/sync/pull", async (c) => {
 app.post("/crash", async (c) => {
   let auth: Authed;
   try {
-    auth = await requireAuth(c.req.raw);
+    auth = await requireTill(c.req.raw);
   } catch (res) {
     return res as Response;
   }
