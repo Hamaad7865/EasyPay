@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth/server";
 import { redirect } from "next/navigation";
 import { LogOut, Store } from "lucide-react";
 import { SideNav } from "./side-nav";
+import { SearchBox } from "./search-box";
 
 export default async function BackofficeLayout({ children }: { children: React.ReactNode }) {
   const ctx = await tenantContext();
@@ -41,6 +42,8 @@ export default async function BackofficeLayout({ children }: { children: React.R
           <span className="bo-top-name">{restaurant}</span>
           {/* the start of the restaurant's id: what to quote to EasyPay support */}
           <span className="bo-top-id">ID: {ctx.tenantId.slice(0, 8).toUpperCase()}</span>
+          <span className="bo-top-spacer" />
+          <SearchBox />
           <span className="bo-top-spacer" />
           <span className="bo-top-user">
             <span className="bo-avatar">{(who.employee ?? "?").trim().slice(0, 1).toUpperCase()}</span>
