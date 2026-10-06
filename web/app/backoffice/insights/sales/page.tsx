@@ -150,7 +150,7 @@ export default async function SalesPatterns({ searchParams }: { searchParams: Se
                     const v = avgAt(i + 1, h);
                     const n = cell.get(`${i + 1}-${h}`)?.n ?? 0;
                     const text = `${name} ${hh(h)}: ${v > 0 ? `${m(v)} on average, ${n} ${n === 1 ? "receipt" : "receipts"} in all` : "no sales"}`;
-                    return <i key={h} className={`h${v > 0 ? Math.max(1, Math.ceil((v / hottest) * 5)) : 0}`} title={text} aria-label={text} />;
+                    return <i key={h} className={`h${v > 0 ? Math.max(1, Math.ceil((v / hottest) * 5)) : 0}`} role="img" title={text} aria-label={text} />;
                   })}
                 </div>
               ),

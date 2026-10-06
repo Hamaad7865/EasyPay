@@ -20,7 +20,7 @@ type Row = {
   discounts: number;
   seated: number;
   covers: number;
-  // seconds from the first send to the kitchen to the payment, over `turns` orders
+  // seconds from the first send to the kitchen to the payment, over `turns` orders served at a table
   turn: number | null;
   turns: number;
 };
@@ -42,12 +42,15 @@ export default async function StaffPerformance({ searchParams }: { searchParams:
         await c.query(
           `with r as (${RECEIPTS}),
            -- an order, with who took its last payment and when
-           tk as (select distinct on (ticket_id) ticket_id, employee_id, covers, at as paid_at
+           tk as (select distinct on (ticket_id) ticket_id, employee_id, covers, table_id, at as paid_at
                     from r where type = 'sale' and ticket_id is not null order by ticket_id, at desc),
            tt as (select tk.employee_id, extract(epoch from (tk.paid_at - s.sent))::float8 as secs
                     from tk cross join lateral (select min(tl.sent_to_kitchen_at) as sent from ticket_lines tl
                                                  where tl.tenant_id = $1 and tl.ticket_id = tk.ticket_id) s
-                   where s.sent is not null and tk.paid_at > s.sent),
+                   -- tables only: a takeaway waits for its guest and a counter sale
+                   -- is paid as it is sent, so neither says anything about service.
+                   -- Both times are the till's own clock.
+                   where tk.table_id is not null and s.sent is not null and tk.paid_at > s.sent),
            per as (select employee_id,
                           coalesce(sum(signed_total), 0)::float8 as net,
                           count(distinct ticket_id) filter (where type = 'sale')::int as accounts,
@@ -115,7 +118,7 @@ export default async function StaffPerformance({ searchParams }: { searchParams:
         <Figure label="Net sales" value={m(all.net)} now={all.net} before={before.net} note={`on the ${p.days} days before`} none={`No sales in the ${p.days} days before`} />
         <Figure label="Average check" value={m(check)} now={check} before={per(before.net, before.orders)} note="per order, everyone" />
         <Figure label="Sales per guest" value={all.covers > 0 ? m(guest) : "No guests counted"} now={all.covers > 0 ? guest : undefined} before={per(before.seated, before.covers)} note={all.covers > 0 ? "on orders with a guest count" : undefined} />
-        <Figure label="Send to payment" value={turns > 0 ? mins(turn) : "Nothing sent"} note={turns > 0 ? `on average, over ${turns} ${turns === 1 ? "order" : "orders"}` : "no order went to the kitchen"} />
+        <Figure label="Send to payment" value={turns > 0 ? mins(turn) : "Nothing sent"} note={turns > 0 ? `on average, over ${turns} table ${turns === 1 ? "order" : "orders"}` : "no table order went to the kitchen"} />
       </div>
 
       <Standouts
@@ -225,7 +228,7 @@ export default async function StaffPerformance({ searchParams }: { searchParams:
         </div>
       </Card>
       <p className="muted insight-foot">
-        Send to payment is the time from an order&apos;s first send to the kitchen until it is paid. Guests are the covers entered on orders served at a table.
+        Send to payment is the time from a table order&apos;s first send to the kitchen until it is paid; takeaway, delivery and counter sales are left out of it. Guests are the covers entered on orders served at a table.
       </p>
     </div>
   );

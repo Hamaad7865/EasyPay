@@ -11,7 +11,8 @@ import { Delta, Figure, SpanPicker, Standouts, pct, per, period, range } from ".
 // What the menu is doing: which items carry the sales, which are selling
 // more or less than in the days before, and which did not sell at all. An
 // item's figures are the Item sales report's for the same days. There is
-// nothing about profit here: the till does not know what a dish costs to make.
+// nothing about profit here: the back office has no place to enter what a
+// dish costs to make, and a sale does not keep it.
 
 type Sold = { name: string; cat: string; qty: number; amount: number };
 type Idle = { name: string; cat: string | null; is_available: boolean };
@@ -190,7 +191,7 @@ export default async function MenuPerformance({ searchParams }: { searchParams: 
               <th className="num">Sold</th>
               <th className="num">Sales</th>
               <th>Share of menu sales</th>
-              <th className="num">Sold, on before</th>
+              <th className="num">Against before</th>
             </tr>
           </thead>
           <tbody>
