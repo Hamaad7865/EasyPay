@@ -56,9 +56,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.restopos.core.common.Money
+import com.restopos.core.common.tableLabel
 import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.LineInfo
 import com.restopos.core.data.ModPick
+import com.restopos.core.data.OrderInfo
 import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.DiscountEntity
 import com.restopos.core.database.EmployeeEntity
@@ -482,7 +484,10 @@ private fun MoreSheet(ui: OrderUi, vm: OrderViewModel, onDismiss: () -> Unit, on
     var discounts by remember { mutableStateOf<List<DiscountEntity>>(emptyList()) }
     var waiters by remember { mutableStateOf<List<EmployeeEntity>>(emptyList()) }
     var tables by remember { mutableStateOf<List<TableEntity>>(emptyList()) }
-    LaunchedEffect(Unit) { discounts = vm.discounts(); waiters = vm.waiters(); tables = vm.freeTables() }
+    // the tables that have an order of their own, which this one could join
+    var seated by remember { mutableStateOf<List<OrderInfo>>(emptyList()) }
+    var joining by remember { mutableStateOf<OrderInfo?>(null) }
+    LaunchedEffect(Unit) { discounts = vm.discounts(); waiters = vm.waiters(); tables = vm.freeTables(); seated = vm.seatedTables() }
 
     if (page == "customer") {
         CustomerPicker(ui.ticket?.customer_id, onDismiss = onDismiss) { id -> vm.setCustomer(id); onDismiss() }
@@ -494,7 +499,7 @@ private fun MoreSheet(ui: OrderUi, vm: OrderViewModel, onDismiss: () -> Unit, on
                 SheetHead(ui.title, "More for this order", onDismiss)
                 val keys = listOfNotNull(
                     Triple("discount", VI.Tag, L.discount + (ui.discount?.let { " · ${it.name}" } ?: "")),
-                    if (ui.dine) Triple("move", VI.Swap, "Move to another table") else null,
+                    if (ui.dine) Triple("move", VI.Swap, "Move or merge") else null,
                     Triple("waiter", VI.Person, "Change server" + (ui.waiter?.let { " · $it" } ?: "")),
                     Triple("note", VI.Note, if (ui.ticket?.note.isNullOrBlank()) "Order note" else "Order note · ${ui.ticket?.note}"),
                     Triple("customer", VI.People, "Customer" + (ui.customer?.let { " · $it" } ?: "")),
@@ -542,7 +547,7 @@ private fun MoreSheet(ui: OrderUi, vm: OrderViewModel, onDismiss: () -> Unit, on
                 if (ui.discount != null) VBtn("Take the discount off", Modifier.fillMaxWidth(), V.RedWash, V.RedText) { vm.setDiscount(null); onDismiss() }
             }
             "move" -> {
-                SheetHead("Move ${ui.title}", "Pick the free table the guests are moving to.") { page = "menu" }
+                SheetHead("Move ${ui.title}", "A free table takes it as it is. A table with an order puts both on one bill.") { page = "menu" }
                 if (tables.isEmpty()) T("Every table has an order on it.", 15.sp, 600, V.Text2)
                 tables.groupBy { it.area }.forEach { (area, list) ->
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -551,6 +556,25 @@ private fun MoreSheet(ui: OrderUi, vm: OrderViewModel, onDismiss: () -> Unit, on
                             list.forEach { t -> VBtn("${t.name} · ${t.seats}", height = 54.dp) { vm.moveTo(t); onDismiss() } }
                         }
                     }
+                }
+                if (seated.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Caps("One bill with")
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            seated.forEach { o ->
+                                VBtn("${o.table?.name ?: o.label} · ${o.ticket.covers ?: 0} ${L.covers} · ${Money.format(o.due)}", height = 54.dp, icon = VI.Swap) { joining = o; page = "merge" }
+                            }
+                        }
+                    }
+                }
+            }
+            "merge" -> {
+                val o = joining
+                val there = o?.table?.let { tableLabel(it.name) } ?: o?.label ?: ""
+                SheetHead("Put ${ui.title} and $there on one bill?", "Everything on ${ui.title} goes onto $there, and ${ui.title} becomes free. It cannot be undone: to pay apart again, use Split check.") { page = "move" }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    VBtn("Keep them apart", Modifier.weight(1f), height = 60.dp) { page = "move" }
+                    VBtn("One bill, on $there", Modifier.weight(1f), V.Blue, Color.White, 60.dp, weight = 800) { o?.let { vm.mergeInto(it, there) }; onDismiss() }
                 }
             }
             "waiter" -> {

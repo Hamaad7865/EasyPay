@@ -279,6 +279,43 @@ class TicketRepository @Inject constructor(
         pushNow(context)
     }
 
+    // One order put onto another, so the two are one bill: two tables that
+    // pay together. Everything on the first goes onto the second (what the
+    // kitchen has not had stays not sent), its guests are added, its seats
+    // are numbered on after the second's, and it is closed and lets go of its
+    // table. The second keeps its table, its waiter and its time; the bill
+    // printed for it before is no longer its bill. The server does exactly
+    // the same (0062), and asks for the same permission. An order that is
+    // partly paid cannot be merged away; the other can be put onto it.
+    suspend fun merge(fromId: String, intoId: String, by: StaffMember? = null): Result<TicketEntity> = runCatching {
+        require(fromId != intoId) { "Pick another order" }
+        val from = db.tickets().openTicket(fromId) ?: error("That order is no longer open")
+        val into = db.tickets().openTicket(intoId) ?: error("The order to join is no longer open")
+        require(db.tickets().allLines(fromId).none { it.paid && it.voided_at == null }) {
+            "Part of this order is already paid, so it cannot be moved onto another. Put the other order onto this one instead."
+        }
+        staff.allow("ticket.split_merge", "put two orders on one bill", by)
+        val after = maxOf(into.covers ?: 0, db.tickets().maxSeat(intoId) ?: 0)
+        val guests = if (into.covers == null && from.covers == null) null else minOf((into.covers ?: 0) + (from.covers ?: 0), 99)
+        val now = System.currentTimeMillis()
+        val joined = into.copy(covers = guests, bill_at = null, updated_at = now)
+        val label = into.table_id?.let { db.tables().table(it)?.name } ?: into.order_no ?: into.name ?: "Counter"
+        db.withTransaction {
+            db.tickets().moveLines(fromId, intoId, after)
+            db.service().moveKds(fromId, intoId, label)
+            db.tickets().upsertTicket(joined)
+            db.tickets().upsertTicket(from.copy(status = "cancelled", table_id = null, stage = from.stage?.let { "done" }, updated_at = now))
+            db.outbox().enqueue(op("ticket.merge", buildJsonObject {
+                put("into_ticket_id", intoId)
+                put("from_ticket_ids", buildJsonArray { add(fromId) })
+                staff.approvedBy("ticket.split_merge", by)?.let { put("approved_by", it) }
+            }))
+        }
+        if (session.activeTicket() == fromId) session.setActiveTicket(intoId)
+        pushNow(context)
+        joined
+    }
+
     // Order details kept on the ticket: tab name, guests, dining option. Same
     // rule as every write: the row and its outbox op in one transaction.
     private suspend fun updateMeta(change: (TicketEntity) -> TicketEntity, payload: JsonObjectBuilder.() -> Unit): Result<Unit> =

@@ -73,6 +73,11 @@ interface ServiceDao {
     @Query("SELECT COUNT(*) FROM kds_tickets WHERE ticket_id = :ticket AND bumped_at IS NULL")
     suspend fun kdsOpenFor(ticket: String): Int
 
+    // An order put onto another takes its kitchen tickets with it; the ones
+    // still on the screen say where the food goes now.
+    @Query("UPDATE kds_tickets SET ticket_id = :into, label = CASE WHEN bumped_at IS NULL THEN :label ELSE label END WHERE ticket_id = :from")
+    suspend fun moveKds(from: String, into: String, label: String)
+
     // the lines the kitchen still has on screen
     @Query(
         """SELECT l.* FROM ticket_lines l JOIN kds_tickets k ON k.id = l.kds_id

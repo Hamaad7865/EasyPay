@@ -11,6 +11,7 @@ import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.LineInfo
 import com.restopos.core.data.ModPick
 import com.restopos.core.data.NeedsApproval
+import com.restopos.core.data.OrderInfo
 import com.restopos.core.data.OrderOps
 import com.restopos.core.data.PosSettings
 import com.restopos.core.data.ServiceRepository
@@ -377,6 +378,20 @@ class OrderViewModel @Inject constructor(
     fun moveTo(table: TableEntity) = viewModelScope.launch {
         tickets.moveToTable(table.id).fold({ Toaster.say("Moved to ${table.name}") }, { Toaster.say(it.message) })
         reload()
+    }
+
+    // the other tables that have an order: this one's could go onto theirs
+    suspend fun seatedTables(): List<OrderInfo> {
+        val store = session.storeId() ?: return emptyList()
+        val mine = tickets.activeTicket()?.id
+        return service.orders(store).first().filter { it.open && it.table != null && it.id != mine }.sortedBy { it.table?.name }
+    }
+
+    // This order goes onto another table's: one bill, and this table is free.
+    // The order that is left is the one on the screen afterwards.
+    fun mergeInto(other: OrderInfo, name: String) = viewModelScope.launch {
+        val mine = tickets.activeTicket() ?: return@launch
+        approved("One bill now, on $name") { by -> tickets.merge(mine.id, other.id, by) }
     }
 
     fun reprintKitchen() = viewModelScope.launch { approved("Sent to the kitchen printer again") { by -> orderOps.reprintKitchen(by) } }

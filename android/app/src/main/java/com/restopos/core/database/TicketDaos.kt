@@ -81,6 +81,20 @@ interface TicketDao {
     @Query("UPDATE ticket_lines SET check_no = :check WHERE id = :id")
     suspend fun setCheck(id: String, check: Int)
 
+    // the highest seat anything on an order is for
+    @Query("SELECT MAX(seat) FROM ticket_lines WHERE ticket_id = :ticket AND voided_at IS NULL")
+    suspend fun maxSeat(ticket: String): Int?
+
+    // Everything on one order goes onto another: onto its first check, the
+    // seats numbered on by :after (one that would pass 99 goes back to the
+    // table). What was voided stays where it was. The server does the same (0062).
+    @Query(
+        """UPDATE ticket_lines SET ticket_id = :into, check_no = 1,
+           seat = CASE WHEN seat IS NULL OR seat + :after > 99 THEN NULL ELSE seat + :after END
+           WHERE ticket_id = :from AND voided_at IS NULL""",
+    )
+    suspend fun moveLines(from: String, into: String, after: Int)
+
     // Open orders that still have something to pay. They live on this tablet
     // only (the pull does not bring tickets back), so sign-out checks this.
     @Query(

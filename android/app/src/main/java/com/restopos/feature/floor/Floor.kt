@@ -32,6 +32,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -62,10 +63,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Money
+import com.restopos.core.common.tableLabel
+import com.restopos.core.data.Approvals
 import com.restopos.core.data.NeedsApproval
 import com.restopos.core.data.OrderInfo
 import com.restopos.core.data.OrderOps
 import com.restopos.core.data.ServiceRepository
+import com.restopos.core.data.StaffMember
 import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.BookingEntity
 import com.restopos.core.database.TableEntity
@@ -130,9 +134,12 @@ class FloorViewModel @Inject constructor(
     private val service: ServiceRepository,
     private val tickets: TicketRepository,
     private val orderOps: OrderOps,
+    private val approvals: Approvals,
 ) : ViewModel() {
     val zone = MutableStateFlow<String?>(null)
     val selected = MutableStateFlow<String?>(null)
+    // an order in hand: the table tapped next takes it, or the two become one bill
+    val moving = MutableStateFlow<OrderInfo?>(null)
 
     val ui: StateFlow<FloorUi> = flow { emit(session.storeId()) }.flatMapLatest { store ->
         if (store == null) flowOf(FloorUi(ready = true))
@@ -196,6 +203,37 @@ class FloorViewModel @Inject constructor(
         )
     }
 
+    fun startMove(order: OrderInfo) { moving.value = order; selected.value = null }
+    fun stopMove() { moving.value = null }
+
+    // The order in hand goes to a free table as it is: its guests, its items and its time with it.
+    fun moveTo(order: OrderInfo, table: TableEntity) = viewModelScope.launch {
+        tickets.select(order.id)
+        tickets.moveToTable(table.id).fold(
+            onSuccess = { moving.value = null; zone.value = table.area; selected.value = table.id; Toaster.say("${nameOf(order)} moved to ${tableLabel(table.name)}") },
+            onFailure = { Toaster.say(it.message) },
+        )
+    }
+
+    // The order in hand goes onto a table that has one: one bill for both, and
+    // the table it came from is free. Someone who may not transfer an order is
+    // asked for someone who may.
+    fun mergeInto(order: OrderInfo, target: TableUi, by: StaffMember? = null) {
+        val into = target.order ?: return
+        viewModelScope.launch {
+            val out = tickets.merge(order.id, into.id, by)
+            val need = out.exceptionOrNull() as? NeedsApproval
+            if (need != null && by == null) {
+                approvals.ask(need.permission, need.what) { approver -> mergeInto(order, target, approver) }
+            } else {
+                out.fold(
+                    onSuccess = { moving.value = null; zone.value = target.table.area; selected.value = target.table.id; Toaster.say("${nameOf(order)} and ${nameOf(into)} are one bill now, on ${nameOf(into)}") },
+                    onFailure = { Toaster.say(it.message) },
+                )
+            }
+        }
+    }
+
     // The booking keeps its time and name, and waits for another table.
     fun release(booking: BookingEntity, label: String) = viewModelScope.launch {
         service.changeBooking(booking.id) { it.copy(table_id = null) }
@@ -211,6 +249,8 @@ class FloorViewModel @Inject constructor(
 }
 
 private val HM = SimpleDateFormat("HH:mm", Locale.US)
+// an order as it is spoken of: "Table 3", or its number when it has no table
+private fun nameOf(o: OrderInfo): String = o.table?.let { tableLabel(it.name) } ?: o.label
 private fun minutes(since: Long, now: Long): Int = ((now - since) / 60_000).coerceAtLeast(0).toInt()
 
 // The floor plan: every table of the room that is open, what it is doing, and
@@ -227,6 +267,9 @@ fun FloorScreen(
     val ui by vm.ui.collectAsState()
     val pickedZone by vm.zone.collectAsState()
     val sel by vm.selected.collectAsState()
+    val moving by vm.moving.collectAsState()
+    // an order in hand is put down when the floor is left
+    DisposableEffect(Unit) { onDispose { vm.stopMove() } }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(15_000) } }
     val zone = pickedZone?.takeIf { ui.zones.contains(it) } ?: ui.zones.firstOrNull()
@@ -255,6 +298,15 @@ fun FloorScreen(
                 ) {
                     T("Pick a free table for ${assigning.name} · ${assigning.size} guests · ${HM.format(Date(assigning.booked_for))}", 15.sp, 700, V.VioletText, Modifier.weight(1f))
                     VBtn("Cancel", height = 40.dp, radius = 10.dp, size = 14.sp, onClick = onAssigned)
+                }
+            }
+            moving?.let { m ->
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(V.BlueWash).padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    T("${nameOf(m)} is in hand · tap a free table to move it there, or a seated one to put both on one bill", 15.sp, 700, V.BlueSoft, Modifier.weight(1f), lines = 2)
+                    VBtn("Cancel", height = 40.dp, radius = 10.dp, size = 14.sp) { vm.stopMove() }
                 }
             }
             // Another room comes in from the side its key is on. The room that
@@ -295,7 +347,9 @@ fun FloorScreen(
                         val w = unit * t.table.w.toFloat()
                         val h = unit * t.table.h.toFloat()
                         Box(Modifier.offset(ox + unit * t.table.x.toFloat(), oy + unit * t.table.y.toFloat())) {
-                            TableView(t, w, h, k, t.table.id == sel, t.order?.let { minutes(it.openedAt, now) } ?: 0) {
+                            // with an order in hand its table is ringed too, and a table held for a booking cannot take it
+                            val inHand = moving != null && t.order?.id == moving?.id
+                            TableView(t, w, h, k, t.table.id == sel || inHand, t.order?.let { minutes(it.openedAt, now) } ?: 0, dim = moving != null && t.status == "reserved") {
                                 vm.pick(if (sel == t.table.id) null else t.table.id)
                             }
                         }
@@ -305,7 +359,7 @@ fun FloorScreen(
         }
         Column(Modifier.width(360.dp).fillMaxHeight().background(V.Panel).drawBehind { drawRect(V.Stroke, size = Size(1.dp.toPx(), size.height)) }) {
             if (picked == null) Overview(ui, now, vm, onOrder, onBookings)
-            else Picked(picked, now, vm, assigning, onAssigned, onOrder, onPay)
+            else Picked(picked, now, vm, assigning, moving?.takeIf { it.id != picked.order?.id }, onAssigned, onOrder, onPay)
         }
     }
 }
@@ -410,7 +464,7 @@ private fun seats(shape: String, n: Int, w: Float, h: Float, g: Float): Pair<Lis
 // doing in its colour, which fades to the next when that changes. It gives
 // under the finger, and the ring round the one that is picked closes in on it.
 @Composable
-private fun TableView(t: TableUi, w: Dp, h: Dp, k: Float, selected: Boolean, mins: Int, onTap: () -> Unit) {
+private fun TableView(t: TableUi, w: Dp, h: Dp, k: Float, selected: Boolean, mins: Int, dim: Boolean = false, onTap: () -> Unit) {
     val round = t.table.shape == "round"
     val shape = if (round) RoundedCornerShape(50) else RoundedCornerShape(14.dp)
     val fade = tween<Color>(280)
@@ -425,10 +479,11 @@ private fun TableView(t: TableUi, w: Dp, h: Dp, k: Float, selected: Boolean, min
     val source = remember { MutableInteractionSource() }
     val press = rememberPress(source, 0.97f)
     val ring = animateFloatAsState(if (selected) 1f else 0f, spring(dampingRatio = 0.7f, stiffness = 500f), label = "ring")
+    val faded = animateFloatAsState(if (dim) 0.4f else 1f, tween(180), label = "dim")
     val (chairs, room) = remember(t.table.shape, t.table.seats, w, h, k) { seats(t.table.shape, t.table.seats.coerceIn(0, 14), w.value, h.value, 7.5f * k) }
     Box(
         Modifier.size(w, h)
-            .graphicsLayer { val s = press.value * (1f + 0.03f * ring.value); scaleX = s; scaleY = s }
+            .graphicsLayer { val s = press.value * (1f + 0.03f * ring.value); scaleX = s; scaleY = s; alpha = faded.value }
             .drawBehind {
                 val long = minOf(22f * k, room - 4f).coerceAtLeast(8f).dp.toPx()
                 val deep = (9f * k).dp.toPx()
@@ -558,9 +613,22 @@ private fun ColumnScope.Overview(ui: FloorUi, now: Long, vm: FloorViewModel, onO
     }
 }
 
-// A table was tapped: seat it, see its order, or greet its booking.
+// One of the two orders that are about to be one bill.
 @Composable
-private fun ColumnScope.Picked(t: TableUi, now: Long, vm: FloorViewModel, assigning: BookingEntity?, onAssigned: () -> Unit, onOrder: () -> Unit, onPay: () -> Unit) {
+private fun Bill(name: String, o: OrderInfo) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            T(name, 15.sp, 700)
+            T("${o.ticket.covers ?: 0} ${L.covers} · ${o.units} item${if (o.units == 1) "" else "s"}", 13.sp, 500, V.Text2)
+        }
+        T(Money.format(o.due), 15.sp, 700, V.Dim)
+    }
+}
+
+// A table was tapped: seat it, see its order, or greet its booking. With an
+// order in hand, it is where that order might go.
+@Composable
+private fun ColumnScope.Picked(t: TableUi, now: Long, vm: FloorViewModel, assigning: BookingEntity?, moving: OrderInfo?, onAssigned: () -> Unit, onOrder: () -> Unit, onPay: () -> Unit) {
     val chip = when (t.status) {
         "open" -> Triple(L.seated, V.BlueWash, V.BlueSoft); "bill" -> Triple(L.billAsked, V.AmberWash, V.AmberText)
         "reserved" -> Triple(L.reserved, V.VioletWash, V.VioletText); else -> Triple(L.free, V.TableFree, V.Dim)
@@ -577,6 +645,46 @@ private fun ColumnScope.Picked(t: TableUi, now: Long, vm: FloorViewModel, assign
     Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
     val o = t.order
     when {
+        // an order is in hand and this is where it might go
+        moving != null && o != null -> {
+            val here = tableLabel(t.table.name)
+            val guests = (moving.ticket.covers ?: 0) + (o.ticket.covers ?: 0)
+            val units = moving.units + o.units
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                T("Put ${nameOf(moving)} and $here on one bill?", 17.sp, 800, lines = 2)
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(V.Key2).padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Bill(nameOf(moving), moving)
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(V.RowLine))
+                    Bill(here, o)
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke2))
+                    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            T("Together, on $here", 15.sp, 800)
+                            T("$guests ${L.covers} · $units item${if (units == 1) "" else "s"}", 13.sp, 500, V.Text2)
+                        }
+                        T(Money.format(moving.due + o.due), 18.sp, 800)
+                    }
+                }
+                T("Everything on ${nameOf(moving)} goes onto $here, and ${nameOf(moving)} becomes free. It cannot be undone: to pay apart again, use Split check.", 13.sp, 500, V.Text2, lines = 5, height = 19.sp)
+                VBtn("One bill, on $here", Modifier.fillMaxWidth(), V.Blue, Color.White, 60.dp, size = 16.sp, weight = 800) { vm.mergeInto(moving, t) }
+                VBtn("Not this table", Modifier.fillMaxWidth()) { vm.pick(null) }
+            }
+        }
+        moving != null && t.status == "free" -> {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                T("Move ${nameOf(moving)} to ${tableLabel(t.table.name)}?", 17.sp, 800, lines = 2)
+                T("Its order, its guests and its time go with it, and ${nameOf(moving)} becomes free.", 13.sp, 500, V.Text2, lines = 4, height = 19.sp)
+                VBtn("Move to ${tableLabel(t.table.name)}", Modifier.fillMaxWidth(), V.Blue, Color.White, 60.dp, size = 16.sp, weight = 800) { vm.moveTo(moving, t.table) }
+                VBtn("Not this table", Modifier.fillMaxWidth()) { vm.pick(null) }
+            }
+        }
+        moving != null -> {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                T("${tableLabel(t.table.name)} is held for a booking", 17.sp, 800, lines = 2)
+                T("${nameOf(moving)} cannot go here while it is. Pick another table, or release this one first.", 13.sp, 500, V.Text2, lines = 4, height = 19.sp)
+                VBtn("Not this table", Modifier.fillMaxWidth()) { vm.pick(null) }
+            }
+        }
         o != null -> {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Stat("Covers", (o.ticket.covers ?: 0).toString(), Modifier.weight(1f))
@@ -610,6 +718,8 @@ private fun ColumnScope.Picked(t: TableUi, now: Long, vm: FloorViewModel, assign
                         VBtn(L.pay, Modifier.weight(1f), V.Green, V.GreenInk, weight = 800) { vm.open(o, onPay) }
                     }
                 }
+                // to another table, or onto another table's bill
+                VBtn("Move or merge", Modifier.fillMaxWidth(), icon = VI.Swap) { vm.startMove(o) }
                 VBtn(L.openOrder, Modifier.fillMaxWidth(), V.Blue, Color.White, 60.dp, size = 16.sp, weight = 800) { vm.open(o, onOrder) }
             }
         }
