@@ -6,9 +6,11 @@ import { Contact, CornerDownLeft, LayoutGrid, type LucideIcon, Search, Tags, Use
 import { PAGES } from "./nav";
 import type { HitGroup } from "./search/hits";
 
-// The search in the top bar (Ctrl K, or ⌘K on a Mac). Pages are found here,
-// at once, from the same list the side menu is drawn from; items, categories,
-// customers, tables and staff are asked of the server once typing pauses.
+// The search (Ctrl K, or ⌘K on a Mac). Pages are found here, at once, from
+// the same list the side menu is drawn from; items, categories, customers,
+// tables and staff are asked of the server once typing pauses. This is the box
+// alone, put on the page once: the field in the menu and the sign on the rail
+// open it with openSearch().
 
 type Row = { key: string; title: string; sub: string; href: string; icon: LucideIcon };
 type Section = { label: string; rows: Row[] };
@@ -28,6 +30,18 @@ function pagesFor(q: string): Row[] {
   return list.slice(0, 7).map((p) => ({ key: p.href, title: p.label, sub: p.group ?? "Home", href: p.href, icon: p.icon }));
 }
 
+const OPEN = "easypay:search";
+export const openSearch = () => window.dispatchEvent(new Event(OPEN));
+
+// The shortcut as this visitor's keyboard names it, so only known in the browser.
+export function useSearchKey() {
+  const [key, setKey] = useState("Ctrl K");
+  useEffect(() => {
+    if (/Mac|iPhone|iPad/.test(navigator.platform)) setKey("⌘K");
+  }, []);
+  return key;
+}
+
 export function SearchBox() {
   const router = useRouter();
   const path = usePathname();
@@ -37,11 +51,6 @@ export function SearchBox() {
   const [found, setFound] = useState<HitGroup[]>([]);
   const [asking, setAsking] = useState(false);
   const [at, setAt] = useState(0);
-  // the key's name is the visitor's, so it is only known in the browser
-  const [key, setKey] = useState("Ctrl K");
-  useEffect(() => {
-    if (/Mac|iPhone|iPad/.test(navigator.platform)) setKey("⌘K");
-  }, []);
 
   const show = () => {
     if (dialog.current?.open) return;
@@ -62,7 +71,11 @@ export function SearchBox() {
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener(OPEN, show);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(OPEN, show);
+    };
   }, []);
 
   // arriving on a page closes the search
@@ -126,11 +139,6 @@ export function SearchBox() {
   let n = -1;
   return (
     <>
-      <button type="button" className="search-trigger" onClick={show} aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K">
-        <Search aria-hidden="true" />
-        <span>Search</span>
-        <kbd>{key}</kbd>
-      </button>
       <dialog
         ref={dialog}
         className="search-dialog"

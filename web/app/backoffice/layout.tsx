@@ -1,6 +1,8 @@
 import { isSuspended, tenantContext } from "@/lib/tenant";
 import { auth } from "@/lib/auth/server";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { GROUPS } from "./nav";
 import { Side } from "./side";
 
 export default async function BackofficeLayout({ children }: { children: React.ReactNode }) {
@@ -12,9 +14,14 @@ export default async function BackofficeLayout({ children }: { children: React.R
     await auth.signOut();
     redirect("/login");
   }
+  // how the menu was left in this browser, known before the page is drawn
+  const jar = await cookies();
+  const groups = jar.get("bo-groups")?.value;
   return (
     <div className="bo">
       <Side
+        folded={jar.get("bo-menu")?.value === "closed"}
+        opened={groups == null ? null : groups.split(".").filter((g) => GROUPS.some((x) => x.id === g))}
         restaurant={ctx.tenantName ?? "Restaurant"}
         // the start of the restaurant's id: what to quote to EasyPay support
         id={ctx.tenantId.slice(0, 8).toUpperCase()}

@@ -114,7 +114,7 @@ body {
 /* The backdrop: a cool mist, with the logo's green rising from one corner and
    a soft blue from the other. It stays put while the page scrolls. */
 .bo {
-  display: grid; grid-template-columns: 268px minmax(0, 1fr); min-height: 100vh; padding: 14px 0 0 14px;
+  display: grid; grid-template-columns: auto auto minmax(0, 1fr); min-height: 100vh; padding: 14px 0 0 14px;
   background:
     radial-gradient(62vw 58vh at 0% 100%, rgba(63, 132, 67, 0.15), transparent 70%),
     radial-gradient(58vw 62vh at 100% 100%, rgba(112, 126, 240, 0.17), transparent 70%),
@@ -123,19 +123,104 @@ body {
   background-attachment: fixed;
 }
 
-/* The menu: a pane of frosted glass floating on the backdrop. */
+/* The rail: round signs down the far left, one for the dashboard and one for
+   each group of pages; at its foot, who is signed in and the switch that
+   folds the menu away. The sign of the group you are in is filled. */
+.rail {
+  position: sticky; top: 14px; z-index: 6; height: calc(100vh - 28px); width: 46px; margin-right: 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.rail.dev { padding-bottom: 54px; }
+.rail-logo { width: 46px; height: 46px; flex: none; margin-bottom: 8px; display: grid; place-items: center; border-radius: 50%; background: #fff; box-shadow: var(--shadow-sm); }
+.rail-logo img { height: 30px; width: auto; display: block; }
+.rail-item { position: relative; display: grid; }
+.rail-gap { flex: 1; }
+.rail-sign {
+  position: relative; width: 44px; height: 44px; flex: none; padding: 0; display: grid; place-items: center; cursor: pointer;
+  border: 1px solid var(--glass-line); border-radius: 50%; background: rgba(255, 255, 255, 0.72); color: var(--ink2);
+  font: inherit; font-size: 14px; font-weight: 700; text-decoration: none;
+  box-shadow: 0 1px 2px rgba(22, 28, 45, 0.05);
+  transition: background-color 0.18s, color 0.18s, border-color 0.18s, box-shadow 0.2s, transform 0.25s var(--spring);
+}
+.rail-sign svg { width: 18px; height: 18px; }
+.rail-sign:hover { background: #fff; color: var(--ink); transform: translateY(-1px) scale(1.05); box-shadow: 0 10px 18px -10px rgba(22, 28, 45, 0.45); }
+.rail-sign:active { transform: scale(0.93); }
+.rail-sign:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rail-sign.on { background: var(--ink); border-color: var(--ink); color: #fff; box-shadow: 0 10px 18px -8px rgba(17, 24, 39, 0.6); }
+.rail-me { background: var(--accent-soft); color: var(--accent); }
+.rail-me:hover { background: var(--accent-soft); color: var(--accent-hover); }
+/* the search has its field in the menu; it is on the rail only while the menu is folded away */
+.rail:not([data-folded]) .rail-when-folded { display: none; }
+/* With the menu folded away a sign says what it is beside itself; with the
+   menu showing, the menu says it. Not while its own card is open. */
+.rail-sign[data-tip]::after {
+  content: attr(data-tip); position: absolute; left: calc(100% + 10px); top: 50%; z-index: 2; pointer-events: none;
+  padding: 6px 11px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap;
+  opacity: 0; transform: translate(-6px, -50%); transition: opacity 0.12s, transform 0.2s var(--glide);
+}
+.rail[data-folded] .rail-sign:hover::after, .rail[data-folded] .rail-sign:focus-visible::after { opacity: 1; transform: translate(0, -50%); }
+.rail .rail-item:has(.rail-card:popover-open) .rail-sign::after { display: none; }
+
+/* A card beside the rail: a group's pages while the menu is folded away, or
+   who is signed in. It is the browser's own popover, so Esc and a click
+   anywhere else close it. */
+.rail-card {
+  position: fixed; inset: auto; margin: 0; width: 232px; max-height: calc(100vh - 24px); overflow-y: auto; padding: 8px;
+  border: 1px solid var(--glass-line); border-radius: 20px; background: rgba(255, 255, 255, 0.94); color: var(--ink);
+  -webkit-backdrop-filter: blur(22px); backdrop-filter: blur(22px);
+  box-shadow: 0 1px 2px rgba(22, 28, 45, 0.06), 0 22px 48px -16px rgba(22, 28, 45, 0.35);
+}
+@keyframes card-in { from { opacity: 0; transform: translateX(-10px) scale(0.97); } }
+.rail-card:popover-open { animation: card-in 0.26s var(--glide); transform-origin: left top; }
+.rail-card > b { display: block; padding: 8px 10px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink3); }
+.rail-card a {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px;
+  color: var(--ink2); font-size: 13.5px; font-weight: 500; text-decoration: none;
+  transition: background-color 0.15s, color 0.15s;
+}
+.rail-card:popover-open a { animation: rise 0.4s var(--glide) backwards; animation-delay: calc(var(--i) * 26ms + 40ms); }
+.rail-card a svg { width: 16px; height: 16px; flex: none; color: var(--ink3); }
+.rail-card a:hover { background: var(--bg); color: var(--ink); }
+.rail-card a.on { background: var(--ink); color: #fff; font-weight: 600; }
+.rail-card a.on svg { color: #fff; }
+.rail-card a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rail-who:popover-open { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 12px; }
+.rail-who > span:nth-child(2) { flex: 1; min-width: 0; display: grid; }
+.rail-who b { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-who small { font-size: 12px; color: var(--ink3); }
+.rail-who form { display: contents; }
+
+/* The menu: a pane of frosted glass floating on the backdrop. Folded away it
+   closes to nothing, and the page takes the room; what is in it keeps its own
+   width meanwhile, so nothing inside is squeezed on the way. */
 .bo-side {
-  position: sticky; top: 14px; height: calc(100vh - 28px);
-  display: flex; flex-direction: column;
+  position: sticky; top: 14px; height: calc(100vh - 28px); width: 268px; overflow: hidden;
   padding: 16px 12px 12px;
   background: var(--glass); -webkit-backdrop-filter: blur(22px) saturate(1.3); backdrop-filter: blur(22px) saturate(1.3);
   border: 1px solid var(--glass-line); border-radius: 26px;
   box-shadow: var(--shadow-sm);
+  transition: width 0.42s var(--glide), padding 0.42s var(--glide), opacity 0.22s ease, border-color 0.2s;
+}
+.bo-side-in { width: 242px; height: 100%; display: flex; flex-direction: column; transition: transform 0.42s var(--glide); }
+@media (min-width: 1001px) {
+  .bo-side[data-folded] { width: 0; padding-left: 0; padding-right: 0; border-left-width: 0; border-right-width: 0; opacity: 0; box-shadow: none; }
+  .bo-side[data-folded] .bo-side-in { transform: translateX(-24px); }
+  /* the logo is on the rail, and so is who is signed in */
+  .bo-side .bo-brand-logo, .bo-side .bo-user { display: none; }
+  .bo-side .bo-brand { padding-left: 10px; }
+  /* with the menu away the page starts nearer the rail */
+  .bo:has(> .bo-side[data-folded]) .bo-main { padding-left: 14px; }
 }
 /* the name, the restaurant, the search and who is signed in stay put; only
    the list of pages scrolls, with no bar */
 .bo-brand, .bo-restaurant, .bo-user { flex: none; }
-.bo-nav { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 2px 4px 16px; scrollbar-width: none; }
+.bo-main { transition: padding 0.42s var(--glide); }
+/* with several groups open the list is longer than the pane: it fades out at
+   the foot, which says there is more below */
+.bo-nav {
+  flex: 1; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 2px 4px 30px; scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(#000 calc(100% - 30px), transparent); mask-image: linear-gradient(#000 calc(100% - 30px), transparent);
+}
 .bo-nav::-webkit-scrollbar { display: none; }
 .bo-brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 14px; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
 .bo-brand-logo { height: 34px; width: auto; display: block; }
@@ -195,12 +280,13 @@ body {
   border: solid var(--line-strong); border-width: 0 0 1.5px 1.5px; border-bottom-left-radius: 9px; pointer-events: none;
 }
 .bo-group-list a:not(:last-child)::after { content: ""; position: absolute; left: -14px; top: 50%; bottom: -3px; border-left: 1.5px solid var(--line-strong); pointer-events: none; }
-/* what is below a group someone has just opened gives a little and settles */
+/* what is below the group someone has just opened gives a little and settles
+   (that group only: the ones already open stay still) */
 @keyframes nav-settle { 0%, 40% { margin-bottom: 0; } 68% { margin-bottom: 7px; } 86% { margin-bottom: -1px; } 100% { margin-bottom: 0; } }
-.bo-nav[data-touched] .bo-group.open > .bo-group-panel { animation: nav-settle 0.6s ease-out; }
+.bo-group[data-fresh].open > .bo-group-panel { animation: nav-settle 0.6s ease-out; }
 @media (prefers-reduced-motion: reduce) {
-  .bo-group-panel, .bo-group-list a, .bo-group.open .bo-group-list a, .bo-nav .bo-group-chev { transition: none; }
-  .bo-nav[data-touched] .bo-group.open > .bo-group-panel { animation: none; }
+  .bo-group-panel, .bo-group-list a, .bo-group.open .bo-group-list a, .bo-nav .bo-group-chev, .bo-side, .bo-side-in, .rail-sign, .rail-sign[data-tip]::after { transition: none; }
+  .bo-group[data-fresh].open > .bo-group-panel, .rail-card:popover-open, .rail-card:popover-open a { animation: none; }
 }
 
 /* who is signed in, and the way out */
@@ -212,15 +298,15 @@ body {
 .bo-user b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bo-user small { font-size: 11.5px; color: var(--ink3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bo-user form { display: contents; }
-.bo-user button {
+.bo-user button, .rail-who button {
   width: 34px; height: 34px; flex: none; padding: 0; display: grid; place-items: center; cursor: pointer;
   border: 0; border-radius: 50%; background: transparent; color: var(--ink2);
   transition: background-color 0.15s, color 0.15s, transform 0.2s var(--spring);
 }
-.bo-user button:hover { background: var(--ink); color: #fff; }
-.bo-user button:active { transform: scale(0.9); }
-.bo-user button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.bo-user button svg { width: 16px; height: 16px; }
+.bo-user button:hover, .rail-who button:hover { background: var(--ink); color: #fff; }
+.bo-user button:active, .rail-who button:active { transform: scale(0.9); }
+.bo-user button:focus-visible, .rail-who button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bo-user button svg, .rail-who button svg { width: 16px; height: 16px; }
 .bo-avatar { width: 32px; height: 32px; flex: none; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 700; font-size: 13px; }
 
 .bo-body { min-width: 0; display: flex; flex-direction: column; }
@@ -757,7 +843,7 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 .paper hr { border: 0; border-top: 1px dashed #777; margin: 6px 0; }
 
 @media print {
-  .bo-side, .filters, .page-actions, .no-print { display: none !important; }
+  .rail, .bo-side, .filters, .page-actions, .no-print { display: none !important; }
   .bo { display: block; padding: 0; background: #fff; }
   .bo-main { padding: 0; max-width: none; }
   body { background: #fff; }
@@ -766,7 +852,10 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 
 @media (max-width: 1000px) {
   .bo { grid-template-columns: 1fr; padding: 12px 12px 0; }
-  .bo-side { position: static; height: auto; display: block; }
+  .rail { display: none; }
+  .bo-side { position: static; height: auto; width: auto; }
+  .bo-side-in { width: auto; height: auto; display: block; }
+  .bo-nav { -webkit-mask-image: none; mask-image: none; padding-bottom: 12px; }
   .bo-nav { overflow: visible; }
   .bo-main { padding: 20px 4px 40px; }
   .floor-wrap, .grid-2, .grid-3, .form-row { grid-template-columns: 1fr; }
