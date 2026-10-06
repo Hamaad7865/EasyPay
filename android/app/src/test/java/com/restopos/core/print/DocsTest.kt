@@ -155,6 +155,41 @@ class DocsTest {
         }
     }
 
+    // Closing the day counts the drawer, so the one closing report carries it;
+    // a closing made with no day open (a till with no PINs) has no drawer to show.
+    @Test
+    fun theDayClosingCarriesTheDrawerItWasClosedWith() {
+        val z = ZDoc(
+            8, "T1", 1_790_000_000_000, 1_790_000_300_000, "Priya", 6, 250000, 0, 0, 0, 32609,
+            listOf(DocAmount("Cash", 250000, 6)), emptyList(), emptyList(), 20000, 7000, emptyList(), "S1-T1-000113", "S1-T1-000118",
+        )
+        val without = read(Docs.z(z, shop, Paper(48, 3, true), 2, detailed = true)).lines
+        assertFalse(without.any { it.contains("CASH DRAWER") })
+        assertFalse(without.any { it.startsWith("COUNTED") })
+        val closed = z.copy(openedAt = 1_790_000_000_000, openedBy = "Asha", float = 100000, cashTaken = 250000, expected = 363000, counted = 362000)
+        val all = read(Docs.z(closed, shop, Paper(48, 3, true), 2, detailed = true)).lines
+        assertTrue(all.any { it.startsWith("Opened by") && it.endsWith("Asha") })
+        assertTrue(all.any { it.contains("CASH DRAWER") })
+        assertTrue(all.any { it.startsWith("Opening float") && it.endsWith("1,000.00") })
+        assertTrue(all.any { it.startsWith("Expected in drawer") && it.endsWith("3,630.00") })
+        assertTrue(all.any { it.startsWith("COUNTED") && it.endsWith("Rs 3,620.00") })
+        assertTrue(all.any { it.startsWith("SHORT") && it.endsWith("-10.00") })
+        assertTrue(all.any { it.startsWith("Signature") })
+    }
+
+    // The day so far, from the drawer's side, is the X report; once the day
+    // is closed the same figures are its cash drawer report.
+    @Test
+    fun theDrawerReportIsTheXReportWhileTheDayIsOpen() {
+        val open = ShiftDoc("T1", "Priya", 1_790_000_000_000, null, null, 100000, listOf(DocAmount("Cash", 250000, 6)),
+            250000, 20000, 7000, emptyList(), 363000, null, 6, 250000, 0, 0, 0)
+        val x = read(Docs.shift(open, shop, Paper(48, 3, true), 2)).lines.joinToString("\n")
+        assertTrue(x.contains("X REPORT - DAY SO FAR"))
+        assertFalse(x.contains("SALES PERIOD"))
+        val closed = read(Docs.shift(open.copy(closedBy = "Priya", closedAt = 1_790_000_300_000, counted = 362000), shop, Paper(48, 3, true), 2)).lines.joinToString("\n")
+        assertTrue(closed.contains("CASH DRAWER REPORT"))
+    }
+
     @Test
     fun theShiftReportBalancesTheDrawer() {
         val s = ShiftDoc("T1", "Priya", 1_790_000_000_000, "Priya", 1_790_000_300_000, 100000, listOf(DocAmount("Cash", 250000, 6)),

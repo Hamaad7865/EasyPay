@@ -198,13 +198,13 @@ fun CashScreen(vm: CashViewModel, onOpenPeriod: () -> Unit, onClosed: () -> Unit
         Column(Modifier.fillMaxSize().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically)) {
             T("The day is not open", 26.sp, 700, spacing = (-0.6).sp)
             T(
-                if (ui.unclosed) "Sales from before were never closed. Close them first: their Z report prints, and the next day starts clean."
+                if (ui.unclosed) "The sales since the last closing are not closed yet. Closing them prints their Z report, and the next day starts clean."
                 else "Open it to take cash: the cash in the drawer is counted first.",
                 15.sp, 500, V.Text2, lines = 3,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 VBtn("Open the day", bg = V.Blue, fg = Color.White, height = 60.dp, weight = 800, pad = 24.dp, onClick = onOpenPeriod)
-                if (ui.unclosed) VBtn("Close the earlier sales · Z report", height = 60.dp, pad = 24.dp) { vm.closeUnclosed() }
+                if (ui.unclosed) VBtn("Close these sales · Z report", height = 60.dp, pad = 24.dp) { vm.closeUnclosed() }
             }
         }
         return

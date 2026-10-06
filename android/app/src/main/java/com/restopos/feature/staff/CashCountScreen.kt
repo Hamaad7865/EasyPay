@@ -114,7 +114,7 @@ fun CashCountScreen(counting: Boolean = false, vm: StaffViewModel = hiltViewMode
                         }
                         if (!counting && unclosed) {
                             Text(
-                                "Sales from before were never closed. Opening the day closes them first and prints their Z report, so they stay out of this day.",
+                                "The sales since the last closing are not closed yet. Opening the day closes them first and prints their Z report, so they stay out of this day.",
                                 Modifier.padding(top = 14.dp), color = Pos.Pink, fontSize = 13.sp,
                             )
                         }
