@@ -415,6 +415,8 @@ body {
 details > summary { list-style: none; }
 details > summary::-webkit-details-marker { display: none; }
 details.card[open] > summary.card-head { background: #fafbfc; }
+/* closed, the card is its head alone: no rule under it */
+details.card:not([open]) > summary.card-head { border-bottom: 0; }
 
 /* ---- forms ---- */
 
