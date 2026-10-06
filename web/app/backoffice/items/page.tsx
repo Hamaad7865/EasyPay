@@ -202,7 +202,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
     <div>
       <PageHead title="Items" lede="What the till sells. Find an item, change its price or take it off sale in the list; tap its name for the rest: its tax, add-ons, category and barcode." />
       {/* a save the panel was refused says why in the panel, which is open again */}
-      {!(start.edit && one(sp.err)) && <Flash sp={sp} />}
+      {!(one(sp.err) && (start.edit === "new" || items.some((i) => i.id === start.edit))) && <Flash sp={sp} />}
       {/* Keyed by what the address asks for: arriving from the search or the
           Categories page with another ?category= starts the table again from it. */}
       <ItemsTable

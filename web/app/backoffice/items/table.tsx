@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Plus, UtensilsCrossed } from "lucide-react";
 import { Chev, downloadCsv, fold, NoMatch, Seg, SortTh, type Start, TableSearch, useTable } from "../table-kit";
 import { type AddonGroup, ItemEditor, type Tax } from "./editor";
@@ -61,6 +61,21 @@ export function ItemsTable({
   const edited = editing && editing !== "new" ? (items.find((i) => i.id === editing) ?? null) : null;
   const panelOpen = editing === "new" || edited !== null;
   const edit = (id: string) => t.set("edit", id);
+  // Why the panel's last save was refused: said in the panel the server sent
+  // back open, and gone once that panel is shut.
+  const refusal = () => (start.edit && problem ? { id: start.edit, why: problem } : null);
+  const [refused, setRefused] = useState(refusal);
+  // A save comes back as a fresh draw of the list. When it says what the one
+  // before said ("saved", twice running) the table is not started again, so
+  // the panel takes its cue from the address here: shut after a save, open
+  // with the reason after a refusal.
+  const drawn = useRef(items);
+  useEffect(() => {
+    if (drawn.current === items) return;
+    drawn.current = items;
+    edit(start.edit ?? "");
+    setRefused(refusal());
+  });
   // the same thing as an address, for a middle click or a new tab
   const editHref = (id: string) => {
     const b = t.back(undefined, ["edit"]);
@@ -297,9 +312,12 @@ export function ItemsTable({
         groups={groups}
         category={cat && cat !== "none" ? cat : ""}
         back={t.back(undefined, ["edit"])}
-        problem={start.edit ? problem : ""}
+        problem={refused && refused.id === editing ? refused.why : ""}
         save={saveItem}
-        onClose={() => edit("")}
+        onClose={() => {
+          edit("");
+          setRefused(null);
+        }}
       />
     </section>
   );
