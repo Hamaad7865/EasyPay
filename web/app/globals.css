@@ -680,3 +680,24 @@ td.num .cell-sub .delta { margin-left: 4px; }
 .idle small { display: block; font-size: 12px; font-weight: 400; color: var(--ink3); }
 .idle .off { background: var(--bg); color: var(--ink2); }
 .idle-more, .insight-foot { margin: 12px 0 0 !important; font-size: 12.5px; }
+
+/* ---- a table with its filters and sorting (Items) ---- */
+
+.table-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: #fcfcfd; }
+/* a column title that sorts: a button that looks like the title it replaces */
+.bo-main button.th-sort {
+  display: inline-flex; align-items: center; gap: 5px; height: auto; padding: 0; border: 0; background: none; box-shadow: none;
+  font: inherit; font-weight: 600; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer;
+}
+.bo-main button.th-sort:hover { background: none; color: var(--ink); }
+.bo-main button.th-sort.on { color: var(--accent); }
+.bo-main button.th-sort svg { width: 13px; height: 13px; opacity: 0.55; }
+.bo-main button.th-sort.on svg { opacity: 1; }
+.bo-main button.th-sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.open-hint { margin: 10px 0 0 !important; font-size: 12.5px; }
+
+/* A link dressed as a button keeps the button's lettering, not a link's green
+   (which on the green button could not be read). */
+.bo-main a.btn { color: #fff; }
+.bo-main a.btn.btn-quiet { color: var(--ink); }
+.bo-main a.btn.btn-danger { color: var(--red); }

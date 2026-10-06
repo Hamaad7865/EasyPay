@@ -2,17 +2,26 @@ import Link from "next/link";
 import { Plus, UtensilsCrossed } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
-import { act, on, Refused, uuid } from "@/lib/action";
+import { act, on, Refused, UUID, uuid } from "@/lib/action";
 import { parseRs } from "@/lib/money";
+import { fmtQty } from "@/lib/report";
 import { loadSettings, money } from "@/lib/settings";
 import { Empty, Flash, one, PageHead, type Search } from "../ui";
+import { type Item, ItemsTable } from "./table";
 
 type ItemRow = {
   id: string;
   name: string;
   price: string;
   is_available: boolean;
+  category_id: string | null;
   cat_name: string | null;
+  cat_color: string | null;
+  cat_order: number | null;
+  sku: string | null;
+  barcode: string | null;
+  tracked: boolean;
+  stock_qty: string;
   tax: string | null;
   addons: number;
 };
@@ -38,9 +47,9 @@ async function quickSave(f: FormData) {
 
 export default async function ItemsPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
-  const cat = one(sp.category) || one(sp.cat);
-  const q = one(sp.q).trim();
   const ctx = await tenantContext();
+  // Every item comes down once; the table finds, filters and sorts them in
+  // the browser, as you type.
   const d = await withTenant(ctx.tenantId, async (c) => ({
     settings: await loadSettings(c, ctx.tenantId),
     cats: (
@@ -48,84 +57,59 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
     ).rows as { id: string; name: string }[],
     items: (
       await c.query(
-        `select i.id, i.name, i.price, i.is_available, c.name as cat_name,
+        `select i.id, i.name, i.price, i.is_available, i.category_id, i.sku, i.barcode,
+                c.name as cat_name, c.color as cat_color, c.sort_order as cat_order,
+                (i.track_stock or coalesce(c.is_stock, false)) as tracked, coalesce(i.stock_qty, 0) as stock_qty,
                 (select string_agg(t.name, ', ') from item_taxes it join taxes t on t.tenant_id = it.tenant_id and t.id = it.tax_id
                   where it.tenant_id = i.tenant_id and it.item_id = i.id and it.deleted_at is null) as tax,
                 (select count(*)::int from item_modifier_groups g where g.tenant_id = i.tenant_id and g.item_id = i.id and g.deleted_at is null) as addons
            from items i left join categories c on c.id = i.category_id and c.tenant_id = i.tenant_id
           where i.deleted_at is null and i.tenant_id = $1
-            and ($2::uuid is null or i.category_id = $2::uuid)
-            and ($3 = '' or i.name ilike '%' || $3 || '%')
-          order by c.sort_order nulls last, i.name`,
-        [ctx.tenantId, /^[0-9a-f-]{36}$/i.test(cat) ? cat : null, q],
+          order by c.sort_order nulls last, c.name nulls last, i.name`,
+        [ctx.tenantId],
       )
     ).rows as ItemRow[],
   }));
-  const here = "/backoffice/items" + (cat ? `?category=${cat}` : "");
+  const items: Item[] = d.items.map((r) => ({
+    id: r.id,
+    name: r.name,
+    price: Number(r.price),
+    shown: money(Number(r.price), d.settings.decimals),
+    is_available: r.is_available,
+    cat_id: r.category_id,
+    cat: r.cat_name,
+    cat_color: r.cat_color,
+    cat_order: r.cat_order ?? Number.MAX_SAFE_INTEGER,
+    sku: r.sku?.trim() || null,
+    barcode: r.barcode?.trim() || null,
+    tax: r.tax,
+    addons: r.addons,
+    stock: r.tracked ? Number(r.stock_qty) : null,
+    stock_shown: fmtQty(Number(r.stock_qty)),
+  }));
+  // the Categories page and the search link here with ?category=; `cat` is its older spelling
+  const cat = one(sp.category) || one(sp.cat);
+  const open = one(sp.open);
   return (
     <div>
-      <PageHead title="Items" lede="What the till sells. Change a price or mark something sold out here; open an item for its tax, add-ons and category.">
+      <PageHead title="Items" lede="What the till sells. Find an item, change its price or take it off sale here; open an item for its tax, add-ons and category.">
         <Link href="/backoffice/items/edit" className="btn">
           <Plus aria-hidden="true" />
           Add item
         </Link>
       </PageHead>
       <Flash sp={sp} />
-      <p className="bo-chips">
-        <Link href="/backoffice/items" className={cat ? undefined : "on"}>All</Link>
-        {d.cats.map((c) => (
-          <Link key={c.id} href={`/backoffice/items?category=${c.id}`} className={cat === c.id ? "on" : undefined}>{c.name}</Link>
-        ))}
-      </p>
-      <form className="bo-toolbar" action="/backoffice/items">
-        {cat && <input type="hidden" name="category" value={cat} />}
-        <input name="q" defaultValue={q} placeholder="Search items" style={{ minWidth: 260 }} />
-        <button type="submit" className="btn-quiet">Search</button>
-      </form>
-      {d.items.length === 0 ? (
-        <Empty icon={UtensilsCrossed} title={q ? "No item matches that search" : "No items here yet"}>
+      {items.length === 0 ? (
+        <Empty icon={UtensilsCrossed} title="No items here yet">
           <Link href="/backoffice/items/edit">Add the first one</Link>
         </Empty>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th>Category</th>
-              <th>Tax</th>
-              <th>Add-ons</th>
-              <th className="num">Price</th>
-              <th>Change price</th>
-              <th>On sale</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {d.items.map((it) => (
-              <tr key={it.id}>
-                <td><Link href={`/backoffice/items/edit?id=${it.id}`} className="strong">{it.name}</Link></td>
-                <td>{it.cat_name ?? <span className="muted">None</span>}</td>
-                <td>{it.tax ?? <span className="badge amber">No tax set</span>}</td>
-                <td>{it.addons > 0 ? `${it.addons} ${it.addons === 1 ? "group" : "groups"}` : <span className="muted">None</span>}</td>
-                <td className="num">{money(Number(it.price), d.settings.decimals)}</td>
-                <td><input form={"i" + it.id} name="price" defaultValue={(Number(it.price) / 100).toString()} className="narrow" inputMode="decimal" aria-label={`Price of ${it.name}`} /></td>
-                <td>
-                  <label className="check" style={{ margin: 0 }}>
-                    <input form={"i" + it.id} type="checkbox" name="available" defaultChecked={it.is_available} />
-                    {it.is_available ? "Yes" : <span className="flag">Sold out</span>}
-                  </label>
-                </td>
-                <td>
-                  <form id={"i" + it.id} action={quickSave} className="row-actions">
-                    <input type="hidden" name="id" value={it.id} />
-                    <input type="hidden" name="back" value={here} />
-                    <button type="submit" className="btn-quiet btn-sm">Save</button>
-                  </form>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ItemsTable
+          items={items}
+          cats={d.cats}
+          start={{ cat: UUID.test(cat) || cat === "none" ? cat : "", q: one(sp.q).trim().slice(0, 60), status: one(sp.status), sort: one(sp.sort), open: UUID.test(open) ? open : "" }}
+          quickSave={quickSave}
+        />
       )}
     </div>
   );
