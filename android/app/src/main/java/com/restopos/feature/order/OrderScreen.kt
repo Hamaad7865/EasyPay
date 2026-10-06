@@ -1,13 +1,17 @@
 package com.restopos.feature.order
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -28,6 +32,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,8 +50,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.restopos.core.common.Money
@@ -63,6 +69,7 @@ import com.restopos.core.ui.Field
 import com.restopos.core.ui.Gap
 import com.restopos.core.ui.IconKey
 import com.restopos.core.ui.L
+import com.restopos.core.ui.Motion
 import com.restopos.core.ui.Pos
 import com.restopos.core.ui.Seg
 import com.restopos.core.ui.SegOption
@@ -74,6 +81,8 @@ import com.restopos.core.ui.V
 import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.VI
 import com.restopos.core.ui.VIcon
+import com.restopos.core.ui.press
+import com.restopos.core.ui.rememberPress
 import com.restopos.feature.customers.CustomerPicker
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -81,7 +90,6 @@ import java.util.Locale
 // the colours a category gets when the back office gave it none
 private val CAT_COLORS = listOf(0xFFB9521C, 0xFF2459C9, 0xFFB83A3A, 0xFF8F6A0E, 0xFFA8366F, 0xFF117785, 0xFF6243C8, 0xFF74513A).map { Color(it) }
 private fun colorOf(c: CategoryEntity?, index: Int): Color = Pos.css(c?.color, CAT_COLORS[Math.floorMod(index, CAT_COLORS.size)])
-private fun inkOn(bg: Color): Color = if (bg.luminance() > 0.55f) Color(0xFF0D0F13) else Color.White
 private val HM = SimpleDateFormat("HH:mm", Locale.US)
 
 // The order screen: the order down the left with what the kitchen has and
@@ -279,8 +287,10 @@ private fun Fn(label: String, icon: String, fg: Color, modifier: Modifier, onCli
     }
 }
 
-// The menu: categories in their colours, a search, and the items as tiles.
-@OptIn(ExperimentalFoundationApi::class)
+// The menu: the categories as chips, a search, and the items as cards. A
+// category's colour (or the one the back office gave an item) is a rail down
+// the card's leading edge and a wash from it, not the whole card.
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun Menu(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
     val cats by vm.cats.collectAsState()
@@ -295,24 +305,19 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
     val counts = remember(ui.fresh) { ui.fresh.groupBy { it.line.item_id }.mapValues { e -> e.value.sumOf { it.units } } }
 
     Column(modifier.fillMaxHeight().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val cols = ((maxWidth + 8.dp) / 158.dp).toInt().coerceAtLeast(2)
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                cats.chunked(cols).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        row.forEach { c ->
-                            val on = !searching && c.id == cat
-                            val color = colorOf(c, index[c.id] ?: 0)
-                            Row(
-                                Modifier.weight(1f).height(50.dp).clip(RoundedCornerShape(10.dp)).background(if (on) color else V.Key2).clickable { vm.pickCat(c.id) }.padding(horizontal = 14.dp),
-                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(if (on) inkOn(color) else color))
-                                T(c.name, 15.sp, 700, if (on) inkOn(color) else V.Soft)
-                            }
-                        }
-                        repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
-                    }
+        // every category stays in sight: the chips wrap onto another row rather than scroll away
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            cats.forEach { c ->
+                val on = !searching && c.id == cat
+                val bg by animateColorAsState(if (on) V.On else V.Panel, tween(160), label = "chip")
+                val fg by animateColorAsState(if (on) V.OnText else V.Text, tween(160), label = "chipName")
+                Row(
+                    Modifier.height(46.dp).press { vm.pickCat(c.id) }.clip(RoundedCornerShape(23.dp)).background(bg)
+                        .border(1.dp, if (on) bg else V.Stroke, RoundedCornerShape(23.dp)).padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp),
+                ) {
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(colorOf(c, index[c.id] ?: 0)))
+                    T(c.name, 14.sp, 700, fg)
                 }
             }
         }
@@ -331,8 +336,13 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
                 }
             }
         }
+        // Another category's items come up into place. The ones that are there
+        // when the screen opens are simply there.
+        val seen = remember { arrayOfNulls<String>(1) }
+        val shown = remember(cat) { Animatable(if (seen[0] == null) 1f else 0f).also { if (cat != null) seen[0] = cat } }
+        LaunchedEffect(shown) { shown.animateTo(1f, Motion.enter(200)) }
         LazyVerticalGrid(
-            GridCells.Adaptive(150.dp), Modifier.weight(1f).fillMaxWidth(),
+            GridCells.Adaptive(150.dp), Modifier.weight(1f).fillMaxWidth().graphicsLayer { alpha = shown.value; translationY = (1f - shown.value) * 10.dp.toPx() },
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
@@ -340,36 +350,51 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
             }
             items(items, key = { it.id }) { i ->
                 val out = !i.is_available
-                val bg = if (out) V.Key2 else Pos.css(i.tile_color, colorOf(byId[i.category_id], index[i.category_id] ?: 0))
-                val fg = if (out) V.Text3 else inkOn(bg)
+                val hue = Pos.css(i.tile_color, colorOf(byId[i.category_id], index[i.category_id] ?: 0))
                 val n = counts[i.id] ?: 0
                 val tag = i.tags.split(',').firstOrNull { it.isNotBlank() }?.trim()
+                val rail = if (out) V.Stroke2 else hue
+                val source = remember { MutableInteractionSource() }
+                val press = rememberPress(source, 0.97f)
                 Box(
-                    Modifier.height(104.dp).clip(RoundedCornerShape(12.dp)).background(bg)
-                        .drawBehind { drawRect(Color(0x2E000000), Offset(0f, size.height - 3.dp.toPx()), Size(size.width, 3.dp.toPx())) }
-                        .combinedClickable(onClick = { vm.tap(i) }, onLongClick = { vm.tap(i, ask = true) }).padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 10.dp),
-                ) {
-                    T(i.name, 15.sp, 800, fg, Modifier.align(Alignment.TopStart).padding(end = 24.dp), lines = 3, height = 18.sp)
-                    Row(Modifier.align(Alignment.BottomStart), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        T(Money.format(i.price), 14.sp, 700, fg)
-                        if (!out && tag != null) Mark(tag.uppercase())
-                        if (!out && withOptions.contains(i.id)) Mark("OPTIONS")
-                        if (out) Mark("SOLD OUT", V.Red)
-                    }
-                    if (n > 0) {
-                        Box(Modifier.align(Alignment.TopEnd).heightIn(min = 26.dp).widthIn(min = 26.dp).clip(RoundedCornerShape(13.dp)).background(Color.White).padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
-                            T(n.toString(), 13.sp, 800, Color(0xFF0D0F13))
+                    Modifier.height(104.dp).graphicsLayer { scaleX = press.value; scaleY = press.value }
+                        .clip(RoundedCornerShape(14.dp)).background(V.Panel)
+                        .drawBehind {
+                            if (!out) drawRect(Brush.horizontalGradient(0f to hue.copy(alpha = 0.20f), 0.8f to hue.copy(alpha = 0.03f)))
+                            drawRect(rail, size = Size(4.dp.toPx(), size.height))
                         }
+                        .border(1.dp, V.Stroke, RoundedCornerShape(14.dp))
+                        .combinedClickable(interactionSource = source, indication = null, onClick = { vm.tap(i) }, onLongClick = { vm.tap(i, ask = true) })
+                        .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 11.dp),
+                ) {
+                    T(i.name, 15.sp, 700, if (out) V.Text3 else V.Text, Modifier.align(Alignment.TopStart).padding(end = if (n > 0) 30.dp else 0.dp), lines = 3, height = 19.sp)
+                    Row(Modifier.align(Alignment.BottomStart).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        T(Money.format(i.price), 14.sp, 700, if (out) V.Text3 else V.Text2)
+                        Gap()
+                        // what else there is to know about it, said quietly
+                        val note = if (out) "Sold out" else listOfNotNull(tag, if (withOptions.contains(i.id)) "Options" else null).joinToString(" · ")
+                        if (note.isNotEmpty()) T(note, 12.sp, if (out) 700 else 600, if (out) V.RedText else V.Text3)
                     }
+                    if (n > 0) OnOrder(n, Modifier.align(Alignment.TopEnd))
                 }
             }
         }
     }
 }
 
+// How many of an item are on the order and not sent yet. It jumps when one
+// more is tapped on, which is what answers the till's most frequent tap.
 @Composable
-private fun Mark(text: String, bg: Color = Color(0x47000000)) {
-    Box(Modifier.clip(RoundedCornerShape(5.dp)).background(bg).padding(horizontal = 6.dp, vertical = 3.dp)) { T(text, 10.sp, 800, Color.White, spacing = 0.4.sp) }
+private fun OnOrder(n: Int, modifier: Modifier) {
+    val pop = remember { Animatable(1f) }
+    LaunchedEffect(n) {
+        pop.snapTo(1.28f)
+        pop.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = 500f))
+    }
+    Box(
+        modifier.graphicsLayer { scaleX = pop.value; scaleY = pop.value }.heightIn(min = 26.dp).widthIn(min = 26.dp).clip(RoundedCornerShape(13.dp)).background(V.On).padding(horizontal = 7.dp),
+        contentAlignment = Alignment.Center,
+    ) { T(n.toString(), 13.sp, 800, V.OnText) }
 }
 
 // An item's options: one pick in each group that wants one, any of the
