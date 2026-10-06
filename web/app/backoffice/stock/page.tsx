@@ -2,8 +2,9 @@ import Link from "next/link";
 import { Boxes } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
-import { act, Refused, text, uuid } from "@/lib/action";
-import { Card, Empty, Flash, one, PageHead, type Search } from "../ui";
+import { act, backTo, Refused, text, uuid } from "@/lib/action";
+import { Card, Empty, Flash, PageHead, type Search, startKey, startOf } from "../ui";
+import { type StockRow, StockTable } from "./table";
 
 const PATH = "/backoffice/stock";
 const LOW = 5000; // five or fewer left is "low" (quantities are thousandths)
@@ -19,7 +20,7 @@ function amount(f: FormData, k: string): number {
 // "Add" is a delivery (or, with a minus, something thrown away).
 async function change(f: FormData) {
   "use server";
-  await act("items.edit", PATH, async (c, ctx) => {
+  await act("items.edit", backTo(f, PATH), async (c, ctx) => {
     const id = uuid(f, "id");
     const mode = f.get("mode") === "add" ? "add" : "set";
     const qty = amount(f, "qty");
@@ -42,17 +43,16 @@ async function change(f: FormData) {
   });
 }
 
-type Row = { id: string; name: string; cat: string | null; q: number | null; sold7: number };
+type Row = { id: string; name: string; cat: string | null; cat_order: number | null; q: number | null; sold7: number };
 type Move = { at: string; item: string; qty: number; reason: string; who: string | null; note: string | null };
 
 export default async function StockPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
-  const only = one(sp.show);
   const ctx = await tenantContext();
   const d = await withTenant(ctx.tenantId, async (c) => ({
     rows: (
       await c.query(
-        `select i.id, i.name, c.name as cat, i.stock_qty as q,
+        `select i.id, i.name, c.name as cat, c.sort_order as cat_order, i.stock_qty as q,
                 coalesce((select -sum(m.qty) from stock_movements m where m.tenant_id = i.tenant_id and m.item_id = i.id
                    and m.reason = 'sale' and m.created_at > now() - interval '7 days'), 0)::int as sold7
            from items i left join categories c on c.tenant_id = i.tenant_id and c.id = i.category_id
@@ -75,7 +75,17 @@ export default async function StockPage({ searchParams }: { searchParams: Search
   const q = (r: Row) => Number(r.q ?? 0);
   const out = d.rows.filter((r) => q(r) <= 0).length;
   const low = d.rows.filter((r) => q(r) > 0 && q(r) <= LOW).length;
-  const shown = only === "low" ? d.rows.filter((r) => q(r) <= LOW) : d.rows;
+  const rows: StockRow[] = d.rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    cat: r.cat,
+    cat_order: r.cat_order ?? Number.MAX_SAFE_INTEGER,
+    q: q(r),
+    q_shown: units(q(r)),
+    sold7: r.sold7,
+    sold7_shown: units(r.sold7),
+  }));
+  const start = startOf(sp, "q", "show", "sort", "open");
   const when = new Intl.DateTimeFormat("en-GB", { timeZone: d.tz, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
   const REASON: Record<string, string> = { sale: "Sold", refund: "Refunded", adjust: "Added", count: "Counted" };
   return (
@@ -94,44 +104,7 @@ export default async function StockPage({ searchParams }: { searchParams: Search
             <div className="stat"><div className="stat-label">Low (5 or fewer)</div><div className="stat-value" style={low ? { color: "var(--amber)" } : undefined}>{low}</div></div>
             <div className="stat"><div className="stat-label">Sold in 7 days</div><div className="stat-value">{units(d.rows.reduce((a, r) => a + r.sold7, 0))}</div></div>
           </div>
-          <p className="bo-chips">
-            <Link href={PATH} className={only === "low" ? undefined : "on"}>All</Link>
-            <Link href={PATH + "?show=low"} className={only === "low" ? "on" : undefined}>Low and out</Link>
-          </p>
-          <table>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Category</th>
-                <th className="num">In stock</th>
-                <th>Status</th>
-                <th className="num">Sold in 7 days</th>
-                <th>Change</th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((r) => (
-                <tr key={r.id}>
-                  <td className="strong">{r.name}</td>
-                  <td>{r.cat ?? <span className="muted">None</span>}</td>
-                  <td className="num strong">{r.q === null ? <span className="muted">Not counted</span> : units(q(r))}</td>
-                  <td>{q(r) <= 0 ? <span className="badge red">Out</span> : q(r) <= LOW ? <span className="badge amber">Low</span> : <span className="badge green">In stock</span>}</td>
-                  <td className="num">{units(r.sold7)}</td>
-                  <td>
-                    <form action={change} className="inline">
-                      <input type="hidden" name="id" value={r.id} />
-                      <select name="mode" defaultValue="add" aria-label="How">
-                        <option value="add">Add</option>
-                        <option value="set">Set to</option>
-                      </select>
-                      <input name="qty" required className="narrow" inputMode="decimal" placeholder="0" aria-label={`Quantity for ${r.name}`} />
-                      <button type="submit" className="btn-quiet btn-sm">Save</button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <StockTable key={startKey(sp, start)} rows={rows} start={start} change={change} />
           <Card title="Latest movements" flush>
             <table>
               <thead>

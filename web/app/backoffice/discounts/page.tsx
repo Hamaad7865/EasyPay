@@ -1,8 +1,9 @@
 import { tenantContext } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
-import { act, on, Refused, text, uuid } from "@/lib/action";
+import { act, backTo, on, Refused, text, uuid } from "@/lib/action";
 import { loadSettings, money } from "@/lib/settings";
-import { Card, Flash, PageHead, type Search } from "../ui";
+import { Card, Flash, PageHead, type Search, startKey, startOf } from "../ui";
+import { type Discount, DiscountsTable } from "./table";
 
 const PATH = "/backoffice/discounts";
 
@@ -42,7 +43,7 @@ async function addDiscount(f: FormData) {
 // and what it took off, so the row stays; its name is freed for a new one.
 async function saveDiscount(f: FormData) {
   "use server";
-  await act("items.edit", PATH, async (c, ctx) => {
+  await act("items.edit", backTo(f, PATH), async (c, ctx) => {
     const id = uuid(f, "id");
     if (f.get("remove") === "1") {
       const gone = await c.query(
@@ -82,6 +83,18 @@ export default async function DiscountsPage({ searchParams }: { searchParams: Se
       )
     ).rows as Row[],
   }));
+  const rows: Discount[] = d.rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    type: r.type === "amount" ? "amount" : "percent",
+    value: Number(r.value),
+    shown: r.type === "amount" ? money(Number(r.value), d.s.decimals) : `${Number(r.value)}%`,
+    requires_approval: r.requires_approval,
+    used: r.used,
+    taken: Number(r.taken),
+    taken_shown: money(Number(r.taken), d.s.decimals),
+  }));
+  const start = startOf(sp, "q", "who", "sort", "open");
   return (
     <div>
       <PageHead
@@ -92,56 +105,7 @@ export default async function DiscountsPage({ searchParams }: { searchParams: Se
       {d.rows.length === 0 ? (
         <div className="note">No discounts yet. The till can still take a percentage or an amount typed in at the time.</div>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Discount</th>
-              <th>Takes off</th>
-              <th>How much</th>
-              <th>Who may give it</th>
-              <th className="num">Given</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {d.rows.map((r) => (
-              <tr key={r.id}>
-                <td><input form={"d" + r.id} name="name" defaultValue={r.name} required maxLength={40} aria-label="Name" /></td>
-                <td>
-                  <select form={"d" + r.id} name="type" defaultValue={r.type} aria-label="Takes off">
-                    <option value="percent">A percentage</option>
-                    <option value="amount">An amount (Rs)</option>
-                  </select>
-                </td>
-                <td>
-                  <input
-                    form={"d" + r.id}
-                    name="value"
-                    defaultValue={r.type === "percent" ? String(r.value) : (Number(r.value) / 100).toString()}
-                    className="narrow"
-                    inputMode="decimal"
-                    required
-                    aria-label="How much"
-                  />
-                </td>
-                <td>
-                  <label className="check" style={{ margin: 0 }}>
-                    <input form={"d" + r.id} type="checkbox" name="requires_approval" defaultChecked={r.requires_approval} />
-                    Needs a manager
-                  </label>
-                </td>
-                <td className="num">{r.used === 0 ? <span className="muted">Never</span> : `${r.used} × · ${money(Number(r.taken), d.s.decimals)}`}</td>
-                <td>
-                  <form id={"d" + r.id} action={saveDiscount} className="row-actions">
-                    <input type="hidden" name="id" value={r.id} />
-                    <button type="submit" className="btn-quiet btn-sm">Save</button>
-                    <button type="submit" name="remove" value="1" className="btn-link danger" formNoValidate>Remove</button>
-                  </form>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DiscountsTable key={startKey(sp, start)} rows={rows} start={start} save={saveDiscount} />
       )}
       <Card title="Add a discount" lede="A percentage is a whole number (10 for 10%). An amount is in rupees.">
         <form action={addDiscount} className="bo-toolbar" style={{ margin: 0 }}>

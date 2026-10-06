@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronRight, ChevronsUpDown, Search } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Download } from "lucide-react";
+import { Back, Chev, downloadCsv, fold, NoMatch, Seg, SortTh, type Start, TableSearch, useTable } from "../table-kit";
 
 export type Item = {
   id: string;
@@ -24,10 +25,7 @@ export type Item = {
   stock: number | null;
   stock_shown: string;
 };
-// what the address asked for: /backoffice/items?category=...&q=...&status=...&sort=...&open=...
-export type Start = { cat: string; q: string; status: string; sort: string; open: string };
 type Action = (f: FormData) => Promise<void>;
-type SortKey = "name" | "category" | "price" | "stock";
 
 const STATUS = [
   ["", "All"],
@@ -37,96 +35,65 @@ const STATUS = [
 ] as const;
 const LOW = 5000; // five or fewer left, as the Stock page counts it
 
-// Typed without its accents, "gateau" still finds "Gâteau".
-const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-
-// The items as one table, like Add-ons. A line is an item as the till has it;
-// the box above finds it by name, category, SKU or barcode as you type, the
-// two filters narrow the list and a column's title sorts by it. Tapping a
-// line opens it for what changes day to day: its price, and whether it is on
-// sale. The rest is on the item's own page.
-export function ItemsTable({ items, cats, start, quickSave }: { items: Item[]; cats: { id: string; name: string }[]; start: Start; quickSave: Action }) {
-  const [q, setQ] = useState(start.q);
-  const [cat, setCat] = useState(start.cat);
-  const [status, setStatus] = useState(STATUS.some(([v]) => v === start.status) ? start.status : "");
-  const [sort, setSort] = useState(/^-?(name|category|price|stock)$/.test(start.sort) ? start.sort : "");
-  const [open, setOpen] = useState<Set<string>>(() => new Set(start.open ? [start.open] : []));
-
-  // The address follows the filters, so a save (which comes back to the
-  // address) and a reload both keep the list as it was left.
-  const query = useMemo(() => {
-    const p = new URLSearchParams();
-    if (cat) p.set("category", cat);
-    if (q.trim()) p.set("q", q.trim());
-    if (status) p.set("status", status);
-    if (sort) p.set("sort", sort);
-    return p;
-  }, [cat, q, status, sort]);
-  // After every draw, not only when a filter moves: a save comes back with
-  // its "saved" line in the address, and that must not outlive the draw.
-  useEffect(() => {
-    const s = query.toString();
-    const want = "/backoffice/items" + (s ? "?" + s : "");
-    if (window.location.pathname + window.location.search !== want) window.history.replaceState(null, "", want);
-  });
-  const back = (id: string) => {
-    const p = new URLSearchParams(query);
-    p.set("open", id);
-    return "/backoffice/items?" + p.toString();
-  };
+// The items as one table. A line is an item as the till has it; the box above
+// finds it by name, category, SKU or barcode as you type, the two filters
+// narrow the list and a column's title sorts by it. Tapping a line opens it
+// for what changes day to day: its price, and whether it is on sale. Ticking
+// lines takes several off sale (or puts them back) in one go. The rest is on
+// the item's own page.
+export function ItemsTable({
+  items, cats, start, quickSave, bulkSave,
+}: {
+  items: Item[]; cats: { id: string; name: string }[]; start: Start; quickSave: Action; bulkSave: Action;
+}) {
+  const t = useTable("/backoffice/items", start);
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const cat = t.get("category");
+  const status = t.get("status");
 
   const hay = useMemo(() => new Map(items.map((i) => [i.id, fold([i.name, i.cat ?? "", i.sku ?? "", i.barcode ?? ""].join(" "))])), [items]);
-  const words = fold(q).split(/\s+/).filter(Boolean);
-  const key = sort.replace("-", "") as SortKey | "";
-  const down = sort.startsWith("-");
-  const shown = useMemo(() => {
-    const list = items.filter(
+  const shown = t.sorted(
+    items.filter(
       (i) =>
         (!cat || (cat === "none" ? !i.cat_id : i.cat_id === cat)) &&
-        (!status || (status === "on" ? i.is_available : status === "out" ? !i.is_available : !i.tax)) &&
-        words.every((w) => hay.get(i.id)!.includes(w)),
-    );
-    if (!key) return list;
-    const by: Record<SortKey, (a: Item, b: Item) => number> = {
+        (!status || (status === "on" ? i.is_available : status === "out" ? !i.is_available : status === "notax" ? !i.tax : true)) &&
+        t.finds(hay.get(i.id)!),
+    ),
+    {
       name: (a, b) => a.name.localeCompare(b.name),
       category: (a, b) => a.cat_order - b.cat_order || (a.cat ?? "").localeCompare(b.cat ?? "") || a.name.localeCompare(b.name),
       price: (a, b) => a.price - b.price || a.name.localeCompare(b.name),
-      // items whose stock is not counted go last, whichever way the column is sorted
-      stock: (a, b) =>
-        a.stock === null || b.stock === null
-          ? Number(a.stock === null) - Number(b.stock === null) || a.name.localeCompare(b.name)
-          : (a.stock - b.stock) * (down ? -1 : 1) || a.name.localeCompare(b.name),
-    };
-    const sorted = [...list].sort(by[key]);
-    return down && key !== "stock" ? sorted.reverse() : sorted;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, cat, status, q, sort]);
+      stock: (a, b) => (a.stock ?? 0) - (b.stock ?? 0) || a.name.localeCompare(b.name),
+    },
+    { stock: (i) => i.stock === null },
+  );
 
-  const toggle = (id: string) =>
-    setOpen((was) => {
+  const soldOut = items.filter((i) => !i.is_available).length;
+  const noTax = items.filter((i) => !i.tax).length;
+  const withStock = items.some((i) => i.stock !== null);
+  const cols = withStock ? 9 : 8;
+  // ticking: the box in the title takes every line the list is showing
+  const here = shown.filter((i) => picked.has(i.id)).length;
+  const pick = (id: string) =>
+    setPicked((was) => {
       const next = new Set(was);
       if (!next.delete(id)) next.add(id);
       return next;
     });
-  const soldOut = items.filter((i) => !i.is_available).length;
-  const noTax = items.filter((i) => !i.tax).length;
-  const filtered = shown.length !== items.length;
-  const withStock = items.some((i) => i.stock !== null);
-  const cols = withStock ? 8 : 7;
+  const pickAll = () =>
+    setPicked((was) => {
+      const next = new Set(was);
+      for (const i of shown) here === shown.length ? next.delete(i.id) : next.add(i.id);
+      return next;
+    });
+  const chosen = items.filter((i) => picked.has(i.id));
 
-  // a column's title: once sorts by it, twice turns it round, a third time lets go
-  const head = (k: SortKey, label: string, num = false) => {
-    const mine = key === k;
-    const Icon = !mine ? ChevronsUpDown : down ? ArrowDown : ArrowUp;
-    return (
-      <th className={num ? "num" : undefined} aria-sort={mine ? (down ? "descending" : "ascending") : "none"}>
-        <button type="button" className={"th-sort" + (mine ? " on" : "")} onClick={() => setSort(!mine ? k : down ? "" : "-" + k)}>
-          {label}
-          <Icon aria-hidden="true" />
-        </button>
-      </th>
-    );
-  };
+  // the list as it is on screen, as a file a spreadsheet opens
+  const csv = () =>
+    downloadCsv("items", [
+      ["Item", "Category", "Price", "Tax", "Add-on groups", "SKU", "Barcode", "On sale", "In stock"],
+      ...shown.map((i) => [i.name, i.cat ?? "", (i.price / 100).toFixed(2), i.tax ?? "", i.addons, i.sku ?? "", i.barcode ?? "", i.is_available ? "Yes" : "Sold out", i.stock === null ? "" : i.stock / 1000]),
+    ]);
 
   return (
     <section className="card flush">
@@ -134,20 +101,17 @@ export function ItemsTable({ items, cats, start, quickSave }: { items: Item[]; c
         <div>
           <h2>All items</h2>
           <p>
-            {filtered ? `${shown.length} of ${items.length}` : items.length} {items.length === 1 ? "item" : "items"}
+            {shown.length !== items.length ? `${shown.length} of ${items.length}` : items.length} {items.length === 1 ? "item" : "items"}
             {soldOut > 0 && ` · ${soldOut} sold out`}
             {noTax > 0 && ` · ${noTax} with no tax set`}. Tap an item to change its price or take it off sale.
           </p>
         </div>
-        <label className="table-search">
-          <Search aria-hidden="true" />
-          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, category, SKU, barcode" aria-label="Search items" />
-        </label>
+        <TableSearch t={t} placeholder="Search name, category, SKU, barcode" label="Search items" />
       </div>
       <div className="table-filters">
         <label className="inline muted">
           Category
-          <select value={cat} onChange={(e) => setCat(e.target.value)}>
+          <select value={cat} onChange={(e) => t.set("category", e.target.value)}>
             <option value="">All categories</option>
             {cats.map((c) => (
               <option key={c.id} value={c.id}>
@@ -157,66 +121,72 @@ export function ItemsTable({ items, cats, start, quickSave }: { items: Item[]; c
             <option value="none">No category</option>
           </select>
         </label>
-        <div className="seg" role="radiogroup" aria-label="Show">
-          {STATUS.map(([v, label]) => (
-            <label key={v}>
-              <input type="radio" name="items-status" checked={status === v} onChange={() => setStatus(v)} />
-              {label}
-            </label>
-          ))}
-        </div>
+        <Seg t={t} name="status" label="Show" options={STATUS} />
+        <span className="spacer" />
+        <button type="button" className="btn-quiet btn-sm" onClick={csv} title="The list as it is shown, as a file for a spreadsheet">
+          <Download aria-hidden="true" />
+          Download CSV
+        </button>
       </div>
+      {chosen.length > 0 && (
+        <form action={bulkSave} className="table-bulk" role="region" aria-label="The items ticked">
+          <Back t={t} />
+          {chosen.map((i) => (
+            <input key={i.id} type="hidden" name="id" value={i.id} />
+          ))}
+          <strong>
+            {chosen.length} {chosen.length === 1 ? "item" : "items"} ticked
+            {chosen.length > here && ` (${chosen.length - here} not in the list as filtered)`}
+          </strong>
+          <button type="submit" name="available" value="0" className="btn-sm">
+            Mark sold out
+          </button>
+          <button type="submit" name="available" value="1" className="btn-quiet btn-sm">
+            Put back on sale
+          </button>
+          <span className="spacer" />
+          <button type="button" className="btn-link" onClick={() => setPicked(new Set())}>
+            Untick all
+          </button>
+        </form>
+      )}
       <div className="table-scroll">
-        <table className="rows-open">
+        <table className="rows-open with-ticks">
           <thead>
             <tr>
+              <th>
+                <input
+                  type="checkbox"
+                  aria-label="Tick every item shown"
+                  checked={shown.length > 0 && here === shown.length}
+                  ref={(el) => {
+                    if (el) el.indeterminate = here > 0 && here < shown.length;
+                  }}
+                  onChange={pickAll}
+                />
+              </th>
               <th />
-              {head("name", "Item")}
-              {head("category", "Category")}
+              <SortTh t={t} k="name" label="Item" />
+              <SortTh t={t} k="category" label="Category" />
               <th>Tax</th>
               <th>Add-ons</th>
-              {withStock && head("stock", "Stock", true)}
-              {head("price", "Price", true)}
+              {withStock && <SortTh t={t} k="stock" label="Stock" num />}
+              <SortTh t={t} k="price" label="Price" num />
               <th>On sale</th>
             </tr>
           </thead>
           <tbody>
-            {shown.length === 0 && (
-              <tr>
-                <td colSpan={cols} className="muted" style={{ textAlign: "center", padding: "28px 16px" }}>
-                  No item matches.{" "}
-                  <button
-                    type="button"
-                    className="btn-link"
-                    onClick={() => {
-                      setQ("");
-                      setCat("");
-                      setStatus("");
-                    }}
-                  >
-                    Show all items
-                  </button>
-                </td>
-              </tr>
-            )}
+            {shown.length === 0 && <NoMatch t={t} cols={cols} what="item" filters={["category", "status"]} />}
             {shown.map((it) => {
-              const on = open.has(it.id);
+              const on = t.isOpen(it.id);
               const code = [it.sku && `SKU ${it.sku}`, it.barcode].filter(Boolean).join(" · ");
               return [
-                <tr key={it.id} className={on ? "row on" : "row"} onClick={() => toggle(it.id)}>
+                <tr key={it.id} className={on ? "row on" : "row"} onClick={() => t.toggle(it.id)}>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" aria-label={`Tick ${it.name}`} checked={picked.has(it.id)} onChange={() => pick(it.id)} />
+                  </td>
                   <td>
-                    <button
-                      type="button"
-                      className="chev"
-                      aria-expanded={on}
-                      aria-label={(on ? "Close " : "Open ") + it.name}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggle(it.id);
-                      }}
-                    >
-                      <ChevronRight aria-hidden="true" />
-                    </button>
+                    <Chev open={on} name={it.name} onClick={() => t.toggle(it.id)} />
                   </td>
                   <td>
                     <Link href={`/backoffice/items/edit?id=${it.id}`} className="strong" onClick={(e) => e.stopPropagation()}>
@@ -250,7 +220,7 @@ export function ItemsTable({ items, cats, start, quickSave }: { items: Item[]; c
                       <div className="open-panel">
                         <form action={quickSave} className="bo-toolbar" style={{ margin: 0 }}>
                           <input type="hidden" name="id" value={it.id} />
-                          <input type="hidden" name="back" value={back(it.id)} />
+                          <Back t={t} id={it.id} />
                           <label className="inline muted">
                             Price (Rs)
                             <input name="price" defaultValue={(it.price / 100).toString()} className="narrow" inputMode="decimal" aria-label={`Price of ${it.name}`} />

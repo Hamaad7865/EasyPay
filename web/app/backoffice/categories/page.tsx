@@ -2,12 +2,15 @@ import Link from "next/link";
 import { Tags } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
-import { act, int, on, Refused, text, UUID, uuid } from "@/lib/action";
+import { act, backTo, int, on, Refused, text, UUID, uuid } from "@/lib/action";
 import { toHex } from "@/lib/colour";
-import { Card, Empty, Flash, PageHead, type Search } from "../ui";
+import { Card, Empty, Flash, PageHead, type Search, startKey, startOf } from "../ui";
+import { CategoriesTable, type Category } from "./table";
 
 const PATH = "/backoffice/categories";
 const HEX = /^#[0-9a-f]{6}$/i;
+// what a category with no colour of its own is painted with
+const PLAIN = "#3f8443";
 
 async function addCategory(f: FormData) {
   "use server";
@@ -29,7 +32,7 @@ async function addCategory(f: FormData) {
 // when an order is sent to the kitchen.
 async function saveCategory(f: FormData) {
   "use server";
-  await act("items.edit", PATH, async (c, ctx) => {
+  await act("items.edit", backTo(f, PATH), async (c, ctx) => {
     const id = uuid(f, "id");
     if (f.get("remove") === "1") {
       const n = await c.query(`select count(*)::int as n from items where tenant_id = $1 and category_id = $2 and deleted_at is null`, [ctx.tenantId, id]);
@@ -69,6 +72,17 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
       await c.query(`select id, name from printers where tenant_id = $1 and deleted_at is null order by sort_order, name`, [ctx.tenantId])
     ).rows as { id: string; name: string }[],
   }));
+  const rows: Category[] = d.rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    hex: toHex(r.color) ?? PLAIN,
+    has_color: Boolean(r.color),
+    sort_order: r.sort_order,
+    is_stock: r.is_stock,
+    printer_ids: r.printer_ids ?? [],
+    items: r.items,
+  }));
+  const start = startOf(sp, "q", "sort", "open");
   return (
     <div>
       <PageHead
@@ -76,64 +90,15 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
         lede="The groups of the menu, shown above the items on the till's order screen. The sequence is their order, the colour is the colour of the group and of its items, and the printers are where a category's items come out when an order is sent (and its stations on the kitchen display)."
       />
       <Flash sp={sp} />
-      {d.rows.length === 0 ? (
+      {rows.length === 0 ? (
         <Empty icon={Tags} title="No categories yet">Add the first one below, for example Starters or Drinks.</Empty>
       ) : (
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Sequence</th>
-                <th>Category</th>
-                <th>Colour</th>
-                <th>Prints on</th>
-                <th>Stock</th>
-                <th className="num">Items</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {d.rows.map((r) => (
-                <tr key={r.id}>
-                  <td><input form={"c" + r.id} name="sort_order" type="number" min={0} max={999} defaultValue={r.sort_order} className="narrow" aria-label="Sequence" /></td>
-                  <td><input form={"c" + r.id} name="name" defaultValue={r.name} required maxLength={40} aria-label="Name" /></td>
-                  <td><input form={"c" + r.id} type="color" name="color" defaultValue={toHex(r.color) ?? "#1740e0"} aria-label={`Colour for ${r.name}`} /></td>
-                  <td>
-                    {d.printers.length === 0 ? (
-                      <span className="muted">No printers</span>
-                    ) : (
-                      d.printers.map((p) => (
-                        <label key={p.id} className="check" style={{ margin: "2px 12px 2px 0", display: "inline-flex" }}>
-                          <input form={"c" + r.id} type="checkbox" name="printer" value={p.id} defaultChecked={r.printer_ids.includes(p.id)} />
-                          {p.name}
-                        </label>
-                      ))
-                    )}
-                  </td>
-                  <td>
-                    <label className="check" style={{ margin: 0 }}>
-                      <input form={"c" + r.id} type="checkbox" name="is_stock" defaultChecked={r.is_stock} />
-                      Counted
-                    </label>
-                  </td>
-                  <td className="num"><Link href={`/backoffice/items?category=${r.id}`}>{r.items}</Link></td>
-                  <td>
-                    <form id={"c" + r.id} action={saveCategory} className="row-actions">
-                      <input type="hidden" name="id" value={r.id} />
-                      <button type="submit" className="btn-quiet btn-sm">Save</button>
-                      <button type="submit" name="remove" value="1" className="btn-link danger">Remove</button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <CategoriesTable key={startKey(sp, start)} rows={rows} printers={d.printers} start={start} save={saveCategory} />
       )}
       <Card title="Add a category">
         <form action={addCategory} className="bo-toolbar" style={{ margin: 0 }}>
           <input name="name" placeholder="Name" required maxLength={40} style={{ minWidth: 260 }} />
-          <input type="color" name="color" defaultValue="#1740e0" aria-label="Colour on the till" />
+          <input type="color" name="color" defaultValue={PLAIN} aria-label="Colour on the till" />
           <button type="submit">Add</button>
         </form>
       </Card>

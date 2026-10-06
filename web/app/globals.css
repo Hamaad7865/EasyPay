@@ -701,3 +701,22 @@ td.num .cell-sub .delta { margin-left: 4px; }
 .bo-main a.btn { color: #fff; }
 .bo-main a.btn.btn-quiet { color: var(--ink); }
 .bo-main a.btn.btn-danger { color: var(--red); }
+
+/* ---- more of the list kit: ticking lines, and the forms inside an open line ---- */
+
+/* the line that appears once something is ticked */
+.table-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 20px; border-bottom: 1px solid #cfe5d0; background: var(--accent-soft); font-size: 13.5px; }
+.table-bulk strong { margin-right: 6px; color: var(--accent-hover); }
+/* a table whose lines can be ticked: the tick box first, then the arrow */
+.rows-open.with-ticks tr.row > td:first-child, .rows-open.with-ticks thead th:first-child { width: 40px; padding-right: 0; }
+.rows-open.with-ticks tr.row > td:nth-child(2), .rows-open.with-ticks thead th:nth-child(2) { width: 40px; padding-left: 4px; padding-right: 0; }
+.bo-main .rows-open.with-ticks input[type="checkbox"] { margin: 0; vertical-align: middle; cursor: pointer; }
+.rows-open.with-ticks .open-panel { padding-left: 96px; }
+
+/* an open line with more than one row of fields */
+.open-form, .open-form-line { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.open-form-line { flex-basis: 100%; padding-top: 12px; border-top: 1px solid var(--line); }
+/* removing, kept apart from saving */
+.open-remove { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12.5px; }
+.clip-note { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table-filters .btn-sm svg { width: 14px; height: 14px; }

@@ -40,6 +40,14 @@ export async function act(
 
 const with_ = (path: string, key: string, msg: string) => path + (path.includes("?") ? "&" : "?") + key + "=" + encodeURIComponent(msg);
 
+// Where a list's save goes back to: the list as it was (its search, filters
+// and open line travel in the form's "back" field), and never anywhere but
+// the page itself.
+export const backTo = (f: FormData, path: string) => {
+  const back = String(f.get("back") ?? "");
+  return back === path || back.startsWith(path + "?") ? back.slice(0, 600) : path;
+};
+
 export const text = (f: FormData, k: string, max = 200) => String(f.get(k) ?? "").trim().slice(0, max);
 export const int = (f: FormData, k: string, lo: number, hi: number, d = lo) => {
   const n = Math.round(Number(String(f.get(k) ?? "")));

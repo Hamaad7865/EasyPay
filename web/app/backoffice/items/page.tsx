@@ -2,12 +2,14 @@ import Link from "next/link";
 import { Plus, UtensilsCrossed } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
-import { act, on, Refused, UUID, uuid } from "@/lib/action";
+import { act, backTo, on, Refused, UUID, uuid } from "@/lib/action";
 import { parseRs } from "@/lib/money";
 import { fmtQty } from "@/lib/report";
 import { loadSettings, money } from "@/lib/settings";
-import { Empty, Flash, one, PageHead, type Search } from "../ui";
+import { Empty, Flash, one, PageHead, type Search, startKey, startOf } from "../ui";
 import { type Item, ItemsTable } from "./table";
+
+const PATH = "/backoffice/items";
 
 type ItemRow = {
   id: string;
@@ -30,8 +32,7 @@ type ItemRow = {
 // the list; everything else is on the item's own page.
 async function quickSave(f: FormData) {
   "use server";
-  const back = String(f.get("back") ?? "/backoffice/items");
-  await act("items.edit", back.startsWith("/backoffice/items") ? back : "/backoffice/items", async (c, ctx) => {
+  await act("items.edit", backTo(f, PATH), async (c, ctx) => {
     const id = uuid(f, "id");
     const price = parseRs(String(f.get("price") ?? ""));
     if (price === null) throw new Refused("The price is not a number.");
@@ -42,6 +43,25 @@ async function quickSave(f: FormData) {
       on(f, "available"),
     ]);
     return "Item saved.";
+  });
+}
+
+// Several items at once: off sale when the kitchen runs out of a whole
+// section, or back on sale the next morning. Nothing else about them changes.
+async function bulkSave(f: FormData) {
+  "use server";
+  await act("items.edit", backTo(f, PATH), async (c, ctx) => {
+    const ids = [...new Set(f.getAll("id").map(String))].filter((v) => UUID.test(v)).slice(0, 2000);
+    if (ids.length === 0) throw new Refused("Tick the items first.");
+    const available = on(f, "available");
+    const done = await c.query(`update items set is_available = $3 where tenant_id = $1 and id = any($2::uuid[]) and deleted_at is null and is_available <> $3`, [
+      ctx.tenantId,
+      ids,
+      available,
+    ]);
+    const n = done.rowCount ?? 0;
+    if (n === 0) return available ? "Those items were already on sale." : "Those items were already sold out.";
+    return `${n} ${n === 1 ? "item" : "items"} ${available ? "back on sale" : "marked sold out"}. The tills have it after their next sync.`;
   });
 }
 
@@ -88,9 +108,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
     stock_shown: fmtQty(Number(r.stock_qty)),
   }));
   // the Categories page and the search link here with ?category=; `cat` is its older spelling
-  const cat = one(sp.category) || one(sp.cat);
-  const open = one(sp.open);
-  const start = { cat: UUID.test(cat) || cat === "none" ? cat : "", q: one(sp.q).trim().slice(0, 60), status: one(sp.status), sort: one(sp.sort), open: UUID.test(open) ? open : "" };
+  const start = startOf({ ...sp, category: one(sp.category) || one(sp.cat) }, "q", "category", "status", "sort", "open");
   return (
     <div>
       <PageHead title="Items" lede="What the till sells. Find an item, change its price or take it off sale here; open an item for its tax, add-ons and category.">
@@ -107,7 +125,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
       ) : (
         // Keyed by what the address asks for: arriving from the search or the
         // Categories page with another ?category= starts the table again from it.
-        <ItemsTable key={Object.values(start).join("|")} items={items} cats={d.cats} start={start} quickSave={quickSave} />
+        <ItemsTable key={startKey(sp, start)} items={items} cats={d.cats} start={start} quickSave={quickSave} bulkSave={bulkSave} />
       )}
     </div>
   );

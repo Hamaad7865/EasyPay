@@ -12,9 +12,26 @@ import type { Hit, HitGroup } from "./hits";
 
 export const dynamic = "force-dynamic";
 
-
 const EACH = 5;
-// % and _ mean "anything" to ILIKE: typed, they are just characters
+
+// Accents are left out on both sides, so "gateau" finds "Gâteau" and "pina"
+// finds "Piña". The words typed are folded here; what is stored is folded in
+// the query, letter for letter (the database has no unaccent to do it).
+const LETTERS: [string, string][] = [
+  ["àáâãäåÀÁÂÃÄÅ", "a"],
+  ["çÇ", "c"],
+  ["èéêëÈÉÊË", "e"],
+  ["ìíîïÌÍÎÏ", "i"],
+  ["ñÑ", "n"],
+  ["òóôõöÒÓÔÕÖ", "o"],
+  ["ùúûüÙÚÛÜ", "u"],
+  ["ýÿÝ", "y"],
+];
+const FROM = LETTERS.map(([from]) => from).join("");
+const TO = LETTERS.map(([from, to]) => to.repeat(from.length)).join("");
+const plain = (column: string) => `translate(lower(coalesce(${column}, '')), '${FROM}', '${TO}')`;
+const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+// % and _ mean "anything" to LIKE: typed, they are just characters
 const literal = (s: string) => s.replace(/[\\%_]/g, "\\$&");
 
 export async function POST(request: Request) {
@@ -22,8 +39,8 @@ export async function POST(request: Request) {
   const q = (typeof body?.q === "string" ? body.q : "").trim().slice(0, 60);
   if (q.length < 2) return Response.json({ groups: [] });
   const ctx = await tenantContext();
-  const has = `%${literal(q)}%`;
-  const starts = `${literal(q)}%`;
+  const has = `%${literal(fold(q))}%`;
+  const starts = `${literal(fold(q))}%`;
 
   const groups = await withTenant(ctx.tenantId, async (c) => {
     const rows = async <T,>(sql: string) => (await c.query(sql, [ctx.tenantId, has, starts])).rows as T[];
@@ -41,8 +58,8 @@ export async function POST(request: Request) {
           `select i.id, i.name, i.price, k.name as cat
              from items i left join categories k on k.tenant_id = i.tenant_id and k.id = i.category_id
             where i.tenant_id = $1 and i.deleted_at is null
-              and (i.name ilike $2 or i.sku ilike $2 or i.barcode ilike $2)
-            order by (i.name ilike $3) desc, i.name limit ${EACH}`,
+              and (${plain("i.name")} like $2 or ${plain("i.sku")} like $2 or ${plain("i.barcode")} like $2)
+            order by (${plain("i.name")} like $3) desc, i.name limit ${EACH}`,
         )
       ).map((r) => ({ title: r.name, sub: `${r.cat ?? "No category"} · ${money(Number(r.price), s.decimals)}`, href: `/backoffice/items/edit?id=${r.id}` })),
     );
@@ -55,8 +72,8 @@ export async function POST(request: Request) {
           `select k.id, k.name,
                   (select count(*)::int from items i where i.tenant_id = k.tenant_id and i.category_id = k.id and i.deleted_at is null) as n
              from categories k
-            where k.tenant_id = $1 and k.deleted_at is null and k.name ilike $2
-            order by (k.name ilike $3) desc, k.name limit ${EACH}`,
+            where k.tenant_id = $1 and k.deleted_at is null and ${plain("k.name")} like $2
+            order by (${plain("k.name")} like $3) desc, k.name limit ${EACH}`,
         )
       ).map((r) => ({ title: r.name, sub: r.n === 1 ? "1 item" : `${r.n} items`, href: `/backoffice/items?category=${r.id}` })),
     );
@@ -69,8 +86,8 @@ export async function POST(request: Request) {
           `select cu.name, cu.phone, cu.email
              from customers cu
             where cu.tenant_id = $1 and cu.deleted_at is null
-              and (cu.name ilike $2 or cu.phone ilike $2 or cu.email ilike $2)
-            order by (cu.name ilike $3) desc, cu.name limit ${EACH}`,
+              and (${plain("cu.name")} like $2 or ${plain("cu.phone")} like $2 or ${plain("cu.email")} like $2)
+            order by (${plain("cu.name")} like $3) desc, cu.name limit ${EACH}`,
         )
       ).map((r) => {
         const title = r.name?.trim() || r.phone || r.email || "Customer";
@@ -86,8 +103,8 @@ export async function POST(request: Request) {
         await rows<{ name: string; area: string | null; seats: number | null }>(
           `select t.name, t.area, t.seats
              from tables t
-            where t.tenant_id = $1 and t.deleted_at is null and (t.name ilike $2 or t.area ilike $2)
-            order by (t.name ilike $3) desc, t.area, t.sort_order, t.name limit ${EACH}`,
+            where t.tenant_id = $1 and t.deleted_at is null and (${plain("t.name")} like $2 or ${plain("t.area")} like $2)
+            order by (${plain("t.name")} like $3) desc, t.area, t.sort_order, t.name limit ${EACH}`,
         )
       ).map((r) => ({
         title: r.name,
@@ -106,8 +123,8 @@ export async function POST(request: Request) {
           await rows<{ name: string; role: string | null }>(
             `select e.name, r.name as role
                from employees e left join roles r on r.id = e.role_id
-              where e.tenant_id = $1 and e.deleted_at is null and e.name ilike $2
-              order by (e.name ilike $3) desc, e.name limit ${EACH}`,
+              where e.tenant_id = $1 and e.deleted_at is null and ${plain("e.name")} like $2
+              order by (${plain("e.name")} like $3) desc, e.name limit ${EACH}`,
           )
         ).map((r) => ({ title: r.name, sub: r.role ?? "No role", href: "/backoffice/staff" })),
       );

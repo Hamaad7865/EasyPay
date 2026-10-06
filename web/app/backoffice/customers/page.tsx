@@ -1,9 +1,10 @@
 import { Contact } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
-import { act, Refused, text, uuid } from "@/lib/action";
+import { act, backTo, Refused, text, uuid } from "@/lib/action";
 import { loadSettings, money } from "@/lib/settings";
-import { Card, Empty, Flash, one, PageHead, type Search } from "../ui";
+import { Card, Empty, Flash, PageHead, type Search, startKey, startOf } from "../ui";
+import { type Customer, CustomersTable } from "./table";
 
 const PATH = "/backoffice/customers";
 
@@ -24,7 +25,7 @@ async function addCustomer(f: FormData) {
 
 async function saveCustomer(f: FormData) {
   "use server";
-  await act("backoffice.access", PATH, async (c, ctx) => {
+  await act("backoffice.access", backTo(f, PATH), async (c, ctx) => {
     const [name, phone, email, note] = fields(f);
     await c.query(`update customers set name = $3, phone = $4, email = $5, note = $6 where tenant_id = $1 and id = $2 and deleted_at is null`, [
       ctx.tenantId, uuid(f, "id"), name, phone, email, note,
@@ -36,17 +37,19 @@ async function saveCustomer(f: FormData) {
 // A customer who is removed stays on the orders and receipts they were on.
 async function removeCustomer(f: FormData) {
   "use server";
-  await act("backoffice.access", PATH, async (c, ctx) => {
+  await act("backoffice.access", backTo(f, PATH), async (c, ctx) => {
     await c.query(`update customers set deleted_at = now() where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, uuid(f, "id")]);
     return "Customer removed. Their past orders are kept.";
   });
 }
 
 type Row = { id: string; name: string; phone: string | null; email: string | null; note: string | null; orders: number; spent: string };
+// Every customer comes down once and the table finds among them as you type.
+// A list longer than this is cut, and the table says so.
+const MOST = 5000;
 
 export default async function CustomersPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
-  const q = (one(sp.q) ?? "").trim().slice(0, 60);
   const ctx = await tenantContext();
   const d = await withTenant(ctx.tenantId, async (c) => ({
     s: await loadSettings(c, ctx.tenantId),
@@ -59,12 +62,22 @@ export default async function CustomersPage({ searchParams }: { searchParams: Se
                   where r.tenant_id = cu.tenant_id and t.customer_id = cu.id and r.deleted_at is null) as spent
            from customers cu
           where cu.tenant_id = $1 and cu.deleted_at is null
-            and ($2 = '' or cu.name ilike '%' || $2 || '%' or cu.phone ilike '%' || $2 || '%' or cu.email ilike '%' || $2 || '%')
-          order by lower(cu.name) limit 500`,
-        [ctx.tenantId, q],
+          order by lower(cu.name) limit ${MOST + 1}`,
+        [ctx.tenantId],
       )
     ).rows as Row[],
   }));
+  const rows: Customer[] = d.rows.slice(0, MOST).map((r) => ({
+    id: r.id,
+    name: r.name,
+    phone: r.phone?.trim() || null,
+    email: r.email?.trim() || null,
+    note: r.note?.trim() || null,
+    orders: r.orders,
+    spent: Number(r.spent),
+    spent_shown: money(Number(r.spent), d.s.decimals),
+  }));
+  const start = startOf(sp, "q", "seen", "sort", "open");
   return (
     <div>
       <PageHead
@@ -72,50 +85,10 @@ export default async function CustomersPage({ searchParams }: { searchParams: Se
         lede="The people the restaurant knows by name. A cashier puts one on an order with Assign customer; their name then prints on the bill and the receipt. They can be added here or on the till."
       />
       <Flash sp={sp} />
-      <form className="filters" action={PATH}>
-        <input name="q" defaultValue={q} placeholder="Search by name, phone or email" aria-label="Search" />
-        <button type="submit" className="btn-quiet">Search</button>
-      </form>
       {d.rows.length === 0 ? (
-        <Empty icon={Contact} title={q ? "No customer matches that" : "No customers yet"}>Add the first one below, or from the till.</Empty>
+        <Empty icon={Contact} title="No customers yet">Add the first one below, or from the till.</Empty>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Phone</th>
-              <th>Email</th>
-              <th>Note</th>
-              <th className="num">Orders</th>
-              <th className="num">Spent</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {d.rows.map((r) => (
-              <tr key={r.id}>
-                <td><input form={"c" + r.id} name="name" defaultValue={r.name} required maxLength={120} aria-label="Name" /></td>
-                <td><input form={"c" + r.id} name="phone" defaultValue={r.phone ?? ""} maxLength={40} aria-label="Phone" /></td>
-                <td><input form={"c" + r.id} name="email" defaultValue={r.email ?? ""} maxLength={120} aria-label="Email" /></td>
-                <td><input form={"c" + r.id} name="note" defaultValue={r.note ?? ""} maxLength={200} aria-label="Note" /></td>
-                <td className="num">{r.orders}</td>
-                <td className="num strong">{money(Number(r.spent), d.s.decimals)}</td>
-                <td>
-                  <span className="row-actions">
-                    <form id={"c" + r.id} action={saveCustomer}>
-                      <input type="hidden" name="id" value={r.id} />
-                      <button type="submit" className="btn-quiet btn-sm">Save</button>
-                    </form>
-                    <form action={removeCustomer}>
-                      <input type="hidden" name="id" value={r.id} />
-                      <button type="submit" className="btn-quiet btn-sm">Remove</button>
-                    </form>
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <CustomersTable key={startKey(sp, start)} rows={rows} capped={d.rows.length > MOST} start={start} save={saveCustomer} remove={removeCustomer} />
       )}
       <Card title="Add a customer">
         <form action={addCustomer} className="bo-toolbar" style={{ margin: 0 }}>

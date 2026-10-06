@@ -5,6 +5,15 @@ import type { LucideIcon } from "lucide-react";
 export type Search = Promise<Record<string, string | string[] | undefined>>;
 export const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
 
+// What a list's address asks for (its search words, filters, sort, open
+// line), by name, for the table to start from. See table-kit.tsx.
+export const startOf = (sp: Record<string, string | string[] | undefined>, ...names: string[]) =>
+  Object.fromEntries(names.map((n) => [n, one(sp[n]).trim().slice(0, 80)])) as Record<string, string>;
+// The table is drawn afresh when the address asks for something else, and
+// after every save (whose line, ok or err, is in the address too).
+export const startKey = (sp: Record<string, string | string[] | undefined>, start: Record<string, string>) =>
+  [...Object.values(start), one(sp.ok), one(sp.err)].join("|");
+
 export function PageHead({ title, lede, children }: { title: string; lede?: string; children?: React.ReactNode }) {
   return (
     <div className="page-head">
