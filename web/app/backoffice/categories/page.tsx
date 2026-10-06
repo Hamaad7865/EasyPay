@@ -4,6 +4,7 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, backTo, int, on, Refused, text, UUID, uuid } from "@/lib/action";
 import { toHex } from "@/lib/colour";
+import { loadSettings } from "@/lib/settings";
 import { Card, Empty, Flash, PageHead, type Search, startKey, startOf } from "../ui";
 import { CategoriesTable, type Category } from "./table";
 
@@ -71,6 +72,7 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
     printers: (
       await c.query(`select id, name from printers where tenant_id = $1 and deleted_at is null order by sort_order, name`, [ctx.tenantId])
     ).rows as { id: string; name: string }[],
+    onePrinter: (await loadSettings(c, ctx.tenantId)).onePrinter,
   }));
   const rows: Category[] = d.rows.map((r) => ({
     id: r.id,
@@ -105,6 +107,12 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
       {d.printers.length === 0 && (
         <p className="muted">
           To send orders to a kitchen or bar printer, add it under <Link href="/backoffice/printers">Printers</Link> first.
+        </p>
+      )}
+      {d.onePrinter && (
+        <p className="muted">
+          This restaurant prints everything on one printer, so the printers ticked on a category are not used for now. That is set under{" "}
+          <Link href="/backoffice/printers">Printers</Link>.
         </p>
       )}
       <p className="muted">A counted category has its items&apos; quantities under <Link href="/backoffice/stock">Stock</Link>: each sale takes from them.</p>

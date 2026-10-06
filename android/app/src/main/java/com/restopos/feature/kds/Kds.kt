@@ -90,14 +90,17 @@ class KdsViewModel @Inject constructor(
     val station = MutableStateFlow<String?>(null)
     private val since = System.currentTimeMillis() - 12 * 3_600_000L
 
-    val ui: StateFlow<KdsUi> = combine(db.service().kdsOpen(), db.service().kdsLines(), db.service().bumpedCount(since), db.catalog().categories()) { tickets, lines, bumped, cats ->
-        Quad(tickets, lines, bumped, cats)
-    }.mapLatest { (tickets, lines, bumped, cats) ->
+    val ui: StateFlow<KdsUi> = combine(
+        db.service().kdsOpen(), db.service().kdsLines(), db.service().bumpedCount(since), db.catalog().categories(), db.ops().settingsFlow(),
+    ) { tickets, lines, bumped, cats, settings ->
+        Quad(tickets, lines, bumped, cats) to settings
+    }.mapLatest { (shown, settings) ->
+        val (tickets, lines, bumped, cats) = shown
         val store = session.storeId()
         // the same rule the tickets are printed by (Routing)
         val printers = store?.let { db.ops().printers(it) } ?: emptyList()
         val ticked = cats.associate { c -> c.id to Routing.ids(c.printer_ids) }
-        val stations = Routing.stations(ticked.values, printers, PosSettings.parse(db.ops().settings()).onePrinter)
+        val stations = Routing.stations(ticked.values, printers, PosSettings.parse(settings).onePrinter)
         val catOf = HashMap<String, String?>()
         val info = service.describe(lines)
         val rows = info.map { l ->

@@ -67,7 +67,8 @@ class Printing @Inject constructor(
 
     suspend fun settings(): PosSettings = PosSettings.parse(db.ops().settings()).also { Money.decimals = it.decimals }
 
-    suspend fun printers(): List<PrinterEntity> = session.storeId()?.let { db.ops().printers(it) } ?: emptyList()
+    // this store's, not removed, switched on (Routing.usable says which, and is tested)
+    suspend fun printers(): List<PrinterEntity> = session.storeId()?.let { store -> Routing.usable(db.ops().printers(store), store) } ?: emptyList()
 
     suspend fun receiptPrinter(): PrinterEntity? = printers().firstOrNull { it.is_receipt }
 

@@ -95,11 +95,13 @@ async function saveRoutes(f: FormData) {
     const one = on(f, "one");
     const pairs = f.getAll("route").map((v) => String(v).toLowerCase()).filter((v) => PAIR.test(v));
     if (one && !UUID.test(receipt)) throw new Refused("With one printer for everything, choose which printer that is, under Receipts and bills.");
-    // one printer per restaurant is where the cashier's receipts come out
+    const store = await c.query(`select id from stores where tenant_id = $1 and deleted_at is null order by created_at limit 1`, [ctx.tenantId]);
+    if (store.rowCount !== 1) throw new Refused("This restaurant has no store yet.");
+    // one printer per store is where the cashier's receipts come out
     await c.query(
       `update printers set is_receipt = coalesce(id = $2::uuid, false)
-        where tenant_id = $1 and deleted_at is null and is_receipt is distinct from coalesce(id = $2::uuid, false)`,
-      [ctx.tenantId, UUID.test(receipt) ? receipt : null],
+        where tenant_id = $1 and store_id = $3 and deleted_at is null and is_receipt is distinct from coalesce(id = $2::uuid, false)`,
+      [ctx.tenantId, UUID.test(receipt) ? receipt : null, store.rows[0].id],
     );
     await saveSettings(c, ctx.tenantId, { onePrinter: one });
     // each category's printers are the ones ticked for it; a category that did not change is left alone
