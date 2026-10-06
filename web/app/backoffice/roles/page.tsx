@@ -36,8 +36,8 @@ const GROUPS: { title: string; perms: [string, string][] }[] = [
     perms: [
       ["drawer.open_no_sale", "Open the cash drawer without a sale"],
       ["cash.pay_in_out", "Put cash in and take cash out"],
-      ["shift.open_close", "Open and close a sales period, count the drawer, close the day"],
-      ["shift.view_report", "See the sales period and day figures on the till"],
+      ["shift.open_close", "Open the day and close it, count the drawer"],
+      ["shift.view_report", "See the day's figures on the till"],
     ],
   },
   {

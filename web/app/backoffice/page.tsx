@@ -146,6 +146,8 @@ const NOW = `
          (select json_build_object('since', sh.opened_at, 'by', e.name)
             from shifts sh left join employees e on e.tenant_id = sh.tenant_id and e.id = sh.opened_by
            where sh.tenant_id = $1 and sh.deleted_at is null and sh.closed_at is null order by sh.opened_at limit 1) as shift,
+         -- a day is open on a till from its opening count to its closing count; with two tills there can be two
+         (select count(*)::int from shifts sh where sh.tenant_id = $1 and sh.deleted_at is null and sh.closed_at is null) as days_open,
          (select coalesce(sum(signed_total), 0)::float8 from rv where lt::date = clk.today) as today_total,
          (select count(distinct ticket_id)::int from rv where lt::date = clk.today and type = 'sale') as today_orders,
          (select coalesce(sum(case when rv.type = 'refund' then -rl.qty else rl.qty end), 0)::int
@@ -161,7 +163,7 @@ type Now = {
   no_tax: number; no_tax_names: string[] | null;
   up_n: number; up_pending: number; up_first: { name: string; clock: string; day: string; size: number } | null;
   up_list: { name: string; size: number; status: string; clock: string; day: string; tbl: string | null; area: string | null; at: string }[] | null;
-  shift: { since: string; by: string | null } | null;
+  shift: { since: string; by: string | null } | null; days_open: number;
   today_total: number; today_orders: number; today_items: number; week_ago: number;
 };
 
@@ -620,11 +622,15 @@ export default async function BackofficeHome({
             </NowRow>
             <NowRow
               icon={Timer}
-              label="Sales period"
-              href="/backoffice/reports/shifts"
-              hint={now.shift ? `Since ${at(now.shift.since)}${now.shift.by ? `, opened by ${now.shift.by}` : ""}` : "None is open on any till"}
+              label="Day"
+              href="/backoffice/reports/day-close"
+              hint={
+                now.shift
+                  ? `Since ${at(now.shift.since)}${now.shift.by ? `, opened by ${now.shift.by}` : ""}${now.days_open > 1 ? ` · open on ${now.days_open} tills` : ""}`
+                  : "Not open on any till"
+              }
             >
-              <span className={now.shift ? "chip lime" : "chip"}>{now.shift ? "Open" : "Closed"}</span>
+              <span className={now.shift ? "chip lime" : "chip"}>{now.shift ? "Open" : "Not open"}</span>
             </NowRow>
           </div>
         </section>
