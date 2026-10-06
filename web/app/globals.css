@@ -123,14 +123,27 @@ body {
   background-attachment: fixed;
 }
 
-/* The rail: round signs down the far left, one for the dashboard and one for
-   each group of pages; at its foot, who is signed in and the switch that
-   folds the menu away. The sign of the group you are in is filled. */
+/* The rail: what the menu folds into. Round signs down the far left, one for
+   the dashboard and one for each group of pages (the one you are in is
+   filled); at its foot the search, who is signed in and the switch that
+   brings the menu back. With the menu showing it is closed to nothing, the
+   same way the menu closes when it is folded, so the page never jumps. */
 .rail {
-  position: sticky; top: 14px; z-index: 6; height: calc(100vh - 28px); width: 46px; margin-right: 12px;
+  position: sticky; top: 14px; z-index: 6; height: calc(100vh - 28px); width: 0; margin-right: 0;
   display: flex; flex-direction: column; align-items: center; gap: 8px;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: width 0.42s var(--glide), margin 0.42s var(--glide), opacity 0.16s ease, visibility 0s 0.42s;
 }
-.rail.dev { padding-bottom: 54px; }
+.rail[data-folded] {
+  width: 46px; margin-right: 12px; opacity: 1; visibility: visible; pointer-events: auto;
+  transition: width 0.42s var(--glide), margin 0.42s var(--glide), opacity 0.2s ease 0.1s, visibility 0s;
+}
+/* the menu turns into the signs: each pops into place a moment after the one above */
+@keyframes sign-in { from { opacity: 0; transform: translateX(26px) scale(0.5); } }
+.rail[data-folded][data-turned] > .rail-logo, .rail[data-folded][data-turned] > .rail-sign, .rail[data-folded][data-turned] > .rail-item {
+  animation: sign-in 0.5s var(--spring) backwards; animation-delay: calc(var(--i, 0) * 32ms + 120ms);
+}
+.rail.dev, .bo-side.dev { padding-bottom: 58px; }
 .rail-logo { width: 46px; height: 46px; flex: none; margin-bottom: 8px; display: grid; place-items: center; border-radius: 50%; background: #fff; box-shadow: var(--shadow-sm); }
 .rail-logo img { height: 30px; width: auto; display: block; }
 .rail-item { position: relative; display: grid; }
@@ -149,16 +162,13 @@ body {
 .rail-sign.on { background: var(--ink); border-color: var(--ink); color: #fff; box-shadow: 0 10px 18px -8px rgba(17, 24, 39, 0.6); }
 .rail-me { background: var(--accent-soft); color: var(--accent); }
 .rail-me:hover { background: var(--accent-soft); color: var(--accent-hover); }
-/* the search has its field in the menu; it is on the rail only while the menu is folded away */
-.rail:not([data-folded]) .rail-when-folded { display: none; }
-/* With the menu folded away a sign says what it is beside itself; with the
-   menu showing, the menu says it. Not while its own card is open. */
+/* a sign says what it is beside itself, when pointed at; not while its own card is open */
 .rail-sign[data-tip]::after {
   content: attr(data-tip); position: absolute; left: calc(100% + 10px); top: 50%; z-index: 2; pointer-events: none;
   padding: 6px 11px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap;
   opacity: 0; transform: translate(-6px, -50%); transition: opacity 0.12s, transform 0.2s var(--glide);
 }
-.rail[data-folded] .rail-sign:hover::after, .rail[data-folded] .rail-sign:focus-visible::after { opacity: 1; transform: translate(0, -50%); }
+.rail .rail-sign:hover::after, .rail .rail-sign:focus-visible::after { opacity: 1; transform: translate(0, -50%); }
 .rail .rail-item:has(.rail-card:popover-open) .rail-sign::after { display: none; }
 
 /* A card beside the rail: a group's pages while the menu is folded away, or
@@ -205,9 +215,6 @@ body {
 @media (min-width: 1001px) {
   .bo-side[data-folded] { width: 0; padding-left: 0; padding-right: 0; border-left-width: 0; border-right-width: 0; opacity: 0; box-shadow: none; }
   .bo-side[data-folded] .bo-side-in { transform: translateX(-24px); }
-  /* the logo is on the rail, and so is who is signed in */
-  .bo-side .bo-brand-logo, .bo-side .bo-user { display: none; }
-  .bo-side .bo-brand { padding-left: 10px; }
   /* with the menu away the page starts nearer the rail */
   .bo:has(> .bo-side[data-folded]) .bo-main { padding-left: 14px; }
 }
@@ -226,6 +233,16 @@ body {
 .bo-brand-logo { height: 34px; width: auto; display: block; }
 /* the green of the logo's ring */
 .bo-brand-pos { color: var(--accent); }
+/* the switch that folds the menu into the rail, in its top corner */
+.bo-fold {
+  margin-left: auto; width: 34px; height: 34px; flex: none; padding: 0; display: grid; place-items: center; cursor: pointer;
+  border: 0; border-radius: 50%; background: transparent; color: var(--ink3);
+  transition: background-color 0.15s, color 0.15s, transform 0.2s var(--spring);
+}
+.bo-fold:hover { background: rgba(255, 255, 255, 0.8); color: var(--ink); }
+.bo-fold:active { transform: scale(0.9); }
+.bo-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bo-fold svg { width: 17px; height: 17px; }
 .bo-brand, .auth-brand { font-weight: 800; }
 .bo-brand-mark { width: 30px; height: 30px; border-radius: 9px; background: var(--accent); color: #fff; display: grid; place-items: center; font-size: 15px; font-weight: 800; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.16); }
 /* whose back office this is, and the id to quote to EasyPay support */
@@ -302,7 +319,8 @@ body {
 @keyframes nav-settle { 0%, 40% { margin-bottom: 0; } 68% { margin-bottom: 7px; } 86% { margin-bottom: -1px; } 100% { margin-bottom: 0; } }
 .bo-group[data-fresh].open > .bo-group-panel { animation: nav-settle 0.6s ease-out; }
 @media (prefers-reduced-motion: reduce) {
-  .bo-group-panel, .bo-group-list a, .bo-group.open .bo-group-list a, .bo-nav .bo-group-chev, .bo-side, .bo-side-in, .rail-sign, .rail-sign[data-tip]::after { transition: none; }
+  .bo-group-panel, .bo-group-list a, .bo-group.open .bo-group-list a, .bo-nav .bo-group-chev, .bo-side, .bo-side-in, .rail, .rail[data-folded], .rail-sign, .rail-sign[data-tip]::after, .bo-fold { transition: none; }
+  .rail[data-folded] > * { animation: none; }
   .bo-group[data-fresh].open > .bo-group-panel, .rail-card:popover-open, .rail-card:popover-open a, .nav-n { animation: none; }
 }
 
@@ -885,8 +903,9 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 
 @media (max-width: 1000px) {
   .bo { grid-template-columns: 1fr; padding: 12px 12px 0; }
-  .rail { display: none; }
+  .rail, .bo-fold { display: none; }
   .bo-side { position: static; height: auto; width: auto; }
+  .bo-side.dev { padding-bottom: 12px; }
   .bo-side-in { width: auto; height: auto; display: block; }
   .bo-nav { -webkit-mask-image: none; mask-image: none; padding-bottom: 12px; }
   .bo-nav { overflow: visible; }

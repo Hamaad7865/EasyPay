@@ -7,21 +7,23 @@ import { ChevronDown, LogOut, PanelLeftClose, PanelLeftOpen, Search, Store } fro
 import { GROUPS, HOME, groupOf, isOn, type NavCount } from "./nav";
 import { openSearch, SearchBox, useSearchKey } from "./search-box";
 
-// The way round the back office, in two parts.
+// The way round the back office, which has two shapes.
 //
-// The rail: a column of round signs down the far left, one for the dashboard
-// and one for each group of pages, with who is signed in and the switch that
-// folds the menu away at the bottom.
+// The menu: a pane of frosted glass down the left with the restaurant, the
+// search, every page under its group, and who is signed in. A group opens to
+// show its pages (they drop in one after the other); as many can be open at
+// once as someone likes.
 //
-// The menu: a pane of frosted glass beside it with the restaurant, the search
-// and every page under its group. A group opens to show its pages (they drop
-// in one after the other); as many can be open at once as someone likes.
+// The rail: what the menu folds into. A column of round signs, one for the
+// dashboard and one for each group of pages, then the search, who is signed
+// in and the switch that brings the menu back. A sign opens its group's
+// pages in a small card beside it, so every page is still two taps off and
+// the page has the whole width.
 //
-// Folded away, the menu leaves the rail: a sign then opens its group's pages
-// in a small card beside it, so every page is still two taps off and the page
-// has the whole width. Which way it was left, and which groups were open, is
-// remembered in this browser (two cookies, read before the page is drawn so
-// it never opens one way and jumps to the other).
+// Only one of the two shows at a time: beside the open menu the signs said
+// nothing the menu did not. Which shape it was left in, and which groups were
+// open, is remembered in this browser (two cookies, read before the page is
+// drawn so it never opens one way and jumps to the other).
 
 const YEAR = 60 * 60 * 24 * 365;
 const remember = (name: string, value: string) => {
@@ -151,20 +153,20 @@ export function Side({
     }
     keep(next);
   };
-  // from the rail, with the menu showing: that group is opened and brought into view
-  const reveal = (g: string) => {
-    if (!open.has(g)) {
-      setFresh(g);
-      keep(new Set([...open, g]));
-    }
-    setTimeout(() => document.getElementById(`nav-head-${g}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 80);
-  };
+  // The signs pop in when someone folds the menu into them, not every time a
+  // page loads with the menu already folded.
+  const [turned, setTurned] = useState(false);
   const fold = () => {
     shut();
+    setTurned(true);
     remember("bo-menu", away ? "open" : "closed");
     setAway(!away);
   };
   const initial = (employee ?? "?").trim().slice(0, 1).toUpperCase();
+  const dev = process.env.NODE_ENV === "development" ? " dev" : "";
+  // the signs come in one after the other when the menu folds into them
+  let nth = 0;
+  const pop = () => ({ "--i": nth++ }) as React.CSSProperties;
   const leave = (
     <form action={signOut}>
       <button type="submit" title="Sign out" aria-label="Sign out">
@@ -175,23 +177,22 @@ export function Side({
 
   return (
     <>
-      {/* while developing, Next.js puts its own round badge in the bottom left corner: the rail stops short of it */}
-      <nav className={"rail" + (process.env.NODE_ENV === "development" ? " dev" : "")} aria-label="Sections" data-folded={away || undefined}>
+      {/* while developing, Next.js puts its own round badge in the bottom left corner: the rail and the menu stop short of it */}
+      <nav className={"rail" + dev} aria-label="Sections" data-folded={away || undefined} data-turned={turned || undefined} inert={!away}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <span className="rail-logo"><img src="/logo-mark.png" alt="EasyPay" /></span>
-        <Link href={HOME.href} className={"rail-sign" + (isOn(HOME.href, path) ? " on" : "")} aria-label={HOME.label} data-tip={HOME.label}>
+        <span className="rail-logo" style={pop()}><img src="/logo-mark.png" alt="EasyPay" /></span>
+        <Link href={HOME.href} className={"rail-sign" + (isOn(HOME.href, path) ? " on" : "")} aria-label={HOME.label} data-tip={HOME.label} style={pop()}>
           <HOME.icon aria-hidden="true" strokeWidth={1.9} />
         </Link>
         {GROUPS.map((g) => (
-          <div key={g.id} className="rail-item">
+          <div key={g.id} className="rail-item" style={pop()}>
             <button
               type="button"
               className={"rail-sign" + (here === g.id ? " on" : "")}
               aria-label={g.title}
               data-tip={g.title}
-              // folded away, the sign opens its pages beside it; otherwise it opens its group in the menu
-              popoverTarget={away ? `rail-${g.id}` : undefined}
-              onClick={(e) => (away ? place(e.currentTarget, `rail-${g.id}`) : reveal(g.id))}
+              popoverTarget={`rail-${g.id}`}
+              onClick={(e) => place(e.currentTarget, `rail-${g.id}`)}
             >
               <g.icon aria-hidden="true" strokeWidth={1.9} />
             </button>
@@ -208,10 +209,10 @@ export function Side({
           </div>
         ))}
         <span className="rail-gap" />
-        <button type="button" className="rail-sign rail-when-folded" aria-label="Search" data-tip={`Search (${key})`} onClick={openSearch}>
+        <button type="button" className="rail-sign" aria-label="Search" data-tip={`Search (${key})`} style={pop()} onClick={openSearch}>
           <Search aria-hidden="true" strokeWidth={1.9} />
         </button>
-        <div className="rail-item">
+        <div className="rail-item" style={pop()}>
           <button type="button" className="rail-sign rail-me" aria-label={`${employee ?? "Signed in"}: account`} data-tip={employee ?? "Signed in"} popoverTarget="rail-me" onClick={(e) => place(e.currentTarget, "rail-me", true)}>
             {initial}
           </button>
@@ -224,13 +225,13 @@ export function Side({
             {leave}
           </div>
         </div>
-        <button type="button" className="rail-sign" aria-label={away ? "Show the menu" : "Fold the menu away"} aria-expanded={!away} aria-controls="bo-menu" data-tip="Show the menu" onClick={fold}>
-          {away ? <PanelLeftOpen aria-hidden="true" strokeWidth={1.9} /> : <PanelLeftClose aria-hidden="true" strokeWidth={1.9} />}
+        <button type="button" className="rail-sign" aria-label="Show the menu" aria-expanded={false} aria-controls="bo-menu" data-tip="Show the menu" style={pop()} onClick={fold}>
+          <PanelLeftOpen aria-hidden="true" strokeWidth={1.9} />
         </button>
       </nav>
 
       {/* folded away, its links are out of reach of the Tab key too */}
-      <aside className="bo-side" id="bo-menu" data-folded={away || undefined} inert={away && !narrow}>
+      <aside className={"bo-side" + dev} id="bo-menu" data-folded={away || undefined} inert={away && !narrow}>
         <div className="bo-side-in">
           <div className="bo-brand">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -238,6 +239,9 @@ export function Side({
             <span>
               Easy<span className="bo-brand-pos">Pay</span>
             </span>
+            <button type="button" className="bo-fold" aria-label="Fold the menu away" title="Fold the menu away" aria-expanded={true} aria-controls="bo-menu" onClick={fold}>
+              <PanelLeftClose aria-hidden="true" strokeWidth={1.9} />
+            </button>
           </div>
           <div className="bo-restaurant" title={restaurant}>
             <Store aria-hidden="true" />
@@ -280,7 +284,6 @@ export function Side({
               );
             })}
           </nav>
-          {/* on a narrow screen, where there is no rail to hold it */}
           <div className="bo-user">
             <span className="bo-avatar" aria-hidden="true">{initial}</span>
             <span>
