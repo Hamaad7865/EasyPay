@@ -128,7 +128,7 @@ export function SearchBox() {
     <>
       <button type="button" className="search-trigger" onClick={show} aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K">
         <Search aria-hidden="true" />
-        <span>Search pages, items, customers…</span>
+        <span>Search</span>
         <kbd>{key}</kbd>
       </button>
       <dialog

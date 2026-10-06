@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { PoolClient } from "pg";
-import { ArrowUpRight, Boxes, CalendarClock, ClipboardList, type LucideIcon, TrendingUp, UtensilsCrossed } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Boxes, CalendarClock, Check, ClipboardList, type LucideIcon, Percent, Plus, ReceiptText, Sparkles, Timer, UtensilsCrossed } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { fmtRs } from "@/lib/money";
@@ -92,8 +92,20 @@ const NOW = `
      where b.tenant_id = $1 and b.deleted_at is null and b.status in ('pending', 'confirmed', 'seated')
        and (b.booked_for at time zone clk.tz)::date = clk.today
   ),
+  -- the bookings still to come, today or later: the next few are listed, and
+  -- those nobody has confirmed yet are something to look at
+  up as (
+    select b.name, b.size, b.status, b.booked_for, b.area, tb.name as tbl,
+           to_char(b.booked_for at time zone clk.tz, 'HH24:MI') as clock,
+           (b.booked_for at time zone clk.tz)::date as day
+      from bookings b cross join clk
+      left join tables tb on tb.tenant_id = b.tenant_id and tb.id = b.table_id and tb.deleted_at is null
+     where b.tenant_id = $1 and b.deleted_at is null and b.status in ('pending', 'confirmed')
+       and b.booked_for > now() - interval '15 minutes'
+  ),
   st as (
-    select i.name, i.is_available, coalesce(i.stock_qty, 0) as q, (i.track_stock or coalesce(c.is_stock, false)) as tracked
+    select i.name, i.is_available, coalesce(i.stock_qty, 0) as q, (i.track_stock or coalesce(c.is_stock, false)) as tracked,
+           exists (select 1 from item_taxes it where it.tenant_id = i.tenant_id and it.item_id = i.id and it.deleted_at is null) as taxed
       from items i left join categories c on c.tenant_id = i.tenant_id and c.id = i.category_id
      where i.tenant_id = $1 and i.deleted_at is null
   )
@@ -122,6 +134,15 @@ const NOW = `
          (select json_agg(x.name) from (select name from st where not is_available order by name limit 3) x) as sold_out_names,
          (select count(*)::int from st where tracked) as tracked,
          (select count(*)::int from st where tracked and q <= 5000) as low,
+         (select json_agg(x.name) from (select name from st where tracked and q <= 5000 order by q, name limit 3) x) as low_names,
+         (select count(*)::int from st where not taxed) as no_tax,
+         (select json_agg(x.name) from (select name from st where not taxed order by name limit 3) x) as no_tax_names,
+         (select count(*)::int from up) as up_n,
+         (select count(*)::int from up where status = 'pending') as up_pending,
+         (select json_build_object('name', name, 'clock', clock, 'day', day::text, 'size', size) from up
+           where status = 'pending' order by booked_for limit 1) as up_first,
+         (select json_agg(x) from (select name, size, status, clock, day::text as day, tbl, area, booked_for as at
+                                     from up order by booked_for limit 5) x) as up_list,
          (select json_build_object('since', sh.opened_at, 'by', e.name)
             from shifts sh left join employees e on e.tenant_id = sh.tenant_id and e.id = sh.opened_by
            where sh.tenant_id = $1 and sh.deleted_at is null and sh.closed_at is null order by sh.opened_at limit 1) as shift,
@@ -136,7 +157,10 @@ type Now = {
   today: string; tz: string; hour: number; can: boolean; store: string | null; address: string | null; me: string | null; flagged: number;
   open_n: number; open_tables: number; open_amount: number | null; open_oldest: number | null; tables: number;
   book_n: number; book_guests: number; book_next: { name: string; clock: string; size: number } | null;
-  sold_out: number; sold_out_names: string[] | null; tracked: number; low: number;
+  sold_out: number; sold_out_names: string[] | null; tracked: number; low: number; low_names: string[] | null;
+  no_tax: number; no_tax_names: string[] | null;
+  up_n: number; up_pending: number; up_first: { name: string; clock: string; day: string; size: number } | null;
+  up_list: { name: string; size: number; status: string; clock: string; day: string; tbl: string | null; area: string | null; at: string }[] | null;
   shift: { since: string; by: string | null } | null;
   today_total: number; today_orders: number; today_items: number; week_ago: number;
 };
@@ -245,32 +269,46 @@ const age = (min: number) =>
   (min < 60 ? `${min} min` : min < 2880 ? `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")} min` : `${Math.floor(min / 1440)} days`).replace(/ /g, " ");
 const greeting = (hour: number) => (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");
 
-function Tile({
-  icon: Icon, label, value, unit, delta, hint, href,
-}: {
-  icon: LucideIcon; label: string; value: string; unit?: string; delta?: { text: string; up: boolean } | null; hint: string; href?: string;
-}) {
+// Something that needs a look: what it is, how much of it, and the page where it is put right.
+type Need = { tone: "red" | "amber" | "plain"; icon: LucideIcon; title: string; text: string; chip: string; go: string; href: string };
+
+// A few names and how many more there are: "Piña colada, Poisson grillé and 2 more".
+const some = (list: string[] | null, n: number) => {
+  const l = list ?? [];
+  return l.join(", ") + (n > l.length ? ` and ${n - l.length} more` : "");
+};
+// A booking's day as someone would say it, and how far off it is.
+const dayName = (day: string, today: string) => {
+  const d = span(today, day) - 1;
+  return d === 0 ? "Today" : d === 1 ? "Tomorrow" : parse(day).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).replace(",", "");
+};
+const away = (at: string, day: string, today: string) => {
+  const d = span(today, day) - 1;
+  if (d >= 1) return d === 1 ? "" : `in ${d} days`;
+  const min = Math.round((new Date(at).getTime() - Date.now()) / 60000);
+  return min <= 0 ? "now" : min < 60 ? `in ${min} min` : `in ${Math.round(min / 60)} h`;
+};
+
+// One line of "Right now": a sign, what it counts, and the count.
+function NowRow({ icon: Icon, label, hint, href, children }: { icon: LucideIcon; label: string; hint: string; href?: string; children: React.ReactNode }) {
   const body = (
     <>
-      <div className="tile-label">
+      <span className="ico">
         <Icon aria-hidden="true" strokeWidth={1.9} />
-        {label}
-      </div>
-      <div className="tile-value">
-        <span>{value}</span>
-        {unit && <small>{unit}</small>}
-        {/* up is green; down is amber, not red: a slow weekday is something to know, not a fault */}
-        {delta && <em className={delta.up ? "delta up" : "delta down"}>{delta.text}</em>}
-      </div>
-      <div className="tile-hint">{hint}</div>
+      </span>
+      <span className="now-text">
+        <b>{label}</b>
+        <span title={hint}>{hint}</span>
+      </span>
+      {children}
     </>
   );
   return href ? (
-    <Link href={href} className="tile">
+    <Link href={href} className="now-row">
       {body}
     </Link>
   ) : (
-    <div className="tile">{body}</div>
+    <div className="now-row">{body}</div>
   );
 }
 
@@ -362,113 +400,264 @@ export default async function BackofficeHome({
   const days = `from=${from}&to=${to}`;
   const at = clock(now.tz);
 
-  const soldOut = now.sold_out_names ?? [];
-  const tiles = (
-    <div className="tiles">
-      {now.can && (
-        <Tile
-          icon={TrendingUp}
-          label="Today's sales"
-          value={fmtRs(now.today_total)}
-          delta={now.week_ago > 0 ? change(now.today_total, now.week_ago) : null}
-          hint={
-            `${plural(now.today_orders, "order", "orders")} paid, ${fmtQty(now.today_items)} items` +
-            (now.week_ago > 0 ? ` · against last ${weekday(now.today)} by this time` : "")
-          }
-          href={`/backoffice/reports/sales?from=${now.today}&to=${now.today}`}
-        />
-      )}
-      <Tile
-        icon={ClipboardList}
-        label="Open orders"
-        value={String(now.open_n)}
-        unit={now.open_n === 1 ? "order" : "orders"}
-        hint={
-          now.open_n === 0
-            ? "Nothing is waiting to be paid"
-            : [
-                now.tables > 0 ? `${now.open_tables} of ${plural(now.tables, "table", "tables")}` : null,
-                now.open_amount != null ? `${fmtRs(now.open_amount)} of items` : null,
-                now.open_oldest != null ? `oldest ${age(now.open_oldest)}` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")
-        }
-      />
-      <Tile
-        icon={CalendarClock}
-        label="Bookings today"
-        value={String(now.book_n)}
-        unit={now.book_n === 1 ? "booking" : "bookings"}
-        hint={
-          now.book_n === 0
-            ? "None for today"
-            : plural(now.book_guests, "guest", "guests") +
-              (now.book_next ? ` · next ${now.book_next.clock}, ${now.book_next.name} (${now.book_next.size})` : " · none still to come")
-        }
-        href="/backoffice/bookings"
-      />
-      <Tile
-        icon={UtensilsCrossed}
-        label="Sold out"
-        value={String(now.sold_out)}
-        unit={now.sold_out === 1 ? "item" : "items"}
-        hint={
-          now.sold_out === 0
-            ? "Everything is on the menu"
-            : soldOut.join(", ") + (now.sold_out > soldOut.length ? ` and ${now.sold_out - soldOut.length} more` : "")
-        }
-        href="/backoffice/items"
-      />
-      {now.tracked > 0 && (
-        <Tile
-          icon={Boxes}
-          label="Low stock"
-          value={String(now.low)}
-          unit={now.low === 1 ? "item" : "items"}
-          hint={now.low === 0 ? `All ${plural(now.tracked, "counted item", "counted items")} above five` : "Five or fewer left"}
-          href={now.low > 0 ? "/backoffice/stock?show=low" : "/backoffice/stock"}
-        />
-      )}
-    </div>
-  );
+  // What needs a look, the most pressing first. Each is something this page
+  // already knows, with the page where it is put right; when none of them is
+  // true the pane says so.
+  const needs: Need[] = [];
+  if (now.flagged > 0)
+    needs.push({
+      tone: "red", icon: ReceiptText, chip: `${now.flagged} flagged`, go: "Review receipts", href: "/backoffice/receipts",
+      title: `${plural(now.flagged, "receipt needs", "receipts need")} review`,
+      text: "A till reported something that does not add up: a price that changed, a payment that was short or doubled.",
+    });
+  if (now.up_pending > 0)
+    needs.push({
+      tone: "amber", icon: CalendarClock, chip: "To confirm", go: "Open bookings", href: "/backoffice/bookings",
+      title: `${plural(now.up_pending, "booking", "bookings")} to confirm`,
+      text: now.up_first
+        ? `${now.up_pending > 1 ? "The first is " : ""}${now.up_first.name}, ${plural(now.up_first.size, "guest", "guests")}, ${dayName(now.up_first.day, now.today).toLowerCase()} at ${now.up_first.clock}.`
+        : "Nobody has confirmed them yet.",
+    });
+  if (now.no_tax > 0)
+    needs.push({
+      tone: "amber", icon: Percent, chip: "No tax", go: "Set the tax", href: "/backoffice/items?status=notax",
+      title: `${plural(now.no_tax, "item has", "items have")} no tax set`,
+      text: `${some(now.no_tax_names, now.no_tax)}. Pick the tax each one carries.`,
+    });
+  if (now.sold_out > 0)
+    needs.push({
+      tone: "plain", icon: UtensilsCrossed, chip: "Off sale", go: "Open the list", href: "/backoffice/items?status=out",
+      title: `${plural(now.sold_out, "item is", "items are")} sold out`,
+      text: `${some(now.sold_out_names, now.sold_out)}. The tills grey them and will not sell them.`,
+    });
+  if (now.low > 0)
+    needs.push({
+      tone: "plain", icon: Boxes, chip: "Low stock", go: "Open stock", href: "/backoffice/stock?show=low",
+      title: `${plural(now.low, "item is", "items are")} running low`,
+      text: `${some(now.low_names, now.low)}: five or fewer left.`,
+    });
+
+  // the floor: a bead for each table, the ones with an order on them filled
+  const inUse = Math.min(now.open_tables, now.tables);
+  const coming = now.up_list ?? [];
+  const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
 
   const head = (
     <>
-      {now.flagged > 0 && (
-        <div className="bo-banner warn">
-          <strong>
-            {now.flagged} {now.flagged === 1 ? "receipt needs" : "receipts need"} review.
-          </strong>
-          A till reported something that does not add up (a price that changed, a payment that was short or doubled).{" "}
-          <Link href="/backoffice/receipts">Open receipts</Link>
-        </div>
-      )}
-      <div className="page-head">
+      <header className="home-head rise">
         <div>
+          <p className="home-where">
+            {fullDate(now.today)}
+            {now.store ? ` · ${now.store}` : ""}
+            {now.address ? `, ${now.address}` : ""}
+          </p>
           <h1>
             {greeting(now.hour)}
             {now.me ? `, ${now.me.trim().split(/\s+/)[0]}` : ""}
           </h1>
-          <p className="lede">
-            {fullDate(now.today)}
-            {now.store ? ` · ${now.store}` : ""}
-            {now.address ? `, ${now.address}` : ""}
-            {" · "}
-            {now.shift ? `sales period open since ${at(now.shift.since)}${now.shift.by ? ` (${now.shift.by})` : ""}` : "no sales period open"}
+          <p className="home-status">
+            {needs.length === 0
+              ? "Nothing needs attention right now. Everything is on track."
+              : `${needs.length} ${needs.length === 1 ? "thing needs" : "things need"} attention. Everything else is on track.`}
           </p>
         </div>
-        <div className="page-actions no-print">
-          <Link href="/backoffice/reports/day-close" className="btn-quiet">Day closing</Link>
-          <Link href="/backoffice/bookings" className="btn-quiet">Bookings</Link>
-          <Link href="/backoffice/items?edit=new" className="btn-quiet">Add an item</Link>
+        <div className="home-side">
+          {now.can && (
+            <Link className="home-fig" href={`/backoffice/reports/sales?from=${now.today}&to=${now.today}`}>
+              <small>Sales today</small>
+              <strong>
+                {fmtRs(now.today_total)}
+                {/* up is fresh; down is amber, not red: a slow weekday is something to know, not a fault */}
+                {now.week_ago > 0 &&
+                  (() => {
+                    const d = change(now.today_total, now.week_ago);
+                    return (
+                      d && (
+                        <em className={d.up ? "delta up" : "delta down"} title={`Against last ${weekday(now.today)} by this time`}>
+                          {d.text} on last {weekday(now.today).slice(0, 3)}
+                        </em>
+                      )
+                    );
+                  })()}
+              </strong>
+              <span>
+                {plural(now.today_orders, "order", "orders")} paid, {fmtQty(now.today_items)} items
+              </span>
+            </Link>
+          )}
+          <div className="home-fig">
+            {/* without the right to see reports there is no amount: the count is the figure */}
+            <small>{now.open_amount != null ? "On open orders" : "Open orders"}</small>
+            <strong>{now.open_amount != null ? fmtRs(now.open_amount) : now.open_n}</strong>
+            <span>
+              {now.open_n === 0
+                ? "Nothing is waiting to be paid"
+                : [now.open_amount != null ? plural(now.open_n, "order", "orders") : null, now.open_oldest != null ? `oldest ${age(now.open_oldest)}` : null]
+                    .filter(Boolean)
+                    .join(" · ") || "Waiting to be paid"}
+            </span>
+          </div>
+          <div className="home-actions no-print">
+            <Link href="/backoffice/reports/day-close" className="btn-quiet btn-lg">
+              Day closing
+            </Link>
+            <Link href="/backoffice/items?edit=new" className="btn btn-lg">
+              <Plus aria-hidden="true" />
+              Add item
+            </Link>
+          </div>
         </div>
+      </header>
+
+      <div className="home-top">
+        <section className="pane rise" style={rise(1)}>
+          <div className="pane-head">
+            <div>
+              <h2>
+                <Sparkles aria-hidden="true" />
+                Needs attention
+                {needs.length > 0 && <span className="pane-count">{needs.length}</span>}
+              </h2>
+              <p>Across the menu, the stock, the bookings and every till. Most pressing first.</p>
+            </div>
+          </div>
+          <div className="pane-in">
+            {needs.length === 0 ? (
+              <div className="need-none">
+                <span className="ico lime">
+                  <Check aria-hidden="true" />
+                </span>
+                <div>
+                  <b>Nothing needs attention</b>
+                  <span>No receipt to review, no booking to confirm, nothing sold out or running low.</span>
+                </div>
+              </div>
+            ) : (
+              needs.map((n, i) => (
+                <div key={n.href} className="need rise" style={rise(i + 2)}>
+                  <span className={"ico " + n.tone}>
+                    <n.icon aria-hidden="true" strokeWidth={1.9} />
+                  </span>
+                  <div className="need-text">
+                    <b>{n.title}</b>
+                    <span>{n.text}</span>
+                  </div>
+                  <span className={"chip " + n.tone}>{n.chip}</span>
+                  <Link href={n.href} className="go">
+                    {n.go}
+                    <ArrowRight aria-hidden="true" />
+                  </Link>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="pane rise" style={rise(2)}>
+          <div className="pane-head">
+            <div>
+              <h2>Right now</h2>
+              <p>On every tablet, as of the last sync</p>
+            </div>
+          </div>
+          <div className="pane-in">
+            {now.tables > 0 ? (
+              <>
+                <div className="now-big">
+                  <strong>{inUse}</strong>
+                  <span>of {plural(now.tables, "table", "tables")} in use</span>
+                </div>
+                {/* past sixty the beads would be hairs: the two counts say it */}
+                {now.tables <= 60 && (
+                  <div className="seats" role="img" aria-label={`${inUse} of ${now.tables} tables in use`}>
+                    {Array.from({ length: now.tables }, (_, i) => (
+                      <i key={i} className={i < inUse ? "on" : undefined} style={rise(i)} />
+                    ))}
+                  </div>
+                )}
+                <div className="seats-key">
+                  <span>
+                    <i className="on" />
+                    In use {inUse}
+                  </span>
+                  <span>
+                    <i />
+                    Free {now.tables - inUse}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="now-big" style={{ paddingBottom: 14 }}>
+                <strong>{now.open_n}</strong>
+                <span>{now.open_n === 1 ? "open order" : "open orders"}</span>
+              </div>
+            )}
+            <NowRow
+              icon={ClipboardList}
+              label="Open orders"
+              hint={
+                now.open_n === 0
+                  ? "Nothing is waiting to be paid"
+                  : [now.open_amount != null ? `${fmtRs(now.open_amount)} of items` : null, now.open_oldest != null ? `oldest ${age(now.open_oldest)}` : null]
+                      .filter(Boolean)
+                      .join(" · ") || "Waiting to be paid"
+              }
+            >
+              <span className="now-val">{now.open_n}</span>
+            </NowRow>
+            <NowRow
+              icon={CalendarClock}
+              label="Bookings today"
+              href="/backoffice/bookings"
+              hint={
+                now.book_n === 0
+                  ? "None for today"
+                  : plural(now.book_guests, "guest", "guests") +
+                    (now.book_next ? ` · next ${now.book_next.clock}, ${now.book_next.name} (${now.book_next.size})` : " · none still to come")
+              }
+            >
+              <span className="now-val">{now.book_n}</span>
+            </NowRow>
+            <NowRow
+              icon={Timer}
+              label="Sales period"
+              href="/backoffice/reports/shifts"
+              hint={now.shift ? `Since ${at(now.shift.since)}${now.shift.by ? `, opened by ${now.shift.by}` : ""}` : "None is open on any till"}
+            >
+              <span className={now.shift ? "chip lime" : "chip"}>{now.shift ? "Open" : "Closed"}</span>
+            </NowRow>
+          </div>
+        </section>
       </div>
-      <div className="dash-sub">
-        <h2>Right now</h2>
-        <span>On every tablet, as of the last sync</span>
-      </div>
-      {tiles}
+
+      <section className="pane rise" style={{ ...rise(3), marginBottom: 8 }}>
+        <div className="pane-head">
+          <div>
+            <h2>Next bookings</h2>
+            <p>{now.up_n === 0 ? "None on the list from here on" : `${plural(now.up_n, "booking", "bookings")} still to come`}</p>
+          </div>
+          <More href="/backoffice/bookings">Open bookings</More>
+        </div>
+        <div className="pane-in">
+          {coming.length === 0 ? (
+            <p className="dash-empty">No bookings coming up. One taken on a tablet or added under Bookings shows here.</p>
+          ) : (
+            <div className="next">
+              {coming.map((b, i) => (
+                <div key={i} className={(b.day === now.today ? "today" : "") + (b.status === "pending" ? " pending" : "")}>
+                  <div className="next-when">
+                    <b>{dayName(b.day, now.today)}</b>
+                    <small>{away(b.at, b.day, now.today)}</small>
+                  </div>
+                  <div className="next-name">{b.name}</div>
+                  <div className="next-sub">{[b.clock, plural(b.size, "guest", "guests"), b.tbl ? `Table ${b.tbl}` : b.area].filter(Boolean).join(" · ")}</div>
+                  {b.status === "pending" && <span className="chip amber">To confirm</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
     </>
   );
 
@@ -476,7 +665,9 @@ export default async function BackofficeHome({
     return (
       <div>
         {head}
-        <div className="note warn">Your role does not include seeing reports, so the sales figures are left out.</div>
+        <div className="note warn" style={{ marginTop: 16 }}>
+          Your role does not include seeing reports, so the sales figures are left out.
+        </div>
       </div>
     );
   }
@@ -508,6 +699,10 @@ export default async function BackofficeHome({
   return (
     <div>
       {head}
+      <div className="dash-sub">
+        <h2>Sales</h2>
+        <span>For the days picked</span>
+      </div>
       <div className="dash-controls no-print">
         <details className="range">
           <summary>
