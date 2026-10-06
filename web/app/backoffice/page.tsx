@@ -663,7 +663,7 @@ export default async function BackofficeHome({
 
   if (!cur) {
     return (
-      <div>
+      <div className="home">
         {head}
         <div className="note warn" style={{ marginTop: 16 }}>
           Your role does not include seeing reports, so the sales figures are left out.
@@ -697,7 +697,7 @@ export default async function BackofficeHome({
   const hh = (h: number) => String(h).padStart(2, "0") + ":00";
 
   return (
-    <div>
+    <div className="home">
       {head}
       <div className="dash-sub">
         <h2>Sales</h2>
