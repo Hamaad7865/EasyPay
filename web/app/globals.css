@@ -720,3 +720,49 @@ td.num .cell-sub .delta { margin-left: 4px; }
 .open-remove { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12.5px; }
 .clip-note { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table-filters .btn-sm svg { width: 14px; height: 14px; }
+
+/* ---- a panel that slides in from the right (drawer.tsx) ---- */
+
+.drawer {
+  position: fixed; inset: 0 0 0 auto; margin: 0; padding: 0; border: 0;
+  width: min(560px, 100vw); max-width: none; height: 100dvh; max-height: none;
+  background: var(--surface); color: var(--ink); overflow: hidden;
+  box-shadow: -24px 0 64px rgba(16, 24, 40, 0.2);
+}
+.drawer::backdrop { background: rgba(17, 24, 39, 0.38); backdrop-filter: blur(2px); }
+@keyframes drawer-in { from { transform: translateX(100%); } }
+@keyframes drawer-dim { from { opacity: 0; } }
+.drawer[open] { animation: drawer-in 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
+.drawer[open]::backdrop { animation: drawer-dim 0.26s ease; }
+/* closing: out the way it came, a little quicker */
+.drawer.leaving { transform: translateX(100%); transition: transform 0.18s cubic-bezier(0.4, 0, 1, 1); }
+.drawer.leaving::backdrop { opacity: 0; transition: opacity 0.18s ease; }
+/* the page behind stays where it was while the panel is open */
+html:has(.drawer[open]) { overflow: hidden; }
+
+.drawer-panel { display: flex; flex-direction: column; height: 100%; }
+.drawer-head { flex: none; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px 16px; border-bottom: 1px solid var(--line); }
+.bo-main .drawer-head h2 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.02em; }
+.bo-main .drawer-head p { margin: 3px 0 0; font-size: 12.5px; color: var(--ink3); }
+.bo-main button.drawer-x { flex: none; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--ink3); box-shadow: none; }
+.bo-main button.drawer-x:hover { background: var(--bg); color: var(--ink); }
+.bo-main button.drawer-x svg { width: 18px; height: 18px; }
+.drawer-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 24px 24px; }
+.drawer-foot { flex: none; display: flex; align-items: center; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--line); background: #fafbfc; }
+
+/* the form inside: one part under another, a rule between them */
+.drawer-form section { padding: 20px 0 6px; border-bottom: 1px solid var(--line); }
+.drawer-form section:last-child { border-bottom: 0; }
+.bo-main .drawer-form h3 { margin: 0 0 12px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink3); }
+.drawer-form .field { max-width: none; }
+.drawer-form .note { margin: 16px 0 0; }
+.drawer-lede { margin: -6px 0 12px !important; font-size: 12.5px; }
+.drawer-prices { list-style: none; margin: 0 0 12px; padding: 0; }
+.drawer-prices li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.drawer-prices li:last-child { border-bottom: 0; }
+.drawer-prices small { display: block; color: var(--ink3); font-size: 12px; }
+.drawer-prices time { flex: none; color: var(--ink3); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) {
+  .drawer[open], .drawer[open]::backdrop { animation: none; }
+  .drawer.leaving, .drawer.leaving::backdrop { transition: none; }
+}

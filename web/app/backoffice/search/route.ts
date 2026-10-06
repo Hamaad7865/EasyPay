@@ -61,7 +61,7 @@ export async function POST(request: Request) {
               and (${plain("i.name")} like $2 or ${plain("i.sku")} like $2 or ${plain("i.barcode")} like $2)
             order by (${plain("i.name")} like $3) desc, i.name limit ${EACH}`,
         )
-      ).map((r) => ({ title: r.name, sub: `${r.cat ?? "No category"} · ${money(Number(r.price), s.decimals)}`, href: `/backoffice/items/edit?id=${r.id}` })),
+      ).map((r) => ({ title: r.name, sub: `${r.cat ?? "No category"} · ${money(Number(r.price), s.decimals)}`, href: `/backoffice/items?edit=${r.id}` })),
     );
 
     add(

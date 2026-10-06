@@ -14,6 +14,9 @@ export async function act(
   perm: string,
   path: string,
   fn: (c: PoolClient, ctx: TenantContext) => Promise<string | void>,
+  // where to go when the change is refused, if not the same place (a form in
+  // a panel goes back to the list when it saves, and stays open when it does not)
+  refusedPath: string = path,
 ): Promise<never> {
   let ok = "Saved.";
   try {
@@ -32,7 +35,7 @@ export async function act(
             : e instanceof Error && e.message.includes("suspended")
               ? e.message
               : "That could not be saved. Nothing was changed.";
-    redirect(with_(path, "err", msg));
+    redirect(with_(refusedPath, "err", msg));
   }
   revalidatePath(path.split("?")[0]);
   redirect(with_(path, "ok", ok));

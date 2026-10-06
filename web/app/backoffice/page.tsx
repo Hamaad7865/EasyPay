@@ -441,7 +441,7 @@ export default async function BackofficeHome({
         <div className="page-actions no-print">
           <Link href="/backoffice/reports/day-close" className="btn-quiet">Day closing</Link>
           <Link href="/backoffice/bookings" className="btn-quiet">Bookings</Link>
-          <Link href="/backoffice/items/edit" className="btn-quiet">Add an item</Link>
+          <Link href="/backoffice/items?edit=new" className="btn-quiet">Add an item</Link>
         </div>
       </div>
       <div className="dash-sub">

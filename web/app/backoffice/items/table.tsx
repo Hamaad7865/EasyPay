@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Download } from "lucide-react";
-import { Back, Chev, downloadCsv, fold, NoMatch, Seg, SortTh, type Start, TableSearch, useTable } from "../table-kit";
+import { Download, Plus, UtensilsCrossed } from "lucide-react";
+import { Chev, downloadCsv, fold, NoMatch, Seg, SortTh, type Start, TableSearch, useTable } from "../table-kit";
+import { type AddonGroup, ItemEditor, type Tax } from "./editor";
 
 export type Item = {
   id: string;
@@ -24,6 +24,11 @@ export type Item = {
   // null when the item's stock is not counted
   stock: number | null;
   stock_shown: string;
+  // what the panel that edits it needs: its tax, its add-on groups, and
+  // whether this item alone is counted
+  tax_id: string | null;
+  group_ids: string[];
+  own_stock: boolean;
 };
 type Action = (f: FormData) => Promise<void>;
 
@@ -39,14 +44,28 @@ const LOW = 5000; // five or fewer left, as the Stock page counts it
 // finds it by name, category, SKU or barcode as you type, the two filters
 // narrow the list and a column's title sorts by it. Tapping a line opens it
 // for what changes day to day: its price, and whether it is on sale. Ticking
-// lines takes several off sale (or puts them back) in one go. The rest is on
-// the item's own page.
+// lines takes several off sale (or puts them back) in one go. The rest (its
+// name, category, tax, add-ons, barcode) is in a panel that slides in from the
+// right when its name is tapped: the list stays where it was behind it.
 export function ItemsTable({
-  items, cats, start, quickSave, bulkSave,
+  items, cats, taxes, groups, start, problem, quickSave, bulkSave, saveItem,
 }: {
-  items: Item[]; cats: { id: string; name: string }[]; start: Start; quickSave: Action; bulkSave: Action;
+  items: Item[]; cats: { id: string; name: string }[]; taxes: Tax[]; groups: AddonGroup[]; start: Start;
+  // why the last save was refused, if it was
+  problem: string;
+  quickSave: Action; bulkSave: Action; saveItem: Action;
 }) {
   const t = useTable("/backoffice/items", start);
+  // the item in the panel: its id, "new" for one being added, nothing when shut
+  const editing = t.get("edit");
+  const edited = editing && editing !== "new" ? (items.find((i) => i.id === editing) ?? null) : null;
+  const panelOpen = editing === "new" || edited !== null;
+  const edit = (id: string) => t.set("edit", id);
+  // the same thing as an address, for a middle click or a new tab
+  const editHref = (id: string) => {
+    const b = t.back(undefined, ["edit"]);
+    return `${b}${b.includes("?") ? "&" : "?"}edit=${id}`;
+  };
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
   const cat = t.get("category");
   const status = t.get("status");
@@ -127,10 +146,14 @@ export function ItemsTable({
           <Download aria-hidden="true" />
           Download CSV
         </button>
+        <button type="button" className="btn-sm" onClick={() => edit("new")}>
+          <Plus aria-hidden="true" />
+          Add item
+        </button>
       </div>
       {chosen.length > 0 && (
         <form action={bulkSave} className="table-bulk" role="region" aria-label="The items ticked">
-          <Back t={t} />
+          <input type="hidden" name="back" value={t.back(undefined, ["edit"])} />
           {chosen.map((i) => (
             <input key={i.id} type="hidden" name="id" value={i.id} />
           ))}
@@ -150,7 +173,7 @@ export function ItemsTable({
           </button>
         </form>
       )}
-      <div className="table-scroll">
+      <div className="table-scroll" hidden={items.length === 0}>
         <table className="rows-open with-ticks">
           <thead>
             <tr>
@@ -189,9 +212,19 @@ export function ItemsTable({
                     <Chev open={on} name={it.name} onClick={() => t.toggle(it.id)} />
                   </td>
                   <td>
-                    <Link href={`/backoffice/items/edit?id=${it.id}`} className="strong" onClick={(e) => e.stopPropagation()}>
+                    <a
+                      href={editHref(it.id)}
+                      className="strong"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // a plain click opens the panel here; with a key held it is the browser's (new tab)
+                        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                        e.preventDefault();
+                        edit(it.id);
+                      }}
+                    >
                       {it.name}
-                    </Link>
+                    </a>
                     {code && <small className="cell-sub">{code}</small>}
                   </td>
                   <td>
@@ -220,7 +253,7 @@ export function ItemsTable({
                       <div className="open-panel">
                         <form action={quickSave} className="bo-toolbar" style={{ margin: 0 }}>
                           <input type="hidden" name="id" value={it.id} />
-                          <Back t={t} id={it.id} />
+                          <input type="hidden" name="back" value={t.back(it.id, ["edit"])} />
                           <label className="inline muted">
                             Price (Rs)
                             <input name="price" defaultValue={(it.price / 100).toString()} className="narrow" inputMode="decimal" aria-label={`Price of ${it.name}`} />
@@ -233,11 +266,11 @@ export function ItemsTable({
                           <button type="submit" className="btn-sm">
                             Save
                           </button>
-                          <Link href={`/backoffice/items/edit?id=${it.id}`} className="btn btn-quiet btn-sm">
-                            Open the item
-                          </Link>
+                          <button type="button" className="btn-quiet btn-sm" onClick={() => edit(it.id)}>
+                            Edit everything
+                          </button>
                         </form>
-                        <p className="muted open-hint">Its name, category, tax and add-ons are on the item&apos;s own page.</p>
+                        <p className="muted open-hint">Its name, category, tax, add-ons and barcode are under Edit everything.</p>
                       </div>
                     </td>
                   </tr>
@@ -247,6 +280,27 @@ export function ItemsTable({
           </tbody>
         </table>
       </div>
+      {items.length === 0 && (
+        <div className="empty" style={{ border: 0, margin: 0 }}>
+          <UtensilsCrossed aria-hidden="true" strokeWidth={1.6} />
+          <strong>No items here yet</strong>
+          <button type="button" className="btn-link" onClick={() => edit("new")}>
+            Add the first one
+          </button>
+        </div>
+      )}
+      <ItemEditor
+        open={panelOpen}
+        item={edited}
+        cats={cats}
+        taxes={taxes}
+        groups={groups}
+        category={cat && cat !== "none" ? cat : ""}
+        back={t.back(undefined, ["edit"])}
+        problem={start.edit ? problem : ""}
+        save={saveItem}
+        onClose={() => edit("")}
+      />
     </section>
   );
 }

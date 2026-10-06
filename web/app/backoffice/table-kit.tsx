@@ -79,8 +79,11 @@ export function useTable(path: string, start: Start) {
         return next;
       }),
     // Where a save comes back to: this list as it is, with that line open.
-    back: (id?: string) => {
+    // `without` leaves out what should not be there on the way back (the
+    // panel that was open while saving).
+    back: (id?: string, without: string[] = []) => {
       const p = new URLSearchParams(query);
+      for (const k of without) p.delete(k);
       if (id) p.set("open", id);
       const s = p.toString();
       return path + (s ? "?" + s : "");
