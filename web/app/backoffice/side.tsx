@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, LogOut, PanelLeftClose, PanelLeftOpen, Search, Store } from "lucide-react";
-import { GROUPS, HOME, groupOf, isOn } from "./nav";
+import { GROUPS, HOME, groupOf, isOn, type NavCount } from "./nav";
 import { openSearch, SearchBox, useSearchKey } from "./search-box";
 
 // The way round the back office, in two parts.
@@ -48,6 +48,29 @@ function place(sign: HTMLElement, cardId: string, fromBottom = false) {
   });
 }
 const shut = () => document.querySelectorAll<HTMLElement>(".rail-card:popover-open").forEach((c) => c.hidePopover());
+
+// The number beside a page: how many rows its list holds. Past 999 it is
+// shortened (1.2k), and its title says the whole of it.
+function Count({ c }: { c: NavCount | undefined }) {
+  if (!c) return null;
+  const short = c.n > 999 ? `${c.n >= 9950 ? Math.round(c.n / 1000) : Math.round(c.n / 100) / 10}k` : String(c.n);
+  return (
+    <span className={"nav-n" + (c.tone ? " " + c.tone : "") + (c.n === 0 ? " zero" : "")} title={c.say} aria-label={c.say}>
+      {short}
+    </span>
+  );
+}
+
+// A save comes back with its "saved" line in the address: the numbers are
+// asked for again then. Only that line is watched, not the rest of the
+// address, which a list rewrites at every letter typed into its search.
+function Saved({ again }: { again: () => void }) {
+  const ok = useSearchParams().get("ok") ?? "";
+  useEffect(() => {
+    if (ok) again();
+  }, [ok, again]);
+  return null;
+}
 
 export function Side({
   restaurant, id, employee, role, signOut, folded, opened,
@@ -94,6 +117,27 @@ export function Side({
   // The list scrolls without a bar, so the page that is open is brought into
   // view once its group has finished opening; and a card beside the rail is
   // shut on arriving anywhere.
+  // The numbers beside the pages. They are asked for once a page is on the
+  // screen, so no page waits for them; an answer to an older question, or one
+  // that is not what was asked for (signed out, no connection), is dropped.
+  const [counts, setCounts] = useState<Record<string, NavCount>>({});
+  const asked = useRef(0);
+  const last = useRef(0);
+  const count = useCallback(() => {
+    // asked twice at once is asked once (a save that lands on another page;
+    // React starting everything twice while developing)
+    if (Date.now() - last.current < 250) return;
+    last.current = Date.now();
+    const mine = ++asked.current;
+    fetch("/backoffice/counts", { cache: "no-store" })
+      .then((r) => (r.ok && r.headers.get("content-type")?.includes("json") ? r.json() : null))
+      .then((d: { counts?: Record<string, NavCount> } | null) => {
+        if (d?.counts && mine === asked.current) setCounts(d.counts);
+      })
+      .catch(() => {});
+  }, []);
+  useEffect(() => count(), [path, count]);
+
   const nav = useRef<HTMLElement>(null);
   useEffect(() => {
     shut();
@@ -164,6 +208,7 @@ export function Side({
                 <Link key={l.href} href={l.href} className={isOn(l.href, path) ? "on" : undefined} style={{ "--i": i } as React.CSSProperties} onClick={shut}>
                   <l.icon aria-hidden="true" strokeWidth={1.9} />
                   {l.label}
+                  <Count c={counts[l.href]} />
                 </Link>
               ))}
             </div>
@@ -233,6 +278,7 @@ export function Side({
                       {g.links.map((l, i) => (
                         <Link key={l.href} href={l.href} className={isOn(l.href, path) ? "on" : undefined} style={{ "--i": i } as React.CSSProperties}>
                           {l.label}
+                          <Count c={counts[l.href]} />
                         </Link>
                       ))}
                     </div>
@@ -254,6 +300,9 @@ export function Side({
       </aside>
       {/* once, and outside the menu: it has to open with the menu folded away too */}
       <SearchBox />
+      <Suspense fallback={null}>
+        <Saved again={count} />
+      </Suspense>
     </>
   );
 }

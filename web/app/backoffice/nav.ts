@@ -38,6 +38,8 @@ import {
 // things someone might type when looking for the page.
 export type NavLink = { href: string; label: string; icon: LucideIcon; words?: string };
 export type NavGroup = { id: string; title: string; icon: LucideIcon; links: NavLink[] };
+// The number beside a page in the menu, and what it counts, said in full (counts/route.ts).
+export type NavCount = { n: number; say: string; tone?: "red" };
 
 export const HOME: NavLink = { href: "/backoffice", label: "Dashboard", icon: LayoutDashboard, words: "home today overview right now" };
 
