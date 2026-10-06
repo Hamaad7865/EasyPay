@@ -73,6 +73,7 @@ import com.restopos.app.BuildConfig
 import com.restopos.core.common.Money
 import com.restopos.core.data.Approvals
 import com.restopos.core.data.CashOps
+import com.restopos.core.data.Routing
 import com.restopos.core.data.StaffMember
 import com.restopos.core.data.StaffSession
 import com.restopos.core.database.DayCloseEntity
@@ -207,6 +208,9 @@ class SettingsViewModel @Inject constructor(
     // per printer, the categories whose items print on it
     private val _routes = MutableStateFlow<Map<String, List<String>>>(emptyMap())
     val routes: StateFlow<Map<String, List<String>>> = _routes
+    // the restaurant has one printer for everything (back office, Printers)
+    private val _onePrinter = MutableStateFlow(false)
+    val onePrinter: StateFlow<Boolean> = _onePrinter
 
     private val _orderTypes = MutableStateFlow<List<DiningOptionEntity>>(emptyList())
     val orderTypes: StateFlow<List<DiningOptionEntity>> = _orderTypes
@@ -240,7 +244,9 @@ class SettingsViewModel @Inject constructor(
         _pastDays.value = cash.dayCloses().map { PastDay(it, cash.employeeName(it.closed_by)) }
         val printers = printing.printers()
         val categories = db.catalog().categories().first()
-        _routes.value = printers.associate { p -> p.id to categories.filter { c -> ids(c.printer_ids).contains(p.id) }.map { it.name } }
+        val one = printing.settings().onePrinter
+        _onePrinter.value = Routing.single(printers, one) != null
+        _routes.value = printers.associate { p -> p.id to categories.filter { c -> Routing.printersFor(Routing.ids(c.printer_ids), printers, one).contains(p.id) }.map { it.name } }
         _printers.value = printers
         _orderTypes.value = db.catalog().diningOptions()
     }
@@ -785,6 +791,7 @@ private fun PaymentsPage(vm: SettingsViewModel, onOpen: (String) -> Unit) {
 private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel) {
     val printers by vm.printers.collectAsState()
     val routes by vm.routes.collectAsState()
+    val one by vm.onePrinter.collectAsState()
     val answers by vm.answers.collectAsState()
     val checking by vm.checking.collectAsState()
     val orderTypes by vm.orderTypes.collectAsState()
@@ -817,10 +824,11 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel) {
                     }
                     Text("${if (usb) "USB" else p.address ?: "no address"} · ${p.paper_mm} mm paper", Modifier.padding(top = 2.dp), color = Pos.Text3, fontSize = 13.sp)
                     Text(
-                        listOfNotNull(
+                        if (one) (if (p.is_receipt) "Everything prints here: receipts, bills, reports, the cash drawer and every kitchen order" else "Nothing is sent here while one printer does everything")
+                        else listOfNotNull(
                             "Receipts, bills, reports and the cash drawer".takeIf { p.is_receipt },
                             cats.takeIf { it.isNotEmpty() }?.let { "Kitchen tickets for ${it.joinToString(", ")}" },
-                        ).joinToString(". ").ifEmpty { "Nothing is sent here yet: tick it on a category in the back office" } + ".",
+                        ).joinToString(". ").ifEmpty { "Nothing is sent here yet: tick what it prints in the back office, under Printers" } + ".",
                         Modifier.padding(top = 2.dp), color = Pos.Text2, fontSize = 13.sp,
                     )
                 }

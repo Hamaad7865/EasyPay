@@ -119,29 +119,23 @@ class DocBuilder @Inject constructor(
         printing.send(p, bytes, what, again).getOrThrow()
     }
 
-    private fun ids(text: String): List<String> =
-        runCatching { json.parseToJsonElement(text).jsonArray.map { it.jsonPrimitive.content } }.getOrDefault(emptyList())
-
-    // Each line goes to the printers ticked on its category, one ticket per
-    // printer. A line with no printer has nowhere to go and counts as sent.
+    // Each line goes where Routing says: to the printers ticked on its
+    // category, one ticket per printer, or, in a restaurant with one printer
+    // for everything, to the receipt printer. A line with no printer has
+    // nowhere to go and counts as sent.
     suspend fun kitchen(t: TicketEntity, rows: List<TicketLineEntity>, title: String): KitchenOutcome {
-        val printers = printing.printers().associateBy { it.id }
-        val where = HashMap<String, List<String>>()
-        val perPrinter = LinkedHashMap<String, MutableList<TicketLineEntity>>()
-        rows.forEach { l ->
-            val to = l.item_id?.let { db.ops().categoryOfItem(it) }?.printer_ids?.let { ids(it) }.orEmpty().filter { printers.containsKey(it) }
-            where[l.id] = to
-            to.forEach { perPrinter.getOrPut(it) { ArrayList() }.add(l) }
-        }
-        val failed = HashSet<String>()
+        val printers = printing.printers()
+        val one = printing.settings().onePrinter
+        val byId = printers.associateBy { it.id }
+        val perPrinter = Routing.tickets(rows.map { l -> l to l.item_id?.let { db.ops().categoryOfItem(it) }?.let { Routing.ids(it.printer_ids) } }, printers, one)
         val errors = ArrayList<String>()
         val order = orderName(t)
         val waiter = employee(t.opened_by) ?: staff.current.value?.employee?.name
         for ((pid, ls) in perPrinter) {
-            val p = printers[pid] ?: continue
-            val doc = KitchenDoc(title, order, System.currentTimeMillis(), waiter, dining(t), t.covers, remark(t), lines(ls), p.name)
+            val p = byId[pid] ?: continue
+            val doc = KitchenDoc(title, order, System.currentTimeMillis(), waiter, dining(t), t.covers, remark(t), lines(ls), Routing.heading(p, printers, one))
             // a ticket that did not print can be sent again from Settings, Printers
-            printing.send(p, Docs.kitchen(doc, printing.paper(p)), "Kitchen ticket, $order").onFailure { failed.add(pid); errors.add(it.message ?: "${p.name} did not print") }
+            printing.send(p, Docs.kitchen(doc, printing.paper(p)), "Kitchen ticket, $order").onFailure { errors.add(it.message ?: "${p.name} did not print") }
         }
         return KitchenOutcome(rows.map { it.id }, errors)
     }

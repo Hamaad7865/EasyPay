@@ -42,6 +42,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.data.Kitchen
 import com.restopos.core.data.LineInfo
+import com.restopos.core.data.PosSettings
+import com.restopos.core.data.Routing
 import com.restopos.core.data.ServiceRepository
 import com.restopos.core.database.KdsTicketEntity
 import com.restopos.core.database.TillDatabase
@@ -92,21 +94,19 @@ class KdsViewModel @Inject constructor(
         Quad(tickets, lines, bumped, cats)
     }.mapLatest { (tickets, lines, bumped, cats) ->
         val store = session.storeId()
-        val printers = (store?.let { db.ops().printers(it) } ?: emptyList()).filter { !it.is_receipt }
-        val known = printers.map { it.id }.toSet()
-        val where = cats.associate { c ->
-            c.id to runCatching { Json.parseToJsonElement(c.printer_ids).jsonArray.map { it.jsonPrimitive.content } }.getOrDefault(emptyList()).filter { known.contains(it) }.toSet()
-        }
+        // the same rule the tickets are printed by (Routing)
+        val printers = store?.let { db.ops().printers(it) } ?: emptyList()
+        val ticked = cats.associate { c -> c.id to Routing.ids(c.printer_ids) }
+        val stations = Routing.stations(ticked.values, printers, PosSettings.parse(db.ops().settings()).onePrinter)
         val catOf = HashMap<String, String?>()
         val info = service.describe(lines)
         val rows = info.map { l ->
             val cat = l.line.item_id?.let { id -> catOf.getOrPut(id) { db.catalog().item(id)?.category_id } }
-            KdsLine(l, where[cat].orEmpty())
+            KdsLine(l, Routing.stationsFor(ticked[cat], stations))
         }.groupBy { it.info.line.kds_id }
-        val used = where.values.flatten().toSet()
         KdsUi(
             tickets.mapNotNull { t -> rows[t.id]?.takeIf { it.isNotEmpty() }?.let { KdsCard(t, it) } },
-            printers.filter { used.contains(it.id) }.map { Station(it.id, it.name) },
+            stations.map { Station(it.id, it.name) },
             bumped > 0,
             loaded = true,
         )

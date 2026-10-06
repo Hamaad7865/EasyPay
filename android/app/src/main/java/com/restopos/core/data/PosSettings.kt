@@ -32,6 +32,8 @@ data class PosSettings(
     val prepMinutes: Int = 15, // how long after it is rung up a takeaway is due
     val lockMinutes: Int = 0, // minutes without a touch before the till locks itself; 0 is never
     val kitchenSound: Boolean = true, // a short sound on the kitchen display when an order arrives
+    // one printer does everything: kitchen orders print on the receipt printer, whatever the categories say
+    val onePrinter: Boolean = false,
 ) {
     fun shop(fallbackName: String): Shop =
         Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer)
@@ -68,6 +70,7 @@ data class PosSettings(
                 prepMinutes = runCatching { d["prepMinutes"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..180 } ?: 15,
                 lockMinutes = runCatching { d["lockMinutes"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 0..120 } ?: 0,
                 kitchenSound = d.bool("kitchenSound") ?: true,
+                onePrinter = d.bool("onePrinter") ?: false,
             )
         }
     }

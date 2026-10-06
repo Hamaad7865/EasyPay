@@ -12,6 +12,7 @@ import android.hardware.usb.UsbManager
 import android.util.Base64
 import com.restopos.core.common.Money
 import com.restopos.core.data.PosSettings
+import com.restopos.core.data.Routing
 import com.restopos.core.database.PrinterEntity
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.sync.SessionStore
@@ -24,6 +25,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -104,16 +107,28 @@ class Printing @Inject constructor(
             } else {
                 val address = p.address?.trim().orEmpty()
                 if (address.isEmpty()) return@runCatching false
-                Socket().use { it.connect(InetSocketAddress(address.substringBefore(':'), address.substringAfter(':', "9100").toIntOrNull() ?: 9100), 1500) }
+                // not while something is printing there: the check would take the printer's one connection
+                turn(p).withLock {
+                    Socket().use { it.connect(InetSocketAddress(address.substringBefore(':'), address.substringAfter(':', "9100").toIntOrNull() ?: 9100), 1500) }
+                }
                 true
             }
         }.getOrDefault(false)
     }
 
+    // One print at a time to each printer. Most of them take a single
+    // connection: a bill sent while a kitchen ticket is still going would be
+    // refused and reported as "not answering", which is what happens in a
+    // restaurant where one printer does everything. The second one waits its
+    // turn instead. Kept by the printer's address, not its name, so one
+    // printer entered twice in the back office is still one printer.
+    private val turns = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
+    private fun turn(p: PrinterEntity): Mutex = turns.getOrPut(Routing.line(p)) { Mutex() }
+
     private suspend fun deliver(p: PrinterEntity, bytes: ByteArray): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        turn(p).withLock { runCatching {
             if (p.kind == "usb") usb(bytes) else tcp(p, bytes)
-        }.recoverCatching { e ->
+        } }.recoverCatching { e ->
             throw PrintError(
                 when (e) {
                     is PrintError -> e.message ?: "${p.name} did not print"
