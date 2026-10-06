@@ -62,10 +62,13 @@ export function ItemsTable({ items, cats, start, quickSave }: { items: Item[]; c
     if (sort) p.set("sort", sort);
     return p;
   }, [cat, q, status, sort]);
+  // After every draw, not only when a filter moves: a save comes back with
+  // its "saved" line in the address, and that must not outlive the draw.
   useEffect(() => {
     const s = query.toString();
-    window.history.replaceState(null, "", "/backoffice/items" + (s ? "?" + s : ""));
-  }, [query]);
+    const want = "/backoffice/items" + (s ? "?" + s : "");
+    if (window.location.pathname + window.location.search !== want) window.history.replaceState(null, "", want);
+  });
   const back = (id: string) => {
     const p = new URLSearchParams(query);
     p.set("open", id);
@@ -89,7 +92,10 @@ export function ItemsTable({ items, cats, start, quickSave }: { items: Item[]; c
       category: (a, b) => a.cat_order - b.cat_order || (a.cat ?? "").localeCompare(b.cat ?? "") || a.name.localeCompare(b.name),
       price: (a, b) => a.price - b.price || a.name.localeCompare(b.name),
       // items whose stock is not counted go last, whichever way the column is sorted
-      stock: (a, b) => (a.stock === null ? 1 : b.stock === null ? -1 : (a.stock - b.stock) * (down ? -1 : 1) || a.name.localeCompare(b.name)),
+      stock: (a, b) =>
+        a.stock === null || b.stock === null
+          ? Number(a.stock === null) - Number(b.stock === null) || a.name.localeCompare(b.name)
+          : (a.stock - b.stock) * (down ? -1 : 1) || a.name.localeCompare(b.name),
     };
     const sorted = [...list].sort(by[key]);
     return down && key !== "stock" ? sorted.reverse() : sorted;

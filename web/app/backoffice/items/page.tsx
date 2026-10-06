@@ -90,6 +90,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
   // the Categories page and the search link here with ?category=; `cat` is its older spelling
   const cat = one(sp.category) || one(sp.cat);
   const open = one(sp.open);
+  const start = { cat: UUID.test(cat) || cat === "none" ? cat : "", q: one(sp.q).trim().slice(0, 60), status: one(sp.status), sort: one(sp.sort), open: UUID.test(open) ? open : "" };
   return (
     <div>
       <PageHead title="Items" lede="What the till sells. Find an item, change its price or take it off sale here; open an item for its tax, add-ons and category.">
@@ -104,12 +105,9 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
           <Link href="/backoffice/items/edit">Add the first one</Link>
         </Empty>
       ) : (
-        <ItemsTable
-          items={items}
-          cats={d.cats}
-          start={{ cat: UUID.test(cat) || cat === "none" ? cat : "", q: one(sp.q).trim().slice(0, 60), status: one(sp.status), sort: one(sp.sort), open: UUID.test(open) ? open : "" }}
-          quickSave={quickSave}
-        />
+        // Keyed by what the address asks for: arriving from the search or the
+        // Categories page with another ?category= starts the table again from it.
+        <ItemsTable key={Object.values(start).join("|")} items={items} cats={d.cats} start={start} quickSave={quickSave} />
       )}
     </div>
   );
