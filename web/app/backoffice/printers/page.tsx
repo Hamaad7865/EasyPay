@@ -3,11 +3,21 @@ import { Printer } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, int, on, Refused, text, uuid } from "@/lib/action";
+import { loadSettings, saveSettings } from "@/lib/settings";
 import { Empty, Flash, PageHead, type Search } from "../ui";
 
 const PATH = "/backoffice/printers";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PAIR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const IP = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}(:\d{2,5})?$/;
+
+// Setting the printers up, in the two steps a restaurant takes:
+//   1. the printers themselves: what each is called and how the tablet reaches it;
+//   2. what prints where: which one prints receipts and bills, and for each
+//      category which printers its orders come out on. A restaurant with a
+//      single printer switches on "One printer for everything" instead.
+// The till follows the same rule (Routing.kt): with that switch on, every
+// kitchen order prints on the receipt printer, whatever is ticked here.
 
 type Row = {
   id: string;
@@ -19,31 +29,20 @@ type Row = {
   feed_lines: number;
   cut: boolean;
   is_active: boolean;
-  categories: number;
-  cats: string[]; // the categories whose items print here
 };
-type Cat = { id: string; name: string };
-
-// Which categories print on a printer, set from the printer's side: the ones
-// ticked get it, the others lose it. The same list the Categories page edits.
-const ROUTE = `update categories set printer_ids = case
-           when id = any($3::uuid[]) then (case when $2::uuid = any(printer_ids) then printer_ids else array_append(printer_ids, $2::uuid) end)
-           else array_remove(printer_ids, $2::uuid) end
-     where tenant_id = $1 and deleted_at is null and (id = any($3::uuid[]) or $2::uuid = any(printer_ids))`;
-const ticked = (f: FormData) => f.getAll("cat").map(String).filter((v) => UUID.test(v));
+type Cat = { id: string; name: string; printer_ids: string[] };
 
 function fields(f: FormData) {
   const name = text(f, "name", 40);
   const kind = f.get("kind") === "usb" ? "usb" : "network";
   const address = text(f, "address", 40);
-  if (!name) throw new Refused("Give the printer a name, for example Kitchen or Bar.");
+  if (!name) throw new Refused("Give the printer a name, for example Kitchen, Bar or Cashier.");
   if (kind === "network" && !IP.test(address)) throw new Refused("A network printer needs its IP address, for example 192.168.1.50.");
   return {
     name,
     kind,
     address: kind === "network" ? address : null,
     paper: f.get("paper_mm") === "58" ? 58 : 80,
-    receipt: on(f, "is_receipt"),
     feed: int(f, "feed_lines", 0, 12, 3),
     cut: on(f, "cut"),
   };
@@ -55,19 +54,16 @@ async function addPrinter(f: FormData) {
     const v = fields(f);
     const store = await c.query(`select id from stores where tenant_id = $1 and deleted_at is null order by created_at limit 1`, [ctx.tenantId]);
     if (store.rowCount !== 1) throw new Refused("This restaurant has no store yet.");
-    // one printer per store is where the cashier's receipts come out
-    if (v.receipt) await c.query(`update printers set is_receipt = false where tenant_id = $1 and store_id = $2 and is_receipt`, [ctx.tenantId, store.rows[0].id]);
-    const made = await c.query(
+    // the first printer of a restaurant is where its receipts come out, until step 2 says otherwise
+    const first = (await c.query(`select 1 from printers where tenant_id = $1 and store_id = $2 and deleted_at is null limit 1`, [ctx.tenantId, store.rows[0].id])).rowCount === 0;
+    await c.query(
       `insert into printers (tenant_id, store_id, name, kind, address, paper_mm, is_receipt, feed_lines, cut, sort_order)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, (select coalesce(max(sort_order), -1) + 1 from printers where tenant_id = $1))
-       returning id`,
-      [ctx.tenantId, store.rows[0].id, v.name, v.kind, v.address, v.paper, v.receipt, v.feed, v.cut],
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, (select coalesce(max(sort_order), -1) + 1 from printers where tenant_id = $1))`,
+      [ctx.tenantId, store.rows[0].id, v.name, v.kind, v.address, v.paper, first, v.feed, v.cut],
     );
-    const cats = ticked(f);
-    if (cats.length > 0) await c.query(ROUTE, [ctx.tenantId, made.rows[0].id, cats]);
-    return cats.length > 0
-      ? `${v.name} added. Orders for ${cats.length} ${cats.length === 1 ? "category" : "categories"} print there once the tills have synced.`
-      : `${v.name} added. Tick the categories whose orders should print there.`;
+    return first
+      ? `${v.name} added. It prints the receipts and bills. Say below what else it prints.`
+      : `${v.name} added. Say below what it prints.`;
   });
 }
 
@@ -76,35 +72,58 @@ async function savePrinter(f: FormData) {
   await act("settings.device", PATH, async (c, ctx) => {
     const id = uuid(f, "id");
     if (f.get("remove") === "1") {
-      await c.query(`update printers set deleted_at = now() where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id]);
+      await c.query(`update printers set deleted_at = now(), is_receipt = false where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id]);
       await c.query(`update categories set printer_ids = array_remove(printer_ids, $2::uuid) where tenant_id = $1 and $2::uuid = any(printer_ids)`, [ctx.tenantId, id]);
       return "Printer removed.";
     }
     const v = fields(f);
-    if (v.receipt) {
-      await c.query(
-        `update printers set is_receipt = false where tenant_id = $1 and is_receipt and id <> $2
-            and store_id = (select store_id from printers where tenant_id = $1 and id = $2)`,
-        [ctx.tenantId, id],
-      );
-    }
     await c.query(
-      `update printers set name = $3, kind = $4, address = $5, paper_mm = $6, is_receipt = $7, feed_lines = $8, cut = $9, is_active = $10
+      `update printers set name = $3, kind = $4, address = $5, paper_mm = $6, feed_lines = $7, cut = $8, is_active = $9
         where tenant_id = $1 and id = $2 and deleted_at is null`,
-      [ctx.tenantId, id, v.name, v.kind, v.address, v.paper, v.receipt, v.feed, v.cut, on(f, "is_active")],
+      [ctx.tenantId, id, v.name, v.kind, v.address, v.paper, v.feed, v.cut, on(f, "is_active")],
     );
-    await c.query(ROUTE, [ctx.tenantId, id, ticked(f)]);
     return `${v.name} saved.`;
   });
 }
 
-function Form({ p, cats }: { p?: Row; cats: Cat[] }) {
+// Step 2, saved as a whole: the receipt printer, the one-printer switch, and
+// the printers of every category.
+async function saveRoutes(f: FormData) {
+  "use server";
+  await act("settings.device", PATH, async (c, ctx) => {
+    const receipt = String(f.get("receipt") ?? "").toLowerCase();
+    const one = on(f, "one");
+    const pairs = f.getAll("route").map((v) => String(v).toLowerCase()).filter((v) => PAIR.test(v));
+    if (one && !UUID.test(receipt)) throw new Refused("With one printer for everything, choose which printer that is, under Receipts and bills.");
+    // one printer per restaurant is where the cashier's receipts come out
+    await c.query(
+      `update printers set is_receipt = coalesce(id = $2::uuid, false)
+        where tenant_id = $1 and deleted_at is null and is_receipt is distinct from coalesce(id = $2::uuid, false)`,
+      [ctx.tenantId, UUID.test(receipt) ? receipt : null],
+    );
+    await saveSettings(c, ctx.tenantId, { onePrinter: one });
+    // each category's printers are the ones ticked for it; a category that did not change is left alone
+    await c.query(
+      `with want as (
+         select k.id, coalesce((select array_agg(p.id order by p.sort_order, p.name) from printers p
+                                 where p.tenant_id = $1 and p.deleted_at is null and (k.id::text || ':' || p.id::text) = any($2::text[])), '{}'::uuid[]) as ids
+           from categories k where k.tenant_id = $1 and k.deleted_at is null)
+       update categories k set printer_ids = w.ids from want w
+        where k.id = w.id and k.tenant_id = $1 and k.printer_ids is distinct from w.ids`,
+      [ctx.tenantId, pairs],
+    );
+    return one ? "Saved. Everything prints on one printer once the tills have synced." : "Saved. The tills follow once they have synced.";
+  });
+}
+
+function Hardware({ p }: { p?: Row }) {
   return (
     <>
       <div className="form-row">
         <label className="field">
           Name
           <input name="name" defaultValue={p?.name} required maxLength={40} placeholder="Kitchen" />
+          <span className="help">Where it stands: Cashier, Kitchen, Bar. It is what the kitchen display calls its station.</span>
         </label>
         <label className="field">
           Connection
@@ -135,81 +154,111 @@ function Form({ p, cats }: { p?: Row; cats: Cat[] }) {
         </label>
         <div>
           <label className="check">
-            <input type="checkbox" name="is_receipt" defaultChecked={p?.is_receipt ?? false} />
-            <span>
-              Cashier receipt printer
-              <small>Receipts, bills, cash slips and closing reports come out here, and it opens the cash drawer.</small>
-            </span>
-          </label>
-          <label className="check">
             <input type="checkbox" name="cut" defaultChecked={p?.cut ?? true} />
             <span>Cut the paper after each print</span>
           </label>
           {p && (
             <label className="check">
               <input type="checkbox" name="is_active" defaultChecked={p.is_active} />
-              <span>Switched on</span>
+              <span>
+                Switched on
+                <small>Off, nothing is sent to it, and what it printed prints nowhere until it is back on.</small>
+              </span>
             </label>
           )}
         </div>
       </div>
-      <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
-        <legend style={{ padding: 0, fontWeight: 600 }}>Prints the orders of</legend>
-        <span className="help">
-          The categories whose items come out here when an order is sent: food on the kitchen printer, drinks on the bar printer. A category can print
-          in more than one place. Each printer that prints orders is also a station on the till&apos;s kitchen display.
-        </span>
-        {cats.length === 0 ? (
-          <span className="muted">No categories yet. Add them under Categories first.</span>
-        ) : (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", marginTop: 8 }}>
-            {cats.map((k) => (
-              <label key={k.id} className="check" style={{ margin: 0 }}>
-                <input type="checkbox" name="cat" value={k.id} defaultChecked={p?.cats.includes(k.id) ?? false} />
-                {k.name}
-              </label>
-            ))}
-          </div>
-        )}
-      </fieldset>
     </>
   );
+}
+
+// What is worth a second look before service: none of it stops the till.
+function warnings(rows: Row[], cats: Cat[], one: boolean): string[] {
+  const out: string[] = [];
+  if (rows.length === 0) return out;
+  const live = rows.filter((p) => p.is_active);
+  const receipt = rows.find((p) => p.is_receipt);
+  const byId = new Map(rows.map((p) => [p.id, p]));
+  if (!receipt) out.push("No printer prints the receipts and bills. Choose one in step 2: until then nothing prints at the till and the cash drawer does not open.");
+  else if (!receipt.is_active) out.push(`${receipt.name} prints the receipts and bills, and it is switched off.`);
+  if (one && (!receipt || !receipt.is_active)) {
+    out.push("One printer for everything is on, but that printer is missing or switched off. Kitchen orders follow the ticks in step 2 until it is back.");
+  }
+  if (!one) {
+    const nowhere = cats.filter((k) => !k.printer_ids.some((id) => byId.get(id)?.is_active));
+    if (nowhere.length === cats.length && cats.length > 0) {
+      out.push(
+        live.length === 1
+          ? "No category is ticked, so kitchen orders do not print: they show on the kitchen display only. With a single printer, switch on One printer for everything."
+          : "No category is ticked, so kitchen orders do not print: they show on the kitchen display only.",
+      );
+    } else if (nowhere.length > 0) {
+      out.push(`Orders for ${nowhere.map((k) => k.name).join(", ")} print nowhere: they show on the kitchen display only.`);
+    }
+    for (const p of rows.filter((x) => !x.is_active)) {
+      const sent = cats.filter((k) => k.printer_ids.includes(p.id));
+      if (sent.length > 0) out.push(`${p.name} is switched off, and ${sent.map((k) => k.name).join(", ")} ${sent.length === 1 ? "is" : "are"} sent to it.`);
+    }
+  }
+  const seen = new Map<string, string>();
+  for (const p of live) {
+    const key = p.kind === "usb" ? "usb" : (p.address ?? "").includes(":") ? (p.address ?? "") : `${p.address}:9100`;
+    const other = seen.get(key);
+    if (other) out.push(`${other} and ${p.name} are the same printer (${p.kind === "usb" ? "USB" : p.address}). That works, their prints wait for each other; remove one if it was entered twice by mistake.`);
+    else seen.set(key, p.name);
+  }
+  return out;
 }
 
 export default async function PrintersPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const { rows, cats } = await readTenant(ctx.tenantId, async (c) => ({
+  const { rows, cats, one } = await readTenant(ctx.tenantId, async (c) => ({
     rows: (
       await c.query(
-        `select p.id, p.name, p.kind, p.address, p.paper_mm, p.is_receipt, p.feed_lines, p.cut, p.is_active,
-                (select count(*)::int from categories k where k.tenant_id = p.tenant_id and k.deleted_at is null and p.id = any(k.printer_ids)) as categories,
-                (select coalesce(array_agg(k.id::text), '{}') from categories k where k.tenant_id = p.tenant_id and k.deleted_at is null and p.id = any(k.printer_ids)) as cats
-           from printers p where p.tenant_id = $1 and p.deleted_at is null order by p.sort_order, p.name`,
+        `select id, name, kind, address, paper_mm, is_receipt, feed_lines, cut, is_active
+           from printers where tenant_id = $1 and deleted_at is null order by sort_order, name`,
         [ctx.tenantId],
       )
     ).rows as Row[],
-    cats: (await c.query(`select id, name from categories where tenant_id = $1 and deleted_at is null order by sort_order, name`, [ctx.tenantId])).rows as Cat[],
+    cats: (
+      await c.query(`select id, name, printer_ids::text[] as printer_ids from categories where tenant_id = $1 and deleted_at is null order by sort_order, name`, [
+        ctx.tenantId,
+      ])
+    ).rows as Cat[],
+    one: (await loadSettings(c, ctx.tenantId)).onePrinter,
   }));
+  const receipt = rows.find((p) => p.is_receipt);
+  const notes = warnings(rows, cats, one);
   return (
     <div>
       <PageHead
         title="Printers"
-        lede="The receipt printer at the till, and the kitchen and bar printers that orders are sent to. Add one for each place food or drink is made, and tick what it prints. The tablet prints to them directly, so they work without internet."
+        lede="Two steps: set up each printer, then say what prints where. The tablet prints to them directly, so they work without internet."
       />
       <Flash sp={sp} />
+      {notes.length > 0 && (
+        <div className="note warn" role="status">
+          <strong>Worth a look before service</strong>
+          {notes.map((n) => (
+            <div key={n}>{n}</div>
+          ))}
+        </div>
+      )}
+
+      <h2>1 · Your printers</h2>
       {/* its form is the whole of a printer: it opens, like the printers under it */}
-      <details className="card flush">
+      <details className="card flush" open={rows.length === 0}>
         <summary className="card-head" style={{ cursor: "pointer", listStyle: "none" }}>
           <div>
             <h2>Add a printer</h2>
-            <p>A kitchen printer, a bar printer, a pastry printer: name it after where it stands and tick what it prints.</p>
+            <p>One for each printer in the restaurant, even if there is only one. What it prints is said in step 2.</p>
           </div>
           <span className="btn-quiet btn-sm">Open</span>
         </summary>
         <form action={addPrinter}>
           <div className="card-body">
-            <Form cats={cats} />
+            <Hardware />
           </div>
           <div className="card-foot">
             <button type="submit">Add printer</button>
@@ -218,40 +267,136 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
       </details>
       {rows.length === 0 && (
         <Empty icon={Printer} title="No printers yet">
-          Add the cashier&apos;s receipt printer first, then one for the kitchen and one for the bar if you have them.
+          Add the printer at the till first. If it is the only one, it can print the kitchen orders too.
         </Empty>
       )}
-      {rows.map((p) => (
-        <details key={p.id} className="card flush">
-          <summary className="card-head" style={{ cursor: "pointer", listStyle: "none" }}>
-            <div>
-              <h2>{p.name}</h2>
-              <p>
-                {p.kind === "usb" ? "USB" : p.address} · {p.paper_mm} mm
-                {p.categories > 0 ? ` · prints ${p.categories} ${p.categories === 1 ? "category" : "categories"}` : ""}
-              </p>
-            </div>
-            <span className="row-actions">
-              {p.is_receipt && <span className="badge blue">Receipts</span>}
-              {p.categories > 0 && <span className="badge">Kitchen orders</span>}
-              <span className={"badge " + (p.is_active ? "green" : "red")}>{p.is_active ? "On" : "Off"}</span>
-            </span>
-          </summary>
-          <form action={savePrinter}>
-            <input type="hidden" name="id" value={p.id} />
+      {rows.map((p) => {
+        const prints = cats.filter((k) => k.printer_ids.includes(p.id)).length;
+        return (
+          <details key={p.id} className="card flush">
+            <summary className="card-head" style={{ cursor: "pointer", listStyle: "none" }}>
+              <div>
+                <h2>{p.name}</h2>
+                <p>
+                  {p.kind === "usb" ? "USB" : p.address} · {p.paper_mm} mm
+                </p>
+              </div>
+              <span className="row-actions">
+                {one && p.is_receipt ? (
+                  <span className="badge blue">Everything</span>
+                ) : (
+                  <>
+                    {p.is_receipt && <span className="badge blue">Receipts and bills</span>}
+                    {!one && prints > 0 && <span className="badge">Kitchen orders</span>}
+                  </>
+                )}
+                <span className={"badge " + (p.is_active ? "green" : "red")}>{p.is_active ? "On" : "Off"}</span>
+              </span>
+            </summary>
+            <form action={savePrinter}>
+              <input type="hidden" name="id" value={p.id} />
+              <div className="card-body">
+                <Hardware p={p} />
+              </div>
+              <div className="card-foot">
+                <button type="submit" name="remove" value="1" className="btn-danger" formNoValidate>
+                  Remove
+                </button>
+                <button type="submit">Save printer</button>
+              </div>
+            </form>
+          </details>
+        );
+      })}
+
+      {rows.length > 0 && (
+        <>
+          <h2 style={{ marginTop: 28 }}>2 · What prints where</h2>
+          <form action={saveRoutes} className="card flush">
             <div className="card-body">
-              <Form p={p} cats={cats} />
+              <label className="field">
+                Receipts and bills
+                <select name="receipt" defaultValue={receipt?.id ?? ""}>
+                  <option value="">No printer</option>
+                  {rows.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.is_active ? "" : " (switched off)"}
+                    </option>
+                  ))}
+                </select>
+                <span className="help">Receipts, bills, cash slips and closing reports come out here, and it opens the cash drawer.</span>
+              </label>
+              <label className="check">
+                <input type="checkbox" name="one" defaultChecked={one} />
+                <span>
+                  One printer for everything
+                  <small>
+                    For a restaurant with a single printer. Kitchen orders print on the same printer as the receipts and bills, each on its own slip headed
+                    KITCHEN ORDER, and a category added later is covered without doing anything. The ticks below are kept, but not used while this is on.
+                  </small>
+                </span>
+              </label>
             </div>
+            <div className="card-head" style={{ borderTop: "1px solid var(--glass-line)" }}>
+              <div>
+                <h2>Kitchen orders, by category</h2>
+                <p>
+                  Tick where each category&apos;s items come out when an order is sent: food in the kitchen, drinks at the bar. A category can print in more than
+                  one place, and each printer ticked here is a station on the till&apos;s kitchen display.
+                </p>
+              </div>
+            </div>
+            {cats.length === 0 ? (
+              <div className="card-body">
+                <span className="muted">
+                  No categories yet. Add them under <Link href="/backoffice/categories">Categories</Link> first.
+                </span>
+              </div>
+            ) : (
+              <div className="table-scroll" style={one ? { opacity: 0.55 } : undefined}>
+                <table style={{ minWidth: 0 }}>
+                  <thead>
+                    <tr>
+                      <th>Category</th>
+                      {rows.map((p) => (
+                        <th key={p.id} style={{ textAlign: "center" }}>
+                          {p.name}
+                          {p.is_active ? "" : " (off)"}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cats.map((k) => (
+                      <tr key={k.id}>
+                        <td className="strong">{k.name}</td>
+                        {rows.map((p) => (
+                          <td key={p.id} style={{ textAlign: "center" }}>
+                            <input
+                              type="checkbox"
+                              name="route"
+                              value={`${k.id}:${p.id}`}
+                              defaultChecked={k.printer_ids.includes(p.id)}
+                              aria-label={`${k.name} prints on ${p.name}`}
+                            />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             <div className="card-foot">
-              <button type="submit" name="remove" value="1" className="btn-danger" formNoValidate>Remove</button>
-              <button type="submit">Save printer</button>
+              <button type="submit">Save what prints where</button>
             </div>
           </form>
-        </details>
-      ))}
+        </>
+      )}
       <p className="muted">
-        Where a category prints can also be set from its side, under <Link href="/backoffice/categories">Categories</Link>. A test print for each printer is
-        on the tablet, under Settings, Printers.
+        A test print for each printer is on the tablet, under Settings, Printers: it also shows whether each one is answering. Where a category prints can be set
+        from its side too, under <Link href="/backoffice/categories">Categories</Link>.
       </p>
     </div>
   );

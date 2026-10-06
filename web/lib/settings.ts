@@ -18,6 +18,8 @@ export type PosSettings = {
   lockMinutes: number;
   // a short sound on the kitchen display when an order arrives
   kitchenSound: boolean;
+  // one printer does everything: kitchen orders print on the receipt printer, whatever the categories say
+  onePrinter: boolean;
   receipt: { header: string; footer: string; logo: string | null; showLogo: boolean };
   company: { name: string; brn: string; vat: string; address: string; phone: string };
 };
@@ -32,6 +34,7 @@ export const DEFAULT_SETTINGS: PosSettings = {
   prepMinutes: 15,
   lockMinutes: 0,
   kitchenSound: true,
+  onePrinter: false,
   receipt: { header: "", footer: "Thank you. See you again soon.", logo: null, showLogo: true },
   company: { name: "", brn: "", vat: "", address: "", phone: "" },
 };
@@ -57,6 +60,7 @@ export function withDefaults(raw: unknown): PosSettings {
     prepMinutes: typeof d.prepMinutes === "number" && d.prepMinutes >= 1 && d.prepMinutes <= 180 ? Math.round(d.prepMinutes) : 15,
     lockMinutes: typeof d.lockMinutes === "number" && d.lockMinutes >= 0 && d.lockMinutes <= 120 ? Math.round(d.lockMinutes) : 0,
     kitchenSound: d.kitchenSound === false ? false : true,
+    onePrinter: d.onePrinter === true,
     receipt: {
       header: str(r.header, DEFAULT_SETTINGS.receipt.header),
       footer: str(r.footer, DEFAULT_SETTINGS.receipt.footer),
