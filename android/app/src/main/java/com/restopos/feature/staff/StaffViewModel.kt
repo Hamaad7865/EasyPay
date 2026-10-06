@@ -37,11 +37,11 @@ sealed interface PinCheck {
     data class Locked(val seconds: Long) : PinCheck
 }
 
-// What a closed shift came to, for the screen shown after the count.
+// How the drawer compared, for the screen shown after a count.
 data class Closing(val float: Long, val cash: Long, val expected: Long, val counted: Long)
 
 // Behind the start screen, clock in/out and the cash count: who works here,
-// who is clocked in, and this till's shift. All of it from Room.
+// who is clocked in, and this till's day. All of it from Room.
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class StaffViewModel @Inject constructor(
@@ -81,8 +81,9 @@ class StaffViewModel @Inject constructor(
     val suggested: StateFlow<Long> = _suggested
     private val _closing = MutableStateFlow<Closing?>(null)
     val closing: StateFlow<Closing?> = _closing
-    private val _openOrders = MutableStateFlow(0L)
-    val openOrders: StateFlow<Long> = _openOrders
+    // sales from before that no closing covers: opening the day closes them first
+    private val _unclosed = MutableStateFlow(false)
+    val unclosed: StateFlow<Boolean> = _unclosed
 
     init {
         viewModelScope.launch {
@@ -94,7 +95,7 @@ class StaffViewModel @Inject constructor(
                 device = device?.let { if (it.name == it.code) it.code else "${it.name} (${it.code})" },
             )
             _suggested.value = repo.suggestedFloat()
-            _openOrders.value = db.tickets().unpaidOrderCount()
+            _unclosed.value = repo.unclosed()
             // A till set up before the name was kept: ask once, when online.
             if (_info.value.business == null) {
                 runCatching { api.me() }.onSuccess { me ->
@@ -126,18 +127,19 @@ class StaffViewModel @Inject constructor(
         )
     }
 
-    // Clocking in is also signing in: the PIN was just entered, so the person
-    // goes straight on. With a shift open, to the register. With none, to the
-    // cash count that opens it, if they are allowed to open one; if not, they
-    // are clocked in and wait for someone who is.
-    fun clockIn(member: StaffMember, toRegister: () -> Unit, toCashCount: () -> Unit) = viewModelScope.launch {
+    // Clocking in records that someone has arrived, and nothing else: it
+    // does not open the day. With the day open the person goes straight on to
+    // the register, since the PIN was just entered. With the day not open,
+    // someone allowed to open it is asked whether to (offerOpen); anyone else
+    // is clocked in and waits for someone who may.
+    fun clockIn(member: StaffMember, toRegister: () -> Unit, offerOpen: () -> Unit) = viewModelScope.launch {
         repo.punch(member, "in").fold(
             onSuccess = {
                 val open = session.deviceId()?.let { repo.openShift(it).first() }
                 when {
                     open != null -> { session.setPendingDiscount(null); staffSession.signIn(member); toRegister() }
-                    member.can("shift.open_close") -> { session.setPendingDiscount(null); staffSession.signIn(member); toCashCount() }
-                    else -> _message.value = "${member.employee.name} is clocked in. The sales period is closed: someone allowed to open it has to clock in."
+                    member.can("shift.open_close") -> offerOpen()
+                    else -> _message.value = "${member.employee.name} is clocked in. The day is not open: someone allowed to open it has to."
                 }
             },
             onFailure = { _message.value = it.message },
@@ -160,21 +162,7 @@ class StaffViewModel @Inject constructor(
         repo.open(float).fold(onSuccess = { then() }, onFailure = { _message.value = it.message })
     }
 
-    // Someone who may not close the shift asks for someone who may.
-    fun close(counted: Long, by: StaffMember? = null): Job = viewModelScope.launch {
-        val out = repo.close(counted, by)
-        val need = out.exceptionOrNull() as? NeedsApproval
-        if (need != null && by == null) { approvals.ask(need.permission, need.what) { approver -> close(counted, approver) }; return@launch }
-        out.fold(
-            onSuccess = { s ->
-                val expected = s.expected_cash ?: s.opening_float
-                _closing.value = Closing(s.opening_float, expected - s.opening_float, expected, counted)
-            },
-            onFailure = { _message.value = it.message },
-        )
-    }
-
-    // The drawer counted during the shift: the same comparison, and the shift stays open.
+    // The drawer counted during the day: how it compares, and the day stays open.
     fun count(counted: Long, by: StaffMember? = null): Job = viewModelScope.launch {
         val out = repo.count(counted, by)
         val need = out.exceptionOrNull() as? NeedsApproval

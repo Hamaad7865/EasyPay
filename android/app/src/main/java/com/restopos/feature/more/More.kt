@@ -138,12 +138,13 @@ class MoreViewModel @Inject constructor(
     }
 
     fun printShift() = run { _ ->
-        val s = _shift.value?.first ?: return@run "No sales period has been opened on this till yet"
-        cash.printShift(s).fold({ "Sales period report sent to the printer." }, { it.message })
+        val s = _shift.value?.first ?: return@run "No day has been opened on this till yet"
+        cash.printShift(s).fold({ if (s.closed_at == null) "X report sent to the printer." else "Cash drawer report sent to the printer." }, { it.message })
     }
 
+    // With no day open: the sales from before that no closing covers.
     fun closeDay(done: () -> Unit) = run { by ->
-        cash.closeDay(by).orAsk().fold(
+        cash.closeUnclosed(by).orAsk().fold(
             { (z, problem) -> done(); problem ?: "Day closing no. ${z.number} is done and printed." },
             { it.message },
         )
@@ -196,12 +197,12 @@ fun MoreSheets(vm: MoreViewModel, show: String?, onDismiss: () -> Unit, onCloseS
         val s = shift
         AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text("Sales period") },
+            title = { Text("Cash drawer") },
             text = {
-                if (s == null) Text("No sales period has been opened on this till yet.")
+                if (s == null) Text("No day has been opened on this till yet.")
                 else if (!figures) Column {
-                    Text("The sales period's figures are for someone allowed to see reports. You can still count the drawer and close the sales period.")
-                    OutlinedButton(onClick = { vm.unlock("shift.view_report", "see the sales period's figures") { seen = true } }, Modifier.padding(top = 10.dp)) { Text("Show them with an approval") }
+                    Text("The day's figures are for someone allowed to see reports. You can still count the drawer and close the day.")
+                    OutlinedButton(onClick = { vm.unlock("shift.view_report", "see the day's figures") { seen = true } }, Modifier.padding(top = 10.dp)) { Text("Show them with an approval") }
                 }
                 else Column(Modifier.verticalScroll(rememberScrollState())) {
                     val (row, d) = s
@@ -223,14 +224,14 @@ fun MoreSheets(vm: MoreViewModel, show: String?, onDismiss: () -> Unit, onCloseS
                         Figure("Counted", Money.format(it))
                         Figure("Difference", Money.format(it - d.expected), bold = true)
                     }
-                    if (row.closed_at != null) Text("This sales period is closed. The next one opens when someone signs in.", Modifier.padding(top = 8.dp), color = Pos.Text3, fontSize = 12.sp)
+                    if (row.closed_at != null) Text("This day is closed. The next one starts when someone opens the day.", Modifier.padding(top = 8.dp), color = Pos.Text3, fontSize = 12.sp)
                 }
             },
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { vm.printShift() }, enabled = s != null && !busy && figures) { Text("Print report") }
                     if (s != null && s.first.closed_at == null) {
-                        Button(onClick = { onDismiss(); onCloseShift() }) { Text("Close sales period") }
+                        Button(onClick = { onDismiss(); onCloseShift() }) { Text("Close the day") }
                     }
                 }
             },
@@ -260,14 +261,16 @@ fun MoreSheets(vm: MoreViewModel, show: String?, onDismiss: () -> Unit, onCloseS
                         Figure("Cash out", Money.format(-z.cashOut))
                     }
                     Text(
-                        if (open) "Close the sales period first: the drawer has to be counted before the day is closed."
-                        else "Closing the day fixes these figures, prints the report and starts a new day. It cannot be undone.",
-                        Modifier.padding(top = 10.dp), color = if (open) Pos.Warn else Pos.Text3, fontSize = 13.sp,
+                        if (open) "The day is closed from Cash drawer: the drawer is counted, then these figures are fixed and the report prints. It cannot be undone."
+                        else "No day is open on this till. Closing fixes these figures, prints the report and starts afresh. It cannot be undone.",
+                        Modifier.padding(top = 10.dp), color = Pos.Text3, fontSize = 13.sp,
                     )
                 }
             },
             confirmButton = {
-                Button(onClick = { vm.closeDay { onDismiss() } }, enabled = z != null && !open && !busy) { Text("Close the day and print") }
+                // with the day open it is closed by counting the drawer, not from here
+                if (open) Button(onClick = { onDismiss(); onCloseShift() }) { Text("Count the drawer and close the day") }
+                else Button(onClick = { vm.closeDay { onDismiss() } }, enabled = z != null && !busy) { Text("Close and print") }
             },
             dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Close") } },
         )
@@ -291,7 +294,7 @@ private fun CashDialog(type: String, busy: Boolean, onDismiss: () -> Unit, onSav
                     Text("Rs ${typed.ifEmpty { "0" }}", Modifier.fillMaxWidth().padding(vertical = 6.dp), color = Pos.Text, fontSize = 28.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
                     OutlinedTextField(reason, { reason = it.take(80); problem = null }, Modifier.fillMaxWidth(), label = { Text("Reason") }, singleLine = true)
                     problem?.let { Text(it, Modifier.padding(top = 8.dp), color = Pos.Pink, fontSize = 13.sp) }
-                    Text("A slip prints with the time, your name, the reason and the amount. It shows on the sales period and day closing reports.", Modifier.padding(top = 10.dp), color = Pos.Text3, fontSize = 12.sp)
+                    Text("A slip prints with the time, your name, the reason and the amount. It shows on the day's reports.", Modifier.padding(top = 10.dp), color = Pos.Text3, fontSize = 12.sp)
                 }
                 AmountPad(typed, 44.dp, Modifier.width(210.dp)) { typed = it; problem = null }
             }

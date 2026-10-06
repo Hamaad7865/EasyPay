@@ -30,9 +30,14 @@ import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 
-// The cash drawer and the closings: opening the drawer without a sale, cash
-// put in and taken out, the shift report, and the day closing (Z). All of it
-// is worked out from what this tablet holds, so it works with no connection.
+// The cash drawer and the day: opening the drawer without a sale, cash put in
+// and taken out, the day so far (X), and closing the day (Z). All of it is
+// worked out from what this tablet holds, so it works with no connection.
+//
+// A day on a till is one thing to the people using it: opened by counting
+// the drawer, closed by counting it again, which fixes the figures and prints
+// the Z report. Underneath it is still two rows, a shift (the drawer, from
+// float to count) and a day closing (the figures), written together.
 @Singleton
 class CashOps @Inject constructor(
     private val db: TillDatabase,
@@ -103,7 +108,7 @@ class CashOps @Inject constructor(
         val tenant = session.tenantId() ?: error("no tenant")
         val store = session.storeId() ?: error("no store")
         val device = session.deviceId() ?: error("no device")
-        val shift = db.staff().openShift(device) ?: error("No sales period is open")
+        val shift = db.staff().openShift(device) ?: error("The day is not open")
         val now = System.currentTimeMillis()
         val row = DrawerCountEntity(Uuid7.next(), tenant, store, device, shift.id, staff.id(), counted, expectedCash(shift, now), now)
         db.withTransaction {
@@ -197,14 +202,7 @@ class CashOps @Inject constructor(
 
     suspend fun printShift(shift: ShiftEntity): Result<Unit> = runCatching {
         val p = printing.receiptPrinter() ?: throw PrintError("No receipt printer is set up. Add one in the back office, under Printers.")
-        printing.send(p, Docs.shift(shiftDoc(shift), printing.shop(), printing.paper(p), printing.settings().decimals), "Sales period report").getOrThrow()
-    }
-
-    // After a shift is closed: its report, without holding the till up.
-    fun printShiftBehind(shift: ShiftEntity) {
-        printing.scope.launch {
-            if (printing.receiptPrinter() != null) printShift(shift).onFailure { printing.report(it.message ?: "The sales period report did not print") }
-        }
+        printing.send(p, Docs.shift(shiftDoc(shift), printing.shop(), printing.paper(p), printing.settings().decimals), if (shift.closed_at == null) "X report" else "Cash drawer report").getOrThrow()
     }
 
     suspend fun currentShift(): ShiftEntity? = session.deviceId()?.let { db.staff().openShift(it) }
@@ -225,14 +223,23 @@ class CashOps @Inject constructor(
         )
     }
 
-    // A day closing already made, as it was: the same period, the same number.
+    // A day closing already made, as it was: the same period, the same number,
+    // and the drawer's count when the day was closed with one.
     suspend fun dayDocOf(row: DayCloseEntity): ZDoc {
         val p = period(row.device_id, row.from_time ?: 0, row.closed_at)
+        val shift = db.staff().closedShifts(row.device_id, 400).firstOrNull { it.closed_at == row.closed_at }
         return ZDoc(
             row.number, till(), row.from_time, row.closed_at, name(row.closed_by),
             p.sales, p.gross, p.refunds, p.refunded, p.discounts, p.tax, p.payments, p.categories, p.taxes,
             p.cashIn, p.cashOut, p.moves, p.first, p.last,
-        )
+        ).withDrawer(shift)
+    }
+
+    private suspend fun ZDoc.withDrawer(shift: ShiftEntity?): ZDoc {
+        val expected = shift?.expected_cash ?: return this
+        val counted = shift.counted_cash ?: return this
+        val sp = period(shift.device_id, shift.opened_at - 1, shift.closed_at ?: to)
+        return copy(openedAt = shift.opened_at, openedBy = name(shift.opened_by), float = shift.opening_float, cashTaken = sp.cashTaken, expected = expected, counted = counted)
     }
 
     suspend fun printZOf(row: DayCloseEntity): Result<Unit> = printZ(dayDocOf(row))
@@ -249,31 +256,83 @@ class CashOps @Inject constructor(
         return out.values.sortedByDescending { it.amount }
     }
 
-    // Closing the day: the shift must be closed first (the drawer counted),
-    // then the Z is fixed at this moment, sent, and printed. With "start again
-    // each day", the next bill is number 1 of the next closing.
-    suspend fun closeDay(approver: StaffMember? = null): Result<Pair<ZDoc, String?>> = runCatching {
+    // Sales this till has taken that no closing covers, with no day open: a
+    // day from before days and their cash counts were one thing (its drawer
+    // was counted and the day left open), or a till with no PINs, which has
+    // no days to open and closes its figures on their own.
+    suspend fun unclosed(): Boolean {
+        val device = session.deviceId() ?: return false
+        if (db.staff().openShift(device) != null) return false
+        return db.ops().receiptsBetween(device, db.ops().lastDayClose(device)?.closed_at ?: 0, System.currentTimeMillis()).isNotEmpty()
+    }
+
+    suspend fun unpaidOrders(): Long = db.tickets().unpaidOrderCount()
+
+    fun unpaid(n: Long) = "$n ${if (n == 1L) "order is" else "orders are"} still unpaid. Take payment for ${if (n == 1L) "it" else "them"}, or void ${if (n == 1L) "it" else "them"}, before closing the day."
+
+    private fun dayCloseOp(row: DayCloseEntity, z: ZDoc, approvedBy: String?) = op("day.close", buildJsonObject {
+        put("id", row.id); put("store_id", row.store_id); put("device_id", row.device_id)
+        put("closed_at", Instant.ofEpochMilli(row.closed_at).toString())
+        put("totals", buildJsonObject {
+            put("sales", z.sales); put("gross", z.gross); put("refunds", z.refunds); put("refunded", z.refunded)
+            put("discounts", z.discounts); put("tax", z.tax); put("cash_in", z.cashIn); put("cash_out", z.cashOut)
+            z.float?.let { put("float", it) }; z.expected?.let { put("expected", it) }; z.counted?.let { put("counted", it) }
+        })
+        approvedBy?.let { put("approved_by", it) }
+    })
+
+    // Closing the day: the drawer is counted, the day's figures are fixed at
+    // this moment and the Z report prints. One step, and written as one: the
+    // drawer's count and the closing go into the tablet together, so the day
+    // is never left counted but open. Every order has to be paid first. With
+    // "start again each day", the next bill is number 1 of the next day.
+    suspend fun closeDay(counted: Long, approver: StaffMember? = null): Result<Pair<ZDoc, String?>> = runCatching {
+        val who = staff.current.value ?: error("Sign in first")
+        staff.allow("shift.open_close", "close the day", approver)
+        require(counted >= 0) { "bad amount" }
+        val tenant = session.tenantId() ?: error("no tenant")
+        val store = session.storeId() ?: error("no store")
+        val device = session.deviceId() ?: error("no device")
+        val open = db.staff().openShift(device) ?: error("The day is not open")
+        db.tickets().unpaidOrderCount().let { n -> require(n == 0L) { unpaid(n) } }
+        val now = System.currentTimeMillis()
+        val by = staff.approvedBy("shift.open_close", approver)
+        val closed = open.copy(closed_by = who.employee.id, closed_at = now, counted_cash = counted, expected_cash = expectedCash(open, now))
+        val last = db.ops().lastDayClose(device)
+        val z = dayDoc(now).withDrawer(closed)
+        val row = DayCloseEntity(Uuid7.next(), tenant, store, device, z.number, who.employee.id, last?.closed_at, now)
+        db.withTransaction {
+            db.staff().upsertShifts(listOf(closed))
+            db.ops().upsertDayCloses(listOf(row))
+            db.outbox().enqueue(op("shift.close", buildJsonObject {
+                put("id", closed.id); put("counted_cash", counted)
+                put("closed_at", Instant.ofEpochMilli(now).toString())
+                by?.let { put("approved_by", it) }
+            }))
+            db.outbox().enqueue(dayCloseOp(row, z, by))
+        }
+        session.setPeriodSeq(0)
+        pushNow(context)
+        z to printZ(z).exceptionOrNull()?.message
+    }
+
+    // The figures closed with no day open (see unclosed): the Z is fixed at
+    // this moment, sent, and printed. Orders still unpaid stop it, except
+    // when it is done to make way for a new day: they go on into that one.
+    suspend fun closeUnclosed(approver: StaffMember? = null, carryOrders: Boolean = false): Result<Pair<ZDoc, String?>> = runCatching {
         staff.allow("shift.open_close", "close the day", approver)
         val tenant = session.tenantId() ?: error("no tenant")
         val store = session.storeId() ?: error("no store")
         val device = session.deviceId() ?: error("no device")
-        require(db.staff().openShift(device) == null) { "Close the sales period first: the drawer has to be counted before the day is closed." }
-        require(db.tickets().unpaidOrderCount() == 0L) { "There are still unpaid orders. Take payment for them, or void them, before closing the day." }
+        require(db.staff().openShift(device) == null) { "The day is open: it is closed from Cash drawer, where the drawer is counted first." }
+        if (!carryOrders) db.tickets().unpaidOrderCount().let { n -> require(n == 0L) { unpaid(n) } }
         val now = System.currentTimeMillis()
         val last = db.ops().lastDayClose(device)
         val z = dayDoc(now)
         val row = DayCloseEntity(Uuid7.next(), tenant, store, device, z.number, staff.id(), last?.closed_at, now)
         db.withTransaction {
             db.ops().upsertDayCloses(listOf(row))
-            db.outbox().enqueue(op("day.close", buildJsonObject {
-                put("id", row.id); put("store_id", store); put("device_id", device)
-                put("closed_at", Instant.ofEpochMilli(now).toString())
-                put("totals", buildJsonObject {
-                    put("sales", z.sales); put("gross", z.gross); put("refunds", z.refunds); put("refunded", z.refunded)
-                    put("discounts", z.discounts); put("tax", z.tax); put("cash_in", z.cashIn); put("cash_out", z.cashOut)
-                })
-                staff.approvedBy("shift.open_close", approver)?.let { put("approved_by", it) }
-            }))
+            db.outbox().enqueue(dayCloseOp(row, z, staff.approvedBy("shift.open_close", approver)))
         }
         session.setPeriodSeq(0)
         pushNow(context)

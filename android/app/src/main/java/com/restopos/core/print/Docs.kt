@@ -117,6 +117,16 @@ data class ZDoc(
     val moves: List<CashSlipDoc>,
     val firstNumber: String?,
     val lastNumber: String?,
+    // The drawer of the day this closes: when it was opened and with what, what
+    // it should hold and what was counted. Absent on a closing made with no
+    // day open (a till with no PINs), and on the days closed before a day and
+    // its cash count were one thing.
+    val openedAt: Long? = null,
+    val openedBy: String? = null,
+    val float: Long? = null,
+    val cashTaken: Long? = null,
+    val expected: Long? = null,
+    val counted: Long? = null,
 )
 
 // Who the restaurant is on paper, and the notes around the receipt.
@@ -299,7 +309,7 @@ object Docs {
         p.bold(true).tall(true).row("COUNTED", "Rs " + n(d.counted)).tall(false).bold(false)
         val diff = d.counted - d.expected
         p.bold(true).row(if (diff == 0L) "Difference" else if (diff < 0) "SHORT" else "OVER", n(diff)).bold(false)
-        p.line("The sales period stays open.")
+        p.line("The day stays open.")
         p.feed(2)
         p.line("Handed over: " + "_".repeat((paper.columns - 13).coerceAtLeast(4)))
         p.feed(1)
@@ -308,12 +318,13 @@ object Docs {
         return p.bytes()
     }
 
-    // One cashier's time on the till, from the float to the count.
+    // The day on this till from its drawer's side, from the float to the count:
+    // the X report while the day is open, the drawer's report once it is closed.
     fun shift(d: ShiftDoc, shop: Shop, paper: Paper, decimals: Int): ByteArray {
         val p = EscPos(paper.columns)
         val n = { c: Long -> num(c, decimals) }
         if (shop.name.isNotBlank()) p.center(shop.name)
-        p.align(EscPos.Align.Center).bold(true).line("SALES PERIOD REPORT").bold(false).align(EscPos.Align.Left)
+        p.align(EscPos.Align.Center).bold(true).line(if (d.closedAt == null) "X REPORT - DAY SO FAR" else "CASH DRAWER REPORT").bold(false).align(EscPos.Align.Left)
         p.rule()
         p.row("Till", d.till)
         p.row("Cashier", d.openedBy ?: "")
@@ -336,7 +347,7 @@ object Docs {
         p.row("Cash out", off(d.cashOut, decimals))
         d.moves.forEach { m -> p.row("  ${if (m.type == "in") "In" else "Out"}: ${m.reason ?: ""}", n(m.amount)) }
         if (d.counts.isNotEmpty()) {
-            p.line("Counted during the sales period:")
+            p.line("Counted during the day:")
             d.counts.forEach { c ->
                 val diff = c.counted - c.expected
                 p.row("  ${stamp(c.time).substringAfter(' ')} ${c.user ?: ""}".take(paper.columns - 12), n(c.counted))
@@ -364,6 +375,10 @@ object Docs {
         p.rule()
         p.align(EscPos.Align.Center).bold(true).line("DAY CLOSING (Z) No. ${d.number}").bold(false).align(EscPos.Align.Left)
         p.row("Till", d.till)
+        if (d.openedAt != null) {
+            p.row("Opened", stamp(d.openedAt))
+            d.openedBy?.let { p.row("Opened by", it) }
+        }
         p.row("From", d.from?.let { stamp(it) } ?: "first sale")
         p.row("To", stamp(d.to))
         d.closedBy?.let { p.row("Closed by", it) }
@@ -395,6 +410,19 @@ object Docs {
         p.row("Cash in", n(d.cashIn))
         p.row("Cash out", off(d.cashOut, decimals))
         d.moves.forEach { m -> p.row("  ${if (m.type == "in") "In" else "Out"}: ${m.reason ?: ""}${m.user?.let { " ($it)" } ?: ""}", n(m.amount)) }
+        // the drawer, counted to close the day
+        if (d.expected != null && d.counted != null) {
+            p.rule()
+            p.bold(true).line("CASH DRAWER").bold(false)
+            d.float?.let { p.row("Opening float", n(it)) }
+            d.cashTaken?.let { p.row("Cash taken", n(it)) }
+            p.row("Expected in drawer", n(d.expected))
+            p.bold(true).row("COUNTED", "Rs " + n(d.counted)).bold(false)
+            val diff = d.counted - d.expected
+            p.bold(true).row(if (diff == 0L) "Difference" else if (diff < 0) "SHORT" else "OVER", n(diff)).bold(false)
+            p.feed(2)
+            p.line("Signature: " + "_".repeat((paper.columns - 11).coerceAtLeast(4)))
+        }
         p.end(paper)
         return p.bytes()
     }

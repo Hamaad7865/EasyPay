@@ -15,7 +15,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,13 +44,15 @@ import java.util.Date
 
 // Clock in on the left, clock out on the right. Each needs that person's PIN.
 // Clocking in carries straight on: to the cash count that opens the shift, or
-// to the register when a shift is already open.
+// to the register when the day is already open.
 @Composable
 fun ClockScreen(vm: StaffViewModel = hiltViewModel(), onBack: () -> Unit, onRegister: () -> Unit, onCashCount: () -> Unit) {
     val staff by vm.staff.collectAsState()
     val message by vm.message.collectAsState()
     var query by remember { mutableStateOf("") }
     var pinFor by remember { mutableStateOf<Pair<StaffMember, String>?>(null) }
+    // someone who may open the day has just clocked in, and the day is not open
+    var openFor by remember { mutableStateOf<StaffMember?>(null) }
     message?.let { m -> LaunchedEffect(m) { delay(3500); vm.messageShown() } }
 
     val all = staff.orEmpty()
@@ -109,8 +114,19 @@ fun ClockScreen(vm: StaffViewModel = hiltViewModel(), onBack: () -> Unit, onRegi
         PinPad(
             member,
             check = { vm.checkPin(member, it) },
-            onOk = { pinFor = null; if (kind == "in") vm.clockIn(member, onRegister, onCashCount) else vm.clock(member, kind) },
+            onOk = { pinFor = null; if (kind == "in") vm.clockIn(member, onRegister) { openFor = member } else vm.clock(member, kind) },
             onDismiss = { pinFor = null },
+        )
+    }
+
+    // Clocking in does not open the day: that is asked for, by name.
+    openFor?.let { member ->
+        AlertDialog(
+            onDismissRequest = { openFor = null },
+            title = { Text("${member.employee.name} is clocked in") },
+            text = { Text("The day is not open on this till yet. Opening it counts the cash in the drawer; the till sells from then on.") },
+            confirmButton = { Button(onClick = { openFor = null; vm.signIn(member, onCashCount) }) { Text("Open the day") } },
+            dismissButton = { OutlinedButton(onClick = { openFor = null }) { Text("Not now") } },
         )
     }
 }

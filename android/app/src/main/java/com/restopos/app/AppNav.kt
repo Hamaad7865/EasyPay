@@ -29,7 +29,6 @@ object Routes {
     const val START = "start"
     const val CLOCK = "clock"
     const val CASH_OPEN = "cash-open"
-    const val CASH_CLOSE = "cash-close"
     const val CASH_COUNT = "cash-count"
     const val SALE = "sale"
     const val REAUTH = "reauth"
@@ -93,26 +92,18 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
                 onCashCount = { nav.navigate(Routes.CASH_OPEN) { popUpTo(Routes.START) } },
             )
         }
-        // Opening a shift: confirm the drawer, then on to the register.
+        // Opening the day: confirm the drawer, then on to the register.
+        // (Closing the day is on the cash drawer screen, inside the till.)
         composable(Routes.CASH_OPEN) {
             CashCountScreen(
-                closing = false,
                 onBack = { nav.popBackStack() },
                 onDone = { nav.navigate(Routes.SALE) { popUpTo(Routes.START) } },
             )
         }
-        // Closing it: count, see the result, and back to the start screen.
-        composable(Routes.CASH_CLOSE) {
-            CashCountScreen(
-                closing = true,
-                onBack = { nav.popBackStack() },
-                onDone = { nav.popBackStack(Routes.START, inclusive = false) },
-            )
-        }
-        // Counting the drawer during a shift: count, see the result, and back.
+        // Counting the drawer during the day: count, see the result, and back.
         composable(Routes.CASH_COUNT) {
             CashCountScreen(
-                closing = false, counting = true,
+                counting = true,
                 onBack = { nav.popBackStack() },
                 onDone = { nav.popBackStack() },
             )

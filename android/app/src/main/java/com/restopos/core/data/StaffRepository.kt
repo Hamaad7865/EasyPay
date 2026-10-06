@@ -144,21 +144,29 @@ class StaffRepository @Inject constructor(
         pushNow(context)
     }
 
-    // What the drawer was left with when this till's last period closed: the
+    // What the drawer was left with when this till's last day closed: the
     // amount offered when the next one opens.
     suspend fun suggestedFloat(): Long {
         val device = session.deviceId() ?: return 0
         return db.staff().lastClosedShift(device)?.counted_cash ?: 0
     }
 
+    // Sales this till took that were never closed (see CashOps.unclosed):
+    // opening a day closes them first, so they do not run into the new one.
+    suspend fun unclosed(): Boolean = cash.unclosed()
+
+    // Opening the day on this till: the cash in its drawer is counted, and it
+    // sells from then on. One day at a time on a till.
     suspend fun open(float: Long): Result<ShiftEntity> = runCatching {
         val who = staffSession.current.value ?: error("Sign in first")
-        require(who.can("shift.open_close")) { "${who.employee.name} is not allowed to open a sales period" }
+        require(who.can("shift.open_close")) { "${who.employee.name} is not allowed to open the day" }
         require(float >= 0) { "bad amount" }
         val store = session.storeId() ?: error("no store")
         val tenant = session.tenantId() ?: error("no tenant")
         val device = session.deviceId() ?: error("no device")
         db.staff().openShift(device)?.let { return@runCatching it } // one per till
+        // what was sold before and never closed gets its own closing, not a share of this day
+        if (cash.unclosed()) cash.closeUnclosed(carryOrders = true).getOrThrow()
         val now = System.currentTimeMillis()
         val shift = ShiftEntity(Uuid7.next(), tenant, store, device, who.employee.id, now, float)
         db.withTransaction {
@@ -177,28 +185,10 @@ class StaffRepository @Inject constructor(
     // Refunds paid in cash come off; cash put in and taken out counts.
     suspend fun expectedCash(shift: ShiftEntity): Long = cash.expectedCash(shift)
 
-    suspend fun close(counted: Long, approver: StaffMember? = null): Result<ShiftEntity> = runCatching {
-        val who = staffSession.current.value ?: error("Sign in first")
-        staffSession.allow("shift.open_close", "close the sales period", approver)
-        require(counted >= 0) { "bad amount" }
-        val device = session.deviceId() ?: error("no device")
-        val open = db.staff().openShift(device) ?: error("No sales period is open")
-        val now = System.currentTimeMillis()
-        val closed = open.copy(closed_by = who.employee.id, closed_at = now, counted_cash = counted, expected_cash = expectedCash(open))
-        db.withTransaction {
-            db.staff().upsertShifts(listOf(closed))
-            db.outbox().enqueue(op("shift.close", who.employee.id, buildJsonObject {
-                put("id", closed.id); put("counted_cash", counted)
-                put("closed_at", Instant.ofEpochMilli(now).toString())
-                staffSession.approvedBy("shift.open_close", approver)?.let { put("approved_by", it) }
-            }))
-        }
-        pushNow(context)
-        cash.printShiftBehind(closed)
-        closed
-    }
+    // Closing the day (the drawer counted, the figures fixed, the Z report)
+    // is CashOps.closeDay: there is no closing the drawer without the day.
 
-    // The drawer counted during the shift, which stays open.
+    // The drawer counted during the day, which stays open.
     suspend fun count(counted: Long, approver: StaffMember? = null) = cash.count(counted, approver)
 
     suspend fun staffNow(): List<StaffMember> = session.storeId()?.let { staff(it).first() } ?: emptyList()

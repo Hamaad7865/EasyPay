@@ -10,7 +10,7 @@ import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 // Staff at the till (spec 7.2, 7.7): who may use it, who is clocked in, and
-// the sales period on this till. Mirrors of the server tables, same names.
+// the day on this till. Mirrors of the server tables, same names.
 // Times are epoch millis here; the server keeps timestamps.
 
 @Entity(tableName = "roles")
@@ -44,8 +44,9 @@ data class EmployeeStoreEntity(
     val server_seq: Long? = null,
 )
 
-// A sales period on one till: opened with the cash in the drawer, closed with
-// the cash that was counted.
+// A day on one till, from its drawer's side (the table is still called
+// shifts): opened with the cash in the drawer, closed with the cash that was
+// counted. Closing it also writes the day's closing (day_closes).
 @Entity(tableName = "shifts", indices = [Index("device_id")])
 data class ShiftEntity(
     @PrimaryKey val id: String,
@@ -123,7 +124,7 @@ interface StaffDao {
     @Query("SELECT * FROM shifts WHERE device_id = :device AND closed_at IS NOT NULL AND deleted_at IS NULL ORDER BY closed_at DESC LIMIT :limit")
     suspend fun closedShifts(device: String, limit: Int = 10): List<ShiftEntity>
 
-    // Cash this till took since a moment (a sales period's opening): what
+    // Cash this till took since a moment (the day's opening): what
     // went into the drawer, change already taken off, refunds paid out of it.
     @Query(
         """SELECT COALESCE(SUM(CASE WHEN r.type = 'refund' THEN -p.amount ELSE p.amount END), 0) FROM receipt_payments p
@@ -138,7 +139,7 @@ interface StaffDao {
     @Query("DELETE FROM employees") suspend fun clearEmployees()
     @Query("DELETE FROM employee_stores") suspend fun clearEmployeeStores()
 
-    // The mirror of who works here. Sales periods and punches stay: an
+    // The mirror of who works here. Days and punches stay: an
     // unsynced one exists only on this tablet.
     @Transaction
     suspend fun clearStaff() { clearEmployeeStores(); clearEmployees(); clearRoles() }

@@ -69,7 +69,7 @@ import javax.inject.Inject
 private val NOTES = listOf(2000, 1000, 500, 200, 100, 50, 25)
 private val COINS = listOf(20, 10, 5, 1)
 
-// What the period came to once it is closed.
+// What the day came to once it is closed.
 data class Closed(val expected: Long, val counted: Long, val day: String)
 
 data class CashUi(
@@ -82,12 +82,13 @@ data class CashUi(
     val closed: Closed? = null,
     val busy: Boolean = false,
     val cashNames: Set<String> = emptySet(), // what the cash payment types are called
+    val unclosed: Boolean = false, // sales from before, with no day open, that no closing covers
 ) {
     val counted: Long get() = (NOTES + COINS).sumOf { it.toLong() * (counts[it] ?: 0) } * 100
 }
 
 // The cash drawer: count it by note and coin, see what it should hold, and
-// close the sales period (and the day) from the count.
+// close the day from the count.
 @HiltViewModel
 class CashViewModel @Inject constructor(
     private val cash: CashOps,
@@ -103,13 +104,13 @@ class CashViewModel @Inject constructor(
     fun load() = viewModelScope.launch {
         val shift = cash.currentShift()
         val cur = _ui.value
-        if (shift == null) { _ui.value = cur.copy(loaded = true, shift = null, doc = null, closed = null, info = "No sales period is open on this till"); return@launch }
+        if (shift == null) { _ui.value = cur.copy(loaded = true, shift = null, doc = null, closed = null, info = "The day is not open on this till", unclosed = cash.unclosed()); return@launch }
         val doc = cash.shiftDoc(shift)
         _ui.value = cur.copy(
             loaded = true, shift = shift, doc = doc, figures = cur.figures || staff.can("shift.view_report"),
             cashNames = db.ops().allPaymentTypes().filter { it.kind == "cash" }.map { it.name }.toSet(),
             info = "${doc.till} · opened ${hm.format(Date(shift.opened_at))}" + (doc.openedBy?.let { " by $it" } ?: ""),
-            // another period: start the count again
+            // another day: start the count again
             counts = if (cur.shift?.id == shift.id) cur.counts else emptyMap(), closed = null,
         )
     }
@@ -120,7 +121,7 @@ class CashViewModel @Inject constructor(
     }
 
     // Someone who may not see the figures asks someone who may, for this visit.
-    fun unlock() = approvals.ask("shift.view_report", "see the sales period's figures") { _ui.value = _ui.value.copy(figures = true) }
+    fun unlock() = approvals.ask("shift.view_report", "see the day's figures") { _ui.value = _ui.value.copy(figures = true) }
 
     private suspend fun approved(done: String?, by: StaffMember? = null, block: suspend (StaffMember?) -> Result<*>) {
         val out = block(by)
@@ -142,43 +143,45 @@ class CashViewModel @Inject constructor(
         approved(if (type == "in") "Cash in recorded" else "Cash out recorded") { by -> cash.move(type, rupees * 100, reason.trim(), by) }
     }
 
-    // A count for a handover: recorded, and the period stays open.
+    // A count for a handover: recorded, and the day stays open.
     fun saveCount() = viewModelScope.launch {
         val counted = _ui.value.counted
         approved("Count recorded · ${Money.format(counted)}") { by -> repo.count(counted, by) }
     }
 
-    // Closes the sales period from the count; withDay also closes the day (the Z report).
-    fun close(withDay: Boolean, by: StaffMember? = null) {
+    // Before the count is asked to be final: every order has to be paid.
+    fun askClose(then: () -> Unit) = viewModelScope.launch {
+        val n = cash.unpaidOrders()
+        if (n > 0) Toaster.say(cash.unpaid(n)) else then()
+    }
+
+    // Closes the day from the count: the drawer and the Z report in one step.
+    fun close(by: StaffMember? = null) {
         val s = _ui.value
         if (s.busy) return
         viewModelScope.launch {
             _ui.value = s.copy(busy = true)
-            val out = repo.close(s.counted, by)
+            val out = cash.closeDay(s.counted, by)
             val need = out.exceptionOrNull() as? NeedsApproval
             if (need != null && by == null) {
                 _ui.value = s.copy(busy = false)
-                approvals.ask(need.permission, need.what) { approver -> close(withDay, approver) }
+                approvals.ask(need.permission, need.what) { approver -> close(approver) }
                 return@launch
             }
             out.fold(
-                onSuccess = { closed ->
-                    val day = if (!withDay) "The day is still open. Close it from here when the last period is done."
-                    else cash.closeDay(by).fold(
-                        onSuccess = { (z, printed) -> "Day closing no. ${z.number} done." + (printed?.let { " $it" } ?: " Z report printed.") },
-                        onFailure = { "The day was not closed: ${it.message}" },
-                    )
-                    _ui.value = _ui.value.copy(busy = false, shift = null, closed = Closed(closed.expected_cash ?: closed.opening_float, s.counted, day))
+                onSuccess = { (z, problem) ->
+                    val day = "Day closing no. ${z.number} done. " + (problem ?: "Z report printed.")
+                    _ui.value = _ui.value.copy(busy = false, shift = null, closed = Closed(z.expected ?: 0, s.counted, day))
                 },
                 onFailure = { _ui.value = s.copy(busy = false); Toaster.say(it.message) },
             )
         }
     }
 
-    // With no period open: the day on its own.
-    fun closeDay() = viewModelScope.launch {
+    // With no day open: the sales from before that no closing covers.
+    fun closeUnclosed() = viewModelScope.launch {
         approved(null) { by ->
-            cash.closeDay(by).onSuccess { (z, printed) -> Toaster.say("Day closing no. ${z.number} done." + (printed?.let { " $it" } ?: " Z report printed.")) }
+            cash.closeUnclosed(by).onSuccess { (z, printed) -> Toaster.say("Day closing no. ${z.number} done." + (printed?.let { " $it" } ?: " Z report printed.")) }
         }
     }
 }
@@ -193,11 +196,15 @@ fun CashScreen(vm: CashViewModel, onOpenPeriod: () -> Unit, onClosed: () -> Unit
     ui.closed?.let { c -> ClosedCard(c, onClosed); return }
     if (ui.loaded && ui.shift == null) {
         Column(Modifier.fillMaxSize().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically)) {
-            T("The sales period is closed", 26.sp, 700, spacing = (-0.6).sp)
-            T("Open one to take cash: the drawer's opening amount is counted first.", 15.sp, 500, V.Text2, lines = 2)
+            T("The day is not open", 26.sp, 700, spacing = (-0.6).sp)
+            T(
+                if (ui.unclosed) "Sales from before were never closed. Close them first: their Z report prints, and the next day starts clean."
+                else "Open it to take cash: the cash in the drawer is counted first.",
+                15.sp, 500, V.Text2, lines = 3,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                VBtn("Open a sales period", bg = V.Blue, fg = Color.White, height = 60.dp, weight = 800, pad = 24.dp, onClick = onOpenPeriod)
-                VBtn("Close the day · Z report", height = 60.dp, pad = 24.dp) { vm.closeDay() }
+                VBtn("Open the day", bg = V.Blue, fg = Color.White, height = 60.dp, weight = 800, pad = 24.dp, onClick = onOpenPeriod)
+                if (ui.unclosed) VBtn("Close the earlier sales · Z report", height = 60.dp, pad = 24.dp) { vm.closeUnclosed() }
             }
         }
         return
@@ -252,7 +259,7 @@ fun CashScreen(vm: CashViewModel, onOpenPeriod: () -> Unit, onClosed: () -> Unit
             Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
             Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 VBtn("Record this count · handover", Modifier.fillMaxWidth(), height = 48.dp, size = 14.sp) { vm.saveCount() }
-                VBtn("Close shift & print Z report", Modifier.fillMaxWidth(), V.Blue, Color.White, 66.dp, 16.dp, 16.sp) { closing = true }
+                VBtn("Close the day & print Z report", Modifier.fillMaxWidth(), V.Blue, Color.White, 66.dp, 16.dp, 16.sp) { vm.askClose { closing = true } }
             }
         }
     }
@@ -272,9 +279,9 @@ fun CashScreen(vm: CashViewModel, onOpenPeriod: () -> Unit, onClosed: () -> Unit
     }
     if (closing) {
         Sheet(onDismiss = { closing = false }, width = 560.dp) {
-            SheetHead("Close the sales period?", "Counted ${Money.format(ui.counted)}. The count is final once it is closed, and the till goes back to the start screen.") { closing = false }
-            VBtn("Close shift & print Z report", Modifier.fillMaxWidth(), V.Blue, Color.White, 64.dp, size = 16.sp, weight = 800) { closing = false; vm.close(withDay = true) }
-            VBtn("Close the sales period only · the day stays open", Modifier.fillMaxWidth(), height = 56.dp) { closing = false; vm.close(withDay = false) }
+            SheetHead("Close the day?", "Counted ${Money.format(ui.counted)}. The count is final once the day is closed: its figures are fixed, the Z report prints, and the till goes back to the start screen.") { closing = false }
+            VBtn("Close the day & print Z report", Modifier.fillMaxWidth(), V.Blue, Color.White, 64.dp, size = 16.sp, weight = 800) { closing = false; vm.close() }
+            VBtn("Not yet", Modifier.fillMaxWidth(), height = 56.dp) { closing = false }
         }
     }
 }
@@ -313,13 +320,13 @@ private fun Line(label: String, value: String, bold: Boolean = false) {
     }
 }
 
-// The period is closed: what the count came to, and back to the start screen.
+// The day is closed: what the count came to, and back to the start screen.
 @Composable
 private fun ClosedCard(c: Closed, onClosed: () -> Unit) {
     val diff = c.counted - c.expected
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(Modifier.width(520.dp).panel(22.dp).padding(32.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            T("Sales period closed", 26.sp, 800, spacing = (-0.5).sp)
+            T("Day closed", 26.sp, 800, spacing = (-0.5).sp)
             Line("Expected in drawer", Money.format(c.expected))
             Line("Counted", Money.format(c.counted))
             Line(if (diff == 0L) "Drawer balanced" else if (diff > 0) "Over" else "Short", if (diff == 0L) Money.format(0) else Money.format(kotlin.math.abs(diff)), bold = true)
