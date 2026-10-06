@@ -67,6 +67,17 @@ export default async function TaxesPage({ searchParams }: { searchParams: Search
         lede="Each item carries one of these. VAT at 15% for standard items, Zero rated and Exempt for items that carry no VAT: they are kept apart because the tax report must show them separately."
       />
       <Flash sp={sp} />
+      <Card title="Add a tax">
+        <form action={addTax} className="bo-toolbar" style={{ margin: 0 }}>
+          <input name="name" placeholder="Name" required maxLength={30} />
+          <input name="rate" placeholder="Rate %" required className="narrow" inputMode="decimal" />
+          <select name="type" defaultValue="included" aria-label="Menu prices">
+            <option value="included">Prices include it</option>
+            <option value="added">Added on top</option>
+          </select>
+          <button type="submit">Add</button>
+        </form>
+      </Card>
       <table>
         <thead>
           <tr>
@@ -108,17 +119,6 @@ export default async function TaxesPage({ searchParams }: { searchParams: Search
           ))}
         </tbody>
       </table>
-      <Card title="Add a tax">
-        <form action={addTax} className="bo-toolbar" style={{ margin: 0 }}>
-          <input name="name" placeholder="Name" required maxLength={30} />
-          <input name="rate" placeholder="Rate %" required className="narrow" inputMode="decimal" />
-          <select name="type" defaultValue="included" aria-label="Menu prices">
-            <option value="included">Prices include it</option>
-            <option value="added">Added on top</option>
-          </select>
-          <button type="submit">Add</button>
-        </form>
-      </Card>
       <p className="muted">Which tax an item carries is set on the item, under <Link href="/backoffice/items">Items</Link>.</p>
     </div>
   );

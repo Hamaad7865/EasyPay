@@ -3,7 +3,7 @@ import { Printer } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, int, on, Refused, text, uuid } from "@/lib/action";
-import { Card, Empty, Flash, PageHead, type Search } from "../ui";
+import { Empty, Flash, PageHead, type Search } from "../ui";
 
 const PATH = "/backoffice/printers";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -198,6 +198,24 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
         lede="The receipt printer at the till, and the kitchen and bar printers that orders are sent to. Add one for each place food or drink is made, and tick what it prints. The tablet prints to them directly, so they work without internet."
       />
       <Flash sp={sp} />
+      {/* its form is the whole of a printer: it opens, like the printers under it */}
+      <details className="card flush">
+        <summary className="card-head" style={{ cursor: "pointer", listStyle: "none" }}>
+          <div>
+            <h2>Add a printer</h2>
+            <p>A kitchen printer, a bar printer, a pastry printer: name it after where it stands and tick what it prints.</p>
+          </div>
+          <span className="btn-quiet btn-sm">Open</span>
+        </summary>
+        <form action={addPrinter}>
+          <div className="card-body">
+            <Form cats={cats} />
+          </div>
+          <div className="card-foot">
+            <button type="submit">Add printer</button>
+          </div>
+        </form>
+      </details>
       {rows.length === 0 && (
         <Empty icon={Printer} title="No printers yet">
           Add the cashier&apos;s receipt printer first, then one for the kitchen and one for the bar if you have them.
@@ -231,12 +249,6 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
           </form>
         </details>
       ))}
-      <Card title="Add a printer" lede="A kitchen printer, a bar printer, a pastry printer: name it after where it stands and tick what it prints.">
-        <form action={addPrinter}>
-          <Form cats={cats} />
-          <button type="submit">Add printer</button>
-        </form>
-      </Card>
       <p className="muted">
         Where a category prints can also be set from its side, under <Link href="/backoffice/categories">Categories</Link>. A test print for each printer is
         on the tablet, under Settings, Printers.

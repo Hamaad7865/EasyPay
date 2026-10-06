@@ -107,18 +107,18 @@ export default async function AddonsPage({ searchParams }: { searchParams: Searc
         lede="Extras and choices the till offers when an item is tapped: extra cheese, no chili, how it is cooked. A group is attached to the items it applies to, on each item's page."
       />
       <Flash sp={sp} />
-      {d.groups.length === 0 ? (
-        <Empty icon={SlidersHorizontal} title="No add-on groups yet">Create one below, then add its choices and tick it on the items it belongs to.</Empty>
-      ) : (
-        // keyed by what is open, so coming back from a save opens that group even when the page was already showing
-        <AddonsTable key={open} groups={d.groups} choices={choices} open={UUID.test(open) ? open : null} saveGroup={saveGroup} addChoice={addChoice} saveChoice={saveChoice} />
-      )}
       <Card title="Add a group">
         <form action={addGroup} className="bo-toolbar" style={{ margin: 0 }}>
           <input name="name" placeholder="Name, for example Extras" required maxLength={40} style={{ minWidth: 260 }} />
           <button type="submit">Add group</button>
         </form>
       </Card>
+      {d.groups.length === 0 ? (
+        <Empty icon={SlidersHorizontal} title="No add-on groups yet">Create one above, then add its choices and tick it on the items it belongs to.</Empty>
+      ) : (
+        // keyed by what is open, so coming back from a save opens that group even when the page was already showing
+        <AddonsTable key={open} groups={d.groups} choices={choices} open={UUID.test(open) ? open : null} saveGroup={saveGroup} addChoice={addChoice} saveChoice={saveChoice} />
+      )}
       <p className="muted">Attach a group to an item on the item&apos;s page, under <Link href="/backoffice/items">Items</Link>.</p>
     </div>
   );

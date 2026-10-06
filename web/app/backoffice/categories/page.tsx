@@ -90,11 +90,6 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
         lede="The groups of the menu, shown above the items on the till's order screen. The sequence is their order, the colour is the colour of the group and of its items, and the printers are where a category's items come out when an order is sent (and its stations on the kitchen display)."
       />
       <Flash sp={sp} />
-      {rows.length === 0 ? (
-        <Empty icon={Tags} title="No categories yet">Add the first one below, for example Starters or Drinks.</Empty>
-      ) : (
-        <CategoriesTable key={startKey(sp, start)} rows={rows} printers={d.printers} start={start} save={saveCategory} />
-      )}
       <Card title="Add a category">
         <form action={addCategory} className="bo-toolbar" style={{ margin: 0 }}>
           <input name="name" placeholder="Name" required maxLength={40} style={{ minWidth: 260 }} />
@@ -102,6 +97,11 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
           <button type="submit">Add</button>
         </form>
       </Card>
+      {rows.length === 0 ? (
+        <Empty icon={Tags} title="No categories yet">Add the first one above, for example Starters or Drinks.</Empty>
+      ) : (
+        <CategoriesTable key={startKey(sp, start)} rows={rows} printers={d.printers} start={start} save={saveCategory} />
+      )}
       {d.printers.length === 0 && (
         <p className="muted">
           To send orders to a kitchen or bar printer, add it under <Link href="/backoffice/printers">Printers</Link> first.

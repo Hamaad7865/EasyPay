@@ -114,6 +114,12 @@ export default async function RolesPage({ searchParams }: { searchParams: Search
         <Link href="/backoffice/staff" className="btn-quiet">Staff</Link>
       </PageHead>
       <Flash sp={sp} />
+      <Card title="Add a role">
+        <form action={addRole} className="bo-toolbar" style={{ margin: 0 }}>
+          <input name="name" placeholder="Name, for example Supervisor" required maxLength={30} style={{ minWidth: 260 }} />
+          <button type="submit">Add role</button>
+        </form>
+      </Card>
       {roles.map((r) => {
         const all = r.permissions.includes("*");
         return (
@@ -158,12 +164,6 @@ export default async function RolesPage({ searchParams }: { searchParams: Search
           </details>
         );
       })}
-      <Card title="Add a role">
-        <form action={addRole} className="bo-toolbar" style={{ margin: 0 }}>
-          <input name="name" placeholder="Name, for example Supervisor" required maxLength={30} style={{ minWidth: 260 }} />
-          <button type="submit">Add role</button>
-        </form>
-      </Card>
     </div>
   );
 }

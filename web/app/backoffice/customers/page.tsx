@@ -85,11 +85,6 @@ export default async function CustomersPage({ searchParams }: { searchParams: Se
         lede="The people the restaurant knows by name. A cashier puts one on an order with Assign customer; their name then prints on the bill and the receipt. They can be added here or on the till."
       />
       <Flash sp={sp} />
-      {d.rows.length === 0 ? (
-        <Empty icon={Contact} title="No customers yet">Add the first one below, or from the till.</Empty>
-      ) : (
-        <CustomersTable key={startKey(sp, start)} rows={rows} capped={d.rows.length > MOST} start={start} save={saveCustomer} remove={removeCustomer} />
-      )}
       <Card title="Add a customer">
         <form action={addCustomer} className="bo-toolbar" style={{ margin: 0 }}>
           <input name="name" placeholder="Name" required maxLength={120} />
@@ -99,6 +94,11 @@ export default async function CustomersPage({ searchParams }: { searchParams: Se
           <button type="submit">Add</button>
         </form>
       </Card>
+      {d.rows.length === 0 ? (
+        <Empty icon={Contact} title="No customers yet">Add the first one above, or from the till.</Empty>
+      ) : (
+        <CustomersTable key={startKey(sp, start)} rows={rows} capped={d.rows.length > MOST} start={start} save={saveCustomer} remove={removeCustomer} />
+      )}
     </div>
   );
 }

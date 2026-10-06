@@ -266,6 +266,15 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
 
       {tab === "payments" && (
         <>
+          <Card title="Add a payment option">
+            <form action={addPayment} className="bo-toolbar" style={{ margin: 0 }}>
+              <input name="name" placeholder="Name, for example Gift voucher" required maxLength={40} style={{ minWidth: 260 }} />
+              <select name="kind" defaultValue="other" aria-label="Kind">
+                {KINDS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              </select>
+              <button type="submit">Add</button>
+            </form>
+          </Card>
           <Card title="Payment options" lede="What a cashier can pick on the payment screen, in this order. The cash drawer opens only for the ones ticked." flush>
             <table>
               <thead>
@@ -302,20 +311,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
               </tbody>
             </table>
           </Card>
-          <Card title="Add a payment option">
-            <form action={addPayment} className="bo-toolbar" style={{ margin: 0 }}>
-              <input name="name" placeholder="Name, for example Gift voucher" required maxLength={40} style={{ minWidth: 260 }} />
-              <select name="kind" defaultValue="other" aria-label="Kind">
-                {KINDS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-              </select>
-              <button type="submit">Add</button>
-            </form>
-          </Card>
         </>
       )}
 
       {tab === "orders" && (
         <>
+          <Card title="Add an order type">
+            <form action={addDining} className="bo-toolbar" style={{ margin: 0 }}>
+              <input name="name" placeholder="Name, for example Delivery" required maxLength={40} style={{ minWidth: 260 }} />
+              <select name="kind" defaultValue="takeaway" aria-label="Kind">
+                {ORDER_KINDS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              </select>
+              <button type="submit">Add</button>
+            </form>
+          </Card>
           <Card
             title="Order types"
             lede="The kinds of order the tills take. At a table: opened from the floor plan. Counter sale: the Quick sale key. Takeaway and delivery: on the takeaway board until they have left. The kitchen column says when an order's items go to the kitchen printers and the kitchen display."
@@ -364,15 +373,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                 ))}
               </tbody>
             </table>
-          </Card>
-          <Card title="Add an order type">
-            <form action={addDining} className="bo-toolbar" style={{ margin: 0 }}>
-              <input name="name" placeholder="Name, for example Delivery" required maxLength={40} style={{ minWidth: 260 }} />
-              <select name="kind" defaultValue="takeaway" aria-label="Kind">
-                {ORDER_KINDS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-              </select>
-              <button type="submit">Add</button>
-            </form>
           </Card>
         </>
       )}

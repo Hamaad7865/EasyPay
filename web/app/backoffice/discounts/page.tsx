@@ -102,11 +102,6 @@ export default async function DiscountsPage({ searchParams }: { searchParams: Se
         lede="What the till offers under More, Discount. A discount comes off the whole bill at payment and prints on the receipt under its name. One marked as needing a manager can only be given by someone whose role allows it, or with their PIN."
       />
       <Flash sp={sp} />
-      {d.rows.length === 0 ? (
-        <div className="note">No discounts yet. The till can still take a percentage or an amount typed in at the time.</div>
-      ) : (
-        <DiscountsTable key={startKey(sp, start)} rows={rows} start={start} save={saveDiscount} />
-      )}
       <Card title="Add a discount" lede="A percentage is a whole number (10 for 10%). An amount is in rupees.">
         <form action={addDiscount} className="bo-toolbar" style={{ margin: 0 }}>
           <input name="name" placeholder="Name, e.g. Happy hour" required maxLength={40} />
@@ -122,6 +117,11 @@ export default async function DiscountsPage({ searchParams }: { searchParams: Se
           <button type="submit">Add</button>
         </form>
       </Card>
+      {d.rows.length === 0 ? (
+        <div className="note">No discounts yet. The till can still take a percentage or an amount typed in at the time.</div>
+      ) : (
+        <DiscountsTable key={startKey(sp, start)} rows={rows} start={start} save={saveDiscount} />
+      )}
       <p className="muted">
         Who counts as a manager is set under Roles and permissions: &quot;Give a discount&quot; and &quot;Give a discount that needs a manager&quot;.
       </p>

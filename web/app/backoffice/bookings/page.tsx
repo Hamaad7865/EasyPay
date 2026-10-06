@@ -105,12 +105,36 @@ export default async function BookingsPage({ searchParams }: { searchParams: Sea
         lede="Tables reserved for a party at a time. The tills show today's on their Bookings screen and hold the table on the floor plan until the party is seated. A booking can be taken here or on a till."
       />
       <Flash sp={sp} />
+      {d.stores.length > 0 && (
+        <Card title="Take a booking">
+          <form action={addBooking} className="bo-toolbar" style={{ margin: 0 }}>
+            {many ? (
+              <select name="store_id" defaultValue={d.stores[0].id} aria-label="Store">
+                {d.stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            ) : (
+              <input type="hidden" name="store_id" value={d.stores[0].id} />
+            )}
+            <input name="day" type="date" defaultValue={d.stores[0].today} required aria-label="Day" />
+            <input name="time" type="time" defaultValue="19:30" required aria-label="Time" />
+            <input name="name" placeholder="Name" required maxLength={120} />
+            <input name="size" type="number" min={1} max={99} defaultValue={2} className="narrow" aria-label="Guests" />
+            <input name="phone" placeholder="Phone" maxLength={40} />
+            <select name="table_id" defaultValue="" aria-label="Table">
+              <option value="">Table: assign later</option>
+              {d.tables.map((t) => <option key={t.id} value={t.id}>{t.name} · {t.area} · {t.seats}</option>)}
+            </select>
+            <input name="tags" placeholder="Notes (birthday, allergy, high chair)" maxLength={240} style={{ minWidth: 240 }} />
+            <button type="submit">Book</button>
+          </form>
+        </Card>
+      )}
       <div className="tabs">
         <a href={PATH} className={show === "coming" ? "on" : undefined}>Today and coming</a>
         <a href={PATH + "?show=past"} className={show === "past" ? "on" : undefined}>Past</a>
       </div>
       {d.rows.length === 0 ? (
-        <Empty icon={CalendarCheck} title={show === "past" ? "No past bookings" : "No bookings yet"}>{show === "past" ? "Bookings from earlier days show here." : "Take the first one below, or from a till."}</Empty>
+        <Empty icon={CalendarCheck} title={show === "past" ? "No past bookings" : "No bookings yet"}>{show === "past" ? "Bookings from earlier days show here." : "Take the first one above, or from a till."}</Empty>
       ) : (
         <table>
           <thead>
@@ -158,30 +182,6 @@ export default async function BookingsPage({ searchParams }: { searchParams: Sea
             ))}
           </tbody>
         </table>
-      )}
-      {d.stores.length > 0 && (
-        <Card title="Take a booking">
-          <form action={addBooking} className="bo-toolbar" style={{ margin: 0 }}>
-            {many ? (
-              <select name="store_id" defaultValue={d.stores[0].id} aria-label="Store">
-                {d.stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            ) : (
-              <input type="hidden" name="store_id" value={d.stores[0].id} />
-            )}
-            <input name="day" type="date" defaultValue={d.stores[0].today} required aria-label="Day" />
-            <input name="time" type="time" defaultValue="19:30" required aria-label="Time" />
-            <input name="name" placeholder="Name" required maxLength={120} />
-            <input name="size" type="number" min={1} max={99} defaultValue={2} className="narrow" aria-label="Guests" />
-            <input name="phone" placeholder="Phone" maxLength={40} />
-            <select name="table_id" defaultValue="" aria-label="Table">
-              <option value="">Table: assign later</option>
-              {d.tables.map((t) => <option key={t.id} value={t.id}>{t.name} · {t.area} · {t.seats}</option>)}
-            </select>
-            <input name="tags" placeholder="Notes (birthday, allergy, high chair)" maxLength={240} style={{ minWidth: 240 }} />
-            <button type="submit">Book</button>
-          </form>
-        </Card>
       )}
     </div>
   );
