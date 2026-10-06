@@ -5,7 +5,7 @@ import type { NavCount } from "../nav";
 // The numbers beside the pages in the menu: how many rows each list page
 // shows, counted the way the page itself selects them, so the badge and the
 // page never disagree. The menu asks for them once the page is drawn (and
-// again after a save), so no page waits for them. Two pages do not list
+// again on arriving on another page, and after a save), so no page waits for them. Two pages do not list
 // everything they hold, and count what there is to act on instead: Bookings
 // the ones from today on (what it opens on), Receipts the ones a till flagged
 // and nobody has signed off (only when there are any, and in red).

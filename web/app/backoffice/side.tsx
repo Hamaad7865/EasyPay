@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, LogOut, PanelLeftClose, PanelLeftOpen, Search, Store } from "lucide-react";
 import { GROUPS, HOME, groupOf, isOn, type NavCount } from "./nav";
 import { openSearch, SearchBox, useSearchKey } from "./search-box";
@@ -61,19 +61,8 @@ function Count({ c }: { c: NavCount | undefined }) {
   );
 }
 
-// A save comes back with its "saved" line in the address: the numbers are
-// asked for again then. Only that line is watched, not the rest of the
-// address, which a list rewrites at every letter typed into its search.
-function Saved({ again }: { again: () => void }) {
-  const ok = useSearchParams().get("ok") ?? "";
-  useEffect(() => {
-    if (ok) again();
-  }, [ok, again]);
-  return null;
-}
-
 export function Side({
-  restaurant, id, employee, role, signOut, folded, opened,
+  restaurant, id, employee, role, signOut, folded, opened, drawn,
 }: {
   restaurant: string;
   // the start of the restaurant's id: what to quote to EasyPay support
@@ -85,6 +74,10 @@ export function Side({
   // that were open (null when it has never been touched)
   folded: boolean;
   opened: string[] | null;
+  // when the server last drew the shell. Going from page to page leaves it
+  // alone; a save draws it again, and the numbers in the menu are asked for
+  // again then, whatever the save's "saved" line says.
+  drawn: number;
 }) {
   const path = usePathname();
   const here = groupOf(path);
@@ -136,7 +129,7 @@ export function Side({
       })
       .catch(() => {});
   }, []);
-  useEffect(() => count(), [path, count]);
+  useEffect(() => count(), [path, drawn, count]);
 
   const nav = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -300,9 +293,6 @@ export function Side({
       </aside>
       {/* once, and outside the menu: it has to open with the menu folded away too */}
       <SearchBox />
-      <Suspense fallback={null}>
-        <Saved again={count} />
-      </Suspense>
     </>
   );
 }
