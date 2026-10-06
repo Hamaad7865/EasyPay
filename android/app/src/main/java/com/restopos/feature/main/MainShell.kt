@@ -374,7 +374,7 @@ fun MainShell(
                     Screen.Cash -> { val vm: CashViewModel = hiltViewModel(); CashScreen(vm, onOpenPeriod = onOpenPeriod, onClosed = onLock) }
                     Screen.Receipts -> Box(Modifier.padding(top = 12.dp)) { ReceiptsScreen() }
                     Screen.Customers -> Box(Modifier.padding(top = 12.dp)) { CustomersScreen() }
-                    Screen.Settings -> Box(Modifier.padding(top = 12.dp)) {
+                    Screen.Settings -> Box {
                         SettingsScreen(
                             more, lock = if (user != null) "Log out" else "Lock", onLock = onLock, onSignIn = onSignIn, onRejected = onRejected,
                             onClosePeriod = { shell.go(Screen.Cash) }, onCountDrawer = { shell.go(Screen.Cash) }, onSignOut = { confirmSignOut = true },

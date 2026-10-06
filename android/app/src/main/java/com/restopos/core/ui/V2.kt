@@ -186,6 +186,14 @@ object VI {
     const val Swap = "M4 8h14l-3-3M20 16H6l3 3"
     const val Note = "M5 4h14v12l-4 4H5zM15 20v-4h4M8 9h8M8 13h5"
     const val Trash = "M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13"
+    const val Minus = "M5 12h14"
+    const val Chevron = "M9 6l6 6-6 6"
+    const val Bell = "M6 16v-5a6 6 0 0 1 12 0v5l1.500 2.500h-15zM10 20.500a2 2 0 0 0 4 0"
+    const val Card = "M3 6h18v12H3zM3 10h18M7 15h4"
+    const val Sun = "M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0 -8M12 3v2M12 19v2M3 12h2M19 12h2M5.600 5.600l1.400 1.400M17 17l1.400 1.400M5.600 18.400l1.400-1.400M17 7l1.400-1.400"
+    const val Help = "M12 3.500a8.500 8.500 0 1 0 0 17a8.500 8.500 0 1 0 0 -17M9.600 9.500a2.500 2.500 0 1 1 3.600 2.300c-.800.500-1.200 1-1.200 1.800M12 16.800h.010"
+    const val Signal = "M12 11a1 1 0 1 0 0 2a1 1 0 1 0 0 -2M8.500 8.500a5 5 0 0 0 0 7M15.500 8.500a5 5 0 0 1 0 7M5.800 5.800a9 9 0 0 0 0 12.400M18.200 5.800a9 9 0 0 1 0 12.400"
+    const val Warn = "M12 4l9 16H3zM12 10v4M12 17h.010"
 
     private val cache = HashMap<String, ImageVector>()
     fun of(d: String, width: Float = 2f): ImageVector = cache.getOrPut("$d@$width") {
@@ -259,8 +267,8 @@ fun IconKey(d: String, size: Dp = 44.dp, bg: Color = V.Key, tint: Color = V.Dim,
 object Motion {
     private val Arrive = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
     private val Leave = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
-    fun enter(ms: Int = 300): TweenSpec<Float> = tween(ms, easing = Arrive)
-    fun exit(ms: Int = 200): TweenSpec<Float> = tween(ms, easing = Leave)
+    fun <T> enter(ms: Int = 300): TweenSpec<T> = tween(ms, easing = Arrive)
+    fun <T> exit(ms: Int = 200): TweenSpec<T> = tween(ms, easing = Leave)
     // the two edges of a pill on its way: the one in front goes ahead, the one behind catches up
     val Lead = spring(dampingRatio = 0.85f, stiffness = 620f, visibilityThreshold = 0.5f)
     val Trail = spring(dampingRatio = 0.85f, stiffness = 400f, visibilityThreshold = 0.5f)

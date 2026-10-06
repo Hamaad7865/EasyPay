@@ -2,6 +2,16 @@ package com.restopos.feature.settings
 
 import android.content.Context
 import android.os.Build
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,9 +25,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,7 +54,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -71,11 +88,21 @@ import com.restopos.core.print.Printing
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.SyncScheduler
 import com.restopos.core.sync.pushNow
-import com.restopos.core.ui.HeadCell
+import com.restopos.core.ui.Caps
 import com.restopos.core.ui.Hairline
+import com.restopos.core.ui.HeadCell
+import com.restopos.core.ui.Motion
 import com.restopos.core.ui.Pos
 import com.restopos.core.ui.PosIcons
+import com.restopos.core.ui.SegOption
+import com.restopos.core.ui.T
 import com.restopos.core.ui.Tag
+import com.restopos.core.ui.V
+import com.restopos.core.ui.VBtn
+import com.restopos.core.ui.VI
+import com.restopos.core.ui.VIcon
+import com.restopos.core.ui.press
+import com.restopos.core.ui.quietTap
 import com.restopos.feature.more.MoreSheets
 import com.restopos.feature.more.MoreViewModel
 import com.restopos.feature.receipts.ReceiptDialog
@@ -83,6 +110,9 @@ import com.restopos.feature.receipts.ReceiptsViewModel
 import com.restopos.feature.start.network
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.text.DateFormat
+import java.util.Date
+import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -101,9 +131,6 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
-import java.text.DateFormat
-import java.util.Date
-import javax.inject.Inject
 
 data class TillFacts(val business: String? = null, val store: String? = null, val device: String? = null)
 
@@ -265,24 +292,26 @@ private val GROUPS = listOf(
     listOf(Page.Printers, Page.Display), listOf(Page.Support, Page.Help),
 )
 
-private fun icon(p: Page): ImageVector = when (p) {
-    Page.Till -> Icons.Filled.Home
-    Page.Notices -> Icons.Filled.Notifications
-    Page.Cash -> PosIcons.Drawer
-    Page.Reports -> PosIcons.Chart
-    Page.Payments -> PosIcons.Card
-    Page.Printers -> PosIcons.Print
-    Page.Display -> PosIcons.Screen
-    Page.Support -> PosIcons.Headset
-    Page.Help -> PosIcons.Help
+private fun icon(p: Page): String = when (p) {
+    Page.Till -> VI.Screen
+    Page.Notices -> VI.Bell
+    Page.Cash -> VI.Cash
+    Page.Reports -> VI.Bars
+    Page.Payments -> VI.Card
+    Page.Printers -> VI.Print
+    Page.Display -> VI.Sun
+    Page.Support -> VI.Help
+    Page.Help -> VI.Orders
 }
 
-private val Shape = RoundedCornerShape(6.dp)
+private val Shape = RoundedCornerShape(14.dp)
+private val CardShape = RoundedCornerShape(16.dp)
 private val stamp: DateFormat get() = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
 private val clock: DateFormat get() = DateFormat.getTimeInstance(DateFormat.SHORT)
 
 // Something that needs someone's attention for as long as it is true.
-private class Standing(val title: String, val detail: String, val button: String, val onClick: () -> Unit)
+// `soft` is something that is on its way by itself, not a fault.
+private class Standing(val title: String, val detail: String, val button: String, val soft: Boolean = false, val onClick: () -> Unit)
 
 // The things done to the cash drawer.
 private class CashKeys(val cashIn: () -> Unit, val cashOut: () -> Unit, val open: () -> Unit, val count: () -> Unit, val close: () -> Unit)
@@ -336,9 +365,9 @@ fun SettingsScreen(
     )
     val failed = jobs.count { it.error != null }
     val standing = buildList {
-        if (needsSignIn) add(Standing("This tablet cannot sync", "Its login was signed out or switched off. Sales are saved here until someone signs in.", "Sign in", onSignIn))
-        if (rejected > 0) add(Standing("$rejected changes were refused by the server", "They are kept on this tablet until someone has looked at them.", "Review", onRejected))
-        if (pending > 0 && !needsSignIn) add(Standing("$pending changes are waiting to be sent", "They go as soon as there is a connection.", "Sync now") { vm.sync() })
+        if (needsSignIn) add(Standing("This tablet cannot sync", "Its login was signed out or switched off. Sales are saved here until someone signs in.", "Sign in", onClick = onSignIn))
+        if (rejected > 0) add(Standing("$rejected changes were refused by the server", "They are kept on this tablet until someone has looked at them.", "Review", onClick = onRejected))
+        if (pending > 0 && !needsSignIn) add(Standing("$pending changes are waiting to be sent", "They go as soon as there is a connection.", "Sync now", soft = true) { vm.sync() })
         val list = printers
         if (list != null && list.isEmpty()) {
             add(Standing("No printer is set up", "Nothing can print: no receipts, no kitchen tickets. Printers are added in the back office.", "Printers") { page = Page.Printers })
@@ -348,22 +377,30 @@ fun SettingsScreen(
         if (failed > 0) add(Standing("$failed print ${if (failed == 1) "job" else "jobs"} failed", "See what did not print and send it again.", "Printers") { page = Page.Printers })
     }
 
-    Box(Modifier.fillMaxSize().background(Pos.Bg)) {
+    // a printer that wants looking at puts a dot on Printers
+    val answers by vm.answers.collectAsState()
+    val printerTrouble = failed > 0 || printers?.let { list -> list.isEmpty() || list.any { answers[it.id] == false } } == true
+    // Another page comes up into place. The one that is there when Settings
+    // opens is simply there.
+    val seen = remember { arrayOfNulls<Page>(1) }
+    val shown = remember(page) { Animatable(if (seen[0] == null) 1f else 0f).also { seen[0] = page } }
+    LaunchedEffect(shown) { shown.animateTo(1f, Motion.enter(220)) }
+
+    Box(Modifier.fillMaxSize().background(V.Bg)) {
         Row(Modifier.fillMaxSize()) {
-            Menu(page, lock, standing.size + notices.size, onPick = { page = it }, onLock = onLock)
-            Column(Modifier.weight(1f).fillMaxHeight()) {
-                Text(
-                    page.label, Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 12.dp),
-                    color = Pos.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center,
-                )
-                // each page starts at its own top
-                key(page) {
-                    Column(
-                        Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
+            Menu(page, lock, standing.isNotEmpty() || notices.isNotEmpty(), printerTrouble, onPick = { page = it }, onLock = onLock)
+            // each page starts at its own top
+            key(page) {
+                Column(
+                    Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())
+                        .graphicsLayer { alpha = shown.value; translationY = (1f - shown.value) * 10.dp.toPx() }
+                        .padding(start = 28.dp, end = 28.dp, top = 22.dp, bottom = 28.dp),
+                ) {
+                    // the page reads as a column, not across the whole tablet
+                    Column(Modifier.widthIn(max = 800.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (page != Page.Till) T(page.label, 22.sp, 800, spacing = (-0.4).sp, modifier = Modifier.padding(bottom = 6.dp))
                         when (page) {
-                            Page.Till -> TillPage(vm, keys, network, onSignIn, onRejected) { page = it }
+                            Page.Till -> TillPage(vm, keys, network, standing, onSignIn, onRejected) { page = it }
                             Page.Notices -> NoticesPage(vm, standing)
                             Page.Cash -> CashPage(vm, more, keys)
                             Page.Reports -> ReportsPage(vm, more, keys.close) { sheet = "day" }
@@ -378,11 +415,10 @@ fun SettingsScreen(
             }
         }
         (said ?: receiptSaid)?.let { m ->
-            Text(
-                m,
-                Modifier.align(Alignment.BottomCenter).padding(16.dp).clip(Shape).background(Pos.Text).padding(horizontal = 16.dp, vertical = 10.dp),
-                color = Pos.Bg, fontSize = 14.sp,
-            )
+            Row(
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp, start = 40.dp, end = 40.dp).clip(Shape).background(V.On).padding(horizontal = 22.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) { T(m, 15.sp, 700, V.OnText, lines = 3) }
         }
     }
 
@@ -390,41 +426,39 @@ fun SettingsScreen(
     ReceiptDialog(receipts)
 }
 
+// The side list: every page of Settings, and the way out at its foot. A dot
+// says a page has something that wants looking at.
 @Composable
-private fun Menu(page: Page, lock: String, waiting: Int, onPick: (Page) -> Unit, onLock: () -> Unit) {
+private fun Menu(page: Page, lock: String, waiting: Boolean, printerTrouble: Boolean, onPick: (Page) -> Unit, onLock: () -> Unit) {
     Column(
-        Modifier.width(250.dp).fillMaxHeight().background(Pos.Panel).verticalScroll(rememberScrollState()).padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        Modifier.width(250.dp).fillMaxHeight().background(V.Header)
+            .drawBehind { drawRect(V.HeaderLine, Offset(size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height)) }
+            .padding(start = 12.dp, end = 12.dp, top = 22.dp, bottom = 14.dp),
     ) {
-        Box(Modifier.fillMaxWidth().height(42.dp).clip(Shape).background(Pos.Key).clickable(onClick = onLock), contentAlignment = Alignment.Center) {
-            Text(lock, color = Pos.Pink, fontSize = 15.sp)
-        }
-        GROUPS.forEach { group ->
-            Column(Modifier.fillMaxWidth().clip(Shape).background(Pos.Key)) {
-                group.forEach { p ->
-                    val on = p == page
-                    Row(
-                        Modifier.fillMaxWidth().height(42.dp).background(if (on) Pos.Selected else Color.Transparent).clickable { onPick(p) }.padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(icon(p), contentDescription = null, tint = if (on) Pos.Link else Pos.Text2, modifier = Modifier.size(18.dp))
-                        Text(p.label, Modifier.weight(1f).padding(start = 12.dp), color = if (on) Pos.Link else Pos.Text, fontSize = 15.sp, maxLines = 1)
-                        if (p == Page.Notices && waiting > 0) {
-                            Box(Modifier.size(20.dp).clip(CircleShape).background(Pos.Pink), contentAlignment = Alignment.Center) {
-                                Text(if (waiting > 9) "9+" else waiting.toString(), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
+        T("Settings", 22.sp, 800, spacing = (-0.4).sp, modifier = Modifier.padding(start = 10.dp, bottom = 14.dp))
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Page.entries.forEach { p ->
+                val on = p == page
+                val bg by animateColorAsState(if (on) V.Key else Color.Transparent, tween(140), label = "page")
+                Row(
+                    Modifier.fillMaxWidth().height(46.dp).press { onPick(p) }.clip(RoundedCornerShape(11.dp)).background(bg).padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    VIcon(icon(p), 18.dp, if (on) V.Text else V.Text2)
+                    T(p.label, 15.sp, 700, if (on) V.Text else V.Dim, Modifier.weight(1f).padding(start = 12.dp))
+                    if (p == Page.Notices && waiting) Box(Modifier.size(7.dp).clip(CircleShape).background(V.Amber))
+                    if (p == Page.Printers && printerTrouble) Box(Modifier.size(7.dp).clip(CircleShape).background(V.Red))
                 }
             }
         }
+        VBtn(lock, Modifier.fillMaxWidth(), V.Key2, V.Dim, 46.dp, 11.dp, 14.sp, icon = VI.Lock, onClick = onLock)
     }
 }
 
 // ---- the pages ----
 
 @Composable
-private fun TillPage(vm: SettingsViewModel, keys: CashKeys, network: String, onSignIn: () -> Unit, onRejected: () -> Unit, onGo: (Page) -> Unit) {
+private fun TillPage(vm: SettingsViewModel, keys: CashKeys, network: String, standing: List<Standing>, onSignIn: () -> Unit, onRejected: () -> Unit, onGo: (Page) -> Unit) {
     val user by vm.user.collectAsState()
     val needsSignIn by vm.needsSignIn.collectAsState()
     val pending by vm.pending.collectAsState()
@@ -434,43 +468,50 @@ private fun TillPage(vm: SettingsViewModel, keys: CashKeys, network: String, onS
     val printers by vm.printers.collectAsState()
     val answers by vm.answers.collectAsState()
 
-    Text(
-        "Signed in: " + (user?.let { it.employee.name + (it.role?.let { r -> " · $r" } ?: "") } ?: "nobody (this till does not use staff PINs)"),
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)).background(Pos.Panel).border(1.dp, Pos.Text3, RoundedCornerShape(4.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
-        color = Pos.Link, fontSize = 14.sp,
-    )
+    // what wants attention is said first
+    standing.forEach { Alert(it) }
     Heading("Quick actions")
     CashActions(keys)
     Heading("Status")
-    when {
-        needsSignIn -> StatusRow(PosIcons.Signal, "This device", "It cannot sync until someone signs in. Sales are saved here in the meantime.", Pos.Pink, "Sign in", onSignIn)
-        pending > 0 -> StatusRow(PosIcons.Signal, "This device", "$pending changes are waiting to be sent", Pos.Warn, "Reload device") { vm.sync() }
-        else -> StatusRow(
-            PosIcons.Signal, "This device", "Device is up to date" + (lastPull?.let { ", checked at ${clock.format(Date(it))}" } ?: ""),
-            Pos.Ok, "Reload device",
-        ) { vm.sync() }
-    }
-    if (rejected > 0) StatusRow(Icons.Filled.Warning, "Refused changes", "$rejected changes were refused by the server and need a look", Pos.Pink, "Review", onRejected)
-    StatusRow(
-        PosIcons.Clock, "Day",
-        shift?.let { "Open since ${stamp.format(Date(it.opened_at))}, opened with ${Money.format(it.opening_float)} in the drawer" }
-            ?: "The day is not open. Someone allowed to opens it from the start screen, by counting the drawer.",
-        button = "Cash drawer",
-    ) { onGo(Page.Cash) }
-    val list = printers
-    val silent = list.orEmpty().filter { answers[it.id] == false }
-    StatusRow(
-        PosIcons.Print, "Printers",
+    Group {
         when {
-            list == null -> "Looking…"
-            list.isEmpty() -> "No printer is set up"
-            silent.isNotEmpty() -> silent.joinToString(", ") { it.name } + (if (silent.size == 1) " is" else " are") + " not answering"
-            else -> "${list.size} set up. " + (list.firstOrNull { it.is_receipt }?.let { "Receipts print on ${it.name}." } ?: "None of them prints receipts.")
-        },
-        if (list != null && (list.isEmpty() || silent.isNotEmpty() || list.none { it.is_receipt })) Pos.Warn else Pos.Text2,
-        "Printers",
-    ) { onGo(Page.Printers) }
-    StatusRow(PosIcons.Screen, "Network", network)
+            needsSignIn -> Fact(VI.Signal, "This device", "It cannot sync until someone signs in. Sales are saved here in the meantime.", V.RedText, "Sign in", onSignIn)
+            pending > 0 -> Fact(VI.Signal, "This device", "$pending changes are waiting to be sent", V.AmberText, "Reload device") { vm.sync() }
+            else -> Fact(
+                VI.Signal, "This device", "Device is up to date" + (lastPull?.let { ", checked at ${clock.format(Date(it))}" } ?: ""),
+                V.GreenText, "Reload device",
+            ) { vm.sync() }
+        }
+        if (rejected > 0) {
+            Line()
+            Fact(VI.Warn, "Refused changes", "$rejected changes were refused by the server and need a look", V.RedText, "Review", onRejected)
+        }
+        Line()
+        Fact(
+            VI.Clock, "Day",
+            shift?.let { "Open since ${stamp.format(Date(it.opened_at))}, opened with ${Money.format(it.opening_float)} in the drawer" }
+                ?: "The day is not open. Someone allowed to opens it from the start screen, by counting the drawer.",
+            button = "Cash drawer",
+        ) { onGo(Page.Cash) }
+        Line()
+        val list = printers
+        val silent = list.orEmpty().filter { answers[it.id] == false }
+        Fact(
+            VI.Print, "Printers",
+            when {
+                list == null -> "Looking…"
+                list.isEmpty() -> "No printer is set up"
+                silent.isNotEmpty() -> silent.joinToString(", ") { it.name } + (if (silent.size == 1) " is" else " are") + " not answering · ${list.size - silent.size} of ${list.size} connected"
+                else -> "${list.size} set up. " + (list.firstOrNull { it.is_receipt }?.let { "Receipts print on ${it.name}." } ?: "None of them prints receipts.")
+            },
+            if (list != null && (list.isEmpty() || silent.isNotEmpty() || list.none { it.is_receipt })) V.RedText else V.Text2,
+            "Printers",
+        ) { onGo(Page.Printers) }
+        Line()
+        Fact(VI.Screen, "Network", network)
+        Line()
+        Fact(VI.Person, "Signed in", user?.let { it.employee.name + (it.role?.let { r -> " · $r" } ?: "") } ?: "Nobody: this till does not use staff PINs")
+    }
 }
 
 @Composable
@@ -479,7 +520,7 @@ private fun NoticesPage(vm: SettingsViewModel, standing: List<Standing>) {
     if (standing.isEmpty() && notices.isEmpty()) {
         Panel { Text("Nothing needs attention.", color = Pos.Text, fontSize = 15.sp) }
     }
-    standing.forEach { StatusRow(Icons.Filled.Warning, it.title, it.detail, Pos.Warn, it.button, it.onClick) }
+    standing.forEach { Alert(it) }
     if (notices.isNotEmpty()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Heading("Earlier, from the printers", Modifier.weight(1f))
@@ -711,8 +752,8 @@ private fun PaymentsPage(vm: SettingsViewModel, onOpen: (String) -> Unit) {
         Hairline(Modifier.padding(vertical = 6.dp))
         Figure("Total", Money.format(totals.sumOf { it.amount }), bold = true)
     }
-    Column(Modifier.fillMaxWidth().clip(Shape).background(Pos.Panel)) {
-        Row(Modifier.fillMaxWidth().background(Pos.PanelDeep).padding(horizontal = 6.dp)) {
+    Column(Modifier.fillMaxWidth().clip(CardShape).background(V.Panel).border(1.dp, V.Stroke, CardShape)) {
+        Row(Modifier.fillMaxWidth().background(V.PanelFoot).padding(horizontal = 6.dp)) {
             HeadCell("Time", 1f)
             HeadCell("Receipt", 1.7f)
             HeadCell("Paid by", 1.3f)
@@ -893,38 +934,64 @@ private val HELP = listOf(
     "No internet" to "Keep selling. Everything is saved on the tablet and sent by itself when the connection is back. Printing does not need the internet, only the local network.",
 )
 
+// One card of questions. A tap opens the answer under it, and closes the one
+// that was open.
 @Composable
 private fun HelpPage() {
-    HELP.forEach { (title, text) ->
-        Panel {
-            Text(title, Modifier.padding(bottom = 3.dp), color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-            Text(text, color = Pos.Text2, fontSize = 14.sp, lineHeight = 20.sp)
+    var open by rememberSaveable { mutableStateOf(0) }
+    Group {
+        HELP.forEachIndexed { i, (title, text) ->
+            if (i > 0) Line()
+            val on = open == i
+            val turn = animateFloatAsState(if (on) 90f else 0f, spring(dampingRatio = 0.9f, stiffness = 500f), label = "chevron")
+            Column(Modifier.fillMaxWidth().quietTap { open = if (on) -1 else i }.padding(horizontal = 18.dp)) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+                    T(title, 15.sp, 700, modifier = Modifier.weight(1f), lines = 2)
+                    VIcon(VI.Chevron, 16.dp, V.Text3, modifier = Modifier.graphicsLayer { rotationZ = turn.value })
+                }
+                AnimatedVisibility(on, enter = expandVertically(Motion.enter(240)) + fadeIn(Motion.enter(240)), exit = shrinkVertically(Motion.exit(180)) + fadeOut(Motion.exit(120))) {
+                    T(text, 14.sp, 500, V.Text2, Modifier.widthIn(max = 620.dp).padding(bottom = 18.dp), lines = 14, height = 21.sp)
+                }
+            }
         }
     }
 }
 
 // ---- the pieces the pages are built from ----
 
+// the small heading over a group of things: QUICK ACTIONS, STATUS
 @Composable
 private fun Heading(text: String, modifier: Modifier = Modifier) {
-    Text(text, modifier.padding(top = 8.dp), color = Pos.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+    Caps(text, V.Text3, modifier.padding(top = 12.dp, bottom = 2.dp), 11.sp)
 }
 
 @Composable
 private fun Note(text: String, modifier: Modifier = Modifier) {
-    Text(text, modifier, color = Pos.Text3, fontSize = 13.sp, lineHeight = 18.sp)
+    Text(text, modifier, color = V.Text3, fontSize = 13.sp, lineHeight = 19.sp)
+}
+
+// a card
+@Composable
+private fun Panel(content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth().clip(CardShape).background(V.Panel).border(1.dp, V.Stroke, CardShape).padding(horizontal = 18.dp, vertical = 14.dp), content = content)
+}
+
+// A card whose rows run edge to edge, with a Line between them.
+@Composable
+private fun Group(content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth().clip(CardShape).background(V.Panel).border(1.dp, V.Stroke, CardShape), content = content)
 }
 
 @Composable
-private fun Panel(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().clip(Shape).background(Pos.Panel).padding(horizontal = 14.dp, vertical = 12.dp), content = content)
+private fun Line() {
+    Box(Modifier.fillMaxWidth().height(1.dp).background(V.RowLine))
 }
 
 @Composable
 private fun Figure(label: String, value: String, bold: Boolean = false) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Text(label, Modifier.weight(1f), color = if (bold) Pos.Text else Pos.Text2, fontSize = 14.sp, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal)
-        Text(value, color = Pos.Text, fontSize = 14.sp, fontWeight = if (bold) FontWeight.Bold else FontWeight.Medium)
+    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+        Text(label, Modifier.weight(1f), color = if (bold) V.Text else V.Text2, fontSize = 14.sp, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal)
+        Text(value, color = V.Text, fontSize = 14.sp, fontWeight = if (bold) FontWeight.Bold else FontWeight.SemiBold)
     }
 }
 
@@ -932,41 +999,72 @@ private fun Figure(label: String, value: String, bold: Boolean = false) {
 @Composable
 private fun RowScope.Action(label: String, primary: Boolean = false, onClick: () -> Unit) {
     Box(
-        Modifier.weight(1f).height(48.dp).clip(Shape).background(if (primary) Pos.TabOn else Pos.Key).clickable(onClick = onClick),
+        Modifier.weight(1f).height(52.dp).press(onClick = onClick).clip(RoundedCornerShape(12.dp)).background(if (primary) V.On else V.Key),
         contentAlignment = Alignment.Center,
-    ) { Text(label, color = if (primary) Color.White else Pos.Link, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1) }
+    ) { T(label, 15.sp, 700, if (primary) V.OnText else V.Text) }
 }
 
 // A small key at the end of a row.
 @Composable
-private fun Small(label: String, color: Color = Pos.Link, enabled: Boolean = true, onClick: () -> Unit) {
-    Text(
-        label, Modifier.clip(Shape).background(Pos.Key).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 16.dp, vertical = 9.dp),
-        color = if (enabled) color else Pos.Text3, fontSize = 14.sp, maxLines = 1,
-    )
+private fun Small(label: String, color: Color = V.Text, enabled: Boolean = true, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        Modifier.height(40.dp).then(if (enabled) Modifier.press(onClick = onClick) else Modifier).clip(shape).background(V.Key2).border(1.dp, V.Stroke2, shape).padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) { T(label, 13.5.sp, 700, if (enabled) color else V.Text3) }
 }
 
+// Something that wants attention, and the key that deals with it.
+@Composable
+private fun Alert(s: Standing) {
+    val tone = if (s.soft) V.Amber else V.Red
+    Row(
+        Modifier.fillMaxWidth().clip(CardShape).background(lerp(V.Panel, tone, 0.10f)).border(1.dp, tone.copy(alpha = 0.34f), CardShape)
+            .padding(start = 18.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(tone))
+        Column(Modifier.weight(1f).padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            T(s.title, 15.sp, 800, lines = 2)
+            T(s.detail, 13.sp, 500, V.Text2, lines = 3, height = 18.sp)
+        }
+        Small(s.button, onClick = s.onClick)
+    }
+}
+
+// The things done to the cash drawer, one tile each; the one that ends the day is lit.
 @Composable
 private fun CashActions(keys: CashKeys) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Action("Cash in", onClick = keys.cashIn)
-        Action("Cash out", onClick = keys.cashOut)
-        Action("Open drawer", onClick = keys.open)
+        Tile("Cash in", VI.Plus, onClick = keys.cashIn)
+        Tile("Cash out", VI.Minus, onClick = keys.cashOut)
+        Tile("Open drawer", VI.Cash, onClick = keys.open)
+        Tile("Count drawer", VI.Receipt, onClick = keys.count)
+        Tile("Close the day", VI.Lock, primary = true, onClick = keys.close)
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Action("Count drawer", onClick = keys.count)
-        Action("Close the day", primary = true, onClick = keys.close)
+}
+
+@Composable
+private fun RowScope.Tile(label: String, icon: String, primary: Boolean = false, onClick: () -> Unit) {
+    val fg = if (primary) V.OnText else V.Text
+    Column(
+        Modifier.weight(1f).height(96.dp).press(onClick = onClick).clip(Shape).background(if (primary) V.On else V.Panel)
+            .then(if (primary) Modifier else Modifier.border(1.dp, V.Stroke, Shape)).padding(14.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        VIcon(icon, 19.dp, fg)
+        T(label, 15.sp, 700, fg, lines = 2, height = 18.sp)
     }
 }
 
 // One line of the till's state: what it is, how it is, and what to do about it.
 @Composable
-private fun StatusRow(icon: ImageVector, title: String, detail: String, tone: Color = Pos.Text2, button: String? = null, onClick: () -> Unit = {}) {
-    Row(Modifier.fillMaxWidth().clip(Shape).background(Pos.Panel).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, contentDescription = null, tint = tone, modifier = Modifier.size(20.dp))
-        Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
-            Text(title, color = Pos.Text, fontSize = 15.sp)
-            Text(detail, color = if (tone == Pos.Pink || tone == Pos.Warn) tone else Pos.Text3, fontSize = 13.sp)
+private fun Fact(icon: String, title: String, detail: String, tone: Color = V.Text2, button: String? = null, onClick: () -> Unit = {}) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(V.Key2), contentAlignment = Alignment.Center) { VIcon(icon, 18.dp, tone) }
+        Column(Modifier.weight(1f).padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            T(title, 15.sp, 700)
+            T(detail, 13.sp, 500, V.Text2, lines = 3, height = 18.sp)
         }
         if (button != null) Small(button, onClick = onClick)
     }
@@ -975,15 +1073,7 @@ private fun StatusRow(icon: ImageVector, title: String, detail: String, tone: Co
 @Composable
 private fun Seg(options: List<String>, selected: Int, onPick: (Int) -> Unit) {
     Row {
-        Row(Modifier.clip(Shape).background(Pos.Panel).padding(3.dp)) {
-            options.forEachIndexed { i, o ->
-                val on = i == selected
-                Text(
-                    o, Modifier.clip(RoundedCornerShape(4.dp)).background(if (on) Pos.Selected else Color.Transparent).clickable { onPick(i) }.padding(horizontal = 18.dp, vertical = 8.dp),
-                    color = if (on) Pos.Text else Pos.Text2, fontSize = 14.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
-                )
-            }
-        }
+        com.restopos.core.ui.Seg(options.mapIndexed { i, o -> SegOption(o, i == selected) { onPick(i) } }, well = V.Panel, height = 40.dp, radius = 12.dp, size = 14.sp)
     }
 }
 
@@ -992,7 +1082,7 @@ private fun Seg(options: List<String>, selected: Int, onPick: (Int) -> Unit) {
 private fun Locked(text: String, onAsk: () -> Unit) {
     Panel {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text, Modifier.weight(1f).padding(end = 12.dp), color = Pos.Text, fontSize = 14.sp)
+            Text(text, Modifier.weight(1f).padding(end = 12.dp), color = V.Text, fontSize = 14.sp)
             Small("Open with an approval", onClick = onAsk)
         }
     }
@@ -1000,11 +1090,14 @@ private fun Locked(text: String, onAsk: () -> Unit) {
 
 @Composable
 private fun Toggle(title: String, detail: String, on: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().clip(Shape).background(Pos.Panel).padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(title, color = Pos.Text, fontSize = 15.sp)
-            Text(detail, color = Pos.Text3, fontSize = 13.sp)
+    Row(
+        Modifier.fillMaxWidth().clip(CardShape).background(V.Panel).border(1.dp, V.Stroke, CardShape).quietTap { onChange(!on) }.padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(end = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            T(title, 15.sp, 700)
+            T(detail, 13.sp, 500, V.Text2, lines = 3, height = 18.sp)
         }
-        Switch(checked = on, onCheckedChange = onChange)
+        com.restopos.core.ui.Toggle(on)
     }
 }
