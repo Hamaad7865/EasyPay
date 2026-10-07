@@ -3,6 +3,7 @@ import { readTenant } from "@/lib/db";
 import { act, backTo, on, Refused, text, UUID, uuid } from "@/lib/action";
 import { parseRs } from "@/lib/money";
 import { fmtQty } from "@/lib/report";
+import { setItemTax } from "@/lib/saves";
 import { money, withDefaults } from "@/lib/settings";
 import { Flash, one, PageHead, type Search, startKey, startOf } from "../ui";
 import type { AddonGroup, Tax } from "./editor";
@@ -115,14 +116,8 @@ async function saveItem(f: FormData) {
         );
         item = r.rows[0].id as string;
       }
-      // one tax per item: the others are taken off, the chosen one put (back) on
-      await c.query(`update item_taxes set deleted_at = now() where tenant_id = $1 and item_id = $2 and tax_id <> $3 and deleted_at is null`, [ctx.tenantId, item, tax]);
-      await c.query(
-        `insert into item_taxes (tenant_id, item_id, tax_id)
-           select $1, $2, t.id from taxes t where t.tenant_id = $1 and t.id = $3 and t.deleted_at is null
-         on conflict (item_id, tax_id) do update set deleted_at = null`,
-        [ctx.tenantId, item, tax],
-      );
+      // refused, everything above is undone with it: the item is as it was
+      if (!(await setItemTax(c, ctx.tenantId, item, tax))) throw new Refused("That tax is no longer there. Pick the tax this item carries.");
       await c.query(`update item_modifier_groups set deleted_at = now() where tenant_id = $1 and item_id = $2 and not (group_id = any($3::uuid[])) and deleted_at is null`, [ctx.tenantId, item, groups]);
       await c.query(
         `insert into item_modifier_groups (tenant_id, item_id, group_id)
