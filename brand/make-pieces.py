@@ -5,8 +5,9 @@ import os
 from collections import Counter
 from PIL import Image, ImageDraw, ImageFilter
 
-B = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'brand')
-src = Image.open(os.path.join(B, 'sent-logo.webp')).convert('RGB')
+# this folder: the sent logo is here, and the pieces are written beside it
+B = os.path.dirname(os.path.abspath(__file__))
+src = Image.open(os.path.join(B, 'easypay-logo-as-sent.webp')).convert('RGB')
 W, H = src.size
 px = src.load()
 
