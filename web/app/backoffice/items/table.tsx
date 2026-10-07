@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Download, Plus, UtensilsCrossed } from "lucide-react";
 import { Chev, downloadCsv, fold, NoMatch, Seg, SortTh, type Start, TableSearch, useTable } from "../table-kit";
 import { type AddonGroup, ItemEditor, type Tax } from "./editor";
 import { Submit } from "../busy";
+import type { Mode } from "@/lib/mode";
 
 export type Item = {
   id: string;
@@ -30,6 +32,11 @@ export type Item = {
   tax_id: string | null;
   group_ids: string[];
   own_stock: boolean;
+  // for a shop: what it costs, the margin that leaves, its variants and their codes
+  cost_shown: string | null;
+  margin_shown: string | null;
+  variants: number;
+  codes: string;
 };
 type Action = (f: FormData) => Promise<void>;
 
@@ -49,8 +56,10 @@ const LOW = 5000; // five or fewer left, as the Stock page counts it
 // name, category, tax, add-ons, barcode) is in a panel that slides in from the
 // right when its name is tapped: the list stays where it was behind it.
 export function ItemsTable({
-  items, cats, taxes, groups, start, problem, quickSave, bulkSave, saveItem,
+  items, cats, taxes, groups, start, problem, quickSave, bulkSave, saveItem, mode,
 }: {
+  // a shop's product opens on a page of its own; a restaurant's item in the panel
+  mode: Mode;
   items: Item[]; cats: { id: string; name: string }[]; taxes: Tax[]; groups: AddonGroup[]; start: Start;
   // why the last save was refused, if it was
   problem: string;
@@ -61,7 +70,11 @@ export function ItemsTable({
   const editing = t.get("edit");
   const edited = editing && editing !== "new" ? (items.find((i) => i.id === editing) ?? null) : null;
   const panelOpen = editing === "new" || edited !== null;
+  const shop = mode === "retail";
+  const router = useRouter();
   const edit = (id: string) => t.set("edit", id);
+  // what a tap on a product or on Add does: its page for a shop, the panel for a restaurant
+  const open = (id: string) => (shop ? router.push(`/backoffice/items/${id}`) : edit(id));
   // Why the panel's last save was refused: said in the panel the server sent
   // back open, and gone once that panel is shut.
   const refusal = () => (start.edit && problem ? { id: start.edit, why: problem } : null);
@@ -86,7 +99,7 @@ export function ItemsTable({
   const cat = t.get("category");
   const status = t.get("status");
 
-  const hay = useMemo(() => new Map(items.map((i) => [i.id, fold([i.name, i.cat ?? "", i.sku ?? "", i.barcode ?? ""].join(" "))])), [items]);
+  const hay = useMemo(() => new Map(items.map((i) => [i.id, fold([i.name, i.cat ?? "", i.sku ?? "", i.barcode ?? "", i.codes].join(" "))])), [items]);
   const shown = t.sorted(
     items.filter(
       (i) =>
@@ -125,10 +138,15 @@ export function ItemsTable({
 
   // the list as it is on screen, as a file a spreadsheet opens
   const csv = () =>
-    downloadCsv("items", [
-      ["Item", "Category", "Price", "Tax", "Add-on groups", "SKU", "Barcode", "On sale", "In stock"],
-      ...shown.map((i) => [i.name, i.cat ?? "", (i.price / 100).toFixed(2), i.tax ?? "", i.addons, i.sku ?? "", i.barcode ?? "", i.is_available ? "Yes" : "Sold out", i.stock === null ? "" : i.stock / 1000]),
-    ]);
+    shop
+      ? downloadCsv("products", [
+          ["Product", "Category", "Price", "Cost", "Margin", "Variants", "SKU", "Barcode", "On sale", "In stock"],
+          ...shown.map((i) => [i.name, i.cat ?? "", (i.price / 100).toFixed(2), i.cost_shown ?? "", i.margin_shown ?? "", i.variants, i.sku ?? "", i.barcode ?? "", i.is_available ? "Yes" : "Off sale", i.stock === null ? "" : i.stock / 1000]),
+        ])
+      : downloadCsv("items", [
+          ["Item", "Category", "Price", "Tax", "Add-on groups", "SKU", "Barcode", "On sale", "In stock"],
+          ...shown.map((i) => [i.name, i.cat ?? "", (i.price / 100).toFixed(2), i.tax ?? "", i.addons, i.sku ?? "", i.barcode ?? "", i.is_available ? "Yes" : "Sold out", i.stock === null ? "" : i.stock / 1000]),
+        ]);
 
   return (
     <section className="card flush">
@@ -162,9 +180,9 @@ export function ItemsTable({
           <Download aria-hidden="true" />
           Download CSV
         </button>
-        <button type="button" className="btn-sm" onClick={() => edit("new")}>
+        <button type="button" className="btn-sm" onClick={() => open("new")}>
           <Plus aria-hidden="true" />
-          Add item
+          {shop ? "Add product" : "Add item"}
         </button>
       </div>
       {chosen.length > 0 && (
@@ -205,17 +223,17 @@ export function ItemsTable({
                 />
               </th>
               <th />
-              <SortTh t={t} k="name" label="Item" />
+              <SortTh t={t} k="name" label={shop ? "Product" : "Item"} />
               <SortTh t={t} k="category" label="Category" />
-              <th>Tax</th>
-              <th>Add-ons</th>
+              <th className={shop ? "num" : undefined}>{shop ? "Cost" : "Tax"}</th>
+              <th className={shop ? "num" : undefined}>{shop ? "Margin" : "Add-ons"}</th>
               {withStock && <SortTh t={t} k="stock" label="Stock" num />}
               <SortTh t={t} k="price" label="Price" num />
               <th>On sale</th>
             </tr>
           </thead>
           <tbody>
-            {shown.length === 0 && <NoMatch t={t} cols={cols} what="item" filters={["category", "status"]} />}
+            {shown.length === 0 && <NoMatch t={t} cols={cols} what={shop ? "product" : "item"} filters={["category", "status"]} />}
             {shown.map((it) => {
               const on = t.isOpen(it.id);
               const code = [it.sku && `SKU ${it.sku}`, it.barcode].filter(Boolean).join(" · ");
@@ -229,19 +247,20 @@ export function ItemsTable({
                   </td>
                   <td>
                     <a
-                      href={editHref(it.id)}
+                      href={shop ? `/backoffice/items/${it.id}` : editHref(it.id)}
                       className="strong"
                       onClick={(e) => {
                         e.stopPropagation();
                         // a plain click opens the panel here; with a key held it is the browser's (new tab)
                         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
                         e.preventDefault();
-                        edit(it.id);
+                        open(it.id);
                       }}
                     >
                       {it.name}
                     </a>
                     {code && <small className="cell-sub">{code}</small>}
+                    {shop && it.variants > 0 && <small className="cell-sub">{it.variants} {it.variants === 1 ? "variant" : "variants"}</small>}
                   </td>
                   <td>
                     {it.cat ? (
@@ -253,8 +272,17 @@ export function ItemsTable({
                       <span className="muted">None</span>
                     )}
                   </td>
-                  <td>{it.tax ?? <span className="badge amber">No tax set</span>}</td>
-                  <td>{it.addons > 0 ? `${it.addons} ${it.addons === 1 ? "group" : "groups"}` : <span className="muted">None</span>}</td>
+                  {shop ? (
+                    <>
+                      <td className="num">{it.cost_shown ?? <span className="muted">Not set</span>}</td>
+                      <td className="num">{it.margin_shown ?? <span className="muted">None</span>}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td>{it.tax ?? <span className="badge amber">No tax set</span>}</td>
+                      <td>{it.addons > 0 ? `${it.addons} ${it.addons === 1 ? "group" : "groups"}` : <span className="muted">None</span>}</td>
+                    </>
+                  )}
                   {withStock && (
                     <td className="num">
                       {it.stock === null ? <span className="muted">Not counted</span> : it.stock <= LOW ? <span className="badge amber">{it.stock_shown} left</span> : it.stock_shown}
@@ -282,11 +310,11 @@ export function ItemsTable({
                           <Submit className="btn-sm">
                             Save
                           </Submit>
-                          <button type="button" className="btn-quiet btn-sm" onClick={() => edit(it.id)}>
+                          <button type="button" className="btn-quiet btn-sm" onClick={() => open(it.id)}>
                             Edit everything
                           </button>
                         </form>
-                        <p className="muted open-hint">Its name, category, tax, add-ons and barcode are under Edit everything.</p>
+                        <p className="muted open-hint">{shop ? "Its supplier, cost, variants and barcodes are on its page, under Edit everything." : "Its name, category, tax, add-ons and barcode are under Edit everything."}</p>
                       </div>
                     </td>
                   </tr>
@@ -300,7 +328,7 @@ export function ItemsTable({
         <div className="empty" style={{ border: 0, margin: 0 }}>
           <UtensilsCrossed aria-hidden="true" strokeWidth={1.6} />
           <strong>No items here yet</strong>
-          <button type="button" className="btn-link" onClick={() => edit("new")}>
+          <button type="button" className="btn-link" onClick={() => open("new")}>
             Add the first one
           </button>
         </div>

@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, backTo, on, Refused, text, UUID, uuid } from "@/lib/action";
@@ -28,6 +29,9 @@ type ItemRow = {
   tax: string | null;
   tax_id: string | null;
   group_ids: string[] | null;
+  cost: string | null;
+  variants: number;
+  variant_codes: string | null;
 };
 
 // Price and availability are what change day to day, so they are edited in
@@ -155,7 +159,10 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
     ).rows[0] as { settings: unknown; cats: { id: string; name: string }[]; taxes: Tax[]; groups: AddonGroup[] },
     items: (
       await c.query(
-        `select i.id, i.name, i.price, i.is_available, i.category_id, i.sku, i.barcode, i.track_stock,
+        `select i.id, i.name, i.price, i.is_available, i.category_id, i.sku, i.barcode, i.track_stock, i.cost,
+                (select count(*)::int from item_variants v where v.tenant_id = i.tenant_id and v.item_id = i.id and v.deleted_at is null) as variants,
+                (select string_agg(concat_ws(' ', v.sku, v.barcode), ' ') from item_variants v
+                  where v.tenant_id = i.tenant_id and v.item_id = i.id and v.deleted_at is null) as variant_codes,
                 c.name as cat_name, c.color as cat_color, c.sort_order as cat_order,
                 (i.track_stock or coalesce(c.is_stock, false)) as tracked, coalesce(i.stock_qty, 0) as stock_qty,
                 (select string_agg(t.name, ', ') from item_taxes it join taxes t on t.tenant_id = it.tenant_id and t.id = it.tax_id
@@ -170,6 +177,13 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
     ).rows as ItemRow[],
   }));
   const decimals = withDefaults(d.menu.settings).decimals;
+  // what the shop keeps of the price once the tax in it and the cost are taken out, in percent
+  const margin = (r: ItemRow): string | null => {
+    if (r.cost === null) return null;
+    const t = d.menu.taxes.find((x) => x.id === r.tax_id);
+    const net = t && t.type === "included" ? Number(r.price) / (1 + t.rate_bp / 10000) : Number(r.price);
+    return net > 0 ? `${(((net - Number(r.cost)) / net) * 100).toFixed(1)}%` : null;
+  };
   const items: Item[] = d.items.map((r) => ({
     id: r.id,
     name: r.name,
@@ -189,10 +203,16 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
     tax_id: r.tax_id,
     group_ids: r.group_ids ?? [],
     own_stock: r.track_stock,
+    cost_shown: r.cost === null ? null : money(Number(r.cost), decimals),
+    margin_shown: margin(r),
+    variants: r.variants,
+    codes: r.variant_codes ?? "",
   }));
   // The Categories page and the search link here with ?category= and
   // ?edit=<item>; `cat` is the older spelling of the first.
   const start = startOf({ ...sp, category: one(sp.category) || one(sp.cat) }, "q", "category", "status", "sort", "open", "edit");
+  // a shop's product has a page of its own: an address that asks for the panel is sent there
+  if (ctx.mode === "retail" && (start.edit === "new" || UUID.test(start.edit))) redirect(`${PATH}/${start.edit}`);
   return (
     <div>
       <PageHead
@@ -209,6 +229,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
           Categories page with another ?category= starts the table again from it. */}
       <ItemsTable
         key={startKey(sp, start)}
+        mode={ctx.mode}
         items={items}
         cats={d.menu.cats}
         taxes={d.menu.taxes}

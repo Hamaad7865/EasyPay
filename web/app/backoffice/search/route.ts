@@ -50,18 +50,22 @@ export async function POST(request: Request) {
       if (hits.length) out.push({ kind, label, hits });
     };
 
+    const shop = ctx.mode === "retail";
     add(
       "items",
-      "Items",
+      shop ? "Products" : "Items",
       (
         await rows<{ id: string; name: string; price: string; cat: string | null }>(
           `select i.id, i.name, i.price, k.name as cat
              from items i left join categories k on k.tenant_id = i.tenant_id and k.id = i.category_id
             where i.tenant_id = $1 and i.deleted_at is null
-              and (${plain("i.name")} like $2 or ${plain("i.sku")} like $2 or ${plain("i.barcode")} like $2)
+              and (${plain("i.name")} like $2 or ${plain("i.sku")} like $2 or ${plain("i.barcode")} like $2
+                   -- a product is also found by the SKU or the barcode of one of its variants
+                   or exists (select 1 from item_variants v where v.tenant_id = i.tenant_id and v.item_id = i.id and v.deleted_at is null
+                                and (${plain("v.sku")} like $2 or ${plain("v.barcode")} like $2)))
             order by (${plain("i.name")} like $3) desc, i.name limit ${EACH}`,
         )
-      ).map((r) => ({ title: r.name, sub: `${r.cat ?? "No category"} · ${money(Number(r.price), s.decimals)}`, href: `/backoffice/items?edit=${r.id}` })),
+      ).map((r) => ({ title: r.name, sub: `${r.cat ?? "No category"} · ${money(Number(r.price), s.decimals)}`, href: shop ? `/backoffice/items/${r.id}` : `/backoffice/items?edit=${r.id}` })),
     );
 
     add(
@@ -96,7 +100,7 @@ export async function POST(request: Request) {
       }),
     );
 
-    add(
+    if (!shop) add(
       "tables",
       "Tables",
       (
