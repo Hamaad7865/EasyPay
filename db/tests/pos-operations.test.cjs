@@ -223,12 +223,22 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
     const before = (await q1(`select count(*)::int n from receipts where tenant_id = $1`, [tid])).n;
     let direct = '';
     try { await asApp(tid, () => c.query(`delete from receipts where tenant_id = $1`, [tid])); } catch (e) { direct = e.message; }
+    let changed = '';
+    try { await asApp(tid, () => c.query(`update receipts set total = total where tenant_id = $1`, [tid])); } catch (e) { changed = e.message; }
+    // migration 0065: the restaurant's role has no right to change or delete what is insert-only, whatever the triggers say
+    const rights = (await c.query(
+      `select t, has_table_privilege('app_user', t, 'update') as upd, has_table_privilege('app_user', t, 'delete') as del,
+              has_table_privilege('app_user', t, 'insert') as ins, has_table_privilege('app_user', t, 'select') as sel
+         from unnest($1::text[]) as t`, [devguard.GUARDS])).rows;
     let refused = '';
     try { await asApp(tid, () => c.query(`select purge_transactions($1, $2)`, [tid, cashier])); } catch (e) { refused = e.message; }
     let wrongTenant = '';
     try { await asApp(crypto.randomUUID(), () => c.query(`select purge_transactions($1, $2)`, [tid, owner])); } catch (e) { wrongTenant = e.message; }
     const still = (await q1(`select count(*)::int n from receipts where tenant_id = $1`, [tid])).n;
-    check('T11 a plain delete of receipts is still refused', direct.includes('insert-only'), direct);
+    check('T11 a plain delete of receipts is refused: the restaurant role has no right to', direct.includes('permission denied'), direct);
+    check('T11 nor to change one', changed.includes('permission denied'), changed);
+    check('T11 on every insert-only table it may add and read, and neither change nor delete',
+      rights.length === devguard.GUARDS.length && rights.every((r) => r.ins && r.sel && !r.upd && !r.del), JSON.stringify(rights.filter((r) => r.upd || r.del || !r.ins || !r.sel).map((r) => r.t)));
     check('T11 a cashier cannot delete all transactions', refused === 'forbidden' && still === before && before > 0, refused);
     check('T11 nor can someone working in another restaurant', wrongTenant === 'forbidden', wrongTenant);
     const out = await asApp(tid, async () => (await c.query(`select purge_transactions($1, $2) as r`, [tid, owner])).rows[0].r);
