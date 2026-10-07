@@ -142,6 +142,22 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     const s = await push([op('booking.upsert', { ...base, status: 'seated', table_id: table, ticket_id: d })]);
     const seated = await q1(`select status, ticket_id from bookings where id = $1`, [bk]);
     check('T5 seating it links the order', tag(s[0]) === 'applied' && seated.status === 'seated' && seated.ticket_id === d, JSON.stringify(seated));
+    // a second store of the same restaurant: its tables are not this store's bookings' to take (migration 0069)
+    const terrace = (await q1(`insert into stores (tenant_id, name, code) values ($1,'Terrace','V2S3') returning id`, [tid])).id;
+    const theirTable = (await q1(`insert into tables (tenant_id, store_id, name) values ($1,$2,'X1') returning id`, [tid, terrace])).id;
+    const cross = crypto.randomUUID();
+    const x = await push([
+      op('booking.upsert', { ...base, id: cross, name: 'Cross store', table_id: theirTable }),
+      // the first booking is the main store's: an op that names the other store must not put it on that store's table
+      op('booking.upsert', { ...base, status: 'seated', ticket_id: d, store_id: terrace, table_id: theirTable }),
+    ]);
+    const crossRow = await q1(`select store_id, table_id from bookings where id = $1`, [cross]);
+    const kept = await q1(`select store_id, table_id, status from bookings where id = $1`, [bk]);
+    check('T5 a table of another store is left off a new booking', tag(x[0]) === 'applied' && crossRow.store_id === store && crossRow.table_id === null, tag(x[0]) + ' ' + JSON.stringify(crossRow));
+    check('T5 and a booking is not put on another store\'s table by an op naming that store', tag(x[1]) === 'applied' && kept.store_id === store && kept.table_id === null && kept.status === 'seated',
+      tag(x[1]) + ' ' + JSON.stringify(kept));
+    const again = await push([op('booking.upsert', { ...base, status: 'seated', ticket_id: d, table_id: table })]);
+    check('T5 its own store\'s table is still taken', tag(again[0]) === 'applied' && (await q1(`select table_id from bookings where id = $1`, [bk])).table_id === table);
   }
 
   // T6 sold out from the till: someone allowed, or approved by someone allowed
