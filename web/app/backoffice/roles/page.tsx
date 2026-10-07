@@ -2,64 +2,11 @@ import Link from "next/link";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, Refused, text, uuid } from "@/lib/action";
+import { permGroups, savedPerms } from "@/lib/perms";
 import { Card, Flash, PageHead, type Search } from "../ui";
 import { Submit } from "../busy";
 
 const PATH = "/backoffice/roles";
-
-// Every permission the tills and the back office check, in the words of what
-// it lets someone do.
-const GROUPS: { title: string; perms: [string, string][] }[] = [
-  {
-    title: "Selling",
-    perms: [
-      ["sale.create", "Take orders"],
-      ["payment.take", "Take payment"],
-      ["sale.apply_discount", "Give a discount"],
-      ["sale.apply_restricted_discount", "Give a discount that needs a manager"],
-      ["sale.void_line", "Delete an item before it is sent to the kitchen"],
-      ["sale.void_sent_line", "Void an item after it was sent"],
-      ["sale.refund", "Refund a receipt"],
-      ["payment.correct", "Correct the payment type on a paid bill"],
-    ],
-  },
-  {
-    title: "Orders and tables",
-    perms: [
-      ["ticket.view_all", "See everyone's orders"],
-      ["ticket.reassign", "Change the waiter on an order"],
-      ["ticket.split_merge", "Transfer an order to another table"],
-      ["items.availability", "Mark an item sold out or back on sale on the till"],
-    ],
-  },
-  {
-    title: "Cash",
-    perms: [
-      ["drawer.open_no_sale", "Open the cash drawer without a sale"],
-      ["cash.pay_in_out", "Put cash in and take cash out"],
-      ["shift.open_close", "Open the day and close it, count the drawer"],
-      ["shift.view_report", "See the day's figures on the till"],
-    ],
-  },
-  {
-    title: "Receipts",
-    perms: [
-      ["receipts.view_all", "See all receipts and the day’s payments"],
-      ["receipts.reprint", "Reprint receipts, bills and kitchen orders"],
-    ],
-  },
-  {
-    title: "Back office",
-    perms: [
-      ["backoffice.access", "Sign in to the back office"],
-      ["reports.view", "See reports"],
-      ["items.edit", "Edit the menu, taxes and stock"],
-      ["employees.edit", "Manage staff and roles"],
-      ["settings.device", "Change settings, printers and tables; change how a till is set up and sign it out"],
-    ],
-  },
-];
-const KNOWN = new Set(GROUPS.flatMap((g) => g.perms.map(([k]) => k)));
 
 async function addRole(f: FormData) {
   "use server";
@@ -86,10 +33,9 @@ async function saveRole(f: FormData) {
     }
     const name = text(f, "name", 30);
     if (!name) throw new Refused("A role needs a name.");
-    const perms = f.getAll("perm").map(String).filter((p) => KNOWN.has(p));
-    // permissions this page does not list stay as they were
-    const kept = (row.rows[0].permissions as string[]).filter((p) => !KNOWN.has(p));
-    await c.query(`update roles set name = $3, permissions = $4::jsonb where tenant_id = $1 and id = $2`, [ctx.tenantId, id, name, JSON.stringify([...kept, ...perms])]);
+    // the ticks, and whatever the role held that this page does not list (for this kind of business)
+    const perms = savedPerms(ctx.mode, row.rows[0].permissions as string[], f.getAll("perm").map(String));
+    await c.query(`update roles set name = $3, permissions = $4::jsonb where tenant_id = $1 and id = $2`, [ctx.tenantId, id, name, JSON.stringify(perms)]);
     return `${name} saved. It applies on the tills from their next sync.`;
   });
 }
@@ -109,6 +55,8 @@ export default async function RolesPage({ searchParams }: { searchParams: Search
       )
       .then((r) => r.rows as Role[]),
   );
+  const groups = permGroups(ctx.mode);
+  const known = new Set(groups.flatMap((g) => g.perms.map(([k]) => k)));
   return (
     <div>
       <PageHead title="Roles and permissions" lede="What each role may do on the tills and here. A member of staff gets a role on the Staff page.">
@@ -128,7 +76,7 @@ export default async function RolesPage({ searchParams }: { searchParams: Search
             <summary className="card-head" style={{ cursor: "pointer", listStyle: "none" }}>
               <div>
                 <h2>{r.name}</h2>
-                <p>{all ? "Can do everything" : `${r.permissions.filter((p) => KNOWN.has(p)).length} of ${KNOWN.size} permissions`}</p>
+                <p>{all ? "Can do everything" : `${r.permissions.filter((p) => known.has(p)).length} of ${known.size} permissions`}</p>
               </div>
               <span className="badge">{r.staff} {r.staff === 1 ? "person" : "people"}</span>
             </summary>
@@ -143,7 +91,7 @@ export default async function RolesPage({ searchParams }: { searchParams: Search
                     <input name="name" defaultValue={r.name} required maxLength={30} />
                   </label>
                   <div className="grid-3">
-                    {GROUPS.map((g) => (
+                    {groups.map((g) => (
                       <div key={g.title}>
                         <h3>{g.title}</h3>
                         {g.perms.map(([k, label]) => (

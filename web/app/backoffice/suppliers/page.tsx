@@ -16,7 +16,7 @@ function fields(f: FormData) {
 
 async function addSupplier(f: FormData) {
   "use server";
-  await act("items.edit", PATH, async (c, ctx) => {
+  await act("suppliers.edit", PATH, async (c, ctx) => {
     const [name, contact, phone, email, address, note] = fields(f);
     await c.query(`insert into suppliers (tenant_id, name, contact, phone, email, address, note) values ($1, $2, $3, $4, $5, $6, $7)`, [
       ctx.tenantId, name, contact, phone, email, address, note,
@@ -27,7 +27,7 @@ async function addSupplier(f: FormData) {
 
 async function saveSupplier(f: FormData) {
   "use server";
-  await act("items.edit", backTo(f, PATH), async (c, ctx) => {
+  await act("suppliers.edit", backTo(f, PATH), async (c, ctx) => {
     const [name, contact, phone, email, address, note] = fields(f);
     await c.query(
       `update suppliers set name = $3, contact = $4, phone = $5, email = $6, address = $7, note = $8
@@ -42,7 +42,7 @@ async function saveSupplier(f: FormData) {
 // "no supplier" until another is chosen: nothing of a product is lost.
 async function removeSupplier(f: FormData) {
   "use server";
-  await act("items.edit", backTo(f, PATH), async (c, ctx) => {
+  await act("suppliers.edit", backTo(f, PATH), async (c, ctx) => {
     await c.query(`update suppliers set deleted_at = now() where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, uuid(f, "id")]);
     return "Supplier removed. Their products are kept.";
   });
