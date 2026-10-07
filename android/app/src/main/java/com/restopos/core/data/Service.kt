@@ -198,4 +198,20 @@ class ServiceRepository @Inject constructor(
         }
         pushNow(context)
     }
+
+    // One variant's price, the same way (a shop's Products & stock screen).
+    suspend fun setVariantPrice(itemId: String, variantId: String, price: Long, approver: StaffMember? = null): Result<Unit> = runCatching {
+        require(price in 0..100_000_000L) { "That is not a price" }
+        staff.allow("items.edit", "change a price", approver)
+        val v = db.retail().variant(variantId)?.takeIf { it.item_id == itemId && it.deleted_at == null } ?: error("That variant is gone")
+        if (v.price == price) return@runCatching
+        db.withTransaction {
+            db.retail().setVariantPrice(variantId, price)
+            db.outbox().enqueue(op("item.set_price", buildJsonObject {
+                put("item_id", itemId); put("variant_id", variantId); put("price", price)
+                staff.approvedBy("items.edit", approver)?.let { put("approved_by", it) }
+            }))
+        }
+        pushNow(context)
+    }
 }

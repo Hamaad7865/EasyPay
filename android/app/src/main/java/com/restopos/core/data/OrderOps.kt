@@ -64,6 +64,8 @@ class OrderOps @Inject constructor(
     // till says which printer failed, and the paper can be printed again.
     suspend fun save(): Result<SaveResult> = runCatching {
         val t = tickets.activeTicket() ?: return@runCatching SaveResult(0, emptyList())
+        // a shop has no kitchen: nothing is ever sent to one
+        if (PosSettings.parse(db.ops().settings()).retail) return@runCatching SaveResult(0, emptyList())
         // an order type set to never go to the kitchen is only put away
         val mode = (t.dining_option_id?.let { db.ops().dining(it) } ?: db.catalog().diningOptions().firstOrNull { it.is_default })?.kitchen ?: "save"
         if (mode == "off") return@runCatching SaveResult(0, emptyList())
@@ -95,6 +97,8 @@ class OrderOps @Inject constructor(
     // lines of this payment that the kitchen has not had yet.
     suspend fun sendOnPay(ticketId: String, lineIds: List<String>) {
         val t = db.tickets().ticket(ticketId) ?: return
+        // a shop has no kitchen: a sale that is paid is finished
+        if (PosSettings.parse(db.ops().settings()).retail) return
         val mode = (t.dining_option_id?.let { db.ops().dining(it) } ?: db.catalog().diningOptions().firstOrNull { it.is_default })?.kitchen ?: "save"
         if (mode == "off") return
         // "save" too: a bill paid without ever pressing Save must still reach the kitchen

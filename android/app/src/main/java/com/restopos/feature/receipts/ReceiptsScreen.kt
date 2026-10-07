@@ -106,12 +106,17 @@ class ReceiptsViewModel @Inject constructor(
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy
 
+    // a shop: a return asks whether the goods go back on the shelf
+    private val _retail = MutableStateFlow(false)
+    val retail: StateFlow<Boolean> = _retail
+
     init {
         viewModelScope.launch {
             val store = session.storeId() ?: return@launch
             tickets.receipts(store).collect { _rows.value = it }
         }
         viewModelScope.launch { _types.value = db.ops().allPaymentTypes().filter { it.is_active }.sortedBy { it.sort_order } }
+        viewModelScope.launch { db.ops().settingsFlow().collect { _retail.value = com.restopos.core.data.PosSettings.parse(it).retail } }
     }
 
     fun can(permission: String) = staff.can(permission)
@@ -144,8 +149,9 @@ class ReceiptsViewModel @Inject constructor(
 
     fun reprint(id: String) = run("Sent to the printer.") { by -> orders.reprint(id, by) }
     // picks: order line id to quantity (thousandths); null gives back everything that is left
-    fun refund(id: String, reason: String, type: String, picks: Map<String, Int>? = null) =
-        run("Refunded. The refund is in the list.") { by -> orders.refund(id, reason, type, by, picks) }
+    // restock: the goods go back on the shelf (off: they are faulty, and are written off as damaged)
+    fun refund(id: String, reason: String, type: String, picks: Map<String, Int>? = null, restock: Boolean = true) =
+        run(if (restock) "Refunded. The refund is in the list." else "Refunded. The goods were not put back into stock: they are written off as damaged.") { by -> orders.refund(id, reason, type, by, picks, restock) }
     suspend fun quote(id: String, picks: Map<String, Int>): Long = orders.refundQuote(id, picks)
     fun correct(id: String, from: String, to: String) = run("Payment type corrected.") { by -> orders.correctPayment(id, from, to, by) }
 }
@@ -226,6 +232,7 @@ fun ReceiptDialog(vm: ReceiptsViewModel) {
 @Composable
 private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boolean, vm: ReceiptsViewModel, time: DateFormat) {
     val r = d.receipt
+    val retail by vm.retail.collectAsState()
     val names = types.associateBy { it.id }
     var refunding by remember { mutableStateOf(false) }
     var correcting by remember { mutableStateOf<String?>(null) } // the payment type being changed
@@ -240,8 +247,12 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                 )
                 d.doc?.lines?.forEach { l ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                        Text("${l.qty / 1000} ${l.name}" + if (l.mods.isEmpty()) "" else "  + " + l.mods.joinToString(", "), Modifier.weight(1f), color = Pos.Text, fontSize = 14.sp)
+                        Text("${com.restopos.core.print.Docs.qty(l.qty)} ${l.name}" + if (l.mods.isEmpty()) "" else "  + " + l.mods.joinToString(", "), Modifier.weight(1f), color = Pos.Text, fontSize = 14.sp)
                         Text(Money.format(l.amount), color = Pos.Text, fontSize = 14.sp)
+                    }
+                    // a line charged something other than its listed price says what it was
+                    if (l.was != null && l.was != l.amount) {
+                        Text(listOfNotNull("was ${Money.format(l.was)}", l.priceNote?.takeIf { it.isNotBlank() }).joinToString(", "), Modifier.padding(start = 14.dp, bottom = 2.dp), color = Pos.Text3, fontSize = 12.sp)
                     }
                 }
                 d.doc?.discounts?.forEach {
@@ -289,6 +300,8 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
         // what comes back of each line: everything that is left, until the cashier takes some off
         val lines = d.lines?.filter { it.left > 0 }
         var picks by remember { mutableStateOf<Map<String, Int>>(lines?.associate { it.id to it.left } ?: emptyMap()) }
+        // a shop: whether what comes back goes on the shelf again
+        var restock by remember { mutableStateOf(true) }
         val everything = lines == null || lines.all { picks[it.id] == it.left }
         var amount by remember { mutableStateOf(r.total - d.refunded) }
         LaunchedEffect(picks) { if (lines != null) amount = vm.quote(r.id, picks) }
@@ -319,12 +332,24 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                     }
                     TypeGrid(types, type) { type = it }
                     OutlinedTextField(reason, { reason = it.take(120) }, Modifier.fillMaxWidth().padding(top = 10.dp), label = { Text("Reason") }, singleLine = true)
+                    if (retail) {
+                        Row(Modifier.fillMaxWidth().padding(top = 12.dp).clickable { restock = !restock }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Put back into stock", color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    if (restock) "What comes back goes on the shelf again." else "Faulty: it is not put back. It is written off as damaged, so the loss shows on the stock reports.",
+                                    color = if (restock) Pos.Text2 else Pos.Warn, fontSize = 13.sp,
+                                )
+                            }
+                            com.restopos.core.ui.Toggle(restock)
+                        }
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     enabled = !busy && reason.isNotBlank() && type != null && (lines == null || picks.values.any { it > 0 }),
-                    onClick = { refunding = false; vm.refund(r.id, reason, type!!, if (everything) null else picks.filterValues { it > 0 }) },
+                    onClick = { refunding = false; vm.refund(r.id, reason, type!!, if (everything) null else picks.filterValues { it > 0 }, restock) },
                 ) { Text("Refund") }
             },
             dismissButton = { OutlinedButton(onClick = { refunding = false }) { Text("Cancel") } },

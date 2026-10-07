@@ -66,6 +66,10 @@ object L {
     val inKitchen get() = t("In the kitchen", "En cuisine", "Dan lakwizinn")
     val notSent get() = t("New · not sent", "Nouveau · non envoyé", "Nouvo · pankor avoye")
     val remove get() = t("Remove", "Retirer", "Tire")
+    // a shop's till
+    val sell get() = t("Sell", "Vendre", "Vande")
+    val productsStock get() = t("Products & stock", "Produits & stock", "Prodwi & stok")
+    val todayShort get() = t("Today", "Aujourd’hui", "Zordi")
     val lunch get() = t("Lunch service", "Service du midi", "Servis midi")
     val dinner get() = t("Dinner service", "Service du soir", "Servis aswar")
 }

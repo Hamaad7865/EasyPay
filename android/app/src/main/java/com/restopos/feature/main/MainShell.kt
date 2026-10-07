@@ -103,6 +103,10 @@ import com.restopos.feature.orders.OrdersScreen
 import com.restopos.feature.pay.PayScreen
 import com.restopos.feature.pay.PayViewModel
 import com.restopos.feature.receipts.ReceiptsScreen
+import com.restopos.feature.retail.ProductsScreen
+import com.restopos.feature.retail.ProductsViewModel
+import com.restopos.feature.retail.RetailSellScreen
+import com.restopos.feature.retail.RetailViewModel
 import com.restopos.feature.settings.SettingsScreen
 import com.restopos.feature.split.SplitScreen
 import com.restopos.feature.staff.PinCheck
@@ -131,8 +135,13 @@ import java.util.Locale
 import javax.inject.Inject
 
 // Every screen of the till. Order, Pay and Split belong to whichever order is
-// open; the rest are places.
-enum class Screen { Floor, Order, Pay, Split, Takeaway, Kitchen, Bookings, Orders, Today, Menu, Cash, Receipts, Customers, Settings }
+// open; the rest are places. Sell and Products are a shop's: its sell screen
+// in place of tables and orders, its products and stock in place of the menu.
+enum class Screen { Floor, Order, Pay, Split, Takeaway, Kitchen, Bookings, Orders, Today, Menu, Cash, Receipts, Customers, Settings, Sell, Products }
+
+// what only a restaurant has, and what only a shop has
+private val RESTAURANT_ONLY = setOf(Screen.Floor, Screen.Order, Screen.Takeaway, Screen.Kitchen, Screen.Bookings, Screen.Orders, Screen.Menu)
+private val SHOP_ONLY = setOf(Screen.Sell, Screen.Products)
 
 data class Badges(val takeaway: Int = 0, val kitchen: Int = 0, val bookings: Int = 0)
 
@@ -151,6 +160,21 @@ class ShellViewModel @Inject constructor(
     api: com.restopos.core.network.ApiClient,
 ) : ViewModel() {
     val screen = MutableStateFlow(Screen.Floor)
+    // The business is a shop (the back office's settings say so): the till
+    // shows the sell screen. Null for the moment it takes to read the
+    // settings this tablet holds, so a shop's till never opens on a floor
+    // plan first; a till that has never synced is taken for a restaurant.
+    val retail: StateFlow<Boolean?> = db.ops().settingsFlow().map<String?, Boolean?> { com.restopos.core.data.PosSettings.parse(it).retail }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    init {
+        // a screen the other kind of business has gives way to this one's own
+        viewModelScope.launch {
+            retail.collect { shop ->
+                if (shop == true && screen.value in RESTAURANT_ONLY) screen.value = Screen.Sell
+                if (shop == false && screen.value in SHOP_ONLY) screen.value = Screen.Floor
+            }
+        }
+    }
     val clockAhead: StateFlow<Long?> = api.clockAhead
     val updateRequired: StateFlow<Boolean> = api.updateRequired
     // POS settings, Security: minutes without a touch before the till locks; 0 is never
@@ -227,6 +251,15 @@ private val BACK = listOf(
     Nav(Screen.Today, VI.Bars) { L.today }, Nav(Screen.Menu, VI.List) { L.menuStock }, Nav(Screen.Cash, VI.Cash) { L.cashDrawer },
     Nav(Screen.Receipts, VI.Receipt) { L.receipts }, Nav(Screen.Customers, VI.People) { L.customers }, Nav(Screen.Settings, VI.Gear) { L.settings },
 )
+// A shop's till, after the approved "Sell" board: Sell, Receipts, Customers,
+// Products & stock, Today, More. More is the settings screen, which has the
+// printers and the tablet's own switches; the cash drawer, with opening and
+// closing the day, is in the side menu.
+private val SHOP = listOf(
+    Nav(Screen.Sell, VI.Bolt) { L.sell }, Nav(Screen.Receipts, VI.Receipt) { L.receipts }, Nav(Screen.Customers, VI.People) { L.customers },
+    Nav(Screen.Products, VI.List) { L.productsStock }, Nav(Screen.Today, VI.Bars) { L.todayShort }, Nav(Screen.Settings, VI.More) { L.more },
+)
+private val SHOP_BACK = listOf(Nav(Screen.Cash, VI.Cash) { L.cashDrawer })
 
 // What is always on screen once someone is at the till: the top bar with the
 // service screens, the open screen under it, and the side menu behind the
@@ -242,6 +275,9 @@ fun MainShell(
     val shell: ShellViewModel = hiltViewModel()
     val floor: FloorViewModel = hiltViewModel()
     val order: OrderViewModel = hiltViewModel()
+    val sell: RetailViewModel = hiltViewModel()
+    val kind by shell.retail.collectAsState()
+    val retail = kind == true
     val pay: PayViewModel = hiltViewModel()
     val more: MoreViewModel = hiltViewModel()
     val screen by shell.screen.collectAsState()
@@ -283,6 +319,8 @@ fun MainShell(
     // Quick sale was tapped with the order screen at this turn: its key is lit at once, before the sale is read
     var quickAt by remember { mutableIntStateOf(-1) }
     val go: (Screen) -> Unit = { s -> drawer = false; if (s == Screen.Order) { quickAt = orderUi.session; shell.quick { order.open() } } else shell.go(s) }
+    // the keys along the top: a shop's, or a restaurant's
+    val bar = if (retail) SHOP else SERVICE
     // The key that is lit: the place, or for an order where that order lives.
     // An order screen that has only just opened still holds the order before
     // it until the new one is read, so the key that was lit stays lit until
@@ -291,6 +329,8 @@ fun MainShell(
     val entered = remember(inOrder) { orderUi.session }
     val litBefore = remember { arrayOf(Screen.Floor) }
     val lit = when {
+        // a shop's sale is one place: paying it is still Sell
+        retail -> if (screen == Screen.Pay || screen == Screen.Split) Screen.Sell else screen
         quickAt == orderUi.session -> Screen.Order
         !inOrder -> screen
         orderUi.session == entered -> litBefore[0]
@@ -307,12 +347,15 @@ fun MainShell(
     BackHandler(enabled = screen != Screen.Pay) {
         when {
             drawer -> drawer = false
+            retail -> if (screen != Screen.Sell) shell.go(Screen.Sell)
             screen == Screen.Order -> home(orderUi.board)
             screen == Screen.Split -> shell.go(Screen.Order)
             screen != Screen.Floor -> shell.go(Screen.Floor)
         }
     }
 
+    // which kind of business this is, is read from the tablet in a moment: nothing is drawn for the wrong one meanwhile
+    if (kind == null) { Box(Modifier.fillMaxSize().background(V.Bg)); return }
     Box(
         Modifier.fillMaxSize().background(V.Bg)
             // any finger anywhere counts as someone being at the till
@@ -330,8 +373,8 @@ fun MainShell(
                 Wordmark()
                 // the service screens, straight on the bar: the lit one on a pill that slides to whichever is tapped
                 Box(Modifier.weight(1f)) {
-                    PillRow(SERVICE.size, SERVICE.indexOfFirst { it.screen == lit }, { go(SERVICE[it].screen) }, scroll = rememberScrollState()) { i, onPill, m ->
-                        val n = SERVICE[i]
+                    PillRow(bar.size, bar.indexOfFirst { it.screen == lit }, { go(bar[it].screen) }, scroll = rememberScrollState()) { i, onPill, m ->
+                        val n = bar[i]
                         val count = when (n.screen) { Screen.Takeaway -> badges.takeaway; Screen.Kitchen -> badges.kitchen; Screen.Bookings -> badges.bookings; else -> 0 }
                         Row(m.height(42.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             VIcon(n.icon, 19.dp, if (onPill) V.OnText else V.Text2)
@@ -361,10 +404,18 @@ fun MainShell(
                 when (screen) {
                     Screen.Floor -> FloorScreen(floor, assigning, onAssigned = { shell.assigning.value = null }, onOrder = { shell.go(Screen.Order) }, onPay = { shell.go(Screen.Pay) }, onBookings = { shell.go(Screen.Bookings) })
                     Screen.Order -> OrderScreen(order, onBack = home, onPay = { shell.go(Screen.Pay) }, onSplit = { shell.go(Screen.Split) }, onSent = { shell.go(Screen.Floor) }, onGone = home)
-                    Screen.Pay -> PayScreen(pay, onBack = { shell.go(Screen.Order) }, onSplit = { shell.go(Screen.Split) }) { kind ->
-                        when (kind) { "dine" -> { floor.pick(null); shell.go(Screen.Floor) }; "takeaway", "delivery" -> shell.go(Screen.Takeaway); else -> shell.quick { order.open() } }
+                    Screen.Pay -> PayScreen(pay, onBack = { shell.go(if (retail) Screen.Sell else Screen.Order) }, onSplit = { shell.go(Screen.Split) }) { kind ->
+                        when {
+                            // a shop's sale is paid: the sell screen again, with an empty sale
+                            retail -> { shell.go(Screen.Sell); sell.open() }
+                            kind == "dine" -> { floor.pick(null); shell.go(Screen.Floor) }
+                            kind == "takeaway" || kind == "delivery" -> shell.go(Screen.Takeaway)
+                            else -> shell.quick { order.open() }
+                        }
                     }
-                    Screen.Split -> SplitScreen(onBack = { shell.go(Screen.Order) }, onPay = { shell.go(Screen.Pay) })
+                    Screen.Split -> SplitScreen(onBack = { shell.go(if (retail) Screen.Sell else Screen.Order) }, onPay = { shell.go(Screen.Pay) })
+                    Screen.Sell -> RetailSellScreen(sell, onPay = { shell.go(Screen.Pay) })
+                    Screen.Products -> { val vm: ProductsViewModel = hiltViewModel(); ProductsScreen(vm) }
                     Screen.Takeaway -> { val vm: BoardViewModel = hiltViewModel(); BoardScreen(vm, onOrder = { shell.go(Screen.Order) }, onPay = { shell.go(Screen.Pay) }) }
                     Screen.Kitchen -> { val vm: KdsViewModel = hiltViewModel(); KdsScreen(vm) }
                     Screen.Bookings -> { val vm: BookingsViewModel = hiltViewModel(); BookingsScreen(vm, serviceLine, onAssign = { b -> b.area?.let { floor.pickZone(it) }; shell.assign(b) }, onSeated = { shell.go(Screen.Order) }) }
@@ -383,7 +434,7 @@ fun MainShell(
                 }
             }
         }
-        SideMenu(drawer, shell, lit, badges, user, lang, onGo = go, onLock = { drawer = false; onLock() }, onClose = { drawer = false })
+        SideMenu(drawer, shell, lit, badges, user, lang, retail, onGo = go, onLock = { drawer = false; onLock() }, onClose = { drawer = false })
         ToastHost()
     }
 
@@ -404,7 +455,7 @@ fun MainShell(
 // flicked shut, it closes; otherwise it comes back out.
 @Composable
 private fun SideMenu(
-    open: Boolean, shell: ShellViewModel, lit: Screen, badges: Badges, user: StaffMember?, lang: String,
+    open: Boolean, shell: ShellViewModel, lit: Screen, badges: Badges, user: StaffMember?, lang: String, retail: Boolean,
     onGo: (Screen) -> Unit, onLock: () -> Unit, onClose: () -> Unit,
 ) {
     val wide = with(LocalDensity.current) { 340.dp.toPx() }
@@ -445,13 +496,19 @@ private fun SideMenu(
                 Gap()
                 IconKey(VI.Close, onClick = onClose)
             }
-            Caps(L.service, modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 6.dp))
-            SERVICE.forEach { n ->
-                val count = when (n.screen) { Screen.Takeaway -> badges.takeaway; Screen.Kitchen -> badges.kitchen; Screen.Bookings -> badges.bookings; else -> 0 }
-                Entry(n, lit == n.screen, count, when (n.screen) { Screen.Takeaway -> V.Red; Screen.Kitchen -> V.Blue; else -> Color(0xFF6243C8) }) { onGo(n.screen) }
+            if (retail) {
+                // a shop: the same places as along the top, and the cash drawer
+                Spacer(Modifier.height(4.dp))
+                (SHOP + SHOP_BACK).forEach { n -> Entry(n, lit == n.screen, 0, V.Red) { onGo(n.screen) } }
+            } else {
+                Caps(L.service, modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 6.dp))
+                SERVICE.forEach { n ->
+                    val count = when (n.screen) { Screen.Takeaway -> badges.takeaway; Screen.Kitchen -> badges.kitchen; Screen.Bookings -> badges.bookings; else -> 0 }
+                    Entry(n, lit == n.screen, count, when (n.screen) { Screen.Takeaway -> V.Red; Screen.Kitchen -> V.Blue; else -> Color(0xFF6243C8) }) { onGo(n.screen) }
+                }
+                Caps(L.backOffice, modifier = Modifier.padding(start = 12.dp, top = 16.dp, bottom = 6.dp))
+                BACK.forEach { n -> Entry(n, lit == n.screen, 0, V.Red) { onGo(n.screen) } }
             }
-            Caps(L.backOffice, modifier = Modifier.padding(start = 12.dp, top = 16.dp, bottom = 6.dp))
-            BACK.forEach { n -> Entry(n, lit == n.screen, 0, V.Red) { onGo(n.screen) } }
             Caps(L.language, modifier = Modifier.padding(start = 12.dp, top = 16.dp, bottom = 8.dp))
             Seg(
                 listOf(
