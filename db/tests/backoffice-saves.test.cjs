@@ -63,6 +63,42 @@ function lib(name) {
     check('P3 a comma only goes between thousands', reads(commas), got(commas));
   }
 
+  // ---- what the Printers page warns of, store by store (no database) ----
+  {
+    const { printerWarnings } = lib('printers');
+    const p = (id, store, address, more) => ({ id, store_id: store, name: id, kind: 'network', address, paper_mm: 80, is_receipt: false, feed_lines: 3, cut: true, is_active: true, ...more });
+    const one = [{ id: 'm', name: 'Main' }];
+    const two = [{ id: 'm', name: 'Main' }, { id: 'b', name: 'Beach' }];
+    const mains = (ids) => [{ id: 'k1', name: 'Mains', printer_ids: ids }];
+    const cashier = p('Cashier', 'm', '192.168.1.50', { is_receipt: true });
+    const kitchen = p('Kitchen', 'm', '192.168.1.51');
+    const well = printerWarnings([cashier, kitchen], mains(['Kitchen']), false, one);
+    check('W1 a store with its receipt printer set and its categories ticked is told nothing', well.length === 0, JSON.stringify(well));
+    const none = printerWarnings([{ ...cashier, is_receipt: false }, kitchen], mains(['Kitchen']), false, one);
+    check('W1 with one store a warning does not name the store', none.length === 1 && none[0].startsWith('No printer prints the receipts and bills.'), JSON.stringify(none));
+    const second = printerWarnings([cashier, kitchen, p('Bar', 'b', '10.0.0.5')], mains(['Kitchen', 'Bar']), false, two);
+    check('W2 a second store with no receipt printer is told so, by name', second.length === 1 && second[0].startsWith('Beach: No printer prints the receipts and bills.'), JSON.stringify(second));
+    const unticked = printerWarnings([cashier, kitchen, p('Bar', 'b', '10.0.0.5', { is_receipt: true })], mains(['Kitchen']), false, two);
+    check('W2 a category ticked in one store only prints nowhere in the other, and that store is told', unticked.length === 1 && unticked[0].startsWith('Beach: No category is ticked'), JSON.stringify(unticked));
+    const same = printerWarnings([{ ...cashier, address: '192.168.1.50' }, p('Bar', 'b', '192.168.1.50', { is_receipt: true })], mains(['Cashier', 'Bar']), false, two);
+    check('W2 the same address in two stores is two printers, not one entered twice', same.length === 0, JSON.stringify(same));
+    const twice = printerWarnings([cashier, { ...kitchen, address: '192.168.1.50' }], mains(['Kitchen']), false, one);
+    check('W1 the same address twice in one store is still pointed out', twice.length === 1 && twice[0].includes('are the same printer'), JSON.stringify(twice));
+
+    // step 2's form: one choice of receipt printer for each store, under a field that names the store
+    const { receiptField, receiptPicks } = lib('printers');
+    const [s1, s2, s3, p1] = [0, 1, 2, 3].map(() => crypto.randomUUID());
+    const f = new FormData();
+    f.set(receiptField(s1), p1.toUpperCase());
+    f.set(receiptField(s2), '');
+    f.set(receiptField(s3), 'not a printer');
+    f.set('receipt_somewhere', p1);
+    f.set('receipt', p1);
+    f.set('one', 'on');
+    const picks = receiptPicks(f);
+    check('W3 the form says which printer each store picked, or none', JSON.stringify(picks) === JSON.stringify([{ store: s1, printer: p1 }, { store: s2, printer: null }, { store: s3, printer: null }]), JSON.stringify(picks));
+  }
+
   const env = devguard.envMap();
   const c = new Client({ connectionString: env.DATABASE_URL_UNPOOLED, ssl: { require: true } });
   await c.connect();
@@ -198,7 +234,7 @@ function lib(name) {
         .rows.map((r) => r.name + (r.is_receipt ? '*' : '')).join(' ');
       const idOf = async (name) => (await q1(`select id from printers where tenant_id = $1 and name = $2`, [tid, name])).id;
       const add = (store, name) => asApp(tid, () => saves.addPrinter(c, tid, store, v(name)));
-      const receipts = (printer) => asApp(tid, () => saves.setReceiptPrinter(c, tid, printer));
+      const receipts = (store, printer) => asApp(tid, () => saves.setReceiptPrinter(c, tid, store, printer));
 
       const cashier = await add(main, 'Cashier');
       const kitchen = await add(main, 'Kitchen');
@@ -213,16 +249,17 @@ function lib(name) {
       check('R2 a printer for a store that is not the restaurant\'s is not added', nowhere === null && foreign === null && (await q1(`select count(*)::int n from printers where name in ('Nowhere', 'Theirs')`)).n === 0,
         JSON.stringify([nowhere, foreign]));
 
-      const picked = await receipts(await idOf('Beach grill'));
-      check('R3 picking a printer for receipts changes its own store, and no other', picked === 'ok' && (await has(beach)) === 'Beach bar Beach grill*' && (await has(main)) === 'Cashier* Kitchen',
-        `${picked} main: ${await has(main)} | beach: ${await has(beach)}`);
-      check('R3 the same in the first store', (await receipts(await idOf('Kitchen'))) === 'ok' && (await has(main)) === 'Cashier Kitchen*' && (await has(beach)) === 'Beach bar Beach grill*',
-        `main: ${await has(main)} | beach: ${await has(beach)}`);
-      const lost = await receipts(crypto.randomUUID());
-      check('R3 a printer that is no longer there is refused, and nothing changes', lost === 'no-printer' && (await has(main)) === 'Cashier Kitchen*' && (await has(beach)) === 'Beach bar Beach grill*',
-        `${lost} main: ${await has(main)} | beach: ${await has(beach)}`);
-      check('R3 "no printer" still takes receipts off the first store\'s printers', (await receipts(null)) === 'ok' && (await has(main)) === 'Cashier Kitchen' && (await has(beach)) === 'Beach bar Beach grill*',
-        `main: ${await has(main)} | beach: ${await has(beach)}`);
+      const both = async () => `main: ${await has(main)} | beach: ${await has(beach)}`;
+      const picked = await receipts(beach, await idOf('Beach grill'));
+      check("R3 picking a store's printer for receipts changes that store, and no other", picked === 'ok' && (await both()) === 'main: Cashier* Kitchen | beach: Beach bar Beach grill*', picked + ' ' + (await both()));
+      check('R3 the same in the first store', (await receipts(main, await idOf('Kitchen'))) === 'ok' && (await both()) === 'main: Cashier Kitchen* | beach: Beach bar Beach grill*', await both());
+      const lost = await receipts(main, crypto.randomUUID());
+      check('R3 a printer that is no longer there is refused, and nothing changes', lost === 'no-printer' && (await both()) === 'main: Cashier Kitchen* | beach: Beach bar Beach grill*', lost + ' ' + (await both()));
+      const borrowed = await receipts(main, await idOf('Beach bar'));
+      check("R3 a store cannot take another store's printer for its receipts", borrowed === 'no-printer' && (await both()) === 'main: Cashier Kitchen* | beach: Beach bar Beach grill*', borrowed + ' ' + (await both()));
+      check('R3 "no printer" takes receipts off that store, and no other', (await receipts(beach, null)) === 'ok' && (await both()) === 'main: Cashier Kitchen* | beach: Beach bar Beach grill', await both());
+      const notOurs = [await receipts(theirStore, null), await receipts(crypto.randomUUID(), await idOf('Kitchen'))];
+      check("R3 a store that is not the restaurant's has no receipt printer to set", notOurs.join() === 'no-store,no-store' && (await both()) === 'main: Cashier Kitchen* | beach: Beach bar Beach grill', notOurs.join() + ' ' + (await both()));
 
       // a printer changed from a page that was open while it was removed in another tab
       const savePrinter = (id, form, active) => asApp(tid, () => saves.savePrinter(c, tid, id, form, active));

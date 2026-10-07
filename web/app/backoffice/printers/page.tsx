@@ -3,6 +3,7 @@ import { Printer } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, int, on, Refused, text, uuid } from "@/lib/action";
+import { type PrinterCat as Cat, type PrinterRow as Row, printerWarnings, receiptField, receiptPicks } from "@/lib/printers";
 import * as saves from "@/lib/saves";
 import { loadSettings, saveSettings } from "@/lib/settings";
 import { Empty, Flash, PageHead, type Search } from "../ui";
@@ -20,20 +21,6 @@ const IP = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}(:\d{2,5
 //      single printer switches on "One printer for everything" instead.
 // The till follows the same rule (Routing.kt): with that switch on, every
 // kitchen order prints on the receipt printer, whatever is ticked here.
-
-type Row = {
-  id: string;
-  store_id: string;
-  name: string;
-  kind: "network" | "usb";
-  address: string | null;
-  paper_mm: number;
-  is_receipt: boolean;
-  feed_lines: number;
-  cut: boolean;
-  is_active: boolean;
-};
-type Cat = { id: string; name: string; printer_ids: string[] };
 
 function fields(f: FormData) {
   const name = text(f, "name", 40);
@@ -81,19 +68,24 @@ async function savePrinter(f: FormData) {
   });
 }
 
-// Step 2, saved as a whole: the receipt printer, the one-printer switch, and
-// the printers of every category.
+// Step 2, saved as a whole: each store's receipt printer, the one-printer
+// switch, and the printers of every category.
 async function saveRoutes(f: FormData) {
   "use server";
   await act("settings.device", PATH, async (c, ctx) => {
-    const receipt = String(f.get("receipt") ?? "").toLowerCase();
+    // each store's own choice of receipt printer, or none
+    const picks = receiptPicks(f);
     const one = on(f, "one");
     const pairs = f.getAll("route").map((v) => String(v).toLowerCase()).filter((v) => PAIR.test(v));
-    if (one && !UUID.test(receipt)) throw new Refused("With one printer for everything, choose which printer that is, under Receipts and bills.");
+    if (one && (picks.length === 0 || picks.some((x) => !x.printer))) {
+      throw new Refused("With one printer for everything, choose which printer that is, under Receipts and bills.");
+    }
     // one printer per store is where the cashier's receipts come out
-    const set = await saves.setReceiptPrinter(c, ctx.tenantId, UUID.test(receipt) ? receipt : null);
-    if (set === "no-store") throw new Refused("This restaurant has no store yet.");
-    if (set === "no-printer") throw new Refused("That printer is no longer there. Reload the page.");
+    for (const x of picks) {
+      const set = await saves.setReceiptPrinter(c, ctx.tenantId, x.store, x.printer);
+      if (set === "no-store") throw new Refused("That store is gone. Reload the page.");
+      if (set === "no-printer") throw new Refused("That printer is no longer there. Reload the page.");
+    }
     await saveSettings(c, ctx.tenantId, { onePrinter: one });
     // each category's printers are the ones ticked for it; a category that did not change is left alone
     await c.query(
@@ -165,44 +157,6 @@ function Hardware({ p }: { p?: Row }) {
   );
 }
 
-// What is worth a second look before service: none of it stops the till.
-function warnings(rows: Row[], cats: Cat[], one: boolean): string[] {
-  const out: string[] = [];
-  if (rows.length === 0) return out;
-  const live = rows.filter((p) => p.is_active);
-  const receipt = rows.find((p) => p.is_receipt);
-  const byId = new Map(rows.map((p) => [p.id, p]));
-  if (!receipt) out.push("No printer prints the receipts and bills. Choose one in step 2: until then nothing prints at the till and the cash drawer does not open.");
-  else if (!receipt.is_active) out.push(`${receipt.name} prints the receipts and bills, and it is switched off.`);
-  if (one && (!receipt || !receipt.is_active)) {
-    out.push("One printer for everything is on, but that printer is missing or switched off. Kitchen orders follow the ticks in step 2 until it is back.");
-  }
-  if (!one) {
-    const nowhere = cats.filter((k) => !k.printer_ids.some((id) => byId.get(id)?.is_active));
-    if (nowhere.length === cats.length && cats.length > 0) {
-      out.push(
-        live.length === 1
-          ? "No category is ticked, so kitchen orders do not print: they show on the kitchen display only. With a single printer, switch on One printer for everything."
-          : "No category is ticked, so kitchen orders do not print: they show on the kitchen display only.",
-      );
-    } else if (nowhere.length > 0) {
-      out.push(`Orders for ${nowhere.map((k) => k.name).join(", ")} print nowhere: they show on the kitchen display only.`);
-    }
-    for (const p of rows.filter((x) => !x.is_active)) {
-      const sent = cats.filter((k) => k.printer_ids.includes(p.id));
-      if (sent.length > 0) out.push(`${p.name} is switched off, and ${sent.map((k) => k.name).join(", ")} ${sent.length === 1 ? "is" : "are"} sent to it.`);
-    }
-  }
-  const seen = new Map<string, string>();
-  for (const p of live) {
-    const key = p.kind === "usb" ? "usb" : (p.address ?? "").includes(":") ? (p.address ?? "") : `${p.address}:9100`;
-    const other = seen.get(key);
-    if (other) out.push(`${other} and ${p.name} are the same printer (${p.kind === "usb" ? "USB" : p.address}). That works, their prints wait for each other; remove one if it was entered twice by mistake.`);
-    else seen.set(key, p.name);
-  }
-  return out;
-}
-
 export default async function PrintersPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
@@ -222,8 +176,7 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
     ).rows as Cat[],
     one: (await loadSettings(c, ctx.tenantId)).onePrinter,
   }));
-  const receipt = rows.find((p) => p.is_receipt);
-  const notes = warnings(rows, cats, one);
+  const notes = printerWarnings(rows, cats, one, stores);
   // with several stores, a printer is added to the store it stands in and is named with it
   const many = stores.length > 1;
   const storeName = new Map(stores.map((s) => [s.id, s.name]));
@@ -329,19 +282,25 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
           <h2 style={{ marginTop: 28 }}>2 · What prints where</h2>
           <form action={saveRoutes} className="card flush">
             <div className="card-body">
-              <label className="field">
-                Receipts and bills
-                <select name="receipt" defaultValue={receipt?.id ?? ""}>
-                  <option value="">No printer</option>
-                  {rows.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                      {p.is_active ? "" : " (switched off)"}
-                    </option>
-                  ))}
-                </select>
-                <span className="help">Receipts, bills, cash slips and closing reports come out here, and it opens the cash drawer.</span>
-              </label>
+              {/* a store's receipts come out on one of its own printers: one choice per store that has printers */}
+              {stores
+                .map((s) => ({ s, own: rows.filter((p) => p.store_id === s.id) }))
+                .filter(({ own }) => own.length > 0)
+                .map(({ s, own }) => (
+                  <label className="field" key={s.id}>
+                    Receipts and bills{many ? ` · ${s.name}` : ""}
+                    <select name={receiptField(s.id)} defaultValue={own.find((p) => p.is_receipt)?.id ?? ""}>
+                      <option value="">No printer</option>
+                      {own.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                          {p.is_active ? "" : " (switched off)"}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="help">Receipts, bills, cash slips and closing reports come out here, and it opens the cash drawer.</span>
+                  </label>
+                ))}
               <label className="check">
                 <input type="checkbox" name="one" defaultChecked={one} />
                 <span>
@@ -377,6 +336,7 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
                       {rows.map((p) => (
                         <th key={p.id} style={{ textAlign: "center" }}>
                           {p.name}
+                          {many ? ` · ${storeName.get(p.store_id) ?? ""}` : ""}
                           {p.is_active ? "" : " (off)"}
                         </th>
                       ))}

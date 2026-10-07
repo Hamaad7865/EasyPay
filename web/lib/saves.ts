@@ -94,20 +94,22 @@ export async function addPrinter(c: PoolClient, tenantId: string, store: string,
   return { first };
 }
 
-// Which printer the cashier's receipts and bills come out on: one per store.
-// The printer picked takes over in its own store, and the other stores are
-// left alone; "no-printer" when it is not there any more, and nothing changes.
-// With no printer picked, receipts come off the first store's printers, as
-// before there could be more than one store.
-export async function setReceiptPrinter(c: PoolClient, tenantId: string, receipt: string | null): Promise<"ok" | "no-store" | "no-printer"> {
-  const st = receipt
-    ? await c.query(`select store_id as id from printers where tenant_id = $1 and id = $2 and deleted_at is null`, [tenantId, receipt])
-    : await c.query(`select id from stores where tenant_id = $1 and deleted_at is null order by created_at limit 1`, [tenantId]);
-  if (st.rowCount !== 1) return receipt ? "no-printer" : "no-store";
+// Which printer a store's receipts and bills come out on: one per store, or
+// none. The printer has to be one of that store's own: "no-printer" when it is
+// not (it was removed meanwhile, or stands in another store), "no-store" when
+// the store is not the restaurant's. Either way nothing changes, and no other
+// store is touched.
+export async function setReceiptPrinter(c: PoolClient, tenantId: string, store: string, receipt: string | null): Promise<"ok" | "no-store" | "no-printer"> {
+  const st = await c.query(`select 1 from stores where tenant_id = $1 and id = $2 and deleted_at is null`, [tenantId, store]);
+  if (st.rowCount !== 1) return "no-store";
+  if (receipt) {
+    const own = await c.query(`select 1 from printers where tenant_id = $1 and store_id = $2 and id = $3 and deleted_at is null`, [tenantId, store, receipt]);
+    if (own.rowCount !== 1) return "no-printer";
+  }
   await c.query(
     `update printers set is_receipt = coalesce(id = $2::uuid, false)
       where tenant_id = $1 and store_id = $3 and deleted_at is null and is_receipt is distinct from coalesce(id = $2::uuid, false)`,
-    [tenantId, receipt, st.rows[0].id],
+    [tenantId, receipt, store],
   );
   return "ok";
 }
