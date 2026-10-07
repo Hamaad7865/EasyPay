@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { tenantContext } from "@/lib/tenant";
+import { onlyFor } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { FloorEditor } from "../floor-editor";
 import type { FloorTable } from "../actions";
@@ -14,7 +14,7 @@ export default async function FloorPlanPage({
   const sp = await searchParams;
   const floor = (sp.floor ?? "").trim().slice(0, 30);
   if (!floor) redirect("/backoffice/tables");
-  const ctx = await tenantContext();
+  const ctx = await onlyFor("restaurant");
   const data = await readTenant(ctx.tenantId, async (c) => {
     const stores = await c.query(`select id, name from stores where tenant_id = $1 and deleted_at is null order by created_at`, [ctx.tenantId]);
     const list = stores.rows as { id: string; name: string }[];

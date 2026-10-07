@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { SlidersHorizontal } from "lucide-react";
-import { tenantContext } from "@/lib/tenant";
+import { onlyFor } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, int, Refused, text, UUID, uuid } from "@/lib/action";
 import { parseRs } from "@/lib/money";
@@ -80,7 +80,7 @@ async function saveChoice(f: FormData) {
 
 export default async function AddonsPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
-  const ctx = await tenantContext();
+  const ctx = await onlyFor("restaurant");
   const d = await readTenant(ctx.tenantId, async (c) => ({
     settings: await loadSettings(c, ctx.tenantId),
     groups: (

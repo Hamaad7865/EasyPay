@@ -45,6 +45,14 @@ async function saveCategory(f: FormData) {
     const name = text(f, "name", 40);
     const color = String(f.get("color") ?? "");
     if (!name) throw new Refused("A category needs a name.");
+    if (ctx.mode === "retail") {
+      // a shop's form has no printers and no Counted tick: both are left as they are
+      await c.query(
+        `update categories set name = $3, color = $4, sort_order = $5 where tenant_id = $1 and id = $2 and deleted_at is null`,
+        [ctx.tenantId, id, name, HEX.test(color) ? color : null, int(f, "sort_order", 0, 999, 0)],
+      );
+      return `${name} saved.`;
+    }
     const printers = f.getAll("printer").map(String).filter((p) => UUID.test(p));
     await c.query(
       `update categories set name = $3, color = $4, sort_order = $5, is_stock = $6,
@@ -90,7 +98,11 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
     <div>
       <PageHead
         title="Categories"
-        lede="The groups of the menu, shown above the items on the till's order screen. The sequence is their order, the colour is the colour of the group and of its items, and the printers are where a category's items come out when an order is sent (and its stations on the kitchen display)."
+        lede={
+          ctx.mode === "retail"
+            ? "The groups of the catalog, shown above the products on the till's sell screen. The sequence is their order, and the colour is the colour of the group and of its products."
+            : "The groups of the menu, shown above the items on the till's order screen. The sequence is their order, the colour is the colour of the group and of its items, and the printers are where a category's items come out when an order is sent (and its stations on the kitchen display)."
+        }
       />
       <Flash sp={sp} />
       <Card title="Add a category">
@@ -103,20 +115,22 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
       {rows.length === 0 ? (
         <Empty icon={Tags} title="No categories yet">Add the first one above, for example Starters or Drinks.</Empty>
       ) : (
-        <CategoriesTable key={startKey(sp, start)} rows={rows} printers={d.printers} start={start} save={saveCategory} />
+        <CategoriesTable key={startKey(sp, start)} rows={rows} printers={d.printers} start={start} save={saveCategory} mode={ctx.mode} />
       )}
-      {d.printers.length === 0 && (
+      {ctx.mode === "restaurant" && d.printers.length === 0 && (
         <p className="muted">
           To send orders to a kitchen or bar printer, add it under <Link href="/backoffice/printers">Printers</Link> first.
         </p>
       )}
-      {d.onePrinter && (
+      {ctx.mode === "restaurant" && d.onePrinter && (
         <p className="muted">
           This restaurant prints everything on one printer, so the printers ticked on a category are not used for now. That is set under{" "}
           <Link href="/backoffice/printers">Printers</Link>.
         </p>
       )}
-      <p className="muted">A counted category has its items&apos; quantities under <Link href="/backoffice/stock">Stock</Link>: each sale takes from them.</p>
+      {ctx.mode === "restaurant" && (
+        <p className="muted">A counted category has its items&apos; quantities under <Link href="/backoffice/stock">Stock</Link>: each sale takes from them.</p>
+      )}
     </div>
   );
 }

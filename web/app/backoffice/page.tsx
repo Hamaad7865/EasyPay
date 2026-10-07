@@ -564,7 +564,7 @@ export default async function BackofficeHome({
             </div>
           </div>
           <div className="pane-in">
-            {now.tables > 0 ? (
+            {ctx.mode === "restaurant" && now.tables > 0 ? (
               <>
                 <div className="now-big">
                   <strong>{inUse}</strong>
@@ -637,6 +637,7 @@ export default async function BackofficeHome({
         </section>
       </div>
 
+      {ctx.mode === "restaurant" && (
       <section className="pane rise" style={{ ...rise(3), marginBottom: 8 }}>
         <div className="pane-head">
           <div>
@@ -665,6 +666,7 @@ export default async function BackofficeHome({
           )}
         </div>
       </section>
+      )}
     </>
   );
 

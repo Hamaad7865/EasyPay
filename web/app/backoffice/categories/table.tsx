@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { Back, Chev, fold, NoMatch, SortTh, type Start, TableSearch, useTable } from "../table-kit";
 import { Submit } from "../busy";
+import type { Mode } from "@/lib/mode";
 
 export type Category = { id: string; name: string; hex: string; has_color: boolean; sort_order: number; is_stock: boolean; printer_ids: string[]; items: number };
 type Action = (f: FormData) => Promise<void>;
@@ -11,7 +12,10 @@ type Action = (f: FormData) => Promise<void>;
 // The categories as one table, in the order the till shows them. A line says
 // where the category stands, where its items print and whether they are
 // counted; tapping it opens it to change any of that, or to remove it.
-export function CategoriesTable({ rows, printers, start, save }: { rows: Category[]; printers: { id: string; name: string }[]; start: Start; save: Action }) {
+export function CategoriesTable({ rows, printers, start, save, mode }: { rows: Category[]; printers: { id: string; name: string }[]; start: Start; save: Action; mode: Mode }) {
+  const shop = mode === "retail";
+  // a shop's categories have no "Prints on" and no "Stock" column
+  const cols = shop ? 4 : 6;
   const t = useTable("/backoffice/categories", start);
   const printerName = useMemo(() => new Map(printers.map((p) => [p.id, p.name])), [printers]);
   const prints = (r: Category) => r.printer_ids.map((id) => printerName.get(id)).filter((n): n is string => Boolean(n));
@@ -45,13 +49,13 @@ export function CategoriesTable({ rows, printers, start, save }: { rows: Categor
               <th />
               <SortTh t={t} k="name" label="Category" />
               <SortTh t={t} k="order" label="Sequence" num />
-              <th>Prints on</th>
-              <th>Stock</th>
+              {!shop && <th>Prints on</th>}
+              {!shop && <th>Stock</th>}
               <SortTh t={t} k="items" label="Items" num />
             </tr>
           </thead>
           <tbody>
-            {shown.length === 0 && <NoMatch t={t} cols={6} what="category" />}
+            {shown.length === 0 && <NoMatch t={t} cols={cols} what="category" />}
             {shown.map((r) => {
               const on = t.isOpen(r.id);
               const where = prints(r);
@@ -65,8 +69,8 @@ export function CategoriesTable({ rows, printers, start, save }: { rows: Categor
                     {r.name}
                   </td>
                   <td className="num">{r.sort_order}</td>
-                  <td>{where.length ? where.join(", ") : <span className="muted">No printer</span>}</td>
-                  <td>{r.is_stock ? <span className="badge blue">Counted</span> : <span className="muted">Not counted</span>}</td>
+                  {!shop && <td>{where.length ? where.join(", ") : <span className="muted">No printer</span>}</td>}
+                  {!shop && <td>{r.is_stock ? <span className="badge blue">Counted</span> : <span className="muted">Not counted</span>}</td>}
                   <td className="num">
                     {r.items > 0 ? (
                       <Link href={`/backoffice/items?category=${r.id}`} onClick={(e) => e.stopPropagation()}>
@@ -79,7 +83,7 @@ export function CategoriesTable({ rows, printers, start, save }: { rows: Categor
                 </tr>,
                 on && (
                   <tr key={r.id + "-open"} className="open-body">
-                    <td colSpan={6}>
+                    <td colSpan={cols}>
                       <div className="open-panel">
                         <form action={save} className="open-form">
                           <input type="hidden" name="id" value={r.id} />
@@ -96,22 +100,25 @@ export function CategoriesTable({ rows, printers, start, save }: { rows: Categor
                             Colour
                             <input type="color" name="color" defaultValue={r.hex} aria-label={`Colour for ${r.name}`} />
                           </label>
-                          <label className="check" style={{ margin: 0 }}>
-                            <input type="checkbox" name="is_stock" defaultChecked={r.is_stock} />
-                            Stock is counted
-                          </label>
+                          {!shop && (
+                            <label className="check" style={{ margin: 0 }}>
+                              <input type="checkbox" name="is_stock" defaultChecked={r.is_stock} />
+                              Stock is counted
+                            </label>
+                          )}
                           <div className="open-form-line">
-                            <span className="muted">Prints on</span>
-                            {printers.length === 0 ? (
-                              <span className="muted">No printers are set up.</span>
-                            ) : (
-                              printers.map((p) => (
-                                <label key={p.id} className="check" style={{ margin: 0 }}>
-                                  <input type="checkbox" name="printer" value={p.id} defaultChecked={r.printer_ids.includes(p.id)} />
-                                  {p.name}
-                                </label>
-                              ))
-                            )}
+                            {!shop && <span className="muted">Prints on</span>}
+                            {!shop &&
+                              (printers.length === 0 ? (
+                                <span className="muted">No printers are set up.</span>
+                              ) : (
+                                printers.map((p) => (
+                                  <label key={p.id} className="check" style={{ margin: 0 }}>
+                                    <input type="checkbox" name="printer" value={p.id} defaultChecked={r.printer_ids.includes(p.id)} />
+                                    {p.name}
+                                  </label>
+                                ))
+                              ))}
                             <span className="spacer" />
                             <Submit className="btn-sm">
                               Save

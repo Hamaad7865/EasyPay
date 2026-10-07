@@ -195,7 +195,14 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
   const start = startOf({ ...sp, category: one(sp.category) || one(sp.cat) }, "q", "category", "status", "sort", "open", "edit");
   return (
     <div>
-      <PageHead title="Items" lede="What the till sells. Find an item, change its price or take it off sale in the list; tap its name for the rest: its tax, add-ons, category and barcode." />
+      <PageHead
+        title={ctx.mode === "retail" ? "Products" : "Items"}
+        lede={
+          ctx.mode === "retail"
+            ? "What the till sells. Find a product, change its price or take it off sale in the list; tap its name for the rest: its tax, category and barcode."
+            : "What the till sells. Find an item, change its price or take it off sale in the list; tap its name for the rest: its tax, add-ons, category and barcode."
+        }
+      />
       {/* a save the panel was refused says why in the panel, which is open again */}
       {!(one(sp.err) && (start.edit === "new" || items.some((i) => i.id === start.edit))) && <Flash sp={sp} />}
       {/* Keyed by what the address asks for: arriving from the search or the

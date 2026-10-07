@@ -36,11 +36,16 @@ async function saveGeneral(f: FormData) {
       billNumbering: f.get("billNumbering") === "reset" ? "reset" : "continuous",
       dayCloseDetailed: on(f, "dayCloseDetailed"),
       drawerByNotes: on(f, "drawerByNotes"),
-      servicePct: int(f, "servicePct", 0, 30, 0),
-      prepMinutes: int(f, "prepMinutes", 1, 180, 15),
       lockMinutes: int(f, "lockMinutes", 0, 120, 0),
-      kitchenSound: on(f, "kitchenSound"),
-      kitchenNotes: String(f.get("kitchenNotes") ?? "").split("\n").map((n) => n.trim().slice(0, 40)).filter(Boolean).slice(0, 12),
+      // a shop's form has no Service card: what those settings held is left as it is
+      ...(ctx.mode === "retail"
+        ? {}
+        : {
+            servicePct: int(f, "servicePct", 0, 30, 0),
+            prepMinutes: int(f, "prepMinutes", 1, 180, 15),
+            kitchenSound: on(f, "kitchenSound"),
+            kitchenNotes: String(f.get("kitchenNotes") ?? "").split("\n").map((n) => n.trim().slice(0, 40)).filter(Boolean).slice(0, 12),
+          }),
     });
     return "Settings saved. The tills pick them up the next time they sync.";
   });
@@ -132,8 +137,10 @@ async function saveDining(f: FormData) {
 
 export default async function SettingsPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
-  const tab = one(sp.tab) === "payments" ? "payments" : one(sp.tab) === "orders" ? "orders" : "general";
   const ctx = await tenantContext();
+  const shop = ctx.mode === "retail";
+  // a shop has no order types: its address for that tab shows General
+  const tab = one(sp.tab) === "payments" ? "payments" : one(sp.tab) === "orders" && !shop ? "orders" : "general";
   const data = await readTenant(ctx.tenantId, async (c) => ({
     settings: await loadSettings(c, ctx.tenantId),
     payments: (
@@ -159,7 +166,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
       <div className="tabs">
         <Link href={PATH} className={tab === "general" ? "on" : undefined}>General<Wait /></Link>
         <Link href={PATH + "?tab=payments"} className={tab === "payments" ? "on" : undefined}>Payment options<Wait /></Link>
-        <Link href={PATH + "?tab=orders"} className={tab === "orders" ? "on" : undefined}>Order types and kitchen<Wait /></Link>
+        {!shop && <Link href={PATH + "?tab=orders"} className={tab === "orders" ? "on" : undefined}>Order types and kitchen<Wait /></Link>}
       </div>
 
       {tab === "general" && (
@@ -225,6 +232,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
               </div>
             </div>
           </Card>
+          {!shop && (
           <Card title="Service">
             <div className="setting">
               <div>
@@ -263,6 +271,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
               </label>
             </div>
           </Card>
+          )}
           <Card title="Security">
             <div className="setting">
               <div>
