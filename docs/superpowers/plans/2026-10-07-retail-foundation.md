@@ -964,7 +964,7 @@ Expected: every line `PASS`, last line `STOCK SALES PASS`.
 Create `$SCRATCH/carried.cjs` (scratchpad, not the repo):
 
 ```js
-const { Client } = require('pg');
+const { Client } = require('C:/Projects/RestoPOS/node_modules/pg');
 const devguard = require('C:/Projects/RestoPOS/db/tests/require-dev.cjs');
 (async () => {
   const c = new Client({ connectionString: devguard.envMap().DATABASE_URL_UNPOOLED, ssl: { require: true } });
@@ -996,6 +996,29 @@ for s in pos-operations refund-order-line refund-shares refund-snapshots receipt
 Expected: every line `ok`. For any `FAIL`, read `$SCRATCH/<name>.log`. `pos-operations` check `T8` is the one that watches stock: it must show `PASS T8 selling 3 of a counted item takes 3 from its stock` and `PASS T8 refunding 1 puts 1 back` with no change to that test file.
 
 Do not edit an existing test to make it pass. If one fails, the migration is wrong: fix it in a new file `0069_…sql` (0068 is applied and is not edited).
+
+Run the suites one at a time, and only while nothing else is running suites on the same dev database. Two suites at once disturb each other. That was seen twice on 2026-10-07: a suite started by hand while the loop was running failed in its setup, and `refund-shares` reported `retry:transient` on two refunds in the minutes another session was running its own suites. How they collide was not established (each suite's cleanup switches triggers off on the receipt tables inside a transaction, which is one candidate). Before blaming a migration for a `retry:transient`, run that suite alone.
+
+---
+
+## What happened when this plan was run (2026-10-07)
+
+- Parts A and B were built as written, with these differences:
+  - **One more suite, `db/tests/stock-locks.test.cjs`** (two connections). It holds the engine to its lock order: a sale already holding the tenant's lock and a back office change that begins with stock both go through. It passed without any change to the engine: `stock_level_for`'s insert fires `touch_row` even when the level exists, so the tenant's lock is always reached before a level. No migration 0069 was needed.
+  - `web/app/backoffice/nav.ts` still held another session's uncommitted Point of sale group. Only this plan's own changes to that file were committed (`git apply --cached` of a patch of them alone).
+- `refund-shares` failed once in the first full run (`retry:transient` on two refunds) and passed three times alone. Another session committed and ran its own suites on dev in those same minutes.
+- The menu in both modes was read from the server's HTML of the temporary page (the browser tab moved on to the sign-in screen by itself; the cause was not looked into).
+- Checked afterwards: "delete all transactions" (`purge_transactions`) deletes stock movements and leaves both `items.stock_qty` and `stock_levels` as they are, so the two stay in step after a purge. Migration 0064 (another session's, applied on dev, not committed) does not redefine the two functions 0068 was built from.
+
+**Not seen by anyone yet:** the two admin pages, and every retail back office page except the menu. They type-check and build; nobody has opened them signed in.
+
+**Left for later pieces, found while building:**
+
+- The item panel (`items/editor.tsx`) still offers add-ons to a shop.
+- The search (`/backoffice/search`) still returns tables for a shop; the link leads to "not found".
+- `stock_count_item` sets an item's total over all shops and variants and writes the difference on the first shop's plain level. That is right while an item has one level, as restaurants do. Piece 3 counts per level.
+- A client switched to retail still gets the restaurant screens on its till until piece 4 (the sell screen and the "update required" gate). Do not switch a client that is trading.
+- Production needs migrations 0064 to 0068 in that order; 0064 is not in git.
 
 - [ ] **Step 11: Commit**
 
@@ -1065,7 +1088,7 @@ async function change(f: FormData) {
 
 - [ ] **Step 2: Type-check**
 
-Run: `npx tsc --noEmit -p web`
+Run from `web/` (TypeScript is installed there, not at the root): `npx tsc --noEmit`
 Expected: no output, exit code 0.
 
 - [ ] **Step 3: Commit**
@@ -1161,7 +1184,7 @@ export async function onlyFor(mode: Mode): Promise<TenantContext> {
 
 - [ ] **Step 3: Type-check**
 
-Run: `npx tsc --noEmit -p web`
+Run from `web/` (TypeScript is installed there, not at the root): `npx tsc --noEmit`
 Expected: no output, exit code 0.
 
 - [ ] **Step 4: Commit**
@@ -1379,7 +1402,7 @@ to
 
 - [ ] **Step 5: Type-check**
 
-Run: `npx tsc --noEmit -p web`
+Run from `web/` (TypeScript is installed there, not at the root): `npx tsc --noEmit`
 Expected: no output, exit code 0. An error naming `PAGES` or `GROUPS` means a use of the old name was missed: `grep -rn "PAGES\|GROUPS" web/app/backoffice --include=*.tsx --include=*.ts` (the `GROUPS` in `roles/page.tsx` is that page's own list and stays).
 
 - [ ] **Step 6: Commit**
@@ -1699,7 +1722,7 @@ and that section's closing `</section>` (the last one before the `</>` that ends
 
 - [ ] **Step 6: Type-check and build**
 
-Run: `npx tsc --noEmit -p web`
+Run from `web/` (TypeScript is installed there, not at the root): `npx tsc --noEmit`
 Expected: no output, exit code 0.
 
 Run (the build's output goes to a file; piped into `head` it is cut short): `cd web && npx next build > "$SCRATCH/build.log" 2>&1; echo "exit $?"; cd ..`
@@ -1875,7 +1898,7 @@ Straight before `<h2>Plan and status</h2>`, add:
 
 - [ ] **Step 4: Type-check**
 
-Run: `npx tsc --noEmit -p web`
+Run from `web/` (TypeScript is installed there, not at the root): `npx tsc --noEmit`
 Expected: no output, exit code 0.
 
 - [ ] **Step 5: Commit**
