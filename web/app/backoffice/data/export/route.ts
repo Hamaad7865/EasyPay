@@ -10,7 +10,7 @@ const TABLES = [
   "tickets", "ticket_lines", "ticket_line_modifiers", "receipts", "receipt_lines", "receipt_line_modifiers",
   "receipt_line_taxes", "receipt_payments", "receipt_discounts", "payment_corrections", "shifts",
   "timeclock_punches", "cash_movements", "drawer_counts", "day_closes", "approvals", "bookings", "stock_movements", "stock_levels",
-  "purchase_orders", "purchase_order_lines", "deliveries", "delivery_lines",
+  "purchase_orders", "purchase_order_lines", "deliveries", "delivery_lines", "stock_counts", "stock_count_lines",
 ];
 
 export async function GET() {
