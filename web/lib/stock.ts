@@ -34,6 +34,56 @@ export function stockTotals(lines: StockLine[]) {
   return t;
 }
 
+// ---- the stock reports ----
+
+// Stock value split by one of its names (a category, a supplier): how many
+// lines, how many units, and what they are worth at cost and at shelf price.
+// The same sum per line as stockTotals, so the rows add up to its totals.
+export function valueBy<T extends StockLine>(lines: T[], key: (l: T) => string | null, none: string) {
+  const rows = new Map<string, { name: string; lines: number; units: number; atCost: number; atPrice: number }>();
+  for (const l of lines) {
+    const name = key(l) ?? none;
+    const r = rows.get(name) ?? { name, lines: 0, units: 0, atCost: 0, atPrice: 0 };
+    r.lines += 1;
+    r.units += l.qty;
+    r.atCost += lineValue(l.qty, l.avgCost);
+    r.atPrice += lineValue(l.qty, l.price);
+    rows.set(name, r);
+  }
+  return [...rows.values()].sort((a, b) => b.atCost - a.atCost || a.name.localeCompare(b.name));
+}
+
+// On the reorder list: the line was given a reorder point and holds that or
+// less. The rule "Add what is low" uses on a purchase order (po_fill_low).
+export const isLow = (qty: number, reorderPoint: number | null) => reorderPoint !== null && qty <= reorderPoint;
+
+// How many to order, as po_fill_low works it out: what the line says to
+// order, or else what is missing to its reorder point, and one at least.
+export const suggestedQty = (qty: number, reorderPoint: number, reorderQty: number | null) =>
+  reorderQty !== null && reorderQty !== 0 ? reorderQty : Math.max(reorderPoint - qty, 1000);
+
+export type ReorderLine = StockLine & { name: string; supplierId: string | null; supplier: string | null; reorderQty: number | null };
+
+// The low lines, by supplier (those with no supplier last), each with how
+// many to order and what the order would cost at the line's average cost.
+export function reorderList<T extends ReorderLine>(lines: T[]) {
+  const groups = new Map<string, { supplierId: string | null; supplier: string | null; lines: (T & { order: number })[]; units: number; atCost: number }>();
+  for (const l of lines) {
+    if (l.reorderPoint === null || !isLow(l.qty, l.reorderPoint)) continue;
+    const order = suggestedQty(l.qty, l.reorderPoint, l.reorderQty);
+    const g = groups.get(l.supplierId ?? "") ?? { supplierId: l.supplierId, supplier: l.supplier, lines: [], units: 0, atCost: 0 };
+    g.lines.push({ ...l, order });
+    g.units += order;
+    g.atCost += lineValue(order, l.avgCost);
+    groups.set(l.supplierId ?? "", g);
+  }
+  for (const g of groups.values()) g.lines.sort((a, b) => a.name.localeCompare(b.name));
+  return [...groups.values()].sort((a, b) => (a.supplier === null ? 1 : 0) - (b.supplier === null ? 1 : 0) || (a.supplier ?? "").localeCompare(b.supplier ?? ""));
+}
+
+// Profit as a share of sales (both without VAT). Null when there are no sales to divide by.
+export const margin = (sales: number, cost: number): number | null => (sales > 0 ? (sales - cost) / sales : null);
+
 // The reasons stock is adjusted by hand, in the order the form offers them.
 // The reason decides the direction: stock is added, with its cost, by
 // receiving a delivery.

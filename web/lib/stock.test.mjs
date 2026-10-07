@@ -1,7 +1,7 @@
 // stock.test.mjs — a shop's stock in words and figures (web/lib/stock.ts).
 // Usage: node web/lib/stock.test.mjs   (Node runs the .ts file itself)
 import assert from "node:assert/strict";
-import { ADJUST_REASONS, adjustProblem, lineValue, MOVE_LABEL, stockStatus, stockTotals, units } from "./stock.ts";
+import { ADJUST_REASONS, adjustProblem, isLow, lineValue, margin, MOVE_LABEL, reorderList, stockStatus, stockTotals, suggestedQty, units, valueBy } from "./stock.ts";
 
 let failures = 0;
 function check(name, fn) {
@@ -77,6 +77,53 @@ check("a refusal from the database becomes a sentence the owner can act on", () 
   assert.match(adjustProblem("pick-variant", "0"), /variant/);
   assert.match(adjustProblem("not-counted", "0"), /not counted/);
   assert.equal(adjustProblem("something else", "0"), null);
+});
+
+// ---- the stock reports ----
+const shelf = [
+  { name: "Shirt", cat: "Clothing", sup: "s1", supName: "Textiles", qty: 12000, avgCost: 62000, price: 99000, reorderPoint: 6000, reorderQty: 24000 },
+  { name: "Scarf", cat: "Clothing", sup: "s1", supName: "Textiles", qty: 2500, avgCost: 13333.3333, price: 30000, reorderPoint: 3000, reorderQty: null },
+  { name: "Candle", cat: "Home", sup: null, supName: null, qty: -2000, avgCost: 21000, price: 45000, reorderPoint: 0, reorderQty: 0 },
+  { name: "Mug", cat: null, sup: "s2", supName: "Atelier", qty: 0, avgCost: 14000, price: 25000, reorderPoint: null, reorderQty: null },
+];
+check("stock value by category adds up to the totals of Stock on hand, a line below zero included", () => {
+  const rows = valueBy(shelf, (l) => l.cat, "No category");
+  const all = stockTotals(shelf);
+  assert.equal(rows.reduce((a, r) => a + r.atCost, 0), all.atCost);
+  assert.equal(rows.reduce((a, r) => a + r.atPrice, 0), all.atPrice);
+  assert.deepEqual(rows.map((r) => r.name), ["Clothing", "No category", "Home"]);
+  // 12 at Rs 620 and 2.5 at Rs 133.33
+  assert.deepEqual(rows[0], { name: "Clothing", lines: 2, units: 14500, atCost: 744000 + 33333, atPrice: 1188000 + 75000 });
+  assert.equal(rows[2].atCost, -42000);
+});
+check("a line is on the reorder list when it has a reorder point and holds that or less", () => {
+  assert.equal(isLow(6000, 6000), true);
+  assert.equal(isLow(6001, 6000), false);
+  assert.equal(isLow(-2000, 0), true);
+  // out, but nobody said when to reorder it
+  assert.equal(isLow(0, null), false);
+});
+check("how many to order: what the line says, or what is missing, and one at least", () => {
+  assert.equal(suggestedQty(2500, 3000, null), 1000);
+  assert.equal(suggestedQty(2500, 3000, 0), 1000);
+  assert.equal(suggestedQty(1000, 6000, null), 5000);
+  assert.equal(suggestedQty(1000, 6000, 24000), 24000);
+  assert.equal(suggestedQty(-2000, 0, 0), 2000);
+});
+check("the reorder list is by supplier, the lines with no supplier last", () => {
+  const list = reorderList(shelf.map((l) => ({ ...l, supplierId: l.sup, supplier: l.supName })));
+  assert.deepEqual(list.map((g) => [g.supplier, g.lines.map((l) => l.name + ":" + l.order)]), [
+    ["Textiles", ["Scarf:1000"]],
+    [null, ["Candle:2000"]],
+  ]);
+  // one scarf at its average cost, to the cent
+  assert.equal(list[0].atCost, 13333);
+  assert.equal(list[0].units, 1000);
+});
+check("margin is profit over sales, and nothing when there are no sales to divide by", () => {
+  assert.equal(margin(100000, 62000), 0.38);
+  assert.equal(margin(0, 0), null);
+  assert.equal(margin(-5000, -3000), null);
 });
 
 process.exitCode = failures ? 1 : 0;
