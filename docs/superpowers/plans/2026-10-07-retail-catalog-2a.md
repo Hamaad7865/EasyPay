@@ -122,12 +122,22 @@ Step 2a was built as written. Step 2b (labels, CSV) was built straight after, wi
 
 **Seen and not seen:** the label picker was opened on a temporary page with sample lines (preview label with bars, the no-barcode and not-EAN-13 notes, both layouts). No label was printed on paper. Suppliers, the product page, the list for a shop, the import screen and the export were not opened by anyone: they need a login.
 
+**Two faults in the import, found in review the same evening and fixed in `0072_catalog_import_fixes.sql`** (each is a check in `catalog-import` now, seen failing first): opening stock was given again to a line whose movements had been deleted while its quantity was still there (import, delete all transactions, import again doubled it); and a product with lines took its price from the file's first row, re-pricing lines the file never named. The import screen also recovers when a request fails outright.
+
+**Where the build differs from the approved design, for the user to settle:**
+
+- **The import finds an existing product by its name, not by its SKU** as the design says. Two products with the same name (the same "T-shirt" from two brands) would be taken for one, and a file's lines could land on the wrong one. The fix is to find a line by its SKU or barcode first and fall back to the name; it means regrouping the function's rules by the product found, and was not rushed in at the end of the evening.
+- **EasyPay's own barcodes start with 200.** 20 to 29 is the range for codes that stay in the shop, and it is also where many scales print labels with the weight or price inside. Kids Corner chose a prefix outside it. The prefix is per client (`barcode_counters.prefix`) but nothing on screen changes it yet. It costs nothing to change until labels are printed and stuck on goods, so it should be decided before a shop prints.
+
 **Left for later, found while building:**
 
 - A shop's products are still one item each to the till; variants reach it with the sell screen (piece 4).
 - The labels page is reached from the products list and from a product; it is not in the menu (its address sits under Products, and both would light up).
 - The import matches an existing product by its name. Two products with the same name cannot be told apart by a file.
 - A product's page loses what was typed when a save is refused (the page is drawn again from the database).
+- A change of a variant's price, on the product page or by import, leaves no record: migration 0061 writes down price changes of items only.
+- The import makes every new product a counted one. A service or a bag fee brought in by file has to be unticked on its page.
+- Production needs migrations 0064 to 0072.
 
 ### Task 6: see it
 
