@@ -75,3 +75,32 @@ One file. `stock_counts` (`store_id`, `number`, `scope_kind` all, category, supp
 
 ### Task 5: see it
 - [ ] Every suite, one at a time; build; the record at the end of this file.
+
+---
+
+## What happened when this plan was run (2026-10-08)
+
+Built as written, with the differences below. Commits `780cf84` to `9d4d93b` on `restopos`, dev only, not pushed.
+
+**As built:**
+
+- Migration `0075_stock_counts.sql` and `db/tests/stock-counts.test.cjs` (37 checks). The suite is one transaction, in which `now()` does not move: its deliveries are dated two hours back and its first counted lines one hour back, so "after it was counted" means something. `count_add` stamps a line with the clock's own time for the same reason.
+- `web/lib/counts.ts` with its node test.
+- `/backoffice/stock-counts` (New count, of the whole shop or one category, supplier or brand that has lines of stock; the counts, with how far each is and what a completed one changed) and `/backoffice/stock-counts/<id>` (the scan box beside the review while it is open; a report that prints once completed). The Stock group has Counts, with how many are being counted; Stock on hand has "New count".
+
+**Different from the plan:**
+
+- **Migration `0076_count_scan_puts_back.sql`.** A line left out and then scanned stayed left out: completing would have thrown the scan away without a word. Counting a line now puts it back. Found by reading the page back; two checks in the suite, failing first.
+- **The review is asked for a moment after the last scan, not after each one**, so a run of scans is one page drawn again and not one per scan. What was just counted shows at once in "Last counted".
+- **A scan that was not counted stays on the screen until it is cleared** (the last five): in a run of scans, one wrong code is easy to miss.
+- **A cancelled count shows only what was counted.** It applied nothing, and what its lines "should" hold would be today's stock, which says nothing about that day.
+- **The review draws the first 300 lines of the view picked**, and says how many there are. Counting does not need a line to be on the page.
+- The scan box reads the field itself when Enter arrives, not what the page last drew: a scanner types faster than the page.
+
+**Seen and not seen.** Every suite that is safe on dev, one at a time: 41 pass, none fail (`stock-counts` 37, `purchase-orders` 45, `stock-adjust` 31, `stock-engine`, `stock-sales`, `stock-locks`, `pos-operations`, `isolation` among them). The pure checks under node, the type-check and a production build are clean. Every query of the two pages and of the two counting actions was planned against dev. Drawn to HTML from sample rows: the list (with everything, without costs or counting, empty, for someone who may not see stock) and a count (open for someone who counts and sees costs, without costs, for someone who may only see stock, with nothing counted, showing the lines not counted; completed; cancelled; not there; no rights). **The scan box was used in a real browser** on a temporary page with sample lines and stand-in actions (deleted afterwards): three scans of one barcode make 3; a SKU is taken as a code; a code no product has stays under "Not counted" until cleared; a name with one match asks how many and Enter sets it; a name with two matches offers both; letters where a quantity belongs hold the save back; 2.5 is two and a half; five scans drew the page again once. **Nobody has run a count signed in**: starting one, scanning with a real scanner, two people on two devices, completing, printing. The two counting actions themselves were not run; what they call (`count_add`) is what the suite runs.
+
+**To watch, and left for later:**
+
+- A sale that reaches the server after the count was completed is not seen by it (as decided above): complete a count once the tills have synced.
+- A whole shop of several thousand lines has not been timed. The review asks, for every counted line, what moved since it was counted; the index on a product's movements by date (`idx_stock_movements_item`) serves that, but the page is drawn again after every run of scans.
+- Production needs migrations 0064 to 0076.
