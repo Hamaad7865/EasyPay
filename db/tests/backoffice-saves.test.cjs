@@ -58,6 +58,9 @@ function lib(name) {
     check('P2 nothing, a sign or a dot alone is not a price', reads(empty), got(empty));
     const fine = [['12.345', null], ['0.001', null]];
     check('P2 a third decimal is refused, not rounded', reads(fine), got(fine));
+    // "12,50" is twelve rupees fifty to someone who writes prices the French way: read as Rs 1,250 it is a hundred times too much
+    const commas = [['12,50', null], ['1,2', null], ['1,25', null], [',5', null], ['1,,250', null], ['12,500', 1250000], ['1,250,000.5', 125000050]];
+    check('P3 a comma only goes between thousands', reads(commas), got(commas));
   }
 
   const env = devguard.envMap();
