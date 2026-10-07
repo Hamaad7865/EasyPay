@@ -176,6 +176,11 @@ export function ItemsTable({
         </label>
         <Seg t={t} name="status" label="Show" options={STATUS} />
         <span className="spacer" />
+        {shop && (
+          <button type="button" className="btn-quiet btn-sm" onClick={() => router.push("/backoffice/items/labels")}>
+            Barcode labels
+          </button>
+        )}
         <button type="button" className="btn-quiet btn-sm" onClick={csv} title="The list as it is shown, as a file for a spreadsheet">
           <Download aria-hidden="true" />
           Download CSV

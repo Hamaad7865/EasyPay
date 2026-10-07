@@ -283,6 +283,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
         }
       >
         <Link href={PATH} className="btn btn-quiet">Back to products</Link>
+        {item && <Link href={`${PATH}/labels?product=${item.id}`} className="btn btn-quiet">Print labels</Link>}
         <Submit form="product">{item ? "Save" : "Save product"}</Submit>
       </PageHead>
       <Flash sp={sp} />
