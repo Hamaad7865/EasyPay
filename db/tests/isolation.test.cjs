@@ -19,8 +19,8 @@ function loadEnv(file) {
 }
 
 let failures = 0;
-function check(name, cond) {
-  console.log((cond ? 'PASS ' : 'FAIL ') + name);
+function check(name, cond, extra) {
+  console.log((cond ? 'PASS ' : 'FAIL ') + name + (extra !== undefined ? ' ' + extra : ''));
   if (!cond) failures++;
 }
 
@@ -55,9 +55,12 @@ async function main() {
   await c.query(`insert into categories (tenant_id, name) values ('${b}','Cat B')`);
   await c.query('COMMIT');
 
-  // server_seq stamped?
-  const seq = await c.query(`select count(*)::int as n from categories where server_seq is null`);
-  check('server_seq stamped by touch_row', seq.rows[0].n === 0);
+  // server_seq stamped? Asked as the owner: app_user with no tenant context
+  // sees no rows at all, and a count of nothing would pass whatever happened.
+  await c.query('RESET ROLE');
+  const seq = await c.query(`select count(*)::int as n, count(server_seq)::int as stamped from categories where tenant_id in ('${a}','${b}')`);
+  await c.query('SET ROLE app_user');
+  check('server_seq stamped by touch_row', seq.rows[0].n === 2 && seq.rows[0].stamped === 2, `rows seen ${seq.rows[0].n} of 2, stamped ${seq.rows[0].stamped}`);
 
   // As A: sees only A.
   await c.query('BEGIN');
