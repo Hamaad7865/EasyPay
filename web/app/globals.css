@@ -1113,3 +1113,116 @@ button[aria-busy="true"]::after {
   .sk-page, .sk::before, .sk-box { animation: none; }
   .bo-main a:has(> .wait[data-on]) { animation: none; opacity: 0.6; }
 }
+
+/* ---- EasyPay admin (/admin) ----
+   Where EasyPay itself creates restaurants and their logins. The backdrop,
+   the panels and the buttons are the back office's. In place of the menu
+   there is one bar across the top: there are two pages here, not forty. The
+   pages sit in .bo-main, so their tables, fields and buttons are the same
+   ones; what follows is the bar and the few pieces only these pages have. */
+.adm { display: block; padding: 14px 14px 0; }
+.adm-bar {
+  position: sticky; top: 14px; z-index: 6; max-width: 1280px; height: 60px; margin: 0 auto; padding: 0 12px 0 18px;
+  display: flex; align-items: center; gap: 16px;
+  background: var(--glass); -webkit-backdrop-filter: blur(22px) saturate(1.3); backdrop-filter: blur(22px) saturate(1.3);
+  border: 1px solid var(--glass-line); border-radius: 999px; box-shadow: var(--shadow-sm);
+}
+.adm-brand { display: flex; align-items: center; gap: 10px; flex: none; color: var(--ink); font-size: 17px; font-weight: 800; letter-spacing: -0.01em; text-decoration: none; }
+.adm-brand img { height: 32px; width: auto; display: block; }
+.adm-brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
+/* which EasyPay this is: not a restaurant's own back office */
+.adm-tag { padding: 4px 9px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 10.5px; font-weight: 600; line-height: 1; letter-spacing: 0.08em; text-transform: uppercase; }
+.adm-nav { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.adm-nav a {
+  display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px;
+  color: var(--ink2); font-size: 13.5px; font-weight: 500; text-decoration: none; white-space: nowrap;
+  transition: background-color 0.15s, color 0.15s, box-shadow 0.2s;
+}
+.adm-nav a svg { width: 16px; height: 16px; flex: none; }
+.adm-nav a:hover { background: rgba(255, 255, 255, 0.66); color: var(--ink); }
+/* the page that is open: the white pill of the back office's menu */
+.adm-nav a.on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.06), 0 8px 18px -10px rgba(22, 28, 45, 0.28); }
+.adm-nav a.on svg { color: var(--accent); }
+.adm-nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.adm-nav a:has(> .wait[data-on]) { cursor: progress; animation: wait-breathe 1.1s ease-in-out 0.12s infinite; }
+/* who is signed in, at the end of the bar: the menu's card without its own outline */
+.adm-user { flex: 0 1 auto; max-width: 300px; margin: 0 0 0 auto; padding: 0; border: 0; background: none; }
+.adm-main { max-width: 1280px; margin: 0 auto; padding: 30px 18px 72px; }
+
+/* several short fields side by side: four across, then two, then one */
+.adm-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 20px; padding-bottom: 4px; }
+.adm-fields .field { max-width: none; }
+.adm-main .card-body:not(.adm-fields) > .field:last-child { margin-bottom: 0; }
+.field > .seg { display: flex; width: max-content; max-width: 100%; margin-top: 6px; }
+.field > .seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+.field > .pw-field { margin-top: 6px; font-weight: 400; }
+/* a password that will be read out to its owner: the eye shows what was typed (admin/password.tsx) */
+.bo-main .pw-field input { width: 100%; padding-right: 40px !important; }
+.bo-main button.pw-eye { position: absolute; top: 3px; right: 3px; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ink3); box-shadow: none; }
+.bo-main button.pw-eye:hover { background: var(--bg); color: var(--ink); }
+.pw-field.inline { display: inline-block; width: 230px; }
+/* a line of fields that add to the list under it: the boxes share the line, the button follows */
+.adm-add > input, .adm-add > .pw-field { flex: 1 1 200px; }
+
+/* the list of restaurants: what kind it is, its name, and the id its owner quotes */
+.adm-who { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.bo-main a.adm-name { color: var(--ink); font-weight: 600; }
+.bo-main a.adm-name:hover { color: var(--accent); text-decoration: none; }
+/* a table too wide for a narrow window moves sideways inside its card; its columns are not squeezed */
+.adm-scroll { overflow-x: auto; }
+.adm-scroll > table { min-width: 620px; }
+.adm-scroll.wide > table { min-width: 940px; }
+.adm-nowrap td { white-space: nowrap; }
+
+/* one restaurant's page: what it has on the left, what it is on the right */
+.adm-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 4px; }
+.bo-main .adm-title h1 { margin: 0; }
+.adm-cols { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+/* a store's name, above its tills */
+.bo-main tr.adm-group td, .bo-main tbody tr.adm-group:hover td { padding-top: 9px; padding-bottom: 9px; background: #fafbfc; font-weight: 600; }
+.adm-group .chip { margin-left: 8px; }
+.bo-main .adm-note { margin: 0; padding: 12px 20px; border-top: 1px solid var(--line); color: var(--ink3); font-size: 12.5px; }
+.adm-part + .adm-part { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+.adm-part > strong { display: block; margin-bottom: 8px; font-size: 13.5px; }
+.adm-part > .help { margin: -4px 0 10px; }
+/* what an admin did here, newest first: when, what, who */
+.adm-log { list-style: none; margin: 0; padding: 2px 20px; }
+.adm-log li { display: grid; grid-template-columns: 168px minmax(0, 1fr) auto; gap: 2px 16px; align-items: baseline; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.adm-log li:last-child { border-bottom: 0; }
+.adm-log time, .adm-log small { color: var(--ink3); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.adm-log span { color: var(--ink2); }
+.adm-log b { color: var(--ink); font-weight: 600; }
+
+/* a crash: the line says what stopped the till, and opens on where */
+.bo-main .adm-top td { vertical-align: top; }
+.adm-crash summary { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-weight: 600; word-break: break-word; }
+.adm-crash summary svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: var(--ink3); transition: transform 0.12s; }
+.adm-crash[open] summary svg { transform: rotate(90deg); color: var(--accent); }
+.adm-crash summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.adm-crash .sub { margin: 6px 0 0 24px; }
+.adm-trace {
+  margin: 8px 0 4px 24px; padding: 12px 14px; max-height: 360px; overflow: auto;
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--ink2);
+  font: 12px/1.55 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; word-break: break-all;
+}
+
+@media (max-width: 1000px) {
+  .adm-main { padding: 22px 6px 48px; }
+  .adm-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .adm-cols { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .adm { padding: 10px 10px 0; }
+  .adm-bar { top: 10px; gap: 8px; padding: 0 6px 0 12px; }
+  /* the bar keeps the mark, the tag, the two pages and the way out */
+  .adm-brand > span:not(.adm-tag), .adm-nav a svg, .adm-bar .adm-user > span { display: none; }
+  .adm-nav a { padding: 0 11px; }
+  .adm-fields { grid-template-columns: 1fr; }
+  .adm-log li { grid-template-columns: 1fr; }
+  .adm-main .card-head { flex-wrap: wrap; }
+}
+@media print { .adm-bar { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .adm-nav a { transition: none; }
+  .adm-nav a:has(> .wait[data-on]) { animation: none; opacity: 0.6; }
+}

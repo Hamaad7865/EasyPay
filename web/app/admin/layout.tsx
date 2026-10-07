@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/server";
 import { requirePlatformAdmin } from "@/lib/platform";
+import { AdminShell } from "./shell";
 
 export const metadata: Metadata = { title: "EasyPay admin" };
 
@@ -16,17 +16,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect("/login");
   }
   return (
-    <div style={{ fontFamily: "system-ui" }}>
-      <nav style={{ display: "flex", gap: 16, padding: 12, borderBottom: "1px solid #ccc", alignItems: "center" }}>
-        <strong>EasyPay admin</strong>
-        <Link href="/admin">Restaurants</Link>
-        <Link href="/admin/crashes">Crashes</Link>
-        <span style={{ marginLeft: "auto" }}>{admin.email}</span>
-        <form action={signOut}>
-          <button type="submit">Sign out</button>
-        </form>
-      </nav>
-      <div style={{ padding: 16, maxWidth: 1100 }}>{children}</div>
-    </div>
+    <AdminShell email={admin.email} signOut={signOut}>
+      {children}
+    </AdminShell>
   );
 }

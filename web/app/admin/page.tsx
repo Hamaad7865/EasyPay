@@ -1,23 +1,10 @@
-import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { BUSINESS_TYPES, PLANS, adminMessage, requirePlatformAdmin } from "@/lib/platform";
+import { adminMessage, requirePlatformAdmin } from "@/lib/platform";
 import { loginForRestaurant, passwordProblem, removeLogin } from "@/lib/platform-auth";
-
-type TenantRow = {
-  id: string;
-  name: string;
-  business_type: string;
-  plan: string;
-  status: string;
-  status_reason: string | null;
-  created_at: string;
-  stores: number;
-  logins: number;
-  devices: number;
-  last_sale: string | null;
-};
+import { one, type Search, startOf } from "../backoffice/ui";
+import { AdminHome, type TenantRow } from "./view";
 
 const fail = (message: string): never => redirect(`/admin?error=${encodeURIComponent(message)}`);
 
@@ -74,11 +61,7 @@ async function createTenant(formData: FormData) {
     )}`);
 }
 
-export default async function AdminHome({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string; notice?: string }>;
-}) {
+export default async function AdminHomePage({ searchParams }: { searchParams: Search }) {
   await requirePlatformAdmin();
   const sp = await searchParams;
   const tenants = await db()
@@ -94,85 +77,14 @@ export default async function AdminHome({
         order by t.created_at desc`,
     )
     .then((r) => r.rows as TenantRow[]);
-  const suspended = tenants.filter((t) => t.status !== "active").length;
   return (
-    <div>
-      <h1>Restaurants</h1>
-      {sp.error && <p style={{ color: "#8a1c1c" }}>{sp.error}</p>}
-      {sp.notice && <p style={{ color: "#1c6b2a" }}>{sp.notice}</p>}
-      <p>
-        {tenants.length} in total{suspended > 0 ? `, ${suspended} suspended` : ""}.
-      </p>
-
-      <h2>New restaurant</h2>
-      <form action={createTenant} style={{ display: "grid", gap: 8, maxWidth: 420 }}>
-        <input name="tenant" placeholder="Restaurant name" required />
-        <input name="store" placeholder="First store" defaultValue="Main store" required />
-        <input name="code" placeholder="Store code" defaultValue="S1" required />
-        <input name="ownerName" placeholder="Owner's name" required />
-        <input name="email" type="email" placeholder="Owner's email (their login)" required autoComplete="off" />
-        <input
-          name="password"
-          type="password"
-          placeholder="Initial password (8 characters or more)"
-          required
-          minLength={8}
-          autoComplete="new-password"
-        />
-        <select name="plan" defaultValue="standard">
-          {PLANS.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
-        <select name="type" defaultValue="restaurant" aria-label="Business type">
-          {BUSINESS_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-        <button type="submit">Create restaurant and owner login</button>
-      </form>
-
-      <h2>All restaurants</h2>
-      <table cellPadding={6} style={{ borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-            <th>Restaurant</th>
-            <th>Type</th>
-            <th>Plan</th>
-            <th>Status</th>
-            <th>Stores</th>
-            <th>Logins</th>
-            <th>Tills</th>
-            <th>Last sale</th>
-            <th>Created</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tenants.map((t) => (
-            <tr key={t.id} style={{ borderBottom: "1px solid #eee" }}>
-              <td>
-                <Link href={`/admin/tenants/${t.id}`}>{t.name}</Link>
-              </td>
-              <td>{t.business_type}</td>
-              <td>{t.plan}</td>
-              <td style={{ color: t.status === "active" ? undefined : "#8a1c1c" }}>
-                {t.status}
-                {t.status_reason ? ` (${t.status_reason})` : ""}
-              </td>
-              <td>{t.stores}</td>
-              <td>{t.logins}</td>
-              <td>{t.devices}</td>
-              <td>{t.last_sale ? new Date(t.last_sale).toLocaleDateString() : "never"}</td>
-              <td>{new Date(t.created_at).toLocaleDateString()}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {tenants.length === 0 && <p>No restaurants yet. Create the first one above.</p>}
-    </div>
+    <AdminHome
+      tenants={tenants}
+      // what the list was last asked for: its words, filters and sort are kept in the address
+      start={startOf(sp, "q", "status", "type", "sort")}
+      error={one(sp.error) || undefined}
+      notice={one(sp.notice) || undefined}
+      createTenant={createTenant}
+    />
   );
 }
