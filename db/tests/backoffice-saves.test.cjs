@@ -29,6 +29,20 @@ function lib(name) {
 
 (async () => {
   const saves = lib('saves');
+
+  // ---- the kitchen notes a restaurant saved (no database) ----
+  {
+    const s = lib('settings');
+    const usual = s.DEFAULT_SETTINGS.kitchenNotes.join('|');
+    const notes = (raw) => s.withDefaults(raw).kitchenNotes;
+    check('N1 a restaurant that never saved its notes is offered the usual five', usual.split('|').length === 5 && notes(null).join('|') === usual && notes({ decimals: 2 }).join('|') === usual);
+    check('N1 the notes saved are the notes offered, twelve at most', notes({ kitchenNotes: [' Sans piment ', '', 'Rush'] }).join('|') === 'Sans piment|Rush'
+      && notes({ kitchenNotes: Array.from({ length: 20 }, (_, i) => 'n' + i) }).length === 12);
+    check('N2 a list saved empty stays empty', notes({ kitchenNotes: [] }).length === 0 && notes({ kitchenNotes: ['', ' '] }).length === 0,
+      JSON.stringify(notes({ kitchenNotes: [] })));
+    check('N2 something that is not a list is the usual five', notes({ kitchenNotes: 'Rush' }).join('|') === usual && notes({ kitchenNotes: null }).join('|') === usual);
+  }
+
   const env = devguard.envMap();
   const c = new Client({ connectionString: env.DATABASE_URL_UNPOOLED, ssl: { require: true } });
   await c.connect();

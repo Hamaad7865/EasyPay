@@ -67,8 +67,9 @@ data class PosSettings(
                 phone = c.str("phone") ?: "",
                 quickPay = d.str("quickPay")?.takeIf { it == "cash" || it == "card" } ?: "card",
                 servicePct = runCatching { d["servicePct"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 0..30 } ?: 0,
+                // a list that was saved is the list, an empty one included: only a restaurant that never saved one is offered the usual five
                 kitchenNotes = runCatching { d["kitchenNotes"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf { n -> n.isNotEmpty() } } }
-                    .getOrNull()?.takeIf { it.isNotEmpty() }?.take(12) ?: DEFAULT_NOTES,
+                    .getOrNull()?.take(12) ?: DEFAULT_NOTES,
                 prepMinutes = runCatching { d["prepMinutes"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..180 } ?: 15,
                 lockMinutes = runCatching { d["lockMinutes"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 0..120 } ?: 0,
                 kitchenSound = d.bool("kitchenSound") ?: true,

@@ -453,7 +453,8 @@ private fun OptionsSheet(s: OptionSheet, notes: List<String>, vm: OrderViewModel
         }
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Caps("Kitchen note")
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // a restaurant with no notes to tick still has the line to type one on
+            if (notes.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 notes.forEach { n ->
                     val on = said.contains(n)
                     Box(

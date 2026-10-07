@@ -57,7 +57,8 @@ export function withDefaults(raw: unknown): PosSettings {
     dayCloseDetailed: d.dayCloseDetailed === false ? false : true,
     quickPay: d.quickPay === "cash" ? "cash" : "card",
     servicePct: typeof d.servicePct === "number" && d.servicePct >= 0 && d.servicePct <= 30 ? Math.round(d.servicePct) : 0,
-    kitchenNotes: Array.isArray(d.kitchenNotes) && d.kitchenNotes.some((n) => typeof n === "string" && n.trim())
+    // a list that was saved is the list, an empty one included: only a restaurant that never saved one is offered the usual five
+    kitchenNotes: Array.isArray(d.kitchenNotes)
       ? (d.kitchenNotes as unknown[]).filter((n): n is string => typeof n === "string" && n.trim() !== "").map((n) => n.trim()).slice(0, 12)
       : DEFAULT_SETTINGS.kitchenNotes,
     prepMinutes: typeof d.prepMinutes === "number" && d.prepMinutes >= 1 && d.prepMinutes <= 180 ? Math.round(d.prepMinutes) : 15,
