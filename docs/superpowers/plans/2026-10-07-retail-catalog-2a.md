@@ -103,6 +103,32 @@ One file, additive. In this order:
 - [ ] `search/route.ts`: for a shop, no tables; products are also found by a variant's SKU or barcode; a product hit opens its page. `search-box.tsx`: the group's label is Products for a shop.
 - [ ] Type-check, build (output to a file). Commit.
 
+---
+
+## What happened when this plan was run (2026-10-07), and step 2b
+
+Step 2a was built as written. Step 2b (labels, CSV) was built straight after, without a plan file of its own; this is its record.
+
+**2a, as built:** migration `0070_catalog.sql` and `db/tests/catalog.test.cjs` (37 checks); the Suppliers page; a shop's product on `/backoffice/items/<id>` (`items/[id]/page.tsx`, `price-fields.tsx`); the list and the search for a shop. One slip caught before commit: the list's panel opener was reused for page navigation, so a quick price save would have sent a shop to an empty product address; "open the panel" (`edit`) and "go to the product" (`open`) are now two helpers.
+
+**2b, as built:**
+
+- **Labels.** `web/lib/ean13.ts` (the bars, carried over from Kids Corner) with `ean13.test.mjs`, which decodes each symbol back into its digits. `/backoffice/items/labels` (`labels/page.tsx`, `picker.tsx`): how many of each line, a 40 x 30 mm roll or A4 sheets of 24 (63.5 x 33.9 mm), drawn in the browser and printed by the browser's own dialog. The sheet is portalled to the end of `<body>` so printing can hide everything else. A line with no barcode is given one there (`assign_barcodes`); a maker's code that is not EAN-13 or UPC-A prints as text.
+- **Import.** Migration `0071_catalog_import.sql` (`catalog_import`, one call, dry or real) and `db/tests/catalog-import.test.cjs` (17 checks). `web/lib/csv.ts` and `web/lib/catalog-rows.ts`, pure and tested under node (`csv.test.mjs`, `catalog-rows.test.mjs`). `/backoffice/items/import` (`import/page.tsx`, `importer.tsx`, `actions.ts`). `next.config.ts` raises the server action body limit to 8 MB for a 5,000-row file.
+- **Export.** `/backoffice/items/export` gives the importer's own columns back (`?template=1` for the header alone).
+- Node runs the `.ts` modules for those three tests itself: `node web/lib/<name>.test.mjs`. No test runner was added to `web/`.
+
+**A check that is worth keeping:** `db/scripts/prepare-web-sql.cjs` takes every SQL statement written as a plain template string in the given web files and asks the dev database to PREPARE it: parsed and planned against the real tables and functions, never run. All the statements of the new and changed pages passed. A page nobody can open without a login can still have its queries checked this way.
+
+**Seen and not seen:** the label picker was opened on a temporary page with sample lines (preview label with bars, the no-barcode and not-EAN-13 notes, both layouts). No label was printed on paper. Suppliers, the product page, the list for a shop, the import screen and the export were not opened by anyone: they need a login.
+
+**Left for later, found while building:**
+
+- A shop's products are still one item each to the till; variants reach it with the sell screen (piece 4).
+- The labels page is reached from the products list and from a product; it is not in the menu (its address sits under Products, and both would light up).
+- The import matches an existing product by its name. Two products with the same name cannot be told apart by a file.
+- A product's page loses what was typed when a save is refused (the page is drawn again from the database).
+
 ### Task 6: see it
 
 - [ ] Every suite, one at a time (the loop in the foundation plan, plus `stock-locks` and `catalog`).
