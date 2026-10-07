@@ -24,20 +24,22 @@ Read these once. They are how this repo works, and the plan assumes them.
 - **Quantities are thousandths** (3 units is `3000`). **Money is cents** (Rs 40.00 is `4000`).
 - **Commits:** branch `restopos`, one commit per task, `git add` the named files only (never `git add -A`: `.claude/` and other people's files stay out). No push. Message style: `area: what it now does, in a sentence`. End every message with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - **Other people's uncommitted work (checked 2026-10-07):** `web/app/backoffice/nav.ts` (the Point of sale group), `db/migrations/0064_device_activity.sql` (already applied on dev), `web/app/backoffice/pos/`, `web/lib/pos.ts`, three test files. **Part A touches none of them. Part B edits `nav.ts`, so Part B does not start until that work is committed.** Run `git status --short` first and stop if `nav.ts` is still modified.
-- If `db/migrations/` already holds a `0065_*` file when you start, shift this plan's three numbers up and keep their order.
+- **Another session was working in this tree while this plan was written.** At 21:28 on 2026-10-07 it added and applied `db/migrations/0065_insert_only_grants.sql` and changed `db/tests/pos-operations.test.cjs`, neither committed. This plan's migrations are therefore 0066, 0067 and 0068. Do not start while that session is still working: two sessions applying migrations to one dev database, and editing one tree, undo each other. Ask the user first.
+- If `db/migrations/` already holds a `0066_*` file when you start, shift this plan's three numbers up and keep their order.
+- `pos-operations.test.cjs` must pass as it stands when you start (run it once before Task 1 and keep the output). "Unchanged" in Task 3 means unchanged by this plan.
 
 ## File map
 
 | File | Created or changed | What it holds |
 |---|---|---|
-| `db/migrations/0065_business_type.sql` | create | the column and the two platform functions |
-| `db/tests/business-type.test.cjs` | create | suite for 0065 |
-| `db/migrations/0066_stock_engine.sql` | create | `stock_levels`, wider `stock_movements`, `first_store`, `stock_move` |
-| `db/tests/stock-engine.test.cjs` | create | suite for 0066 |
+| `db/migrations/0066_business_type.sql` | create | the column and the two platform functions |
+| `db/tests/business-type.test.cjs` | create | suite for 0066 |
+| `db/migrations/0067_stock_engine.sql` | create | `stock_levels`, wider `stock_movements`, `first_store`, `stock_move` |
+| `db/tests/stock-engine.test.cjs` | create | suite for 0067 |
 | `db/tests/require-dev.cjs` | change | `stock_levels` in the cleanup list |
 | `db/scripts/dump-function.cjs` | create | prints a live function definition |
-| `db/migrations/0067_stock_through_engine.sql` | create | quantities carried over, sale and refund redefined |
-| `db/tests/stock-sales.test.cjs` | create | suite for 0067 |
+| `db/migrations/0068_stock_through_engine.sql` | create | quantities carried over, sale and refund redefined |
+| `db/tests/stock-sales.test.cjs` | create | suite for 0068 |
 | `web/app/backoffice/data/export/route.ts` | change | `stock_levels` in the backup |
 | `web/app/backoffice/stock/page.tsx` | change | adjustments go through `stock_move` |
 | `web/lib/mode.ts` | create | the `Mode` type and the words that differ |
@@ -55,7 +57,7 @@ Read these once. They are how this repo works, and the plan assumes them.
 ### Task 1: The business type
 
 **Files:**
-- Create: `db/migrations/0065_business_type.sql`
+- Create: `db/migrations/0066_business_type.sql`
 - Test: `db/tests/business-type.test.cjs`
 
 - [ ] **Step 1: Write the failing test**
@@ -63,7 +65,7 @@ Read these once. They are how this repo works, and the plan assumes them.
 Create `db/tests/business-type.test.cjs`:
 
 ```js
-// business-type.test.cjs — migration 0065: a tenant is a restaurant or a retail shop.
+// business-type.test.cjs — migration 0066: a tenant is a restaurant or a retail shop.
 //   - every tenant starts as a restaurant
 //   - only a live platform admin changes the type; the change is logged
 //   - the type is copied into the settings a till pulls, beside what is there
@@ -174,10 +176,10 @@ Expected: `TEST_FAILED:` with `column "business_type" does not exist`.
 
 - [ ] **Step 3: Write the migration**
 
-Create `db/migrations/0065_business_type.sql`:
+Create `db/migrations/0066_business_type.sql`:
 
 ```sql
--- 0065: a tenant is a restaurant or a retail shop.
+-- 0066: a tenant is a restaurant or a retail shop.
 --
 -- tenants.business_type says which. Every tenant that exists is a restaurant,
 -- so nothing changes for them. Only the platform admin sets it:
@@ -238,7 +240,7 @@ end $fn$;
 - [ ] **Step 4: Apply it and run the test**
 
 Run: `node db/migrate.cjs`
-Expected: `apply 0065_business_type.sql`, then `migrations ok`. Every earlier file says `skip`.
+Expected: `apply 0066_business_type.sql`, then `migrations ok`. Every earlier file says `skip`.
 
 Run: `node db/tests/business-type.test.cjs`
 Expected: every line `PASS`, last line `BUSINESS TYPE PASS`.
@@ -251,7 +253,7 @@ Expected: last line `PLATFORM PASS`.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add db/migrations/0065_business_type.sql db/tests/business-type.test.cjs
+git add db/migrations/0066_business_type.sql db/tests/business-type.test.cjs
 git commit -m "server: a tenant is a restaurant or a retail shop: the platform admin sets it, a change is refused while an order is open and is logged, and the tills are told through the settings they already pull
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -262,7 +264,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 2: The stock engine
 
 **Files:**
-- Create: `db/migrations/0066_stock_engine.sql`
+- Create: `db/migrations/0067_stock_engine.sql`
 - Test: `db/tests/stock-engine.test.cjs`
 - Modify: `db/tests/require-dev.cjs` (the `CHILD_FIRST` list, line 5)
 - Modify: `web/app/backoffice/data/export/route.ts` (the `TABLES` list)
@@ -282,7 +284,7 @@ What it must do, in one place to read:
 Create `db/tests/stock-engine.test.cjs`:
 
 ```js
-// stock-engine.test.cjs — migration 0066: one stock engine.
+// stock-engine.test.cjs — migration 0067: one stock engine.
 //   - a delivery with a cost moves the average; a sale leaves at the average
 //   - selling below zero is allowed; the next delivery's cost becomes the average
 //   - a document moves a product in a shop once
@@ -457,10 +459,10 @@ Expected: `TEST_FAILED:` with `function stock_move(...) does not exist`.
 
 - [ ] **Step 3: Write the migration**
 
-Create `db/migrations/0066_stock_engine.sql`:
+Create `db/migrations/0067_stock_engine.sql`:
 
 ```sql
--- 0066: one stock engine.
+-- 0067: one stock engine.
 --
 -- Until now a sale and a refund each wrote stock_movements and items.stock_qty
 -- themselves, and the back office Stock page did the same a third time. Stock
@@ -480,7 +482,7 @@ Create `db/migrations/0066_stock_engine.sql`:
 --   - the reasons a movement can have are widened for what is coming
 --     (deliveries, counts, losses); nothing is renamed.
 -- Nothing here is pulled by a till. This migration changes no behaviour by
--- itself: 0067 moves the sale and the refund onto the engine.
+-- itself: 0068 moves the sale and the refund onto the engine.
 
 create table if not exists stock_levels (
   id uuid primary key default gen_random_uuid(),
@@ -631,7 +633,7 @@ end $fn$;
 - [ ] **Step 4: Apply it and run the test**
 
 Run: `node db/migrate.cjs`
-Expected: `apply 0066_stock_engine.sql`, then `migrations ok`.
+Expected: `apply 0067_stock_engine.sql`, then `migrations ok`.
 
 Run: `node db/tests/stock-engine.test.cjs`
 Expected: every line `PASS`, last line `STOCK ENGINE PASS`.
@@ -658,7 +660,7 @@ Expected: its usual pass line, exit code 0. (It checks that every tenant table h
 - [ ] **Step 7: Commit**
 
 ```bash
-git add db/migrations/0066_stock_engine.sql db/tests/stock-engine.test.cjs db/tests/require-dev.cjs web/app/backoffice/data/export/route.ts
+git add db/migrations/0067_stock_engine.sql db/tests/stock-engine.test.cjs db/tests/require-dev.cjs web/app/backoffice/data/export/route.ts
 git commit -m "server: one stock engine: a quantity and an average cost per shop and per product, every change written as one movement with its cost and the document it came from, and a document moves a product once
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -670,7 +672,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Files:**
 - Create: `db/scripts/dump-function.cjs`
-- Create: `db/migrations/0067_stock_through_engine.sql`
+- Create: `db/migrations/0068_stock_through_engine.sql`
 - Test: `db/tests/stock-sales.test.cjs`
 
 - [ ] **Step 1: Write the failing test**
@@ -678,8 +680,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 Create `db/tests/stock-sales.test.cjs`:
 
 ```js
-// stock-sales.test.cjs — migration 0067: a sale and a refund move stock
-// through the one engine (0066).
+// stock-sales.test.cjs — migration 0068: a sale and a refund move stock
+// through the one engine (0067).
 //   - a sale writes one movement per product, with the shop and the cost
 //   - pushed twice, it moves stock once
 //   - a refund puts the goods back at the cost they left at
@@ -830,10 +832,10 @@ const devguard = require('../tests/require-dev.cjs');
 
 - [ ] **Step 4: Start the migration: its header and the carry-over**
 
-Create `db/migrations/0067_stock_through_engine.sql` with this, and nothing else yet:
+Create `db/migrations/0068_stock_through_engine.sql` with this, and nothing else yet:
 
 ```sql
--- 0067: a sale and a refund move stock through the one engine (0066).
+-- 0068: a sale and a refund move stock through the one engine (0067).
 -- Source: push_receipt_create and push_refund_create as they stood on the dev
 -- branch on 2026-10-07 (pg_get_functiondef), changed in two places each: one
 -- more variable (v_sm), and the stock block.
@@ -874,7 +876,7 @@ node db/scripts/dump-function.cjs push_refund_create > "$SCRATCH/refund.sql"
 
 Expected: two files, each starting `CREATE OR REPLACE FUNCTION public.push_…` and ending `$function$;`.
 
-Append the whole of `receipt.sql`, then the whole of `refund.sql`, to `db/migrations/0067_stock_through_engine.sql`, each after a blank line. Change nothing else in them except the two edits per function below.
+Append the whole of `receipt.sql`, then the whole of `refund.sql`, to `db/migrations/0068_stock_through_engine.sql`, each after a blank line. Change nothing else in them except the two edits per function below.
 
 - [ ] **Step 6: Edit `push_receipt_create` in the migration**
 
@@ -888,7 +890,7 @@ Append the whole of `receipt.sql`, then the whole of `refund.sql`, to `db/migrat
 
 ```sql
   -- stock: an item that is counted (its own flag, or its category's) goes down
-  -- by what was sold, through the one stock engine (0066). Not on the review
+  -- by what was sold, through the one stock engine (0067). Not on the review
   -- path: those lines were sold before. One movement per product, in a fixed
   -- order.
   if not v_review then
@@ -946,13 +948,13 @@ After the edit, `push_receipt_create` in this file must contain no `insert into 
 
 After the edit, the migration file as a whole must contain `insert into stock_movements` nowhere and `set stock_qty` nowhere.
 
-Run: `grep -c "insert into stock_movements\|set stock_qty" db/migrations/0067_stock_through_engine.sql`
+Run: `grep -c "insert into stock_movements\|set stock_qty" db/migrations/0068_stock_through_engine.sql`
 Expected: `0`
 
 - [ ] **Step 8: Apply it and run the new suite**
 
 Run: `node db/migrate.cjs`
-Expected: `apply 0067_stock_through_engine.sql`, then `migrations ok`.
+Expected: `apply 0068_stock_through_engine.sql`, then `migrations ok`.
 
 Run: `node db/tests/stock-sales.test.cjs`
 Expected: every line `PASS`, last line `STOCK SALES PASS`.
@@ -993,12 +995,12 @@ for s in pos-operations refund-order-line refund-shares refund-snapshots receipt
 
 Expected: every line `ok`. For any `FAIL`, read `$SCRATCH/<name>.log`. `pos-operations` check `T8` is the one that watches stock: it must show `PASS T8 selling 3 of a counted item takes 3 from its stock` and `PASS T8 refunding 1 puts 1 back` with no change to that test file.
 
-Do not edit an existing test to make it pass. If one fails, the migration is wrong: fix it in a new file `0068_…sql` (0067 is applied and is not edited).
+Do not edit an existing test to make it pass. If one fails, the migration is wrong: fix it in a new file `0069_…sql` (0068 is applied and is not edited).
 
 - [ ] **Step 11: Commit**
 
 ```bash
-git add db/scripts/dump-function.cjs db/migrations/0067_stock_through_engine.sql db/tests/stock-sales.test.cjs
+git add db/scripts/dump-function.cjs db/migrations/0068_stock_through_engine.sql db/tests/stock-sales.test.cjs
 git commit -m "server: a sale and a refund move stock through the one engine: one movement per product with its shop and cost, a refund comes back at the cost it left at, and every quantity an item carried becomes its level in the first shop
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -1024,7 +1026,7 @@ Replace the whole function `change` (from its two comment lines `// "Set to" is 
 ```tsx
 // "Set to" is a count: the shelf was counted and this is what is there.
 // "Add" is a delivery (or, with a minus, something thrown away).
-// Both go through the one stock engine (migration 0066), which writes the
+// Both go through the one stock engine (migration 0067), which writes the
 // movement and keeps the shop's level and the item's total in step.
 async function change(f: FormData) {
   "use server";
@@ -1935,4 +1937,4 @@ Tell the user, in these words, what Claude ran and what is theirs to click:
 - Ran by Claude: the three new database suites and the existing ones; type-check and build; the menu in both modes on a temporary page.
 - For the user, signed in as platform admin on dev: create a client with type retail; open an existing client and change its type; see the line in "What was done here".
 - For the user, signed in as that shop's owner: the menu reads Catalog and Shop; `/backoffice/tables` says not found; POS settings has no Service card; saving General keeps the restaurant's old service charge; a stock adjustment on Stock still works.
-- Not changed by this plan: the till (no new APK), the API (no deploy), production (migrations 0065 to 0067 are additive and wait for the user's word).
+- Not changed by this plan: the till (no new APK), the API (no deploy), production (migrations 0066 to 0068 are additive and wait for the user's word).
