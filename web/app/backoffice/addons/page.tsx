@@ -4,6 +4,7 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, int, Refused, text, UUID, uuid } from "@/lib/action";
 import { parseRs } from "@/lib/money";
+import { addChoice as addChoiceTo } from "@/lib/saves";
 import { loadSettings, money } from "@/lib/settings";
 import { Card, Empty, Flash, one, PageHead, type Search } from "../ui";
 import { AddonsTable, type Choice, type Group } from "./table";
@@ -56,11 +57,7 @@ async function addChoice(f: FormData) {
     const price = parseRs(String(f.get("price") || "0"));
     if (!name) throw new Refused("Give the choice a name.");
     if (price === null) throw new Refused("The price is not a number.");
-    await c.query(
-      `insert into modifiers (tenant_id, group_id, name, price)
-         select $1, g.id, $3, $4 from modifier_groups g where g.tenant_id = $1 and g.id = $2 and g.deleted_at is null`,
-      [ctx.tenantId, group, name, price],
-    );
+    if (!(await addChoiceTo(c, ctx.tenantId, group, name, price))) throw new Refused("That group is no longer there, so the choice was not added. Reload the page.");
     return `${name} added.`;
   });
 }

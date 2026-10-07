@@ -20,3 +20,14 @@ export async function setItemTax(c: PoolClient, tenantId: string, item: string, 
   );
   return true;
 }
+
+// A choice added to a group of add-ons. False when the group is not there any
+// more (it was removed in another tab): there is nothing to add the choice to.
+export async function addChoice(c: PoolClient, tenantId: string, group: string, name: string, price: number): Promise<boolean> {
+  const r = await c.query(
+    `insert into modifiers (tenant_id, group_id, name, price)
+       select $1, g.id, $3, $4 from modifier_groups g where g.tenant_id = $1 and g.id = $2 and g.deleted_at is null`,
+    [tenantId, group, name, price],
+  );
+  return r.rowCount === 1;
+}

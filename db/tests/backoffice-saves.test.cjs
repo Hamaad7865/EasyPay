@@ -103,6 +103,23 @@ function lib(name) {
       const unknown = await asApp(tid, () => saves.setItemTax(c, tid, item, crypto.randomUUID()));
       check('T2 a tax that never existed is refused, the item keeping its own', unknown === false && (await carried()).join() === vat, JSON.stringify(await carried()));
     }
+
+    // ---- a choice added to a group of add-ons ----
+    {
+      const group = (await q1(`insert into modifier_groups (tenant_id, name) values ($1, 'Extras') returning id`, [tid])).id;
+      const removed = (await q1(`insert into modifier_groups (tenant_id, name, deleted_at) values ($1, 'Sauces (removed)', now()) returning id`, [tid])).id;
+      const theirs = (await q1(`insert into modifier_groups (tenant_id, name) values ($1, 'Extras') returning id`, [other])).id;
+      const choices = async (g) => (await c.query(`select name, price::int as price from modifiers where group_id = $1 and deleted_at is null`, [g])).rows;
+
+      const added = await asApp(tid, () => saves.addChoice(c, tid, group, 'Cheese', 2500));
+      check('C1 a choice is added to its group, at its price', added === true && JSON.stringify(await choices(group)) === '[{"name":"Cheese","price":2500}]', JSON.stringify(await choices(group)));
+      const late = await asApp(tid, () => saves.addChoice(c, tid, removed, 'Chilli', 0));
+      check('C2 a choice for a group removed meanwhile is refused, and none is added', late === false && (await choices(removed)).length === 0, String(late));
+      const foreign = await asApp(tid, () => saves.addChoice(c, tid, theirs, 'Chilli', 0));
+      check('C2 a choice for another restaurant\'s group is refused, and none is added', foreign === false && (await choices(theirs)).length === 0, String(foreign));
+      const unknown = await asApp(tid, () => saves.addChoice(c, tid, crypto.randomUUID(), 'Chilli', 0));
+      check('C2 a choice for a group that never existed is refused', unknown === false, String(unknown));
+    }
   } finally {
     for (const t of [tid, other]) {
       try { await devguard.cleanupTenant(c, t); } catch (e) { console.error('cleanup of ' + t + ' failed: ' + e.message); failures++; }
