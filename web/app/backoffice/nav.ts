@@ -30,13 +30,16 @@ import {
   Users,
   UtensilsCrossed,
 } from "lucide-react";
+import type { Mode } from "@/lib/mode";
 
 // Every page of the back office, once. The side menu draws its groups from
 // this list and the search finds pages in it, so the two cannot drift apart.
 // Only what exists: a page is added here when it is built. `words` are other
 // things someone might type when looking for the page.
-export type NavLink = { href: string; label: string; icon: LucideIcon; words?: string };
-export type NavGroup = { id: string; title: string; icon: LucideIcon; links: NavLink[] };
+// `only`: the one kind of business that has this page (none: both have it).
+// `retail`: what a shop calls it, when that differs.
+export type NavLink = { href: string; label: string; icon: LucideIcon; words?: string; only?: Mode; retail?: string };
+export type NavGroup = { id: string; title: string; icon: LucideIcon; links: NavLink[]; retail?: string };
 // The number beside a page in the menu, and what it counts, said in full (counts/route.ts).
 export type NavCount = { n: number; say: string; tone?: "red" };
 
@@ -49,7 +52,7 @@ export const GROUPS: NavGroup[] = [
     icon: ChartNoAxesCombined,
     links: [
       { href: "/backoffice/insights/sales", label: "Sales patterns", icon: CalendarRange, words: "busiest day hour peak heatmap trend compare average check" },
-      { href: "/backoffice/insights/menu", label: "Menu performance", icon: TrendingUp, words: "best sellers popular slow items not selling ranking" },
+      { href: "/backoffice/insights/menu", label: "Menu performance", retail: "Product performance", icon: TrendingUp, words: "best sellers popular slow items not selling ranking" },
       { href: "/backoffice/insights/staff", label: "Staff performance", icon: UserRoundCheck, words: "servers waiters average check covers discounts refunds turn time" },
     ],
   },
@@ -70,11 +73,12 @@ export const GROUPS: NavGroup[] = [
   {
     id: "menu",
     title: "Menu",
+    retail: "Catalog",
     icon: UtensilsCrossed,
     links: [
       { href: "/backoffice/categories", label: "Categories", icon: Tags, words: "groups colours kitchen bar printer" },
-      { href: "/backoffice/items", label: "Items", icon: UtensilsCrossed, words: "products dishes prices barcode" },
-      { href: "/backoffice/addons", label: "Add-ons", icon: SlidersHorizontal, words: "options modifiers extras" },
+      { href: "/backoffice/items", label: "Items", retail: "Products", icon: UtensilsCrossed, words: "products dishes prices barcode" },
+      { href: "/backoffice/addons", label: "Add-ons", only: "restaurant", icon: SlidersHorizontal, words: "options modifiers extras" },
       { href: "/backoffice/taxes", label: "Taxes", icon: FileText, words: "vat zero rated exempt" },
       { href: "/backoffice/discounts", label: "Discounts", icon: BadgePercent, words: "promotions percent off" },
       { href: "/backoffice/stock", label: "Stock", icon: Boxes, words: "inventory quantity low" },
@@ -83,10 +87,11 @@ export const GROUPS: NavGroup[] = [
   {
     id: "restaurant",
     title: "Restaurant",
+    retail: "Shop",
     icon: Store,
     links: [
-      { href: "/backoffice/tables", label: "Tables", icon: LayoutGrid, words: "floor plan rooms areas seats" },
-      { href: "/backoffice/bookings", label: "Bookings", icon: CalendarClock, words: "reservations" },
+      { href: "/backoffice/tables", label: "Tables", only: "restaurant", icon: LayoutGrid, words: "floor plan rooms areas seats" },
+      { href: "/backoffice/bookings", label: "Bookings", only: "restaurant", icon: CalendarClock, words: "reservations" },
       { href: "/backoffice/customers", label: "Customers", icon: Contact, words: "guests phone" },
       { href: "/backoffice/printers", label: "Printers", icon: Printer, words: "kitchen bar receipt ip usb" },
       { href: "/backoffice/receipt-design", label: "Receipt design", icon: ReceiptText, words: "logo header footer paper" },
@@ -110,8 +115,20 @@ export const GROUPS: NavGroup[] = [
 export const isOn = (href: string, path: string) => (href === HOME.href ? path === href : path === href || path.startsWith(href + "/"));
 export const groupOf = (path: string) => GROUPS.find((g) => g.links.some((l) => isOn(l.href, path)))?.id ?? null;
 
+// The groups one kind of business has, under the names it uses. The menu and
+// the search both draw from this, so they cannot disagree about what exists.
+export function groupsFor(mode: Mode): NavGroup[] {
+  return GROUPS.map((g) => ({
+    ...g,
+    title: mode === "retail" && g.retail ? g.retail : g.title,
+    links: g.links
+      .filter((l) => !l.only || l.only === mode)
+      .map((l) => (mode === "retail" && l.retail ? { ...l, label: l.retail } : l)),
+  })).filter((g) => g.links.length > 0);
+}
+
 // Every page with the group it sits in, for the search.
-export const PAGES: (NavLink & { group: string | null })[] = [
+export const pagesOf = (mode: Mode): (NavLink & { group: string | null })[] => [
   { ...HOME, group: null },
-  ...GROUPS.flatMap((g) => g.links.map((l) => ({ ...l, group: g.title }))),
+  ...groupsFor(mode).flatMap((g) => g.links.map((l) => ({ ...l, group: g.title }))),
 ];

@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, LogOut, PanelLeftClose, PanelLeftOpen, Search, Store } from "lucide-react";
 import { Submit, Wait } from "./busy";
-import { GROUPS, HOME, groupOf, isOn, type NavCount } from "./nav";
+import { groupsFor, HOME, groupOf, isOn, type NavCount } from "./nav";
+import type { Mode } from "@/lib/mode";
 import { openSearch, SearchBox, useSearchKey } from "./search-box";
 
 // The way round the back office, which has two shapes.
@@ -65,8 +66,10 @@ function Count({ c }: { c: NavCount | undefined }) {
 }
 
 export function Side({
-  restaurant, id, employee, role, signOut, folded, opened, drawn,
+  restaurant, id, employee, role, signOut, folded, opened, drawn, mode,
 }: {
+  // a restaurant or a shop: which pages the menu has, and what it calls them
+  mode: Mode;
   restaurant: string;
   // the start of the restaurant's id: what to quote to EasyPay support
   id: string;
@@ -84,6 +87,7 @@ export function Side({
 }) {
   const path = usePathname();
   const here = groupOf(path);
+  const groups = useMemo(() => groupsFor(mode), [mode]);
   const key = useSearchKey();
   const [away, setAway] = useState(folded);
   // The group holding the page that is open is open, on the server and in the
@@ -185,7 +189,7 @@ export function Side({
         <Link href={HOME.href} className={"rail-sign" + (isOn(HOME.href, path) ? " on" : "")} aria-label={HOME.label} data-tip={HOME.label} style={pop()}>
           <HOME.icon aria-hidden="true" strokeWidth={1.9} />
         </Link>
-        {GROUPS.map((g) => (
+        {groups.map((g) => (
           <div key={g.id} className="rail-item" style={pop()}>
             <button
               type="button"
@@ -263,7 +267,7 @@ export function Side({
               {HOME.label}
               <Wait />
             </Link>
-            {GROUPS.map((g) => {
+            {groups.map((g) => {
               const isOpen = open.has(g.id);
               return (
                 <div key={g.id} className={"bo-group" + (isOpen ? " open" : "") + (here === g.id ? " here" : "")} data-fresh={fresh === g.id || undefined}>
@@ -299,7 +303,7 @@ export function Side({
         </div>
       </aside>
       {/* once, and outside the menu: it has to open with the menu folded away too */}
-      <SearchBox />
+      <SearchBox mode={mode} />
     </>
   );
 }

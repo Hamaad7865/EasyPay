@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Contact, CornerDownLeft, LayoutGrid, type LucideIcon, Search, Tags, Users, UtensilsCrossed } from "lucide-react";
-import { PAGES } from "./nav";
+import { pagesOf } from "./nav";
+import type { Mode } from "@/lib/mode";
 import type { HitGroup } from "./search/hits";
 
 // The search (Ctrl K, or ⌘K on a Mac). Pages are found here, at once, from
@@ -19,14 +20,16 @@ const KIND_ICON: Record<HitGroup["kind"], LucideIcon> = { items: UtensilsCrossed
 // what the empty box offers
 const START = ["/backoffice", "/backoffice/insights/sales", "/backoffice/reports/sales", "/backoffice/items", "/backoffice/receipts", "/backoffice/settings"];
 
-function pagesFor(q: string): Row[] {
+type Page = ReturnType<typeof pagesOf>[number];
+
+function pagesFor(q: string, all: Page[]): Row[] {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   const list = words.length
-    ? PAGES.filter((p) => {
+    ? all.filter((p) => {
         const hay = `${p.label} ${p.group ?? ""} ${p.words ?? ""}`.toLowerCase();
         return words.every((w) => hay.includes(w));
       }).sort((a, b) => Number(b.label.toLowerCase().startsWith(words[0])) - Number(a.label.toLowerCase().startsWith(words[0])))
-    : START.map((href) => PAGES.find((p) => p.href === href)!);
+    : START.map((href) => all.find((p) => p.href === href)).filter((p): p is Page => Boolean(p));
   return list.slice(0, 7).map((p) => ({ key: p.href, title: p.label, sub: p.group ?? "Home", href: p.href, icon: p.icon }));
 }
 
@@ -42,7 +45,8 @@ export function useSearchKey() {
   return key;
 }
 
-export function SearchBox() {
+export function SearchBox({ mode }: { mode: Mode }) {
+  const all = useMemo(() => pagesOf(mode), [mode]);
   const router = useRouter();
   const path = usePathname();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -113,14 +117,14 @@ export function SearchBox() {
   }, [term]);
 
   const sections = useMemo<Section[]>(() => {
-    const pages = pagesFor(term);
+    const pages = pagesFor(term, all);
     const out: Section[] = [];
     if (pages.length) out.push({ label: term ? "Pages" : "Go to", rows: pages });
     for (const g of found) {
       out.push({ label: g.label, rows: g.hits.map((h, i) => ({ key: `${g.kind}-${i}-${h.href}`, title: h.title, sub: h.sub, href: h.href, icon: KIND_ICON[g.kind] })) });
     }
     return out;
-  }, [term, found]);
+  }, [term, found, all]);
   const flat = sections.flatMap((s) => s.rows);
   const on = Math.min(at, Math.max(flat.length - 1, 0));
 
