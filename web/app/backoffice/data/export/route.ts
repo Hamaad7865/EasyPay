@@ -5,7 +5,7 @@ import { readTenant } from "@/lib/db";
 // one JSON file. PINs are left out (they are stored hashed and are of no use
 // outside the system).
 const TABLES = [
-  "categories", "items", "item_taxes", "modifier_groups", "modifiers", "item_modifier_groups", "taxes", "discounts",
+  "categories", "items", "item_variants", "suppliers", "item_taxes", "modifier_groups", "modifiers", "item_modifier_groups", "taxes", "discounts",
   "dining_options", "payment_types", "stores", "pos_devices", "roles", "tables", "printers", "pos_settings",
   "tickets", "ticket_lines", "ticket_line_modifiers", "receipts", "receipt_lines", "receipt_line_modifiers",
   "receipt_line_taxes", "receipt_payments", "receipt_discounts", "payment_corrections", "shifts",
