@@ -25,6 +25,20 @@ check("a restaurant is not: its stock stays under editing the menu", () => {
   assert.equal(STOCK.some((p) => ids("restaurant").includes(p)), false);
   assert.ok(ids("restaurant").includes("items.edit"));
 });
+check("a shop is offered changing the price of one line, among selling, after the discounts; a restaurant is not", () => {
+  const selling = permGroups("retail").find((x) => x.title === "Selling").perms.map(([k]) => k);
+  assert.equal(selling[selling.indexOf("sale.apply_restricted_discount") + 1], "sale.change_price");
+  assert.equal(ids("restaurant").includes("sale.change_price"), false);
+  // and a role of a restaurant that holds it (given by the migration) keeps it when its form is saved
+  assert.deepEqual(savedPerms("restaurant", ["sale.change_price", "sale.create"], ["sale.create"]), ["sale.change_price", "sale.create"]);
+});
+check("a shop's selling is worded for a shop: no kitchen, no orders", () => {
+  const said = Object.fromEntries(permGroups("retail").flatMap((g) => g.perms));
+  assert.equal(said["sale.create"], "Ring up sales");
+  assert.equal(said["sale.void_line"], "Take a line off a sale");
+  assert.match(said["sale.apply_discount"], /one line/);
+  assert.equal(Object.fromEntries(permGroups("restaurant").flatMap((g) => g.perms))["sale.create"], "Take orders");
+});
 check("everything a restaurant is offered, a shop is offered too", () => {
   assert.deepEqual(ids("restaurant").filter((p) => !ids("retail").includes(p)), []);
 });

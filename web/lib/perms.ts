@@ -71,11 +71,19 @@ const STOCK: PermGroup = {
 };
 
 // What one kind of business is offered. For a shop, editing the catalog no
-// longer covers its stock, and is worded so.
+// longer covers its stock, and is worded so; selling is worded for a counter
+// with no kitchen behind it, and has one right more: changing the price of
+// one line of a sale (migration 0077; only a shop's till offers it).
 export function permGroups(mode: Mode): PermGroup[] {
   if (mode !== "retail") return GROUPS;
-  const said: Record<string, string> = { "items.edit": "Edit the catalog, taxes and discounts" };
-  return [...GROUPS.map((g) => ({ ...g, perms: g.perms.map(([k, label]): [string, string] => [k, said[k] ?? label]) })), STOCK];
+  const said: Record<string, string> = {
+    "items.edit": "Edit the catalog, taxes and discounts",
+    "sale.create": "Ring up sales",
+    "sale.apply_discount": "Give a discount, on a sale or on one line",
+    "sale.void_line": "Take a line off a sale",
+  };
+  const more: Record<string, [string, string][]> = { "sale.apply_restricted_discount": [["sale.change_price", "Change the price of one line of a sale"]] };
+  return [...GROUPS.map((g) => ({ ...g, perms: g.perms.flatMap(([k, label]): [string, string][] => [[k, said[k] ?? label], ...(more[k] ?? [])]) })), STOCK];
 }
 
 // What a role holds after its form is saved: the ticks among what the page

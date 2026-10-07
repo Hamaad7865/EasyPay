@@ -58,6 +58,13 @@ function describe(v: Review): string {
         )
         .join("; ");
     }
+    case "price-unapproved": {
+      // a discount on one line, or a price typed for it, by someone whose role does not allow it (migration 0077)
+      const lines = (Array.isArray(d.lines) ? d.lines : []) as { kind?: string; listed?: number | null; charged?: number | null }[];
+      return lines
+        .map((l) => `${l.kind === "override" ? "a price changed on one line" : "a discount on one line"}, from ${rs(l.listed)} to ${rs(l.charged)}, by someone whose role does not allow it`)
+        .join("; ");
+    }
     default:
       return v.reason;
   }
