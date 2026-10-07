@@ -19,6 +19,7 @@ const SQL = `
          (select count(*)::int from modifier_groups where tenant_id = $1 and deleted_at is null) as addons,
          (select count(*)::int from taxes where tenant_id = $1 and deleted_at is null) as taxes,
          (select count(*)::int from discounts where tenant_id = $1 and deleted_at is null) as discounts,
+         (select count(*)::int from suppliers where tenant_id = $1 and deleted_at is null) as suppliers,
          (select count(*)::int from items i left join categories c on c.tenant_id = i.tenant_id and c.id = i.category_id
            where i.tenant_id = $1 and i.deleted_at is null and (i.track_stock or coalesce(c.is_stock, false))) as stock,
          (select count(*)::int from tables where tenant_id = $1 and deleted_at is null) as tables,
@@ -50,6 +51,7 @@ export async function GET() {
   put("/backoffice/addons", r.addons, "add-on group", "add-on groups");
   put("/backoffice/taxes", r.taxes, "tax", "taxes");
   put("/backoffice/discounts", r.discounts, "discount", "discounts");
+  put("/backoffice/suppliers", r.suppliers, "supplier", "suppliers");
   put("/backoffice/stock", r.stock, "item counted", "items counted");
   put("/backoffice/tables", r.tables, "table", "tables");
   put("/backoffice/bookings", r.bookings, "booking from today on", "bookings from today on");
