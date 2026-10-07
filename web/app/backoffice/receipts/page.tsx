@@ -8,6 +8,7 @@ import { act, Refused, uuid } from "@/lib/action";
 import { loadSettings, money } from "@/lib/settings";
 import { clock, lists } from "@/lib/report";
 import { Empty, Flash, PageHead, type Search } from "../ui";
+import { Submit } from "../busy";
 
 type Review = {
   reason: string;
@@ -177,7 +178,7 @@ export default async function ReceiptsPage({ searchParams }: { searchParams: Sea
                               <option value="" disabled>Paid by…</option>
                               {d.types.filter((t) => t.id !== p.type).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                             </select>
-                            <button type="submit" className="btn-quiet btn-sm">Correct</button>
+                            <Submit className="btn-quiet btn-sm">Correct</Submit>
                           </form>
                         </details>
                       )}
@@ -196,7 +197,7 @@ export default async function ReceiptsPage({ searchParams }: { searchParams: Sea
                     <form action={resolveReceipt} className="inline" style={{ marginTop: 6 }}>
                       <input type="hidden" name="receipt" value={r.id} />
                       <input name="note" placeholder="What was done" required />
-                      <button type="submit" className="btn-quiet btn-sm">Sign off</button>
+                      <Submit className="btn-quiet btn-sm">Sign off</Submit>
                     </form>
                   )}
                 </td>

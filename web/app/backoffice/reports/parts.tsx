@@ -1,4 +1,5 @@
 import type { Filters, Lists } from "@/lib/report";
+import { Go, Submit } from "../busy";
 import { CsvButton, PrintButton } from "./print-button";
 
 // The filter bar the reports share. Each report says which filters it has.
@@ -15,7 +16,7 @@ export function ReportFilters({
 }) {
   const has = (k: (typeof show)[number]) => show.includes(k);
   return (
-    <form className="filters no-print" action={path}>
+    <Go className="filters no-print" action={path}>
       <label>
         From
         <input type="date" name="from" defaultValue={f.from} />
@@ -79,11 +80,11 @@ export function ReportFilters({
           </select>
         </label>
       )}
-      <button type="submit">Show</button>
+      <Submit>Show</Submit>
       <span className="spacer" />
       <CsvButton />
       <PrintButton />
-    </form>
+    </Go>
   );
 }
 

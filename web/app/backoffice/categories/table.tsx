@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { Back, Chev, fold, NoMatch, SortTh, type Start, TableSearch, useTable } from "../table-kit";
+import { Submit } from "../busy";
 
 export type Category = { id: string; name: string; hex: string; has_color: boolean; sort_order: number; is_stock: boolean; printer_ids: string[]; items: number };
 type Action = (f: FormData) => Promise<void>;
@@ -112,12 +113,12 @@ export function CategoriesTable({ rows, printers, start, save }: { rows: Categor
                               ))
                             )}
                             <span className="spacer" />
-                            <button type="submit" className="btn-sm">
+                            <Submit className="btn-sm">
                               Save
-                            </button>
-                            <button type="submit" name="remove" value="1" className="btn-link danger" formNoValidate>
+                            </Submit>
+                            <Submit name="remove" value="1" className="btn-link danger" formNoValidate>
                               Remove
-                            </button>
+                            </Submit>
                           </div>
                         </form>
                       </div>

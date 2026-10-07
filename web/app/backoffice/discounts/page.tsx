@@ -4,6 +4,7 @@ import { act, backTo, on, Refused, text, uuid } from "@/lib/action";
 import { loadSettings, money } from "@/lib/settings";
 import { Card, Flash, PageHead, type Search, startKey, startOf } from "../ui";
 import { type Discount, DiscountsTable } from "./table";
+import { Submit } from "../busy";
 
 const PATH = "/backoffice/discounts";
 
@@ -114,7 +115,7 @@ export default async function DiscountsPage({ searchParams }: { searchParams: Se
             <input type="checkbox" name="requires_approval" />
             Needs a manager
           </label>
-          <button type="submit">Add</button>
+          <Submit>Add</Submit>
         </form>
       </Card>
       {d.rows.length === 0 ? (

@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { CalendarCheck } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, int, Refused, text, uuid } from "@/lib/action";
 import { Card, Empty, Flash, one, PageHead, type Search } from "../ui";
+import { Submit, Wait } from "../busy";
 
 const PATH = "/backoffice/bookings";
 const STATUS = [
@@ -125,13 +127,13 @@ export default async function BookingsPage({ searchParams }: { searchParams: Sea
               {d.tables.map((t) => <option key={t.id} value={t.id}>{t.name} · {t.area} · {t.seats}</option>)}
             </select>
             <input name="tags" placeholder="Notes (birthday, allergy, high chair)" maxLength={240} style={{ minWidth: 240 }} />
-            <button type="submit">Book</button>
+            <Submit>Book</Submit>
           </form>
         </Card>
       )}
       <div className="tabs">
-        <a href={PATH} className={show === "coming" ? "on" : undefined}>Today and coming</a>
-        <a href={PATH + "?show=past"} className={show === "past" ? "on" : undefined}>Past</a>
+        <Link href={PATH} className={show === "coming" ? "on" : undefined}>Today and coming<Wait /></Link>
+        <Link href={PATH + "?show=past"} className={show === "past" ? "on" : undefined}>Past<Wait /></Link>
       </div>
       {d.rows.length === 0 ? (
         <Empty icon={CalendarCheck} title={show === "past" ? "No past bookings" : "No bookings yet"}>{show === "past" ? "Bookings from earlier days show here." : "Take the first one above, or from a till."}</Empty>
@@ -175,7 +177,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Sea
                 <td>
                   <form id={"b" + r.id} action={saveBooking} className="row-actions">
                     <input type="hidden" name="id" value={r.id} />
-                    <button type="submit" className="btn-quiet btn-sm">Save</button>
+                    <Submit className="btn-quiet btn-sm">Save</Submit>
                   </form>
                 </td>
               </tr>

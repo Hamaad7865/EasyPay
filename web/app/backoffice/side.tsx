@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, LogOut, PanelLeftClose, PanelLeftOpen, Search, Store } from "lucide-react";
+import { Submit, Wait } from "./busy";
 import { GROUPS, HOME, groupOf, isOn, type NavCount } from "./nav";
 import { openSearch, SearchBox, useSearchKey } from "./search-box";
 
@@ -169,9 +170,9 @@ export function Side({
   const pop = () => ({ "--i": nth++ }) as React.CSSProperties;
   const leave = (
     <form action={signOut}>
-      <button type="submit" title="Sign out" aria-label="Sign out">
+      <Submit title="Sign out" aria-label="Sign out">
         <LogOut aria-hidden="true" />
-      </button>
+      </Submit>
     </form>
   );
 
@@ -202,6 +203,7 @@ export function Side({
                 <Link key={l.href} href={l.href} className={isOn(l.href, path) ? "on" : undefined} style={{ "--i": i } as React.CSSProperties} onClick={shut}>
                   <l.icon aria-hidden="true" strokeWidth={1.9} />
                   {l.label}
+                  <Wait />
                   <Count c={counts[l.href]} />
                 </Link>
               ))}
@@ -259,6 +261,7 @@ export function Side({
             <Link href={HOME.href} className={"bo-nav-top" + (isOn(HOME.href, path) ? " on" : "")}>
               <HOME.icon aria-hidden="true" strokeWidth={1.9} />
               {HOME.label}
+              <Wait />
             </Link>
             {GROUPS.map((g) => {
               const isOpen = open.has(g.id);
@@ -275,6 +278,7 @@ export function Side({
                       {g.links.map((l, i) => (
                         <Link key={l.href} href={l.href} className={isOn(l.href, path) ? "on" : undefined} style={{ "--i": i } as React.CSSProperties}>
                           {l.label}
+                          <Wait />
                           <Count c={counts[l.href]} />
                         </Link>
                       ))}

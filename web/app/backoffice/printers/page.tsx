@@ -5,6 +5,7 @@ import { readTenant } from "@/lib/db";
 import { act, int, on, Refused, text, uuid } from "@/lib/action";
 import { loadSettings, saveSettings } from "@/lib/settings";
 import { Empty, Flash, PageHead, type Search } from "../ui";
+import { Submit } from "../busy";
 
 const PATH = "/backoffice/printers";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -263,7 +264,7 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
             <Hardware />
           </div>
           <div className="card-foot">
-            <button type="submit">Add printer</button>
+            <Submit>Add printer</Submit>
           </div>
         </form>
       </details>
@@ -301,10 +302,10 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
                 <Hardware p={p} />
               </div>
               <div className="card-foot">
-                <button type="submit" name="remove" value="1" className="btn-danger" formNoValidate>
+                <Submit name="remove" value="1" className="btn-danger" formNoValidate>
                   Remove
-                </button>
-                <button type="submit">Save printer</button>
+                </Submit>
+                <Submit>Save printer</Submit>
               </div>
             </form>
           </details>
@@ -391,7 +392,7 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
               </div>
             )}
             <div className="card-foot">
-              <button type="submit">Save what prints where</button>
+              <Submit>Save what prints where</Submit>
             </div>
           </form>
         </>

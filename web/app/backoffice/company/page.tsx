@@ -3,6 +3,7 @@ import { readTenant } from "@/lib/db";
 import { act, Refused, text } from "@/lib/action";
 import { loadSettings, saveSettings } from "@/lib/settings";
 import { Card, Flash, PageHead, type Search } from "../ui";
+import { Submit } from "../busy";
 
 const PATH = "/backoffice/company";
 
@@ -67,7 +68,7 @@ export default async function CompanyPage({ searchParams }: { searchParams: Sear
             <input name="phone" defaultValue={d.phone} maxLength={40} placeholder="5 123 4567" />
           </label>
         </Card>
-        <button type="submit">Save details</button>
+        <Submit>Save details</Submit>
       </form>
     </div>
   );

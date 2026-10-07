@@ -3,6 +3,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { requirePerm, tenantContext } from "@/lib/tenant";
 import { readTenant, withTenant } from "@/lib/db";
 import { hashPin, isPin } from "@/lib/pin";
+import { Submit } from "../busy";
 
 type Staff = {
   id: string;
@@ -164,7 +165,7 @@ export default async function StaffPage({
             ))}
           </select>
           {pinInput("PIN for the new member of staff")}
-          <button type="submit">Add staff</button>
+          <Submit>Add staff</Submit>
         </form>
       ) : (
         <p className="muted">Only the owner can add staff or change PINs.</p>
@@ -194,17 +195,17 @@ export default async function StaffPage({
                     <form action={setPin} className="bo-toolbar" style={{ margin: 0 }}>
                       <input type="hidden" name="id" value={s.id} />
                       {pinInput(`New PIN for ${s.name}`)}
-                      <button type="submit" className="btn-quiet">
+                      <Submit className="btn-quiet">
                         {s.has_pin ? "Change PIN" : "Set PIN"}
-                      </button>
+                      </Submit>
                     </form>
                     {!s.has_login && (
                       <form action={setActive}>
                         <input type="hidden" name="id" value={s.id} />
                         <input type="hidden" name="active" value={s.is_active ? "0" : "1"} />
-                        <button type="submit" className="btn-quiet">
+                        <Submit className="btn-quiet">
                           {s.is_active ? "Switch off" : "Switch on"}
-                        </button>
+                        </Submit>
                       </form>
                     )}
                   </div>

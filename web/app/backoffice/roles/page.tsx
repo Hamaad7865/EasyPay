@@ -3,6 +3,7 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, Refused, text, uuid } from "@/lib/action";
 import { Card, Flash, PageHead, type Search } from "../ui";
+import { Submit } from "../busy";
 
 const PATH = "/backoffice/roles";
 
@@ -117,7 +118,7 @@ export default async function RolesPage({ searchParams }: { searchParams: Search
       <Card title="Add a role">
         <form action={addRole} className="bo-toolbar" style={{ margin: 0 }}>
           <input name="name" placeholder="Name, for example Supervisor" required maxLength={30} style={{ minWidth: 260 }} />
-          <button type="submit">Add role</button>
+          <Submit>Add role</Submit>
         </form>
       </Card>
       {roles.map((r) => {
@@ -156,8 +157,8 @@ export default async function RolesPage({ searchParams }: { searchParams: Search
                   </div>
                 </div>
                 <div className="card-foot">
-                  <button type="submit" name="remove" value="1" className="btn-danger" formNoValidate>Remove role</button>
-                  <button type="submit">Save role</button>
+                  <Submit name="remove" value="1" className="btn-danger" formNoValidate>Remove role</Submit>
+                  <Submit>Save role</Submit>
                 </div>
               </form>
             )}

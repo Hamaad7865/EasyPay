@@ -4,6 +4,7 @@ import { readTenant } from "@/lib/db";
 import { act, int, on, Refused, text, uuid } from "@/lib/action";
 import { loadSettings, money, saveSettings } from "@/lib/settings";
 import { Card, Flash, one, PageHead, type Search } from "../ui";
+import { Submit, Wait } from "../busy";
 
 const PATH = "/backoffice/settings";
 const KINDS = [
@@ -156,9 +157,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
       <PageHead title="POS settings" lede="How the tills behave. A change reaches a till the next time it syncs, which is within a minute when it is online." />
       <Flash sp={sp} />
       <div className="tabs">
-        <Link href={PATH} className={tab === "general" ? "on" : undefined}>General</Link>
-        <Link href={PATH + "?tab=payments"} className={tab === "payments" ? "on" : undefined}>Payment options</Link>
-        <Link href={PATH + "?tab=orders"} className={tab === "orders" ? "on" : undefined}>Order types and kitchen</Link>
+        <Link href={PATH} className={tab === "general" ? "on" : undefined}>General<Wait /></Link>
+        <Link href={PATH + "?tab=payments"} className={tab === "payments" ? "on" : undefined}>Payment options<Wait /></Link>
+        <Link href={PATH + "?tab=orders"} className={tab === "orders" ? "on" : undefined}>Order types and kitchen<Wait /></Link>
       </div>
 
       {tab === "general" && (
@@ -274,7 +275,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
               </label>
             </div>
           </Card>
-          <button type="submit">Save settings</button>
+          <Submit>Save settings</Submit>
         </form>
       )}
 
@@ -286,7 +287,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
               <select name="kind" defaultValue="other" aria-label="Kind">
                 {KINDS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
               </select>
-              <button type="submit">Add</button>
+              <Submit>Add</Submit>
             </form>
           </Card>
           <Card title="Payment options" lede="What a cashier can pick on the payment screen, in this order. The cash drawer opens only for the ones ticked." flush>
@@ -316,8 +317,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                     <td>
                       <form id={"p" + p.id} action={savePayment} className="row-actions">
                         <input type="hidden" name="id" value={p.id} />
-                        <button type="submit" className="btn-quiet btn-sm">Save</button>
-                        <button type="submit" name="remove" value="1" className="btn-link danger">Remove</button>
+                        <Submit className="btn-quiet btn-sm">Save</Submit>
+                        <Submit name="remove" value="1" className="btn-link danger">Remove</Submit>
                       </form>
                     </td>
                   </tr>
@@ -336,7 +337,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
               <select name="kind" defaultValue="takeaway" aria-label="Kind">
                 {ORDER_KINDS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
               </select>
-              <button type="submit">Add</button>
+              <Submit>Add</Submit>
             </form>
           </Card>
           <Card
@@ -379,8 +380,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                     <td>
                       <form id={"d" + d.id} action={saveDining} className="row-actions">
                         <input type="hidden" name="id" value={d.id} />
-                        <button type="submit" className="btn-quiet btn-sm">Save</button>
-                        <button type="submit" name="remove" value="1" className="btn-link danger">Remove</button>
+                        <Submit className="btn-quiet btn-sm">Save</Submit>
+                        <Submit name="remove" value="1" className="btn-link danger">Remove</Submit>
                       </form>
                     </td>
                   </tr>

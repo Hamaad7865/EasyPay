@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useState } from "react";
+import { Submit } from "../busy";
 import { Drawer } from "../drawer";
 import type { Item } from "./table";
 
@@ -45,7 +46,8 @@ export function ItemEditor({
   }, [open, id]);
 
   // The save goes to the server and comes back with the list redrawn: about a
-  // second from here. The buttons say so meanwhile, and take no second click.
+  // second from here. The buttons sit outside the form, in the panel's foot,
+  // so they are told: the one pressed turns meanwhile, and none takes a second click.
   const [, submit, saving] = useActionState(async (_: null, f: FormData) => {
     await save(f);
     return null;
@@ -60,17 +62,17 @@ export function ItemEditor({
       onClose={onClose}
       foot={(close) => (
         <>
-          <button type="submit" form="item-editor" disabled={saving}>
-            {saving ? "Saving…" : item ? "Save item" : "Add item"}
-          </button>
+          <Submit form="item-editor" busy={saving}>
+            {item ? "Save item" : "Add item"}
+          </Submit>
           <button type="button" className="btn-quiet" onClick={close} disabled={saving}>
             Cancel
           </button>
           <span className="spacer" />
           {item && (
-            <button type="submit" form="item-editor" name="remove" value="1" className="btn-danger" formNoValidate disabled={saving}>
+            <Submit form="item-editor" name="remove" value="1" className="btn-danger" formNoValidate busy={saving}>
               Remove item
-            </button>
+            </Submit>
           )}
         </>
       )}

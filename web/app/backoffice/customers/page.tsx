@@ -5,6 +5,7 @@ import { act, backTo, Refused, text, uuid } from "@/lib/action";
 import { loadSettings, money } from "@/lib/settings";
 import { Card, Empty, Flash, PageHead, type Search, startKey, startOf } from "../ui";
 import { type Customer, CustomersTable } from "./table";
+import { Submit } from "../busy";
 
 const PATH = "/backoffice/customers";
 
@@ -91,7 +92,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Se
           <input name="phone" placeholder="Phone" maxLength={40} />
           <input name="email" placeholder="Email" maxLength={120} />
           <input name="note" placeholder="Note (allergies, what they like)" maxLength={200} />
-          <button type="submit">Add</button>
+          <Submit>Add</Submit>
         </form>
       </Card>
       {d.rows.length === 0 ? (

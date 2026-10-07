@@ -5,6 +5,7 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { fmtRs } from "@/lib/money";
 import { clock, fmtQty, RECEIPTS, today } from "@/lib/report";
+import { Go, Submit, Wait } from "./busy";
 import { SalesChart, type Day } from "./dash-chart";
 import { Card } from "./ui";
 
@@ -721,19 +722,21 @@ export default async function BackofficeHome({
             {data.options.map((o) => (
               <Link key={o.label} href={href(o.from, o.to, compare)} className={o.from === from && o.to === to ? "on" : undefined}>
                 {o.label}
+                <Wait />
               </Link>
             ))}
-            <form method="get" action="/backoffice">
+            <Go action="/backoffice">
               <input type="date" name="from" defaultValue={from} required aria-label="From" /> to{" "}
               <input type="date" name="to" defaultValue={to} required aria-label="To" />
               {compare && <input type="hidden" name="compare" value="1" />}
-              <button type="submit">Apply</button>
-            </form>
+              <Submit>Apply</Submit>
+            </Go>
           </div>
         </details>
         <span className="spacer" />
         <Link className="compare" href={href(from, to, !compare)} role="switch" aria-checked={compare}>
           Compare data <span className={compare ? "switch on" : "switch"} />
+          <Wait />
         </Link>
       </div>
 

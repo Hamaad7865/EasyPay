@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { PoolClient } from "pg";
 import { Lightbulb } from "lucide-react";
 import { RECEIPTS, today } from "@/lib/report";
+import { Wait } from "../busy";
 import { one } from "../ui";
 
 // What the three Insights pages share. They read the same receipts the
@@ -81,6 +82,7 @@ export function SpanPicker({ path, p }: { path: string; p: Period }) {
       {SPANS.map((n) => (
         <Link key={n} href={`${path}?days=${n}`} className={n === p.days ? "on" : undefined}>
           Last {n} days
+          <Wait />
         </Link>
       ))}
       <span>

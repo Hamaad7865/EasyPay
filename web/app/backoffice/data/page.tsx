@@ -3,6 +3,7 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, Refused, text } from "@/lib/action";
 import { Card, Flash, PageHead, type Search } from "../ui";
+import { Submit } from "../busy";
 
 const PATH = "/backoffice/data";
 
@@ -100,7 +101,7 @@ export default async function DataPage({ searchParams }: { searchParams: Search 
               Type the restaurant&apos;s name to confirm
               <input name="confirm" placeholder={d.name} required autoComplete="off" disabled={!d.owner} />
             </label>
-            <button type="submit" className="btn-danger" disabled={!d.owner}>Delete all transactions</button>
+            <Submit className="btn-danger" disabled={!d.owner}>Delete all transactions</Submit>
           </form>
         </Card>
         <Card title="Delete the menu" lede={`${d.counts.items} items today.`}>
@@ -110,7 +111,7 @@ export default async function DataPage({ searchParams }: { searchParams: Search 
               Type the restaurant&apos;s name to confirm
               <input name="confirm" placeholder={d.name} required autoComplete="off" disabled={!d.owner} />
             </label>
-            <button type="submit" className="btn-danger" disabled={!d.owner}>Delete the menu</button>
+            <Submit className="btn-danger" disabled={!d.owner}>Delete the menu</Submit>
           </form>
         </Card>
       </div>

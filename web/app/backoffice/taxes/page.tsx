@@ -3,6 +3,7 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, on, Refused, text, uuid } from "@/lib/action";
 import { Card, Flash, PageHead, type Search } from "../ui";
+import { Submit } from "../busy";
 
 const PATH = "/backoffice/taxes";
 
@@ -75,7 +76,7 @@ export default async function TaxesPage({ searchParams }: { searchParams: Search
             <option value="included">Prices include it</option>
             <option value="added">Added on top</option>
           </select>
-          <button type="submit">Add</button>
+          <Submit>Add</Submit>
         </form>
       </Card>
       <table>
@@ -112,7 +113,7 @@ export default async function TaxesPage({ searchParams }: { searchParams: Search
               <td>
                 <form id={"t" + t.id} action={saveTax} className="row-actions">
                   <input type="hidden" name="id" value={t.id} />
-                  <button type="submit" className="btn-quiet btn-sm">Save</button>
+                  <Submit className="btn-quiet btn-sm">Save</Submit>
                 </form>
               </td>
             </tr>

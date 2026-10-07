@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ChevronRight, Search } from "lucide-react";
+import { Submit } from "../busy";
 
 export type Group = { id: string; name: string; min_select: number; max_select: number; items: number };
 // shown: the extra price as the till shows it ("+ Rs 25.00"), or "" when the choice is free
@@ -122,10 +123,10 @@ export function AddonsTable({
                           <span>(0 = any)</span>
                         </label>
                         <span className="spacer" />
-                        <button type="submit" className="btn-quiet btn-sm">Save group</button>
-                        <button type="submit" name="remove" value="1" className="btn-link danger" formNoValidate>
+                        <Submit className="btn-quiet btn-sm">Save group</Submit>
+                        <Submit name="remove" value="1" className="btn-link danger" formNoValidate>
                           Remove group
-                        </button>
+                        </Submit>
                       </form>
                       <table>
                         <thead>
@@ -146,8 +147,8 @@ export function AddonsTable({
                                 <form id={"m" + m.id} action={saveChoice} className="row-actions">
                                   <input type="hidden" name="id" value={m.id} />
                                   <input type="hidden" name="group" value={g.id} />
-                                  <button type="submit" className="btn-quiet btn-sm">Save</button>
-                                  <button type="submit" name="remove" value="1" className="btn-link danger" formNoValidate>Remove</button>
+                                  <Submit className="btn-quiet btn-sm">Save</Submit>
+                                  <Submit name="remove" value="1" className="btn-link danger" formNoValidate>Remove</Submit>
                                 </form>
                               </td>
                             </tr>
@@ -159,7 +160,7 @@ export function AddonsTable({
                             <td>
                               <form id={"n" + g.id} action={addChoice} className="row-actions">
                                 <input type="hidden" name="group" value={g.id} />
-                                <button type="submit" className="btn-sm">Add choice</button>
+                                <Submit className="btn-sm">Add choice</Submit>
                               </form>
                             </td>
                           </tr>

@@ -1052,3 +1052,64 @@ html:has(.drawer[open]) { overflow: hidden; }
   .drawer[open], .drawer[open]::backdrop { animation: none; }
   .drawer.leaving, .drawer.leaving::backdrop { transition: none; }
 }
+
+/* ---- waiting (skeleton.tsx, busy.tsx) ----
+   A page whose figures are on their way shows its frame at once: the heading,
+   the cards, the lines of the table, with every piece of text a grey bar. One
+   soft light crosses the whole page from left to right and comes round again,
+   so the bars glint one after the other and not each on its own. A page that
+   is there at once shows none of it: the frame takes a moment to come up. */
+@keyframes sk-in { from { opacity: 0; } }
+@keyframes sk-light { from { background-position-x: -75vw; } to { background-position-x: 125vw; } }
+.sk-page { animation: sk-in 0.3s ease 0.09s backwards; }
+/* a bar is as tall as the line of text it stands for, so little moves when the text comes */
+.sk { display: block; height: 1lh; max-width: 100%; }
+.sk::before { content: ""; display: block; position: relative; top: calc((1lh - 0.7em) / 2); height: 0.7em; border-radius: 999px; }
+.sk-box { display: block; flex: none; max-width: 100%; border-radius: var(--radius-sm); }
+.sk::before, .sk-box {
+  background: linear-gradient(100deg, rgba(17, 24, 39, 0.085) 19%, rgba(17, 24, 39, 0.028) 25%, rgba(17, 24, 39, 0.085) 31%) 0 0 / 200vw 100% fixed;
+  /* the light starts off the left edge, crosses in a second, and rests most of another */
+  animation: sk-light 1.9s linear infinite;
+}
+/* the lines of a table, the last ones fading as a list that goes on does */
+.sk-rows { -webkit-mask-image: linear-gradient(#000 55%, transparent); mask-image: linear-gradient(#000 55%, transparent); }
+.sk-tr { display: grid; grid-template-columns: 2.2fr repeat(var(--cols, 4), 1fr); gap: 16px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.sk-th { padding: 11px 16px; background: #fafbfc; font-size: 11.5px; }
+.sk-field { display: grid; gap: 5px; font-size: 11.5px; }
+.sk-grow { flex: 1; min-width: 0; }
+
+/* A button that has sent its form: its words make way for a small turning
+   ring, at the same width, until the answer is back. The form's other
+   buttons dim and wait with it. */
+.bo-main button[aria-busy="true"], .bo-user button[aria-busy="true"], .rail-who button[aria-busy="true"] {
+  position: relative; color: transparent !important; opacity: 1; pointer-events: none; transition: none;
+}
+button[aria-busy="true"] > * { visibility: hidden; }
+button[aria-busy="true"]::after {
+  content: ""; position: absolute; inset: 0; margin: auto; width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--spin, #fff) 28%, transparent); border-top-color: var(--spin, #fff);
+  animation: search-spin 0.7s linear infinite;
+}
+.bo-main button.btn-quiet, .bo-user button, .rail-who button { --spin: var(--ink); }
+.bo-main button.btn-link { --spin: var(--accent); }
+.bo-main button.btn-danger, .bo-main button.btn-link.danger { --spin: var(--red); }
+
+/* A link that has been clicked and whose page is not there yet. In the menu
+   a small ring turns at the end of its line; anywhere else the link itself
+   breathes. Both wait a moment before showing, so a page that is there at
+   once shows nothing. */
+@keyframes wait-in { to { opacity: 1; } }
+@keyframes wait-breathe { 50% { opacity: 0.45; } }
+.wait { display: none; }
+.bo-nav .wait[data-on], .rail-card .wait[data-on] {
+  display: block; flex: none; margin-left: auto; width: 12px; height: 12px; border-radius: 50%; opacity: 0;
+  border: 2px solid rgba(17, 24, 39, 0.14); border-top-color: var(--ink2);
+  animation: search-spin 0.7s linear infinite, wait-in 0.2s ease 0.12s forwards;
+}
+.wait[data-on] + .nav-n { margin-left: 0; }
+.rail-card a.on .wait[data-on] { border-color: rgba(255, 255, 255, 0.3); border-top-color: #fff; }
+.bo-main a:has(> .wait[data-on]) { cursor: progress; animation: wait-breathe 1.1s ease-in-out 0.12s infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .sk-page, .sk::before, .sk-box { animation: none; }
+  .bo-main a:has(> .wait[data-on]) { animation: none; opacity: 0.6; }
+}

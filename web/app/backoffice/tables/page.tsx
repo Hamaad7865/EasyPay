@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
+import { Wait } from "../busy";
 import { NewFloor } from "./new-floor";
 
 type Floor = { name: string; tables: number; covers: number };
@@ -34,9 +35,10 @@ export default async function FloorPlansPage({ searchParams }: { searchParams: P
       {data.stores.length > 1 && (
         <p className="bo-chips">
           {data.stores.map((s) => (
-            <a key={s.id} href={`/backoffice/tables?store=${s.id}`} className={s.id === data.store?.id ? "on" : undefined}>
+            <Link key={s.id} href={`/backoffice/tables?store=${s.id}`} className={s.id === data.store?.id ? "on" : undefined}>
               {s.name}
-            </a>
+              <Wait />
+            </Link>
           ))}
         </p>
       )}

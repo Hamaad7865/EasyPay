@@ -7,6 +7,7 @@ import { toHex } from "@/lib/colour";
 import { loadSettings } from "@/lib/settings";
 import { Card, Empty, Flash, PageHead, type Search, startKey, startOf } from "../ui";
 import { CategoriesTable, type Category } from "./table";
+import { Submit } from "../busy";
 
 const PATH = "/backoffice/categories";
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -96,7 +97,7 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
         <form action={addCategory} className="bo-toolbar" style={{ margin: 0 }}>
           <input name="name" placeholder="Name" required maxLength={40} style={{ minWidth: 260 }} />
           <input type="color" name="color" defaultValue={PLAIN} aria-label="Colour on the till" />
-          <button type="submit">Add</button>
+          <Submit>Add</Submit>
         </form>
       </Card>
       {rows.length === 0 ? (

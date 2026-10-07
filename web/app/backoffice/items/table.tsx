@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Plus, UtensilsCrossed } from "lucide-react";
 import { Chev, downloadCsv, fold, NoMatch, Seg, SortTh, type Start, TableSearch, useTable } from "../table-kit";
 import { type AddonGroup, ItemEditor, type Tax } from "./editor";
+import { Submit } from "../busy";
 
 export type Item = {
   id: string;
@@ -176,12 +177,12 @@ export function ItemsTable({
             {chosen.length} {chosen.length === 1 ? "item" : "items"} ticked
             {chosen.length > here && ` (${chosen.length - here} not in the list as filtered)`}
           </strong>
-          <button type="submit" name="available" value="0" className="btn-sm">
+          <Submit name="available" value="0" className="btn-sm">
             Mark sold out
-          </button>
-          <button type="submit" name="available" value="1" className="btn-quiet btn-sm">
+          </Submit>
+          <Submit name="available" value="1" className="btn-quiet btn-sm">
             Put back on sale
-          </button>
+          </Submit>
           <span className="spacer" />
           <button type="button" className="btn-link" onClick={() => setPicked(new Set())}>
             Untick all
@@ -278,9 +279,9 @@ export function ItemsTable({
                             On sale
                           </label>
                           <span className="spacer" />
-                          <button type="submit" className="btn-sm">
+                          <Submit className="btn-sm">
                             Save
-                          </button>
+                          </Submit>
                           <button type="button" className="btn-quiet btn-sm" onClick={() => edit(it.id)}>
                             Edit everything
                           </button>

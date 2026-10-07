@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Back, Chev, fold, NoMatch, Seg, SortTh, type Start, TableSearch, useTable } from "../table-kit";
+import { Submit } from "../busy";
 
 // quantities are thousandths; `q_shown` and `sold7_shown` are the same as people read them
 export type StockRow = { id: string; name: string; cat: string | null; cat_order: number; q: number; q_shown: string; sold7: number; sold7_shown: string };
@@ -84,9 +85,9 @@ export function StockTable({ rows, start, change }: { rows: StockRow[]; start: S
                           </select>
                           <input name="qty" required className="narrow" inputMode="decimal" placeholder="0" aria-label={`Quantity for ${r.name}`} />
                           <input name="note" maxLength={120} placeholder="Note, for example the supplier" aria-label="Note" style={{ flex: "1 1 220px" }} />
-                          <button type="submit" className="btn-sm">
+                          <Submit className="btn-sm">
                             Save
-                          </button>
+                          </Submit>
                         </form>
                         <p className="muted open-hint">
                           {r.q_shown} in stock now. Every change is kept under Latest movements, with who made it.

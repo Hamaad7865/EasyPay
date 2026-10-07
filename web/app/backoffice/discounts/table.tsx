@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Back, Chev, fold, NoMatch, Seg, SortTh, type Start, TableSearch, useTable } from "../table-kit";
+import { Submit } from "../busy";
 
 export type Discount = {
   id: string;
@@ -97,12 +98,12 @@ export function DiscountsTable({ rows, start, save }: { rows: Discount[]; start:
                             Needs a manager
                           </label>
                           <span className="spacer" />
-                          <button type="submit" className="btn-sm">
+                          <Submit className="btn-sm">
                             Save
-                          </button>
-                          <button type="submit" name="remove" value="1" className="btn-link danger" formNoValidate>
+                          </Submit>
+                          <Submit name="remove" value="1" className="btn-link danger" formNoValidate>
                             Remove
-                          </button>
+                          </Submit>
                         </form>
                         <p className="muted open-hint">Receipts it was already given on keep its name and what it took off.</p>
                       </div>

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Back, Chev, fold, NoMatch, Seg, SortTh, type Start, TableSearch, useTable } from "../table-kit";
+import { Submit } from "../busy";
 
 export type Customer = { id: string; name: string; phone: string | null; email: string | null; note: string | null; orders: number; spent: number; spent_shown: string };
 type Action = (f: FormData) => Promise<void>;
@@ -89,17 +90,17 @@ export function CustomersTable({ rows, capped, start, save, remove }: { rows: Cu
                           <input name="phone" defaultValue={r.phone ?? ""} maxLength={40} aria-label="Phone" placeholder="Phone" inputMode="tel" />
                           <input name="email" defaultValue={r.email ?? ""} maxLength={120} aria-label="Email" placeholder="Email" inputMode="email" />
                           <input name="note" defaultValue={r.note ?? ""} maxLength={200} aria-label="Note" placeholder="Note (allergies, what they like)" style={{ flex: "1 1 220px" }} />
-                          <button type="submit" className="btn-sm">
+                          <Submit className="btn-sm">
                             Save
-                          </button>
+                          </Submit>
                         </form>
                         <form action={remove} className="open-remove">
                           <input type="hidden" name="id" value={r.id} />
                           <Back t={t} />
                           <span className="muted">Removing a customer keeps the orders and receipts they were on.</span>
-                          <button type="submit" className="btn-link danger">
+                          <Submit className="btn-link danger">
                             Remove {r.name}
-                          </button>
+                          </Submit>
                         </form>
                       </div>
                     </td>

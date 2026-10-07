@@ -7,6 +7,7 @@ import { parseRs } from "@/lib/money";
 import { loadSettings, money } from "@/lib/settings";
 import { Card, Empty, Flash, one, PageHead, type Search } from "../ui";
 import { AddonsTable, type Choice, type Group } from "./table";
+import { Submit } from "../busy";
 
 const PATH = "/backoffice/addons";
 // After a save the page comes back with the group that was being worked on
@@ -110,7 +111,7 @@ export default async function AddonsPage({ searchParams }: { searchParams: Searc
       <Card title="Add a group">
         <form action={addGroup} className="bo-toolbar" style={{ margin: 0 }}>
           <input name="name" placeholder="Name, for example Extras" required maxLength={40} style={{ minWidth: 260 }} />
-          <button type="submit">Add group</button>
+          <Submit>Add group</Submit>
         </form>
       </Card>
       {d.groups.length === 0 ? (

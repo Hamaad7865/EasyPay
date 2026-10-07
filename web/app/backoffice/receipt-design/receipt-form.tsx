@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Submit } from "../busy";
 
 type Company = { name: string; brn: string; vat: string; address: string; phone: string };
 
@@ -92,7 +93,7 @@ export function ReceiptForm({
             </label>
           </div>
           <div className="card-foot">
-            <button type="submit" disabled={!canEdit}>Save receipt design</button>
+            <Submit disabled={!canEdit}>Save receipt design</Submit>
           </div>
         </section>
       </form>
