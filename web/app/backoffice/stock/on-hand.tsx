@@ -66,14 +66,15 @@ type Line = {
 export async function OnHand({ sp, ctx }: { sp: Record<string, string | string[] | undefined>; ctx: TenantContext }) {
   const d = await readTenant(ctx.tenantId, async (c) => {
     const [may, lines, settings] = await Promise.all([
-      c.query(`select has_perm($1, 'stock.view') as view, has_perm($1, 'stock.adjust') as adjust, has_perm($1, 'costs.view') as costs, has_perm($1, 'stock.receive') as receive`, [ctx.employeeId]),
+      c.query(`select has_perm($1, 'stock.view') as view, has_perm($1, 'stock.adjust') as adjust, has_perm($1, 'costs.view') as costs, has_perm($1, 'stock.receive') as receive, has_perm($1, 'stock.count') as count`, [ctx.employeeId]),
       c.query(`select * from stock_on_hand($1, first_store($1))`, [ctx.tenantId]),
       loadSettings(c, ctx.tenantId),
     ]);
-    return { may: may.rows[0] as { view: boolean; adjust: boolean; costs: boolean; receive: boolean }, lines: lines.rows as Line[], decimals: settings.decimals };
+    return { may: may.rows[0] as { view: boolean; adjust: boolean; costs: boolean; receive: boolean; count: boolean }, lines: lines.rows as Line[], decimals: settings.decimals };
   });
   const head = (
     <PageHead title="Stock on hand" lede="What the shop holds now. A sale takes from it, a delivery adds to it, and every change is kept under Movements.">
+      {d.may.view && d.may.count && <Link href="/backoffice/stock-counts" className="btn btn-quiet">New count</Link>}
       {d.may.view && d.may.receive && <Link href="/backoffice/purchase-orders" className="btn">Receive a delivery</Link>}
     </PageHead>
   );

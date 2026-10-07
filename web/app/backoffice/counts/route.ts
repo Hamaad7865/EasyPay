@@ -23,6 +23,7 @@ const SQL = `
          (select count(*)::int from items i left join categories c on c.tenant_id = i.tenant_id and c.id = i.category_id
            where i.tenant_id = $1 and i.deleted_at is null and (i.track_stock or coalesce(c.is_stock, false))) as stock,
          (select count(*)::int from purchase_orders where tenant_id = $1 and deleted_at is null and status in ('sent', 'part')) as orders_open,
+         (select count(*)::int from stock_counts where tenant_id = $1 and deleted_at is null and status = 'open') as counts_open,
          (select count(*)::int from tables where tenant_id = $1 and deleted_at is null) as tables,
          (select count(*)::int from bookings bk join stores s on s.tenant_id = bk.tenant_id and s.id = bk.store_id
            where bk.tenant_id = $1 and bk.deleted_at is null
@@ -56,6 +57,8 @@ export async function GET() {
   put("/backoffice/stock", r.stock, "item counted", "items counted");
   // what there is to act on: the orders that are on their way
   if (r.orders_open > 0) put("/backoffice/purchase-orders", r.orders_open, "order on its way", "orders on their way");
+  // and the counts still being counted
+  if (r.counts_open > 0) put("/backoffice/stock-counts", r.counts_open, "count being counted", "counts being counted");
   put("/backoffice/tables", r.tables, "table", "tables");
   put("/backoffice/bookings", r.bookings, "booking from today on", "bookings from today on");
   put("/backoffice/customers", r.customers, "customer", "customers");

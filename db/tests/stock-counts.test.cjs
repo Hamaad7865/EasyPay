@@ -141,6 +141,15 @@ const near = (a, b) => Math.abs(Number(a) - b) < 0.01;
     check('N9 a line can be left out of the count', (await review(all.id)).Mug.left_out === true);
     await c.query(`select count_line($1,$2,$3,'back')`, [tid, all.id, r.Mug.line_id]);
     check('N9 and put back', (await review(all.id)).Mug.left_out === false);
+    // a line left out and then counted is on the shelf after all: counting it puts it back (migration 0076)
+    await c.query(`select count_line($1,$2,$3,'leave')`, [tid, all.id, r.Mug.line_id]);
+    await type(all.id, mug, null, 27000);
+    const mugBack = (await review(all.id)).Mug;
+    check('N9 typing a quantity for a line that was left out puts it back in the count', mugBack.left_out === false && mugBack.counted === 27000, JSON.stringify(mugBack));
+    await c.query(`select count_line($1,$2,$3,'leave')`, [tid, all.id, r.Mug.line_id]);
+    await c.query(addSql, [tid, all.id, mug, null, 1000, 'add', emp]);
+    await type(all.id, mug, null, 27000);
+    check('N9 and so does a scan', (await review(all.id)).Mug.left_out === false);
     await c.query(`select count_line($1,$2,$3,'leave')`, [tid, all.id, r['Shirt M'].line_id]);
 
     // ---- completing ----
