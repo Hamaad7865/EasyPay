@@ -585,7 +585,7 @@ private fun SyncNotices(needsSignIn: Boolean, pending: Long, rejected: Long, onS
         Row(Modifier.fillMaxWidth().background(V.RedWash).padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             T(
                 "This tablet cannot sync: its login was signed out or switched off. " +
-                    (if (pending > 0) "$pending changes are saved here. " else "Sales are saved here. ") + "Sign in with a login of this restaurant to send them.",
+                    (if (pending > 0) "$pending changes are saved here. " else "Sales are saved here. ") + "Sign in with a login of this business to send them.",
                 13.sp, 600, V.RedText, Modifier.weight(1f), lines = 2,
             )
             VBtn("Sign in", bg = V.Red, fg = Color.White, height = 38.dp, radius = 10.dp, size = 14.sp, onClick = onSignIn)

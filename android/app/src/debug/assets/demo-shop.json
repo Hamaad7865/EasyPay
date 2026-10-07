@@ -1,0 +1,400 @@
+{
+  "about": "A made-up shop for the debug build and the replay script. Nothing here is a real business, product or person.",
+  "tenant": "d0000000-0000-4000-8000-000000000001",
+  "store": {
+    "id": "d0000000-0000-4000-8000-000000000002",
+    "name": "Demo shop",
+    "code": "DM"
+  },
+  "device": {
+    "id": "d0000000-0000-4000-8000-000000000003",
+    "name": "Till 1",
+    "code": "T1"
+  },
+  "settings": {
+    "businessType": "retail",
+    "decimals": 2,
+    "company": {
+      "name": "Demo shop",
+      "address": "12 Royal Road, Curepipe",
+      "phone": "5 000 0000"
+    },
+    "receipt": {
+      "footer": "Thank you. Goods are exchanged within 14 days with this receipt."
+    }
+  },
+  "tax": {
+    "id": "d0000000-0000-4000-8000-000000000005",
+    "name": "VAT",
+    "rate_bp": 1500,
+    "type": "included"
+  },
+  "dining": {
+    "id": "d0000000-0000-4000-8000-000000000006",
+    "name": "Counter",
+    "kind": "counter"
+  },
+  "payments": [
+    {
+      "id": "d0000000-0000-4000-8000-000000000007",
+      "name": "Cash",
+      "kind": "cash",
+      "opens_drawer": true
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000008",
+      "name": "Card",
+      "kind": "card",
+      "opens_drawer": false
+    }
+  ],
+  "roles": [
+    {
+      "id": "d0000000-0000-4000-8000-000000000021",
+      "name": "Owner",
+      "permissions": [
+        "*"
+      ]
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000022",
+      "name": "Cashier",
+      "permissions": [
+        "sale.create",
+        "payment.take",
+        "sale.void_line",
+        "shift.open_close",
+        "receipts.view_all",
+        "receipts.reprint"
+      ]
+    }
+  ],
+  "staff": [
+    {
+      "id": "d0000000-0000-4000-8000-000000000031",
+      "name": "Aisha",
+      "role": "d0000000-0000-4000-8000-000000000021",
+      "pin": "4821"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000032",
+      "name": "Ben",
+      "role": "d0000000-0000-4000-8000-000000000022",
+      "pin": "7350"
+    }
+  ],
+  "categories": [
+    {
+      "id": "d0000000-0000-4000-8000-000000000011",
+      "name": "Clothing"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000012",
+      "name": "Shoes"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000013",
+      "name": "Home"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000014",
+      "name": "Food"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000015",
+      "name": "Gifts"
+    }
+  ],
+  "items": [
+    {
+      "id": "d0000000-0000-4000-8000-000000000101",
+      "name": "Linen shirt",
+      "category": "d0000000-0000-4000-8000-000000000011",
+      "price": 129000,
+      "cost": 62000,
+      "sku": "LS",
+      "barcode": null,
+      "sold_by": "each",
+      "track_stock": true,
+      "stock": 0,
+      "options": [
+        "Size",
+        "Colour"
+      ],
+      "variants": [
+        {
+          "id": "d0000000-0000-4000-8000-000000000301",
+          "name": "S / White",
+          "values": [
+            "S",
+            "White"
+          ],
+          "sku": "LS-S-WH",
+          "barcode": "2000000003016",
+          "price": 129000,
+          "cost": 62000,
+          "stock": 8000
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000302",
+          "name": "M / White",
+          "values": [
+            "M",
+            "White"
+          ],
+          "sku": "LS-M-WH",
+          "barcode": "2000000003023",
+          "price": 129000,
+          "cost": 62000,
+          "stock": 14000
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000303",
+          "name": "L / White",
+          "values": [
+            "L",
+            "White"
+          ],
+          "sku": "LS-L-WH",
+          "barcode": "2000000003030",
+          "price": 129000,
+          "cost": 62000,
+          "stock": 9000
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000304",
+          "name": "XL / White",
+          "values": [
+            "XL",
+            "White"
+          ],
+          "sku": "LS-XL-WH",
+          "barcode": "2000000003047",
+          "price": 129000,
+          "cost": 62000,
+          "stock": 4000
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000305",
+          "name": "S / Navy",
+          "values": [
+            "S",
+            "Navy"
+          ],
+          "sku": "LS-S-NA",
+          "barcode": "2000000003054",
+          "price": 129000,
+          "cost": 62000,
+          "stock": 6000
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000306",
+          "name": "M / Navy",
+          "values": [
+            "M",
+            "Navy"
+          ],
+          "sku": "LS-M-NA",
+          "barcode": "2000000003061",
+          "price": 129000,
+          "cost": 62000,
+          "stock": 11000
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000307",
+          "name": "L / Navy",
+          "values": [
+            "L",
+            "Navy"
+          ],
+          "sku": "LS-L-NA",
+          "barcode": "2000000003078",
+          "price": 129000,
+          "cost": 62000,
+          "stock": 3000
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000308",
+          "name": "XL / Navy",
+          "values": [
+            "XL",
+            "Navy"
+          ],
+          "sku": "LS-XL-NA",
+          "barcode": "2000000003085",
+          "price": 129000,
+          "cost": 62000,
+          "stock": 0
+        }
+      ]
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000102",
+      "name": "Denim jacket, M",
+      "category": "d0000000-0000-4000-8000-000000000011",
+      "price": 295000,
+      "cost": 140000,
+      "sku": "DJ-M",
+      "barcode": "2000000001029",
+      "sold_by": "each",
+      "track_stock": true,
+      "stock": 3000,
+      "options": [],
+      "variants": []
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000103",
+      "name": "Cotton scarf, Red",
+      "category": "d0000000-0000-4000-8000-000000000011",
+      "price": 59000,
+      "cost": 28000,
+      "sku": "CS-RD",
+      "barcode": "2000000001036",
+      "sold_by": "each",
+      "track_stock": true,
+      "stock": 6000,
+      "options": [],
+      "variants": []
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000104",
+      "name": "Leather sandals, 42",
+      "category": "d0000000-0000-4000-8000-000000000012",
+      "price": 189000,
+      "cost": 90000,
+      "sku": "SA-42",
+      "barcode": "2000000001043",
+      "sold_by": "each",
+      "track_stock": true,
+      "stock": 2000,
+      "options": [],
+      "variants": []
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000105",
+      "name": "Canvas tote bag",
+      "category": "d0000000-0000-4000-8000-000000000015",
+      "price": 39000,
+      "cost": 18000,
+      "sku": "TOTE",
+      "barcode": "2000000001050",
+      "sold_by": "each",
+      "track_stock": true,
+      "stock": 0,
+      "options": [],
+      "variants": []
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000106",
+      "name": "Ceramic mug, Blue",
+      "category": "d0000000-0000-4000-8000-000000000013",
+      "price": 32000,
+      "cost": 14000,
+      "sku": "MUG-BL",
+      "barcode": "2000000001067",
+      "sold_by": "each",
+      "track_stock": true,
+      "stock": 26000,
+      "options": [],
+      "variants": []
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000107",
+      "name": "Scented candle",
+      "category": "d0000000-0000-4000-8000-000000000013",
+      "price": 45000,
+      "cost": 21000,
+      "sku": "CNDL",
+      "barcode": "2000000001074",
+      "sold_by": "each",
+      "track_stock": true,
+      "stock": 31000,
+      "options": [],
+      "variants": []
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000108",
+      "name": "Woven basket",
+      "category": "d0000000-0000-4000-8000-000000000013",
+      "price": 78000,
+      "cost": 36000,
+      "sku": "BSKT",
+      "barcode": "2000000001081",
+      "sold_by": "each",
+      "track_stock": true,
+      "stock": 4000,
+      "options": [],
+      "variants": []
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000109",
+      "name": "Vanilla tea 100 g",
+      "category": "d0000000-0000-4000-8000-000000000014",
+      "price": 19500,
+      "cost": 9000,
+      "sku": "TEA-V",
+      "barcode": "2000000001098",
+      "sold_by": "each",
+      "track_stock": true,
+      "stock": 0,
+      "options": [],
+      "variants": []
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000110",
+      "name": "Rum raisin chocolate",
+      "category": "d0000000-0000-4000-8000-000000000014",
+      "price": 24000,
+      "cost": 11000,
+      "sku": "CHOC-RR",
+      "barcode": "2000000001104",
+      "sold_by": "each",
+      "track_stock": true,
+      "stock": 18000,
+      "options": [],
+      "variants": []
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000111",
+      "name": "Basmati rice, loose",
+      "category": "d0000000-0000-4000-8000-000000000014",
+      "price": 8000,
+      "cost": 4500,
+      "sku": "RICE",
+      "barcode": "2000000001111",
+      "sold_by": "weight",
+      "track_stock": true,
+      "stock": 25000,
+      "options": [],
+      "variants": []
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000112",
+      "name": "Postcard set",
+      "category": "d0000000-0000-4000-8000-000000000015",
+      "price": 15000,
+      "cost": 6000,
+      "sku": "CARDS",
+      "barcode": "2000000001128",
+      "sold_by": "each",
+      "track_stock": true,
+      "stock": 40000,
+      "options": [],
+      "variants": []
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000113",
+      "name": "Gift wrapping",
+      "category": "d0000000-0000-4000-8000-000000000015",
+      "price": 5000,
+      "cost": 0,
+      "sku": "WRAP",
+      "barcode": null,
+      "sold_by": "each",
+      "track_stock": false,
+      "stock": 0,
+      "options": [],
+      "variants": []
+    }
+  ]
+}

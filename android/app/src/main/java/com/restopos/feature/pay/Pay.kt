@@ -1,5 +1,7 @@
 package com.restopos.feature.pay
 
+import com.restopos.core.data.PosSettings
+import androidx.compose.foundation.layout.widthIn
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -253,7 +255,7 @@ class PayViewModel @Inject constructor(
         // does not take it.
         if (cur.check != null && discount?.type == "amount" && cur.check != unpaid.minOfOrNull { it.line.check_no }) discount = null
         val title = (if (table != null) "${tableLabel(table.name)} · ${t.covers ?: 1} ${L.covers}"
-        else listOfNotNull(if (kind == "counter") L.quick else type?.name, t.order_no, t.name).joinToString(" ")) + (cur.check?.let { " · Check $it" } ?: "")
+        else listOfNotNull(if (kind == "counter") (if (PosSettings.parse(db.ops().settings()).retail) "Sale" else L.quick) else type?.name, t.order_no, t.name).joinToString(" ")) + (cur.check?.let { " · Check $it" } ?: "")
         show(cur.copy(
             loaded = true, gone = unpaid.isEmpty(), title = title, kind = kind,
             split = split ?: cur.split, n = if (cur.loaded) cur.n else maxOf(2, t.covers ?: 2),
@@ -463,7 +465,7 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                             Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 16.dp, vertical = 11.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            T(l.info.units.toString(), 15.sp, 800, if (paid) V.Off else V.Text, Modifier.width(26.dp), strike = paid)
+                            T(com.restopos.core.print.Docs.qty(l.info.line.qty), 15.sp, 800, if (paid) V.Off else V.Text, Modifier.widthIn(min = 26.dp), strike = paid)
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 T(l.info.line.name_snapshot, 15.sp, 600, if (paid) V.Off else V.Text, lines = 2, strike = paid)
                                 if (l.info.detail.isNotEmpty()) T(l.info.detail, 13.sp, 500, V.Text2, lines = 2)

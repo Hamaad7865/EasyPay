@@ -157,7 +157,7 @@ fun CustomersScreen(vm: CustomersViewModel = hiltViewModel()) {
 // Assign customer, on the register: find one, or make one, and the order is
 // for them. `current` is the customer already on the order.
 @Composable
-fun CustomerPicker(current: String?, vm: CustomersViewModel = hiltViewModel(), onDismiss: () -> Unit, onPick: (String?) -> Unit) {
+fun CustomerPicker(current: String?, vm: CustomersViewModel = hiltViewModel(), what: String = "order", onDismiss: () -> Unit, onPick: (String?) -> Unit) {
     val rows by vm.rows.collectAsState()
     val message by vm.message.collectAsState()
     var typed by remember { mutableStateOf("") }
@@ -171,7 +171,7 @@ fun CustomerPicker(current: String?, vm: CustomersViewModel = hiltViewModel(), o
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Who is this order for?") },
+        title = { Text("Who is this $what for?") },
         text = {
             Column(Modifier.width(460.dp)) {
                 OutlinedTextField(
@@ -198,7 +198,7 @@ fun CustomerPicker(current: String?, vm: CustomersViewModel = hiltViewModel(), o
         confirmButton = { Button(onClick = { adding = true }) { Text("New customer") } },
         dismissButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (current != null) OutlinedButton(onClick = { onPick(null) }) { Text("Take off the order", color = Pos.Pink) }
+                if (current != null) OutlinedButton(onClick = { onPick(null) }) { Text("Take off the $what", color = Pos.Pink) }
                 OutlinedButton(onClick = onDismiss) { Text("Cancel") }
             }
         },

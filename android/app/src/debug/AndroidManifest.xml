@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only (this file is in src/debug): the build for the emulator.
+     The release build that goes on a business's tablets has none of this. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Fills a tablet that was never set up with a made-up shop, so the
+             shop's screens can be used with no login and no server:
+               adb shell am broadcast -n com.restopos.app/com.restopos.debug.DemoReceiver -a com.restopos.app.DEMO_SHOP
+             It refuses a tablet that is set up for a business. -->
+        <receiver android:name="com.restopos.debug.DemoReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="com.restopos.app.DEMO_SHOP" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

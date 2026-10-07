@@ -98,7 +98,7 @@ fun RetailSellScreen(vm: RetailViewModel, onPay: () -> Unit) {
     when (sheet) {
         "parked" -> ParkedSheet(parked.map { ParkedRow(it.id, it.ticket.order_no ?: "Sale", it.lines.filter { l -> !l.line.paid }.size, it.due, it.openedAt) }, onDismiss = { sheet = null }) { id -> vm.resume(id); sheet = null }
         "discount" -> DiscountSheet(ui, vm) { sheet = null }
-        "customer" -> CustomerPicker(ui.ticket?.customer_id, onDismiss = { sheet = null }) { id -> vm.setCustomer(id); sheet = null }
+        "customer" -> CustomerPicker(ui.ticket?.customer_id, what = "sale", onDismiss = { sheet = null }) { id -> vm.setCustomer(id); sheet = null }
         "clear" -> Sheet(onDismiss = { sheet = null }, width = 520.dp) {
             SheetHead("Clear this sale?", "Every line comes off it. Nothing was paid, so nothing is refunded.") { sheet = null }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

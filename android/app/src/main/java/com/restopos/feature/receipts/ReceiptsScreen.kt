@@ -313,7 +313,7 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                     if (lines == null) {
                         Text("The whole receipt is refunded. Pick how the money goes back.", Modifier.padding(bottom = 10.dp), color = Pos.Text2, fontSize = 13.sp)
                     } else {
-                        Text("What comes back. Take off what the guest keeps.", Modifier.padding(bottom = 6.dp), color = Pos.Text2, fontSize = 13.sp)
+                        Text("What comes back. Take off what the ${if (retail) "customer" else "guest"} keeps.", Modifier.padding(bottom = 6.dp), color = Pos.Text2, fontSize = 13.sp)
                         lines.forEach { l ->
                             val q = picks[l.id] ?: 0
                             Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -330,10 +330,9 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                         }
                         Text("Pick how the money goes back.", Modifier.padding(top = 8.dp, bottom = 8.dp), color = Pos.Text2, fontSize = 13.sp)
                     }
-                    TypeGrid(types, type) { type = it }
-                    OutlinedTextField(reason, { reason = it.take(120) }, Modifier.fillMaxWidth().padding(top = 10.dp), label = { Text("Reason") }, singleLine = true)
                     if (retail) {
-                        Row(Modifier.fillMaxWidth().padding(top = 12.dp).clickable { restock = !restock }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // above the money and the reason: the keyboard that opens for the reason would hide it
+                        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp).clickable { restock = !restock }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Column(Modifier.weight(1f)) {
                                 Text("Put back into stock", color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                                 Text(
@@ -344,6 +343,8 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                             com.restopos.core.ui.Toggle(restock)
                         }
                     }
+                    TypeGrid(types, type) { type = it }
+                    OutlinedTextField(reason, { reason = it.take(120) }, Modifier.fillMaxWidth().padding(top = 10.dp), label = { Text("Reason") }, singleLine = true)
                 }
             },
             confirmButton = {
