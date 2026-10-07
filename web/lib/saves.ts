@@ -53,12 +53,13 @@ export async function addBooking(c: PoolClient, tenantId: string, store: string,
 
 // A booking changed from the list of bookings. "no-table" when the table
 // picked is not one of the booking's own store: the booking is left as it was.
-export async function saveBooking(c: PoolClient, tenantId: string, id: string, b: BookingForm, status: string): Promise<"ok" | "no-table"> {
+// "gone" when the booking itself was removed meanwhile.
+export async function saveBooking(c: PoolClient, tenantId: string, id: string, b: BookingForm, status: string): Promise<"ok" | "no-table" | "gone"> {
   if (b.table) {
     const at = await c.query(`select store_id from bookings where tenant_id = $1 and id = $2 and deleted_at is null`, [tenantId, id]);
     if (at.rowCount === 1 && !(await tableOf(c, tenantId, at.rows[0].store_id as string, b.table))) return "no-table";
   }
-  await c.query(
+  const r = await c.query(
     `update bookings bk set booked_for = ($3 || ' ' || $4)::timestamp at time zone s.timezone, name = $5, size = $6, phone = $7, tags = $8,
             table_id = (select tb.id from tables tb where tb.tenant_id = bk.tenant_id and tb.store_id = bk.store_id and tb.id = $9::uuid and tb.deleted_at is null),
             area = coalesce((select tb.area from tables tb where tb.tenant_id = bk.tenant_id and tb.store_id = bk.store_id and tb.id = $9::uuid and tb.deleted_at is null), bk.area),
@@ -67,7 +68,7 @@ export async function saveBooking(c: PoolClient, tenantId: string, id: string, b
       where bk.tenant_id = $1 and bk.id = $2 and bk.deleted_at is null and s.tenant_id = bk.tenant_id and s.id = bk.store_id`,
     [tenantId, id, b.day, b.time, b.name, b.size, b.phone, b.tags, b.table, status],
   );
-  return "ok";
+  return r.rowCount === 1 ? "ok" : "gone";
 }
 
 // Is this one of the store's tables, still on its floor plan?
@@ -109,4 +110,30 @@ export async function setReceiptPrinter(c: PoolClient, tenantId: string, receipt
     [tenantId, receipt, st.rows[0].id],
   );
   return "ok";
+}
+
+// A change to a row that is already there. False when the row is not (it was
+// removed in another tab while this form was open): nothing was changed, and
+// the page must not say "saved".
+
+// An add-on group: its name and how many of its choices may be picked.
+export async function saveGroup(c: PoolClient, tenantId: string, id: string, name: string, min: number, max: number): Promise<boolean> {
+  const r = await c.query(`update modifier_groups set name = $3, min_select = $4, max_select = $5 where tenant_id = $1 and id = $2 and deleted_at is null`, [tenantId, id, name, min, max]);
+  return r.rowCount === 1;
+}
+
+// A choice of an add-on group: its name and its price.
+export async function saveChoice(c: PoolClient, tenantId: string, id: string, name: string, price: number): Promise<boolean> {
+  const r = await c.query(`update modifiers set name = $3, price = $4 where tenant_id = $1 and id = $2 and deleted_at is null`, [tenantId, id, name, price]);
+  return r.rowCount === 1;
+}
+
+// A printer: how the tablet reaches it, and whether it is switched on.
+export async function savePrinter(c: PoolClient, tenantId: string, id: string, v: PrinterForm, active: boolean): Promise<boolean> {
+  const r = await c.query(
+    `update printers set name = $3, kind = $4, address = $5, paper_mm = $6, feed_lines = $7, cut = $8, is_active = $9
+      where tenant_id = $1 and id = $2 and deleted_at is null`,
+    [tenantId, id, v.name, v.kind, v.address, v.paper, v.feed, v.cut, active],
+  );
+  return r.rowCount === 1;
 }

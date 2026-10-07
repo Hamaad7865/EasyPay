@@ -125,6 +125,25 @@ function lib(name) {
       check('C2 a choice for another restaurant\'s group is refused, and none is added', foreign === false && (await choices(theirs)).length === 0, String(foreign));
       const unknown = await asApp(tid, () => saves.addChoice(c, tid, crypto.randomUUID(), 'Chilli', 0));
       check('C2 a choice for a group that never existed is refused', unknown === false, String(unknown));
+
+      // a group or a choice changed from a page that was open while it was removed in another tab
+      const one = async (tbl, id) => q1(`select name, deleted_at is not null as removed from ${tbl} where id = $1`, [id]);
+      const cheese = (await q1(`select id from modifiers where group_id = $1 and name = 'Cheese'`, [group])).id;
+      const bacon = (await q1(`insert into modifiers (tenant_id, group_id, name, price, deleted_at) values ($1, $2, 'Bacon', 3000, now()) returning id`, [tid, group])).id;
+      const theirChoice = (await q1(`insert into modifiers (tenant_id, group_id, name, price) values ($1, $2, 'Their sauce', 100) returning id`, [other, theirs])).id;
+      const saveChoice = (id, name, price) => asApp(tid, () => saves.saveChoice(c, tid, id, name, price));
+      const saveGroup = (id, name, min, max) => asApp(tid, () => saves.saveGroup(c, tid, id, name, min, max));
+      check('C3 a choice is changed: its name and its price', (await saveChoice(cheese, 'Cheddar', 3000)) === true && JSON.stringify(await choices(group)) === '[{"name":"Cheddar","price":3000}]', JSON.stringify(await choices(group)));
+      const lateChoice = await saveChoice(bacon, 'Bacon bits', 1);
+      check('C4 a choice removed meanwhile is not said to be saved', lateChoice === false && (await one('modifiers', bacon)).name === 'Bacon', String(lateChoice));
+      const foreignChoice = await saveChoice(theirChoice, 'Ours now', 1);
+      check("C4 nor is another restaurant's, which stays as it was", foreignChoice === false && (await one('modifiers', theirChoice)).name === 'Their sauce', String(foreignChoice));
+      const g = async () => q1(`select name, min_select, max_select from modifier_groups where id = $1`, [group]);
+      check('C3 a group is changed: its name and how many may be picked', (await saveGroup(group, 'Toppings', 1, 3)) === true && JSON.stringify(await g()) === '{"name":"Toppings","min_select":1,"max_select":3}', JSON.stringify(await g()));
+      const lateGroup = await saveGroup(removed, 'Sauces', 0, 0);
+      check('C4 a group removed meanwhile is not said to be saved', lateGroup === false && (await one('modifier_groups', removed)).name === 'Sauces (removed)', String(lateGroup));
+      const foreignGroup = await saveGroup(theirs, 'Ours now', 0, 0);
+      check("C4 nor is another restaurant's, which stays as it was", foreignGroup === false && (await one('modifier_groups', theirs)).name === 'Extras', String(foreignGroup));
     }
 
     // ---- the table a booking is given ----
@@ -164,6 +183,11 @@ function lib(name) {
       check('B3 a booking moves to another table of its own store', (await save(id, form(t2, { size: 6 }), 'seated')) === 'ok'
         && JSON.stringify(await mine().then((r) => [r.table_id, r.size, r.status])) === JSON.stringify([t2, 6, 'seated']), JSON.stringify(await mine()));
       check('B3 a booking can be left with no table', (await save(id, form(null), 'confirmed')) === 'ok' && (await mine()).table_id === null);
+
+      await c.query(`update bookings set deleted_at = now() where id = $1`, [id]);
+      const late = [await save(id, form(t1, { name: 'Too late' }), 'seated'), await save(id, form(null, { name: 'Too late' }), 'seated')];
+      const untouched = await q1(`select name, status from bookings where id = $1`, [id]);
+      check('B4 a booking removed meanwhile is not said to be saved, with a table picked or without', late.join() === 'gone,gone' && untouched.name === 'Ramgoolam' && untouched.status === 'confirmed', late.join() + ' ' + JSON.stringify(untouched));
     }
 
     // ---- printers, in a restaurant with two stores ----
@@ -199,6 +223,20 @@ function lib(name) {
         `${lost} main: ${await has(main)} | beach: ${await has(beach)}`);
       check('R3 "no printer" still takes receipts off the first store\'s printers', (await receipts(null)) === 'ok' && (await has(main)) === 'Cashier Kitchen' && (await has(beach)) === 'Beach bar Beach grill*',
         `main: ${await has(main)} | beach: ${await has(beach)}`);
+
+      // a printer changed from a page that was open while it was removed in another tab
+      const savePrinter = (id, form, active) => asApp(tid, () => saves.savePrinter(c, tid, id, form, active));
+      const printer = async (id) => q1(`select name, paper_mm, is_active from printers where id = $1`, [id]);
+      const kitchenId = await idOf('Kitchen');
+      check('R4 a printer is changed: its name, its paper, whether it is on', (await savePrinter(kitchenId, { ...v('Hot kitchen'), paper: 58 }, false)) === true
+        && JSON.stringify(await printer(kitchenId)) === '{"name":"Hot kitchen","paper_mm":58,"is_active":false}', JSON.stringify(await printer(kitchenId)));
+      const grillId = await idOf('Beach grill');
+      await c.query(`update printers set deleted_at = now() where id = $1`, [grillId]);
+      const latePrinter = await savePrinter(grillId, v('Grill two'), true);
+      check('R4 a printer removed meanwhile is not said to be saved', latePrinter === false && (await printer(grillId)).name === 'Beach grill', String(latePrinter));
+      const theirPrinter = (await q1(`insert into printers (tenant_id, store_id, name) values ($1, $2, 'Their printer') returning id`, [other, theirStore])).id;
+      const foreignPrinter = await savePrinter(theirPrinter, v('Ours now'), true);
+      check('R4 nor is another restaurant\'s, which stays as it was', foreignPrinter === false && (await printer(theirPrinter)).name === 'Their printer', String(foreignPrinter));
     }
   } finally {
     for (const t of [tid, other]) {

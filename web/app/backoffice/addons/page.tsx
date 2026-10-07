@@ -4,7 +4,7 @@ import { onlyFor } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, int, Refused, text, UUID, uuid } from "@/lib/action";
 import { parseRs } from "@/lib/money";
-import { addChoice as addChoiceTo } from "@/lib/saves";
+import * as saves from "@/lib/saves";
 import { loadSettings, money } from "@/lib/settings";
 import { Card, Empty, Flash, one, PageHead, type Search } from "../ui";
 import { AddonsTable, type Choice, type Group } from "./table";
@@ -44,7 +44,7 @@ async function saveGroup(f: FormData) {
     const min = int(f, "min", 0, 20, 0);
     const max = int(f, "max", 0, 20, 0);
     if (max !== 0 && max < min) throw new Refused("The most that can be picked cannot be less than the fewest.");
-    await c.query(`update modifier_groups set name = $3, min_select = $4, max_select = $5 where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id, name, min, max]);
+    if (!(await saves.saveGroup(c, ctx.tenantId, id, name, min, max))) throw new Refused("That group is no longer there. Reload the page.");
     return `${name} saved.`;
   });
 }
@@ -57,7 +57,7 @@ async function addChoice(f: FormData) {
     const price = parseRs(String(f.get("price") || "0"));
     if (!name) throw new Refused("Give the choice a name.");
     if (price === null) throw new Refused("The price is not a number.");
-    if (!(await addChoiceTo(c, ctx.tenantId, group, name, price))) throw new Refused("That group is no longer there, so the choice was not added. Reload the page.");
+    if (!(await saves.addChoice(c, ctx.tenantId, group, name, price))) throw new Refused("That group is no longer there, so the choice was not added. Reload the page.");
     return `${name} added.`;
   });
 }
@@ -73,7 +73,7 @@ async function saveChoice(f: FormData) {
     const name = text(f, "name", 40);
     const price = parseRs(String(f.get("price") || "0"));
     if (!name || price === null) throw new Refused("A choice needs a name and a price (0 for free).");
-    await c.query(`update modifiers set name = $3, price = $4 where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id, name, price]);
+    if (!(await saves.saveChoice(c, ctx.tenantId, id, name, price))) throw new Refused("That choice is no longer there. Reload the page.");
     return `${name} saved.`;
   });
 }

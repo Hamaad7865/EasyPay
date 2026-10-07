@@ -76,11 +76,7 @@ async function savePrinter(f: FormData) {
       return "Printer removed.";
     }
     const v = fields(f);
-    await c.query(
-      `update printers set name = $3, kind = $4, address = $5, paper_mm = $6, feed_lines = $7, cut = $8, is_active = $9
-        where tenant_id = $1 and id = $2 and deleted_at is null`,
-      [ctx.tenantId, id, v.name, v.kind, v.address, v.paper, v.feed, v.cut, on(f, "is_active")],
-    );
+    if (!(await saves.savePrinter(c, ctx.tenantId, id, v, on(f, "is_active")))) throw new Refused("That printer is no longer there. Reload the page.");
     return `${v.name} saved.`;
   });
 }

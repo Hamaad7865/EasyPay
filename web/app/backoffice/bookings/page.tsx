@@ -54,7 +54,9 @@ async function saveBooking(f: FormData) {
     const b = fields(f);
     const status = String(f.get("status"));
     if (!STATUS.some(([k]) => k === status)) throw new Refused("Pick where the booking stands.");
-    if ((await saves.saveBooking(c, ctx.tenantId, uuid(f, "id"), b, status)) === "no-table") throw new Refused(NO_TABLE);
+    const done = await saves.saveBooking(c, ctx.tenantId, uuid(f, "id"), b, status);
+    if (done === "no-table") throw new Refused(NO_TABLE);
+    if (done === "gone") throw new Refused("That booking is no longer there. Reload the page.");
     return `${b.name} saved.`;
   });
 }
