@@ -99,7 +99,7 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
       const tk = id(), rc = id();
       const out = await push([
         op('ticket.create', { id: tk, store_id: store }),
-        ...items.map((it) => op('ticket.add_line', { id: id(), ticket_id: tk, item_id: it, qty: 1000 })),
+        ...items.map((it) => op('ticket.add_line', typeof it === 'string' ? { id: id(), ticket_id: tk, item_id: it, qty: 1000 } : { id: id(), ticket_id: tk, qty: 1000, ...it })),
         op('receipt.create', { id: rc, ticket_id: tk, store_id: store, device_id: dev, number: 'SR-' + (++seq), device_seq: seq, device_time: new Date().toISOString(), ...extra }),
       ]);
       return { rc, said: tag(out[out.length - 1]) };
@@ -148,6 +148,14 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     check('P1 by category, the same sums', cats.Clothing?.ex === 28000 && cats.Clothing?.cost === 16200 && cats['No category']?.ex === 11800 && cats['No category']?.cost === 3000 && cats['No category']?.costed === 10000,
       [fig(cats.Clothing), fig(cats['No category'])].join(' '));
 
+    // one variant of a product is sold: the line names it, as the till's does
+    const s3 = await sale([{ item_id: jacket, variant_id: jacketL, name_snapshot: 'Jacket, L', unit_price: 34500 }], { payments: [{ payment_type_id: cash, amount: 34500 }] });
+    r = await sales(false, true);
+    const lvl = async (va) => (await one(`select qty from stock_levels where tenant_id = $1 and store_id = $2 and item_id = $3 and variant_id = $4`, [tid, store, jacket, va])).qty;
+    check("P6 a variant sold costs what that variant cost, and leaves that variant's shelf only",
+      s3.said === 'applied' && r['Jacket, L']?.qty === 1000 && r['Jacket, L']?.ex === 30000 && r['Jacket, L']?.cost === 14000 && (await lvl(jacketL)) === 2000 && (await lvl(jacketM)) === 4000,
+      s3.said + ' ' + fig(r['Jacket, L']));
+
     // ---- losses ----
     const adjust = async (it, units, reason) => (await one(`select stock_adjust($1,$2,$3,null,$4,$5,$6,null) as id`, [tid, store, it, units, reason, emp])).id;
     const at = (mv, when) => c.query(`update stock_movements set created_at = ($2::timestamp at time zone $3) where id = $1`, [mv, when, tz]);
@@ -168,7 +176,7 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     // ---- not selling ----
     const quiet = async (days, as = tid) => Object.fromEntries((await ask(rep.UNSOLD_SQL, [tid, store, days], as)).map((x) => [x.name + (x.variant ? ' ' + x.variant : ''), x]));
     let u = await quiet(60);
-    check('U1 not selling: what holds stock and was not sold in the days asked', Object.keys(u).sort().join() === 'Jacket L,Jacket M,Mug', Object.keys(u).sort().join());
+    check('U1 not selling: what holds stock and was not sold in the days asked', Object.keys(u).sort().join() === 'Jacket M,Mug', Object.keys(u).sort().join());
     check('U1 a line never sold says so, and says when stock last came in', u['Jacket M'].last_sold === null && u['Jacket M'].days_quiet === null && u['Jacket M'].last_in !== null && u['Jacket M'].days_in === 100 && u.Mug.qty === 33000, JSON.stringify(u['Jacket M']));
     // the scarf's sale is said to be 61 days old, then 59
     const scarfSale = (await one(`select id from stock_movements where tenant_id = $1 and item_id = $2 and reason = 'sale'`, [tid, scarf])).id;
@@ -181,13 +189,13 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     await c.query(`update stock_movements set created_at = now() - interval '70 days' where tenant_id = $1 and item_id = $2 and reason = 'sale'`, [tid, shirt]);
     u = await quiet(60);
     check('U1 a refund is not a sale', u.Shirt?.days_quiet === 70, JSON.stringify(u.Shirt));
-    check('U1 a line with nothing on hand, or below zero, is not on the list', !('Belt' in u) && !('Hat' in u), Object.keys(u).join());
+    check('U1 a line with nothing on hand, or below zero, is not on the list', !('Belt' in u) && !('Hat' in u) && !('Jacket L' in u), Object.keys(u).join());
 
     // ---- what the stock is worth, and what to order ----
     await c.query(`update stock_levels set reorder_point = 20000, reorder_qty = 24000 where tenant_id = $1 and item_id = $2`, [tid, shirt]);
     await c.query(`update stock_levels set reorder_point = 40000 where tenant_id = $1 and item_id = $2`, [tid, mug]);
     await c.query(`update stock_levels set reorder_point = 5000, reorder_qty = 0 where tenant_id = $1 and item_id = $2 and variant_id = $3`, [tid, jacket, jacketM]);
-    await c.query(`update stock_levels set reorder_point = 2000 where tenant_id = $1 and item_id = $2 and variant_id = $3`, [tid, jacket, jacketL]);
+    await c.query(`update stock_levels set reorder_point = 1000 where tenant_id = $1 and item_id = $2 and variant_id = $3`, [tid, jacket, jacketL]);
     await c.query(`update stock_levels set reorder_point = 9000 where tenant_id = $1 and item_id = $2`, [tid, scarf]);
     const onHand = async (as = tid) => (await ask(`select * from stock_on_hand($1, $2)`, [tid, store], as)).map((l) => ({
       ...l, qty: l.qty, avgCost: Number(l.avg_cost), price: Number(l.price), reorderPoint: l.reorder_point, reorderQty: l.reorder_qty, supplierId: l.supplier_id }));
