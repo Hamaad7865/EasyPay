@@ -119,3 +119,30 @@ One file, additive. In this order:
 ### Task 8: see it
 
 - [ ] Every suite, one at a time. The menu for a shop and for a restaurant, rendered. Add what was built and what nobody has opened to the end of this file, and tell the user what is theirs to open signed in.
+
+---
+
+## What happened when this plan was run (2026-10-08)
+
+Built as written. Commits `32f20a8` to `0348151` on `restopos`, dev only, not pushed.
+
+**As built:**
+
+- Migration `0073_stock_adjust.sql` and `db/tests/stock-adjust.test.cjs` (31 checks). `stock_adjust` also refuses a shop that is not the tenant's (`unknown-store`).
+- `web/lib/stock.ts` (status, totals, reasons, the words for every movement) and `web/lib/perms.ts` (what the Roles page offers and saves), each with a node test.
+- The menu: a shop has a Stock group (Stock on hand, Suppliers, Movements); `groupOf` takes the kind of business. A restaurant's menu is unchanged.
+- Stock on hand (`stock/on-hand.tsx`, `on-hand-table.tsx`) and Movements (`stock-movements/`), with the CSV.
+- Roles: the Stock permissions for a shop. Suppliers ask for `suppliers.edit`.
+- Cost only for `costs.view`: the products list, a product's page, the catalog export, the import. The product and line writes moved to `web/lib/saves.ts` (`saveProductRow`, `saveVariantLines`), where the suite `backoffice-saves` checks that a save from a form with no cost field leaves the cost alone (it would have wiped it).
+
+**Found on the way, and fixed:** Remove on a product's line (piece 2) could never have worked: the line was sent as the button's name and value, which React takes over when the button's action is a server function. The line is now bound to the button. It has not been pressed in a browser.
+
+**Seen and not seen.** Every suite passed, one at a time (`stock-adjust`, `stock-engine`, `stock-sales`, `stock-locks`, `catalog`, `catalog-import`, `backoffice-saves`, `pos-operations`, `platform`, `business-type`, `isolation`, `service-v2`), and the node tests. Type-check and a production build are clean. The queries of every new and changed page were planned against dev (`prepare-web-sql.cjs`), and the Movements query was run for real, read only. Stock on hand, Movements, a product's page, the products list and a restaurant's Stock page were drawn to HTML from sample rows with a stand-in session: an owner, someone who may see stock but not cost, someone who may not see stock. **Nobody has opened any of it signed in**, and dev has no shop yet (no tenant is retail).
+
+**Left for the next steps:**
+
+- Stock on hand has no "Receive a delivery" or "New count" button yet: they arrive with 3b and 3c.
+- The pages show the tenant's first shop. A second shop needs a way to choose one.
+- A shop's Roles page still words some permissions for a restaurant (kitchen, tables).
+- "Change a line's price" is added with the till's sell screen (piece 4).
+- Production needs migrations 0064 to 0073.
