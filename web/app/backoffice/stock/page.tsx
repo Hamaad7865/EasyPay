@@ -5,6 +5,7 @@ import { readTenant } from "@/lib/db";
 import { act, backTo, Refused, text, uuid } from "@/lib/action";
 import { Card, Empty, Flash, PageHead, type Search, startKey, startOf } from "../ui";
 import { type StockRow, StockTable } from "./table";
+import { OnHand } from "./on-hand";
 
 const PATH = "/backoffice/stock";
 const LOW = 5000; // five or fewer left is "low" (quantities are thousandths)
@@ -58,6 +59,8 @@ type Move = { at: string; item: string; qty: number; reason: string; who: string
 export default async function StockPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
+  // a shop's stock is a page of its own (Stock on hand); what follows is a restaurant's
+  if (ctx.mode === "retail") return <OnHand sp={sp} ctx={ctx} />;
   const d = await readTenant(ctx.tenantId, async (c) => ({
     rows: (
       await c.query(
