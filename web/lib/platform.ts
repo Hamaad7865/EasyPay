@@ -48,6 +48,8 @@ const MESSAGES: Record<string, string> = {
   "reason-required": "Give a reason for suspending.",
   "bad-status": "Status must be active or suspended.",
   "plan-required": "A plan name is required.",
+  "bad-business-type": "Choose restaurant or retail.",
+  "open-orders": "This client has open orders. Close or cancel them on the till first, then change the type.",
   "not-a-platform-admin": "You are no longer a platform admin.",
 };
 
@@ -58,3 +60,6 @@ export function adminMessage(e: unknown): string {
 
 // Plans are plain labels: there is no billing behind them yet.
 export const PLANS = ["trial", "standard", "premium"] as const;
+
+// What a client is given: a restaurant or a retail shop. Only set here.
+export const BUSINESS_TYPES = ["restaurant", "retail"] as const;

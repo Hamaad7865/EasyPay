@@ -2,7 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { PLANS, adminMessage, requirePlatformAdmin } from "@/lib/platform";
+import { BUSINESS_TYPES, PLANS, adminMessage, requirePlatformAdmin } from "@/lib/platform";
 import { loginForRestaurant, passwordProblem, removeLogin, setLoginPassword } from "@/lib/platform-auth";
 
 type Tenant = {
@@ -11,6 +11,7 @@ type Tenant = {
   brn: string | null;
   vat_number: string | null;
   plan: string;
+  business_type: string;
   status: string;
   status_reason: string | null;
   status_changed_at: string | null;
@@ -55,6 +56,18 @@ async function setPlan(formData: FormData) {
   }
   revalidatePath(`/admin/tenants/${tenantId}`);
   back(tenantId, "notice", "Plan changed.");
+}
+
+async function setBusinessType(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  try {
+    await db().query(`select platform.set_tenant_business_type($1, $2, $3)`, [adminId, tenantId, String(formData.get("type") ?? "")]);
+  } catch (e) {
+    back(tenantId, "error", adminMessage(e));
+  }
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  back(tenantId, "notice", "Business type saved. Their back office follows at once, their tills at the next sync.");
 }
 
 async function setStatus(formData: FormData) {
@@ -212,6 +225,7 @@ const ACTIONS: Record<string, string> = {
   "tenant.suspended": "Suspended",
   "tenant.active": "Reactivated",
   "tenant.plan": "Plan changed",
+  "tenant.business_type": "Business type changed",
   "login.add": "Login added",
   "login.disable": "Login switched off",
   "login.enable": "Login switched on",
@@ -224,7 +238,7 @@ const ACTIONS: Record<string, string> = {
 
 function auditNote(a: Audit): string {
   const d = a.detail ?? {};
-  if (a.action === "tenant.plan") return `${String(d.from)} to ${String(d.to)}`;
+  if (a.action === "tenant.plan" || a.action === "tenant.business_type") return `${String(d.from)} to ${String(d.to)}`;
   if (a.action === "tenant.suspended") return String(d.reason ?? "");
   if (a.action === "login.add") return `${String(d.name)} as ${String(d.role)}`;
   if (a.action === "store.add") return `${String(d.name)} (${String(d.code)})`;
@@ -246,7 +260,7 @@ export default async function TenantPage({
   const pool = db();
   const tenant = (
     await pool.query(
-      `select id, name, brn, vat_number, plan, status, status_reason, status_changed_at, created_at
+      `select id, name, brn, vat_number, plan, business_type, status, status_reason, status_changed_at, created_at
          from tenants where id = $1 and deleted_at is null`,
       [id],
     )
@@ -302,7 +316,7 @@ export default async function TenantPage({
       {sp.error && <p style={{ color: "#8a1c1c" }}>{sp.error}</p>}
       {sp.notice && <p style={{ color: "#1c6b2a" }}>{sp.notice}</p>}
       <p>
-        Plan <strong>{tenant.plan}</strong> · Status{" "}
+        Type <strong>{tenant.business_type}</strong> · Plan <strong>{tenant.plan}</strong> · Status{" "}
         <strong style={{ color: active ? undefined : "#8a1c1c" }}>{tenant.status}</strong>
         {tenant.status_reason ? ` (${tenant.status_reason})` : ""} · Created{" "}
         {new Date(tenant.created_at).toLocaleDateString()}
@@ -315,6 +329,23 @@ export default async function TenantPage({
         <input name="brn" defaultValue={tenant.brn ?? ""} placeholder="BRN" />
         <input name="vat" defaultValue={tenant.vat_number ?? ""} placeholder="VAT number" />
         <button type="submit">Save details</button>
+      </form>
+
+      <h2>Business type</h2>
+      <form action={setBusinessType} style={{ marginBottom: 12 }}>
+        <input type="hidden" name="tenant" value={tenant.id} />
+        <select name="type" defaultValue={tenant.business_type} aria-label="Business type">
+          {BUSINESS_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>{" "}
+        <button type="submit">Change type</button>
+        <p style={{ margin: "6px 0 0", color: "#555" }}>
+          A restaurant has tables, bookings and the kitchen. A shop has none of them. Changing is refused while the client
+          has open orders, and deletes nothing: pages are only hidden.
+        </p>
       </form>
 
       <h2>Plan and status</h2>

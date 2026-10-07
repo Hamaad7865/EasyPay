@@ -2,12 +2,13 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { PLANS, adminMessage, requirePlatformAdmin } from "@/lib/platform";
+import { BUSINESS_TYPES, PLANS, adminMessage, requirePlatformAdmin } from "@/lib/platform";
 import { loginForRestaurant, passwordProblem, removeLogin } from "@/lib/platform-auth";
 
 type TenantRow = {
   id: string;
   name: string;
+  business_type: string;
   plan: string;
   status: string;
   status_reason: string | null;
@@ -33,6 +34,7 @@ async function createTenant(formData: FormData) {
   const ownerName = text("ownerName");
   const email = text("email").toLowerCase();
   const plan = text("plan") || "standard";
+  const type = text("type") === "retail" ? "retail" : "restaurant";
   const password = String(formData.get("password") ?? "");
 
   if (!name) fail("Give the restaurant a name.");
@@ -48,7 +50,7 @@ async function createTenant(formData: FormData) {
 
   let tenantId = "";
   try {
-    const made = await db().query(`select platform.create_tenant($1, $2, $3, $4, $5, $6, $7) as r`, [
+    const made = await db().query(`select platform.create_tenant_of_type($1, $2, $3, $4, $5, $6, $7, $8) as r`, [
       admin.userId,
       name,
       store,
@@ -56,6 +58,7 @@ async function createTenant(formData: FormData) {
       ownerName,
       userId,
       plan,
+      type,
     ]);
     tenantId = made.rows[0].r.tenant_id as string;
   } catch (e) {
@@ -80,7 +83,7 @@ export default async function AdminHome({
   const sp = await searchParams;
   const tenants = await db()
     .query(
-      `select t.id, t.name, t.plan, t.status, t.status_reason, t.created_at,
+      `select t.id, t.name, t.business_type, t.plan, t.status, t.status_reason, t.created_at,
               (select count(*)::int from stores s where s.tenant_id = t.id and s.deleted_at is null) as stores,
               (select count(*)::int from employees e
                 where e.tenant_id = t.id and e.auth_user_id is not null and e.deleted_at is null) as logins,
@@ -123,6 +126,13 @@ export default async function AdminHome({
             </option>
           ))}
         </select>
+        <select name="type" defaultValue="restaurant" aria-label="Business type">
+          {BUSINESS_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
         <button type="submit">Create restaurant and owner login</button>
       </form>
 
@@ -131,6 +141,7 @@ export default async function AdminHome({
         <thead>
           <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
             <th>Restaurant</th>
+            <th>Type</th>
             <th>Plan</th>
             <th>Status</th>
             <th>Stores</th>
@@ -146,6 +157,7 @@ export default async function AdminHome({
               <td>
                 <Link href={`/admin/tenants/${t.id}`}>{t.name}</Link>
               </td>
+              <td>{t.business_type}</td>
               <td>{t.plan}</td>
               <td style={{ color: t.status === "active" ? undefined : "#8a1c1c" }}>
                 {t.status}
