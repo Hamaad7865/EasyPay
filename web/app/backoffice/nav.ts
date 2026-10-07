@@ -1,4 +1,5 @@
 import {
+  ArrowLeftRight,
   BadgePercent,
   BarChart3,
   Boxes,
@@ -82,8 +83,19 @@ export const GROUPS: NavGroup[] = [
       { href: "/backoffice/addons", label: "Add-ons", only: "restaurant", icon: SlidersHorizontal, words: "options modifiers extras" },
       { href: "/backoffice/taxes", label: "Taxes", icon: FileText, words: "vat zero rated exempt" },
       { href: "/backoffice/discounts", label: "Discounts", icon: BadgePercent, words: "promotions percent off" },
+      { href: "/backoffice/stock", label: "Stock", only: "restaurant", icon: Boxes, words: "inventory quantity low" },
+    ],
+  },
+  // A shop's stock is a group of its own. Its first page has the address of
+  // a restaurant's Stock page: each kind of business gets its own page there.
+  {
+    id: "stock",
+    title: "Stock",
+    icon: Boxes,
+    links: [
+      { href: "/backoffice/stock", label: "Stock on hand", only: "retail", icon: Boxes, words: "inventory quantity low out below zero value reorder adjust damaged expired lost found" },
       { href: "/backoffice/suppliers", label: "Suppliers", only: "retail", icon: Truck, words: "vendors wholesalers contacts who we buy from" },
-      { href: "/backoffice/stock", label: "Stock", icon: Boxes, words: "inventory quantity low" },
+      { href: "/backoffice/stock-movements", label: "Movements", only: "retail", icon: ArrowLeftRight, words: "history log stock in out sold received adjusted counted" },
     ],
   },
   {
@@ -115,7 +127,9 @@ export const GROUPS: NavGroup[] = [
 
 // A page is "on" for its own address and anything under it; the dashboard only for itself.
 export const isOn = (href: string, path: string) => (href === HOME.href ? path === href : path === href || path.startsWith(href + "/"));
-export const groupOf = (path: string) => GROUPS.find((g) => g.links.some((l) => isOn(l.href, path)))?.id ?? null;
+// The group a page sits in, for this kind of business: one address can be in
+// two groups (Stock), one for each kind.
+export const groupOf = (path: string, mode: Mode) => groupsFor(mode).find((g) => g.links.some((l) => isOn(l.href, path)))?.id ?? null;
 
 // The groups one kind of business has, under the names it uses. The menu and
 // the search both draw from this, so they cannot disagree about what exists.

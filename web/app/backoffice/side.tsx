@@ -86,7 +86,7 @@ export function Side({
   drawn: number;
 }) {
   const path = usePathname();
-  const here = groupOf(path);
+  const here = groupOf(path, mode);
   const groups = useMemo(() => groupsFor(mode), [mode]);
   const key = useSearchKey();
   const [away, setAway] = useState(folded);
