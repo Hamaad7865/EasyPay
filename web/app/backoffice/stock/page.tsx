@@ -18,28 +18,37 @@ function amount(f: FormData, k: string): number {
 
 // "Set to" is a count: the shelf was counted and this is what is there.
 // "Add" is a delivery (or, with a minus, something thrown away).
+// Both go through the one stock engine (migration 0067), which writes the
+// movement and keeps the shop's level and the item's total in step.
 async function change(f: FormData) {
   "use server";
   await act("items.edit", backTo(f, PATH), async (c, ctx) => {
     const id = uuid(f, "id");
     const mode = f.get("mode") === "add" ? "add" : "set";
     const qty = amount(f, "qty");
-    const cur = await c.query(`select name, coalesce(stock_qty, 0) as q from items where tenant_id = $1 and id = $2 and deleted_at is null for update`, [ctx.tenantId, id]);
-    if (cur.rowCount !== 1) throw new Refused("That item no longer exists.");
-    const before = Number(cur.rows[0].q);
-    const delta = mode === "add" ? qty : qty - before;
     if (mode === "set" && qty < 0) throw new Refused("A count cannot be less than zero.");
-    if (delta === 0) return "Nothing changed.";
-    await c.query(`insert into stock_movements (tenant_id, item_id, qty, reason, employee_id, note) values ($1, $2, $3, $4, $5, $6)`, [
-      ctx.tenantId,
-      id,
-      delta,
-      mode === "add" ? "adjust" : "count",
-      ctx.employeeId,
-      text(f, "note", 120) || null,
-    ]);
-    await c.query(`update items set stock_qty = $3 where tenant_id = $1 and id = $2`, [ctx.tenantId, id, before + delta]);
-    return `${cur.rows[0].name}: ${units(before + delta)} in stock.`;
+    // The item's row is read, not locked: the engine locks the item's level
+    // first and its row second, and a lock taken here the other way round
+    // could leave a sale and this change each waiting on the other.
+    const cur = await c.query(
+      `select name, first_store(tenant_id) as store from items where tenant_id = $1 and id = $2 and deleted_at is null`,
+      [ctx.tenantId, id],
+    );
+    if (cur.rowCount !== 1) throw new Refused("That item no longer exists.");
+    const args = [ctx.tenantId, cur.rows[0].store, id, qty, ctx.employeeId, text(f, "note", 120) || null];
+    let moved: boolean;
+    if (mode === "add") {
+      moved = qty !== 0;
+      if (moved) await c.query(`select stock_move($1, $2, $3, null, $4, 'adjust', null, null, null, $5, $6) as id`, args);
+    } else {
+      // the difference is worked out inside, under the level's lock: two
+      // people counting the same item at once build on each other
+      const r = await c.query(`select stock_count_item($1, $2, $3, $4, $5, $6) as d`, args);
+      moved = Number(r.rows[0].d) !== 0;
+    }
+    if (!moved) return "Nothing changed.";
+    const now = await c.query(`select coalesce(stock_qty, 0) as q from items where tenant_id = $1 and id = $2`, [ctx.tenantId, id]);
+    return `${cur.rows[0].name}: ${units(Number(now.rows[0].q))} in stock.`;
   });
 }
 
