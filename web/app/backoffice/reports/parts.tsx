@@ -2,21 +2,25 @@ import type { Filters, Lists } from "@/lib/report";
 import { Go, Submit } from "../busy";
 import { CsvButton, PrintButton } from "./print-button";
 
-// The filter bar the reports share. Each report says which filters it has.
+// The filter bar the reports share. Each report says which filters it has;
+// what it puts inside goes with the form (a view to come back to, say).
 export function ReportFilters({
   path,
   f,
   l,
   show,
+  children,
 }: {
   path: string;
   f: Filters;
   l: Lists;
   show: ("employee" | "dining" | "kind" | "payment" | "tax" | "group" | "kind-no-all")[];
+  children?: React.ReactNode;
 }) {
   const has = (k: (typeof show)[number]) => show.includes(k);
   return (
     <Go className="filters no-print" action={path}>
+      {children}
       <label>
         From
         <input type="date" name="from" defaultValue={f.from} />

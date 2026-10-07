@@ -18,6 +18,7 @@ import {
   LayoutGrid,
   ListOrdered,
   type LucideIcon,
+  PackageSearch,
   Percent,
   Printer,
   Receipt,
@@ -65,7 +66,8 @@ export const GROUPS: NavGroup[] = [
     icon: BarChart3,
     links: [
       { href: "/backoffice/reports/sales", label: "Sales summary", icon: BarChart3, words: "revenue gross net totals payments" },
-      { href: "/backoffice/reports/items", label: "Item sales", icon: ListOrdered, words: "products quantity sold categories" },
+      { href: "/backoffice/reports/items", label: "Item sales", icon: ListOrdered, words: "products quantity sold categories cost profit margin" },
+      { href: "/backoffice/reports/stock", label: "Stock reports", only: "retail", icon: PackageSearch, words: "stock value worth inventory valuation reorder list low to order losses damaged expired lost stolen shrinkage written off not selling slow dead stock" },
       { href: "/backoffice/reports/orders", label: "Order details", icon: ClipboardList, words: "tickets bills checks" },
       { href: "/backoffice/reports/tax", label: "Tax", icon: Percent, words: "vat report" },
       { href: "/backoffice/reports/day-close", label: "Day closing", icon: CalendarCheck, words: "z report end of day open day close day cash drawer count float shifts x report sales period" },

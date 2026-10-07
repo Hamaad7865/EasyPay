@@ -3,43 +3,47 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { money } from "@/lib/settings";
 import { args, filters, fmtQty, RECEIPTS, reportStart } from "@/lib/report";
+import { margin } from "@/lib/stock";
+import { itemSalesSql } from "@/lib/stock-reports";
 import { Empty, PageHead, type Search } from "../../ui";
 import { ReportFilters, Stat } from "../parts";
 
-type Row = { name: string; cat: string | null; qty: number; amount: string };
+// ex_vat, costed and cost: a shop's, for whoever may see costs (see itemSalesSql)
+type Row = { name: string; cat: string | null; qty: number; amount: string; ex_vat?: string; costed?: string; cost?: string | null };
+const pct = (v: number | null) => (v === null ? "" : (v * 100).toFixed(1) + "%");
 
 export default async function ItemRank({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
+  const shop = ctx.mode === "retail";
   const d = await readTenant(ctx.tenantId, async (c) => {
     const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
     const f = filters(sp, l.tz);
     if (!ok) return { l, f, ok: false as const };
-    const by = f.group === "category" ? `coalesce(c.name, 'No category')` : `rl.name_snapshot`;
-    const rows = (
-      await c.query(
-        `with r as (${RECEIPTS})
-         select ${by} as name, ${f.group === "category" ? "null::text" : "max(c.name)"} as cat,
-                sum(r.sign * rl.qty)::int as qty,
-                sum(r.sign * (line_amount(rl.unit_price, rl.qty) + coalesce((select sum(m.price) from receipt_line_modifiers m
-                   where m.tenant_id = $1 and m.receipt_line_id = rl.id), 0)))::bigint as amount
-           from r join receipt_lines rl on rl.tenant_id = $1 and rl.receipt_id = r.id
-           left join ticket_lines tl on tl.tenant_id = $1 and tl.id = rl.ticket_line_id
-           left join items i on i.tenant_id = $1 and i.id = tl.item_id
-           left join categories c on c.tenant_id = $1 and c.id = i.category_id
-          group by 1 order by 4 desc, 1`,
-        args(ctx.tenantId, f),
-      )
-    ).rows as Row[];
-    return { l, f, ok: true as const, s, rows };
+    // a shop's cost and profit, for whoever may see them. A restaurant's page asks what it always asked.
+    const costs = shop && Boolean((await c.query(`select has_perm($1, 'costs.view') as ok`, [ctx.employeeId])).rows[0]?.ok);
+    const rows = (await c.query(itemSalesSql(RECEIPTS, f.group === "category", costs), args(ctx.tenantId, f))).rows as Row[];
+    return { l, f, ok: true as const, s, rows, costs };
   });
-  const head = <PageHead title="Item sales" lede="What sells, ranked by what it brought in. Amounts are menu prices with add-ons, before any discount on the bill; refunds are taken off." />;
+  const head = (
+    <PageHead
+      title="Item sales"
+      lede={
+        shop
+          ? "What sells, ranked by what it brought in. Sales are shelf prices, before any discount on the bill; refunds are taken off."
+          : "What sells, ranked by what it brought in. Amounts are menu prices with add-ons, before any discount on the bill; refunds are taken off."
+      }
+    />
+  );
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;
   const m = (v: string | number) => money(Number(v), d.s.decimals);
   const total = d.rows.reduce((a, r) => a + Number(r.amount), 0);
   const qty = d.rows.reduce((a, r) => a + r.qty, 0);
   const top = Math.max(1, ...d.rows.map((r) => Number(r.amount)));
   const byCat = d.f.group === "category";
+  // profit is over the sales that have a cost: a product with none is not all profit
+  const sum = (k: "ex_vat" | "costed" | "cost") => d.rows.reduce((a, r) => a + Number(r[k] ?? 0), 0);
+  const exVat = sum("ex_vat"), costed = sum("costed"), cost = sum("cost");
   return (
     <div>
       {head}
@@ -53,7 +57,14 @@ export default async function ItemRank({ searchParams }: { searchParams: Search 
             <Stat label="Quantity sold" value={fmtQty(qty)} />
             <Stat label="Sales" value={m(total)} />
             <Stat label="Best seller" value={d.rows[0].name} note={m(d.rows[0].amount)} />
+            {d.costs && <Stat label="Profit" value={m(costed - cost)} note={margin(costed, cost) === null ? undefined : `${pct(margin(costed, cost))} of sales without VAT`} />}
           </div>
+          {d.costs && (
+            <p className="muted">
+              Profit is sales without VAT, after the bill's discount, less what the goods cost when they were sold.
+              {exVat !== costed && ` ${m(exVat - costed)} of these sales have no cost on file (products not counted in stock, or never given a cost): they are in no cost and no profit.`}
+            </p>
+          )}
           <table>
             <thead>
               <tr>
@@ -63,7 +74,16 @@ export default async function ItemRank({ searchParams }: { searchParams: Search 
                 <th className="num">Quantity</th>
                 <th className="num">Sales</th>
                 <th className="num">Share</th>
-                <th />
+                {d.costs ? (
+                  <>
+                    <th className="num">Without VAT</th>
+                    <th className="num">Cost</th>
+                    <th className="num">Profit</th>
+                    <th className="num">Margin</th>
+                  </>
+                ) : (
+                  <th />
+                )}
               </tr>
             </thead>
             <tbody>
@@ -75,12 +95,25 @@ export default async function ItemRank({ searchParams }: { searchParams: Search 
                   <td className="num">{fmtQty(r.qty)}</td>
                   <td className="num strong">{m(r.amount)}</td>
                   <td className="num">{total > 0 ? ((Number(r.amount) / total) * 100).toFixed(1) : "0.0"}%</td>
-                  <td style={{ width: "22%" }}><span className="bar"><i style={{ width: `${Math.max(0, (Number(r.amount) / top) * 100)}%` }} /></span></td>
+                  {d.costs ? (
+                    <>
+                      <td className="num">{m(r.ex_vat ?? 0)}</td>
+                      <td className="num">
+                        {r.cost == null ? <span className="muted">No cost</span> : m(r.cost)}
+                        {/* profit is then over the part that has one, so it is not the two columns taken apart */}
+                        {r.cost != null && Number(r.costed) !== Number(r.ex_vat) && <small className="cell-sub">Some of these sales have no cost</small>}
+                      </td>
+                      <td className="num strong">{r.cost == null ? "" : m(Number(r.costed) - Number(r.cost))}</td>
+                      <td className="num">{r.cost == null ? "" : pct(margin(Number(r.costed), Number(r.cost)))}</td>
+                    </>
+                  ) : (
+                    <td style={{ width: "22%" }}><span className="bar"><i style={{ width: `${Math.max(0, (Number(r.amount) / top) * 100)}%` }} /></span></td>
+                  )}
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr><td /><td>Total</td>{!byCat && <td />}<td className="num">{fmtQty(qty)}</td><td className="num">{m(total)}</td><td className="num">100%</td><td /></tr>
+              <tr><td /><td>Total</td>{!byCat && <td />}<td className="num">{fmtQty(qty)}</td><td className="num">{m(total)}</td><td className="num">100%</td>{d.costs ? <><td className="num">{m(exVat)}</td><td className="num">{m(cost)}</td><td className="num">{m(costed - cost)}</td><td className="num">{pct(margin(costed, cost))}</td></> : <td />}</tr>
             </tfoot>
           </table>
         </>
