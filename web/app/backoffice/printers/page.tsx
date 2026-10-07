@@ -3,6 +3,7 @@ import { Printer } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, int, on, Refused, text, uuid } from "@/lib/action";
+import * as saves from "@/lib/saves";
 import { loadSettings, saveSettings } from "@/lib/settings";
 import { Empty, Flash, PageHead, type Search } from "../ui";
 import { Submit } from "../busy";
@@ -22,6 +23,7 @@ const IP = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}(:\d{2,5
 
 type Row = {
   id: string;
+  store_id: string;
   name: string;
   kind: "network" | "usb";
   address: string | null;
@@ -35,7 +37,7 @@ type Cat = { id: string; name: string; printer_ids: string[] };
 
 function fields(f: FormData) {
   const name = text(f, "name", 40);
-  const kind = f.get("kind") === "usb" ? "usb" : "network";
+  const kind: saves.PrinterForm["kind"] = f.get("kind") === "usb" ? "usb" : "network";
   const address = text(f, "address", 40);
   if (!name) throw new Refused("Give the printer a name, for example Kitchen, Bar or Cashier.");
   if (kind === "network" && !IP.test(address)) throw new Refused("A network printer needs its IP address, for example 192.168.1.50.");
@@ -53,16 +55,12 @@ async function addPrinter(f: FormData) {
   "use server";
   await act("settings.device", PATH, async (c, ctx) => {
     const v = fields(f);
-    const store = await c.query(`select id from stores where tenant_id = $1 and deleted_at is null order by created_at limit 1`, [ctx.tenantId]);
-    if (store.rowCount !== 1) throw new Refused("This restaurant has no store yet.");
-    // the first printer of a restaurant is where its receipts come out, until step 2 says otherwise
-    const first = (await c.query(`select 1 from printers where tenant_id = $1 and store_id = $2 and deleted_at is null limit 1`, [ctx.tenantId, store.rows[0].id])).rowCount === 0;
-    await c.query(
-      `insert into printers (tenant_id, store_id, name, kind, address, paper_mm, is_receipt, feed_lines, cut, sort_order)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, (select coalesce(max(sort_order), -1) + 1 from printers where tenant_id = $1))`,
-      [ctx.tenantId, store.rows[0].id, v.name, v.kind, v.address, v.paper, first, v.feed, v.cut],
-    );
-    return first
+    const store = String(f.get("store_id") ?? "");
+    if (!UUID.test(store)) throw new Refused("This restaurant has no store yet.");
+    // the first printer of a store is where its receipts come out, until step 2 says otherwise
+    const added = await saves.addPrinter(c, ctx.tenantId, store, v);
+    if (!added) throw new Refused("That store is gone. Reload the page.");
+    return added.first
       ? `${v.name} added. It prints the receipts and bills. Say below what else it prints.`
       : `${v.name} added. Say below what it prints.`;
   });
@@ -96,14 +94,10 @@ async function saveRoutes(f: FormData) {
     const one = on(f, "one");
     const pairs = f.getAll("route").map((v) => String(v).toLowerCase()).filter((v) => PAIR.test(v));
     if (one && !UUID.test(receipt)) throw new Refused("With one printer for everything, choose which printer that is, under Receipts and bills.");
-    const store = await c.query(`select id from stores where tenant_id = $1 and deleted_at is null order by created_at limit 1`, [ctx.tenantId]);
-    if (store.rowCount !== 1) throw new Refused("This restaurant has no store yet.");
     // one printer per store is where the cashier's receipts come out
-    await c.query(
-      `update printers set is_receipt = coalesce(id = $2::uuid, false)
-        where tenant_id = $1 and store_id = $3 and deleted_at is null and is_receipt is distinct from coalesce(id = $2::uuid, false)`,
-      [ctx.tenantId, UUID.test(receipt) ? receipt : null, store.rows[0].id],
-    );
+    const set = await saves.setReceiptPrinter(c, ctx.tenantId, UUID.test(receipt) ? receipt : null);
+    if (set === "no-store") throw new Refused("This restaurant has no store yet.");
+    if (set === "no-printer") throw new Refused("That printer is no longer there. Reload the page.");
     await saveSettings(c, ctx.tenantId, { onePrinter: one });
     // each category's printers are the ones ticked for it; a category that did not change is left alone
     await c.query(
@@ -216,10 +210,11 @@ function warnings(rows: Row[], cats: Cat[], one: boolean): string[] {
 export default async function PrintersPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const { rows, cats, one } = await readTenant(ctx.tenantId, async (c) => ({
+  const { stores, rows, cats, one } = await readTenant(ctx.tenantId, async (c) => ({
+    stores: (await c.query(`select id, name from stores where tenant_id = $1 and deleted_at is null order by created_at`, [ctx.tenantId])).rows as { id: string; name: string }[],
     rows: (
       await c.query(
-        `select id, name, kind, address, paper_mm, is_receipt, feed_lines, cut, is_active
+        `select id, store_id, name, kind, address, paper_mm, is_receipt, feed_lines, cut, is_active
            from printers where tenant_id = $1 and deleted_at is null order by sort_order, name`,
         [ctx.tenantId],
       )
@@ -233,6 +228,9 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
   }));
   const receipt = rows.find((p) => p.is_receipt);
   const notes = warnings(rows, cats, one);
+  // with several stores, a printer is added to the store it stands in and is named with it
+  const many = stores.length > 1;
+  const storeName = new Map(stores.map((s) => [s.id, s.name]));
   return (
     <div>
       <PageHead
@@ -261,6 +259,23 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
         </summary>
         <form action={addPrinter}>
           <div className="card-body">
+            {many ? (
+              <div className="form-row">
+                <label className="field">
+                  Store
+                  <select name="store_id" defaultValue={stores[0].id}>
+                    {stores.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="help">The store this printer stands in. A store&apos;s first printer prints its receipts and bills.</span>
+                </label>
+              </div>
+            ) : (
+              stores.length === 1 && <input type="hidden" name="store_id" value={stores[0].id} />
+            )}
             <Hardware />
           </div>
           <div className="card-foot">
@@ -282,6 +297,7 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
                 <h2>{p.name}</h2>
                 <p>
                   {p.kind === "usb" ? "USB" : p.address} · {p.paper_mm} mm
+                  {many ? ` · ${storeName.get(p.store_id) ?? ""}` : ""}
                 </p>
               </div>
               <span className="row-actions">

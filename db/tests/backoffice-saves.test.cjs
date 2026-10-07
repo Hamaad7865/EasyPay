@@ -162,6 +162,41 @@ function lib(name) {
         && JSON.stringify(await mine().then((r) => [r.table_id, r.size, r.status])) === JSON.stringify([t2, 6, 'seated']), JSON.stringify(await mine()));
       check('B3 a booking can be left with no table', (await save(id, form(null), 'confirmed')) === 'ok' && (await mine()).table_id === null);
     }
+
+    // ---- printers, in a restaurant with two stores ----
+    {
+      const v = (name) => ({ name, kind: 'network', address: '192.168.1.50', paper: 80, feed: 3, cut: true });
+      // what each store has, as "name" or "name*" for the one its receipts come out on
+      const has = async (store) => (await c.query(`select name, is_receipt from printers where tenant_id = $1 and store_id = $2 and deleted_at is null order by sort_order`, [tid, store]))
+        .rows.map((r) => r.name + (r.is_receipt ? '*' : '')).join(' ');
+      const idOf = async (name) => (await q1(`select id from printers where tenant_id = $1 and name = $2`, [tid, name])).id;
+      const add = (store, name) => asApp(tid, () => saves.addPrinter(c, tid, store, v(name)));
+      const receipts = (printer) => asApp(tid, () => saves.setReceiptPrinter(c, tid, printer));
+
+      const cashier = await add(main, 'Cashier');
+      const kitchen = await add(main, 'Kitchen');
+      check('R1 a store\'s first printer prints its receipts, the next one does not', cashier.first === true && kitchen.first === false && (await has(main)) === 'Cashier* Kitchen', await has(main));
+      const bar = await add(beach, 'Beach bar');
+      const grill = await add(beach, 'Beach grill');
+      check('R2 a printer added for the second store is in the second store', (await has(beach)) === 'Beach bar* Beach grill' && (await has(main)) === 'Cashier* Kitchen',
+        `main: ${await has(main)} | beach: ${await has(beach)}`);
+      check('R2 and that store\'s first printer prints its receipts', bar && bar.first === true && grill && grill.first === false, JSON.stringify([bar, grill]));
+      const nowhere = await add(crypto.randomUUID(), 'Nowhere');
+      const foreign = await add(theirStore, 'Theirs');
+      check('R2 a printer for a store that is not the restaurant\'s is not added', nowhere === null && foreign === null && (await q1(`select count(*)::int n from printers where name in ('Nowhere', 'Theirs')`)).n === 0,
+        JSON.stringify([nowhere, foreign]));
+
+      const picked = await receipts(await idOf('Beach grill'));
+      check('R3 picking a printer for receipts changes its own store, and no other', picked === 'ok' && (await has(beach)) === 'Beach bar Beach grill*' && (await has(main)) === 'Cashier* Kitchen',
+        `${picked} main: ${await has(main)} | beach: ${await has(beach)}`);
+      check('R3 the same in the first store', (await receipts(await idOf('Kitchen'))) === 'ok' && (await has(main)) === 'Cashier Kitchen*' && (await has(beach)) === 'Beach bar Beach grill*',
+        `main: ${await has(main)} | beach: ${await has(beach)}`);
+      const lost = await receipts(crypto.randomUUID());
+      check('R3 a printer that is no longer there is refused, and nothing changes', lost === 'no-printer' && (await has(main)) === 'Cashier Kitchen*' && (await has(beach)) === 'Beach bar Beach grill*',
+        `${lost} main: ${await has(main)} | beach: ${await has(beach)}`);
+      check('R3 "no printer" still takes receipts off the first store\'s printers', (await receipts(null)) === 'ok' && (await has(main)) === 'Cashier Kitchen' && (await has(beach)) === 'Beach bar Beach grill*',
+        `main: ${await has(main)} | beach: ${await has(beach)}`);
+    }
   } finally {
     for (const t of [tid, other]) {
       try { await devguard.cleanupTenant(c, t); } catch (e) { console.error('cleanup of ' + t + ' failed: ' + e.message); failures++; }
