@@ -3,6 +3,7 @@ import { CalendarCheck } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, int, Refused, text, uuid } from "@/lib/action";
+import * as saves from "@/lib/saves";
 import { Card, Empty, Flash, one, PageHead, type Search } from "../ui";
 import { Submit, Wait } from "../busy";
 
@@ -14,6 +15,7 @@ const STATUS = [
   ["noshow", "No-show"],
   ["cancelled", "Cancelled"],
 ] as const;
+const NO_TABLE = "That table is not one of the booking's store. Pick another, or leave the table for later.";
 
 // What a booking form holds. The day and time are the restaurant's own: they
 // are turned into a moment with the store's time zone, in the query.
@@ -39,15 +41,9 @@ async function addBooking(f: FormData) {
   "use server";
   await act("backoffice.access", PATH, async (c, ctx) => {
     const b = fields(f);
-    const store = uuid(f, "store_id");
-    const r = await c.query(
-      `insert into bookings (tenant_id, store_id, booked_for, name, size, phone, tags, table_id, area, status)
-       select s.tenant_id, s.id, ($3 || ' ' || $4)::timestamp at time zone s.timezone, $5, $6, $7, $8, tb.id, tb.area, 'confirmed'
-         from stores s left join tables tb on tb.tenant_id = s.tenant_id and tb.id = $9::uuid and tb.deleted_at is null
-        where s.tenant_id = $1 and s.id = $2 and s.deleted_at is null`,
-      [ctx.tenantId, store, b.day, b.time, b.name, b.size, b.phone, b.tags, b.table],
-    );
-    if (r.rowCount === 0) throw new Refused("That store is gone.");
+    const done = await saves.addBooking(c, ctx.tenantId, uuid(f, "store_id"), b);
+    if (done === "no-store") throw new Refused("That store is gone.");
+    if (done === "no-table") throw new Refused(NO_TABLE);
     return `${b.name} is booked for ${b.size}. The tills have it after their next sync.`;
   });
 }
@@ -58,22 +54,14 @@ async function saveBooking(f: FormData) {
     const b = fields(f);
     const status = String(f.get("status"));
     if (!STATUS.some(([k]) => k === status)) throw new Refused("Pick where the booking stands.");
-    await c.query(
-      `update bookings bk set booked_for = ($3 || ' ' || $4)::timestamp at time zone s.timezone, name = $5, size = $6, phone = $7, tags = $8,
-              table_id = (select tb.id from tables tb where tb.tenant_id = bk.tenant_id and tb.id = $9::uuid and tb.deleted_at is null),
-              area = coalesce((select tb.area from tables tb where tb.tenant_id = bk.tenant_id and tb.id = $9::uuid and tb.deleted_at is null), bk.area),
-              status = $10
-         from stores s
-        where bk.tenant_id = $1 and bk.id = $2 and bk.deleted_at is null and s.tenant_id = bk.tenant_id and s.id = bk.store_id`,
-      [ctx.tenantId, uuid(f, "id"), b.day, b.time, b.name, b.size, b.phone, b.tags, b.table, status],
-    );
+    if ((await saves.saveBooking(c, ctx.tenantId, uuid(f, "id"), b, status)) === "no-table") throw new Refused(NO_TABLE);
     return `${b.name} saved.`;
   });
 }
 
 type Row = {
   id: string; day: string; time: string; name: string; size: number; phone: string | null; tags: string | null;
-  table_id: string | null; status: string; store: string; past: boolean;
+  table_id: string | null; status: string; store_id: string; store: string; past: boolean;
 };
 
 export default async function BookingsPage({ searchParams }: { searchParams: Search }) {
@@ -88,7 +76,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Sea
     rows: (
       await c.query(
         `select bk.id, to_char(bk.booked_for at time zone s.timezone, 'YYYY-MM-DD') as day, to_char(bk.booked_for at time zone s.timezone, 'HH24:MI') as time,
-                bk.name, bk.size, bk.phone, bk.tags, bk.table_id, bk.status, s.name as store,
+                bk.name, bk.size, bk.phone, bk.tags, bk.table_id, bk.status, bk.store_id, s.name as store,
                 (bk.booked_for at time zone s.timezone)::date < (now() at time zone s.timezone)::date as past
            from bookings bk join stores s on s.tenant_id = bk.tenant_id and s.id = bk.store_id
           where bk.tenant_id = $1 and bk.deleted_at is null
@@ -100,6 +88,8 @@ export default async function BookingsPage({ searchParams }: { searchParams: Sea
     ).rows as Row[],
   }));
   const many = d.stores.length > 1;
+  // with several stores, a table is named with the store it stands in: a booking takes a table of its own store
+  const storeName = new Map(d.stores.map((s) => [s.id, s.name]));
   return (
     <div>
       <PageHead
@@ -124,7 +114,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Sea
             <input name="phone" placeholder="Phone" maxLength={40} />
             <select name="table_id" defaultValue="" aria-label="Table">
               <option value="">Table: assign later</option>
-              {d.tables.map((t) => <option key={t.id} value={t.id}>{t.name} · {t.area} · {t.seats}</option>)}
+              {d.tables.map((t) => <option key={t.id} value={t.id}>{t.name} · {t.area} · {t.seats}{many ? ` · ${storeName.get(t.store_id) ?? ""}` : ""}</option>)}
             </select>
             <input name="tags" placeholder="Notes (birthday, allergy, high chair)" maxLength={240} style={{ minWidth: 240 }} />
             <Submit>Book</Submit>
@@ -164,7 +154,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Sea
                 <td>
                   <select form={"b" + r.id} name="table_id" defaultValue={r.table_id ?? ""} aria-label="Table">
                     <option value="">Not assigned</option>
-                    {d.tables.map((t) => <option key={t.id} value={t.id}>{t.name} · {t.area} · {t.seats}</option>)}
+                    {d.tables.filter((t) => t.store_id === r.store_id).map((t) => <option key={t.id} value={t.id}>{t.name} · {t.area} · {t.seats}</option>)}
                   </select>
                 </td>
                 <td><input form={"b" + r.id} name="tags" defaultValue={r.tags ?? ""} maxLength={240} aria-label="Notes" /></td>

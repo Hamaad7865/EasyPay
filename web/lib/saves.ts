@@ -31,3 +31,47 @@ export async function addChoice(c: PoolClient, tenantId: string, group: string, 
   );
   return r.rowCount === 1;
 }
+
+export type BookingForm = { day: string; time: string; name: string; size: number; phone: string | null; tags: string | null; table: string | null };
+
+// A booking taken in the back office. The day and time are the restaurant's
+// own: they become a moment with the store's time zone. "no-store" when the
+// store is gone; "no-table" when the table picked is not one of that store's
+// (it belongs to another store, or was removed meanwhile). Either way no
+// booking is taken.
+export async function addBooking(c: PoolClient, tenantId: string, store: string, b: BookingForm): Promise<"ok" | "no-store" | "no-table"> {
+  if (b.table && !(await tableOf(c, tenantId, store, b.table))) return "no-table";
+  const r = await c.query(
+    `insert into bookings (tenant_id, store_id, booked_for, name, size, phone, tags, table_id, area, status)
+     select s.tenant_id, s.id, ($3 || ' ' || $4)::timestamp at time zone s.timezone, $5, $6, $7, $8, tb.id, tb.area, 'confirmed'
+       from stores s left join tables tb on tb.tenant_id = s.tenant_id and tb.store_id = s.id and tb.id = $9::uuid and tb.deleted_at is null
+      where s.tenant_id = $1 and s.id = $2 and s.deleted_at is null`,
+    [tenantId, store, b.day, b.time, b.name, b.size, b.phone, b.tags, b.table],
+  );
+  return r.rowCount === 0 ? "no-store" : "ok";
+}
+
+// A booking changed from the list of bookings. "no-table" when the table
+// picked is not one of the booking's own store: the booking is left as it was.
+export async function saveBooking(c: PoolClient, tenantId: string, id: string, b: BookingForm, status: string): Promise<"ok" | "no-table"> {
+  if (b.table) {
+    const at = await c.query(`select store_id from bookings where tenant_id = $1 and id = $2 and deleted_at is null`, [tenantId, id]);
+    if (at.rowCount === 1 && !(await tableOf(c, tenantId, at.rows[0].store_id as string, b.table))) return "no-table";
+  }
+  await c.query(
+    `update bookings bk set booked_for = ($3 || ' ' || $4)::timestamp at time zone s.timezone, name = $5, size = $6, phone = $7, tags = $8,
+            table_id = (select tb.id from tables tb where tb.tenant_id = bk.tenant_id and tb.store_id = bk.store_id and tb.id = $9::uuid and tb.deleted_at is null),
+            area = coalesce((select tb.area from tables tb where tb.tenant_id = bk.tenant_id and tb.store_id = bk.store_id and tb.id = $9::uuid and tb.deleted_at is null), bk.area),
+            status = $10
+       from stores s
+      where bk.tenant_id = $1 and bk.id = $2 and bk.deleted_at is null and s.tenant_id = bk.tenant_id and s.id = bk.store_id`,
+    [tenantId, id, b.day, b.time, b.name, b.size, b.phone, b.tags, b.table, status],
+  );
+  return "ok";
+}
+
+// Is this one of the store's tables, still on its floor plan?
+async function tableOf(c: PoolClient, tenantId: string, store: string, table: string): Promise<boolean> {
+  const r = await c.query(`select 1 from tables where tenant_id = $1 and store_id = $2 and id = $3 and deleted_at is null`, [tenantId, store, table]);
+  return r.rowCount === 1;
+}

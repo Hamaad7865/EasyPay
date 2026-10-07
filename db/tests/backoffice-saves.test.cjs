@@ -77,7 +77,10 @@ function lib(name) {
 
   try {
     await c.query(`insert into tenants (id, tenant_id, name) values ($1, $1, 'Saves-Probe'), ($2, $2, 'Saves-Other')`, [tid, other]);
-    await q1(`insert into stores (tenant_id, name, code) values ($1, 'Main', 'SVS1') returning id`, [tid]);
+    // two stores: what belongs to one must not be taken for the other
+    const main = (await q1(`insert into stores (tenant_id, name, code) values ($1, 'Main', 'SVS1') returning id`, [tid])).id;
+    const beach = (await q1(`insert into stores (tenant_id, name, code) values ($1, 'Beach', 'SVS2') returning id`, [tid])).id;
+    const theirStore = (await q1(`insert into stores (tenant_id, name, code) values ($1, 'Main', 'SVS3') returning id`, [other])).id;
 
     // ---- an item's tax ----
     {
@@ -119,6 +122,45 @@ function lib(name) {
       check('C2 a choice for another restaurant\'s group is refused, and none is added', foreign === false && (await choices(theirs)).length === 0, String(foreign));
       const unknown = await asApp(tid, () => saves.addChoice(c, tid, crypto.randomUUID(), 'Chilli', 0));
       check('C2 a choice for a group that never existed is refused', unknown === false, String(unknown));
+    }
+
+    // ---- the table a booking is given ----
+    {
+      const table = async (tenant, store, name, removed) =>
+        (await q1(`insert into tables (tenant_id, store_id, name, deleted_at) values ($1, $2, $3, ${removed ? 'now()' : 'null'}) returning id`, [tenant, store, name])).id;
+      const t1 = await table(tid, main, 'T1');
+      const t2 = await table(tid, main, 'T2');
+      const b1 = await table(tid, beach, 'B1');
+      const old = await table(tid, main, 'T9', true);
+      const theirs = await table(other, theirStore, 'T1');
+      const form = (tableId, more) => ({ day: '2026-12-24', time: '19:30', name: 'Ramgoolam', size: 4, phone: null, tags: null, table: tableId, ...more });
+      const booked = async () => (await c.query(
+        `select bk.id, bk.store_id, bk.table_id, bk.name, bk.size, bk.status, to_char(bk.booked_for at time zone s.timezone, 'YYYY-MM-DD HH24:MI') as at
+           from bookings bk join stores s on s.id = bk.store_id where bk.tenant_id = $1 and bk.deleted_at is null order by bk.created_at, bk.name`, [tid])).rows;
+      const add = (store, b) => asApp(tid, () => saves.addBooking(c, tid, store, b));
+      const save = (id, b, status) => asApp(tid, () => saves.saveBooking(c, tid, id, b, status));
+
+      check('B1 a booking is taken at its store, at the store\'s own time, on the table picked', (await add(main, form(t1))) === 'ok'
+        && JSON.stringify((await booked()).map((r) => [r.store_id, r.table_id, r.at, r.size])) === JSON.stringify([[main, t1, '2026-12-24 19:30', 4]]), JSON.stringify(await booked()));
+      check('B1 a booking can be taken with its table left for later', (await add(beach, form(null, { name: 'Appadoo' }))) === 'ok'
+        && (await booked()).some((r) => r.name === 'Appadoo' && r.store_id === beach && r.table_id === null));
+      const before = (await booked()).length;
+      const cross = await add(main, form(b1, { name: 'Wrong store' }));
+      check('B2 a table of another store is refused, and no booking is taken', cross === 'no-table' && (await booked()).length === before, cross + ' ' + JSON.stringify((await booked()).filter((r) => r.name === 'Wrong store')));
+      const stale = await add(main, form(old, { name: 'Removed table' }));
+      check('B2 a table removed meanwhile is refused, and no booking is taken', stale === 'no-table' && (await booked()).length === before, stale);
+      const foreign = await add(main, form(theirs, { name: 'Their table' }));
+      check('B2 a table of another restaurant is refused, and no booking is taken', foreign === 'no-table' && (await booked()).length === before, foreign);
+      check('B2 a store that is gone is said to be gone', (await add(crypto.randomUUID(), form(null))) === 'no-store' && (await booked()).length === before);
+
+      const id = (await booked()).find((r) => r.name === 'Ramgoolam').id;
+      const mine = async () => (await booked()).find((r) => r.id === id);
+      const moved = await save(id, form(b1, { size: 9 }), 'seated');
+      const kept = await mine();
+      check('B3 a booking is not moved to a table of another store, and is left as it was', moved === 'no-table' && kept.table_id === t1 && kept.size === 4 && kept.status === 'confirmed', moved + ' ' + JSON.stringify(kept));
+      check('B3 a booking moves to another table of its own store', (await save(id, form(t2, { size: 6 }), 'seated')) === 'ok'
+        && JSON.stringify(await mine().then((r) => [r.table_id, r.size, r.status])) === JSON.stringify([t2, 6, 'seated']), JSON.stringify(await mine()));
+      check('B3 a booking can be left with no table', (await save(id, form(null), 'confirmed')) === 'ok' && (await mine()).table_id === null);
     }
   } finally {
     for (const t of [tid, other]) {
