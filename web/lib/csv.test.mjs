@@ -42,4 +42,5 @@ check("a header alone, and nothing at all", () => {
 });
 
 console.log(failures === 0 ? "CSV PASS" : `CSV FAIL (${failures})`);
-process.exit(failures ? 1 : 0);
+// the exit code is set and node is left to end by itself: process.exit() here has crashed node on Windows while it was closing down, after every check had passed
+process.exitCode = failures ? 1 : 0;

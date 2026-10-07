@@ -59,4 +59,5 @@ check("a column the importer does not know is reported, and a file with no Name 
 });
 
 console.log(failures === 0 ? "CATALOG ROWS PASS" : `CATALOG ROWS FAIL (${failures})`);
-process.exit(failures ? 1 : 0);
+// the exit code is set and node is left to end by itself: process.exit() here has crashed node on Windows while it was closing down, after every check had passed
+process.exitCode = failures ? 1 : 0;
