@@ -63,7 +63,7 @@ export function AdminHome({
     <div className="home">
       <header className="home-head">
         <div>
-          <h1>Restaurants</h1>
+          <h1>Clients</h1>
           <p className="home-status">
             {tenants.length} in total{suspended > 0 ? `, ${suspended} suspended` : ""}.
           </p>
@@ -90,14 +90,14 @@ export function AdminHome({
       <section className="card flush">
         <div className="card-head">
           <div>
-            <h2>New restaurant</h2>
-            <p>Makes the restaurant, its first store and the owner&apos;s login in one go.</p>
+            <h2>New client</h2>
+            <p>Makes the client, its first store and the owner&apos;s login in one go.</p>
           </div>
         </div>
         <form action={createTenant}>
           <div className="card-body adm-fields">
             <label className="field">
-              Restaurant name
+              Client name
               <input name="tenant" required />
             </label>
             <label className="field">
@@ -147,13 +147,13 @@ export function AdminHome({
             </div>
           </div>
           <div className="card-foot">
-            <Submit>Create restaurant and owner login</Submit>
+            <Submit>Create client and owner login</Submit>
           </div>
         </form>
       </section>
 
       {tenants.length === 0 ? (
-        <Empty icon={Store} title="No restaurants yet">
+        <Empty icon={Store} title="No clients yet">
           Create the first one above.
         </Empty>
       ) : (

@@ -45,7 +45,7 @@ export type TenantActions = {
 };
 
 const ACTIONS: Record<string, string> = {
-  "tenant.create": "Restaurant created",
+  "tenant.create": "Client created",
   "tenant.suspended": "Suspended",
   "tenant.active": "Reactivated",
   "tenant.plan": "Plan changed",
@@ -104,7 +104,7 @@ export function TenantView({
     <div>
       <p className="crumb">
         <Link href="/admin">
-          Restaurants
+          Clients
           <Wait />
         </Link>{" "}
         / {tenant.name}
@@ -135,7 +135,7 @@ export function TenantView({
               <div>
                 <h2>Stores and tills</h2>
                 <p>
-                  {count(stores.length, "store")}, {count(tills.length, "till")}. Every login of this restaurant can use every store.
+                  {count(stores.length, "store")}, {count(tills.length, "till")}. Every login of this client can use every store.
                 </p>
               </div>
             </div>
@@ -241,7 +241,7 @@ export function TenantView({
               <div className="card-body">
                 {which}
                 <label className="field">
-                  Restaurant name
+                  Client name
                   <input name="name" defaultValue={tenant.name} required />
                 </label>
                 <label className="field">
@@ -318,7 +318,7 @@ export function TenantView({
                   </label>
                 </div>
                 <div className="card-foot">
-                  <Submit className="btn-danger">Suspend this restaurant</Submit>
+                  <Submit className="btn-danger">Suspend this client</Submit>
                 </div>
               </form>
             ) : (

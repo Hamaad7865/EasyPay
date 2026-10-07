@@ -30,7 +30,7 @@ export function LoginsTable({ tenant, logins, setPassword, setActive }: { tenant
           {logins.length === 0 && (
             <tr>
               <td colSpan={5} className="muted">
-                Nobody can sign in to this restaurant yet. Create a login above.
+                Nobody can sign in for this client yet. Create a login above.
               </td>
             </tr>
           )}

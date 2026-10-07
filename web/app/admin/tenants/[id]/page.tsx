@@ -151,7 +151,7 @@ async function addStore(formData: FormData) {
     back(tenantId, "error", adminMessage(e));
   }
   revalidatePath(`/admin/tenants/${tenantId}`);
-  back(tenantId, "notice", "Store added. Every login of this restaurant can use it.");
+  back(tenantId, "notice", "Store added. Every login of this client can use it.");
 }
 
 async function setTillActive(formData: FormData) {

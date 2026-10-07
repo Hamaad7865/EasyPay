@@ -30,7 +30,7 @@ export function CrashesView({ rows }: { rows: CrashRow[] }) {
                   <th>What stopped it</th>
                   <th className="num">Times</th>
                   <th className="num">Tills</th>
-                  <th>Restaurants</th>
+                  <th>Clients</th>
                   <th>Version</th>
                   <th>Last</th>
                 </tr>

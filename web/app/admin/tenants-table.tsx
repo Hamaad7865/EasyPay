@@ -64,13 +64,13 @@ export function TenantsTable({ rows, start }: { rows: TenantLine[]; start: Start
     <section className="card flush">
       <div className="card-head">
         <div>
-          <h2>All restaurants</h2>
+          <h2>All clients</h2>
           <p>
-            {shown.length !== rows.length ? `${shown.length} of ${rows.length}` : rows.length} {rows.length === 1 ? "restaurant" : "restaurants"}, the newest first unless
+            {shown.length !== rows.length ? `${shown.length} of ${rows.length}` : rows.length} {rows.length === 1 ? "client" : "clients"}, the newest first unless
             sorted.
           </p>
         </div>
-        <TableSearch t={t} placeholder="Search name, ID, plan" label="Search restaurants" />
+        <TableSearch t={t} placeholder="Search name, ID, plan" label="Search clients" />
       </div>
       <div className="table-filters">
         <Seg t={t} name="status" label="Status" options={STATUS} />
@@ -80,7 +80,7 @@ export function TenantsTable({ rows, start }: { rows: TenantLine[]; start: Start
         <table className="adm-nowrap">
           <thead>
             <tr>
-              <SortTh t={t} k="name" label="Restaurant" />
+              <SortTh t={t} k="name" label="Client" />
               <SortTh t={t} k="plan" label="Plan" />
               <th>Status</th>
               <SortTh t={t} k="stores" label="Stores" num />
@@ -92,7 +92,7 @@ export function TenantsTable({ rows, start }: { rows: TenantLine[]; start: Start
             </tr>
           </thead>
           <tbody>
-            {shown.length === 0 && <NoMatch t={t} cols={9} what="restaurant" filters={["status", "type"]} />}
+            {shown.length === 0 && <NoMatch t={t} cols={9} what="client" filters={["status", "type"]} />}
             {shown.map((r) => {
               const Kind = r.type === "retail" ? ShoppingBag : UtensilsCrossed;
               const href = `/admin/tenants/${r.id}`;

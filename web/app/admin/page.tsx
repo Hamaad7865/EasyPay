@@ -24,7 +24,7 @@ async function createTenant(formData: FormData) {
   const type = text("type") === "retail" ? "retail" : "restaurant";
   const password = String(formData.get("password") ?? "");
 
-  if (!name) fail("Give the restaurant a name.");
+  if (!name) fail("Give the client a name.");
   if (!ownerName) fail("Give the owner's name.");
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail("That email address does not look right.");
   if (!/^[A-Z0-9]{1,12}$/.test(code)) fail("Store code must be 1 to 12 letters or digits.");
@@ -56,8 +56,8 @@ async function createTenant(formData: FormData) {
   // no email or password in the URL: it ends up in history and logs
   redirect(`/admin/tenants/${tenantId}?notice=${encodeURIComponent(
       created
-        ? "Restaurant created. Give the owner their password."
-        : "Restaurant created. That email already had a login: it is now the owner, with the password you typed.",
+        ? "Client created. Give the owner their password."
+        : "Client created. That email already had a login: it is now the owner, with the password you typed.",
     )}`);
 }
 

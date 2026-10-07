@@ -68,7 +68,7 @@ export async function loginForRestaurant(input: {
   const row = found.rows[0] as { id: string; linked: boolean; admin: boolean } | undefined;
   if (!row) return made;
   if (row.admin) return { ok: false, message: "That email is a platform admin's login. Use another email." };
-  if (row.linked) return { ok: false, message: "That email already belongs to a restaurant." };
+  if (row.linked) return { ok: false, message: "That email already belongs to a client." };
   const reset = await setLoginPassword(row.id, input.password);
   if (!reset.ok) return reset;
   return { ok: true, userId: row.id, created: false };

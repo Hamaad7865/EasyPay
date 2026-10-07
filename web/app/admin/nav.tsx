@@ -5,10 +5,10 @@ import { usePathname } from "next/navigation";
 import { Bug, Store } from "lucide-react";
 import { Wait } from "../backoffice/busy";
 
-// The admin area's pages, in the bar. A restaurant's own page counts as being
-// among the restaurants.
+// The admin area's pages, in the bar. A client's own page counts as being
+// among the clients.
 const PAGES = [
-  { href: "/admin", label: "Restaurants", icon: Store, here: (p: string) => p === "/admin" || p.startsWith("/admin/tenants") },
+  { href: "/admin", label: "Clients", icon: Store, here: (p: string) => p === "/admin" || p.startsWith("/admin/tenants") },
   { href: "/admin/crashes", label: "Crashes", icon: Bug, here: (p: string) => p.startsWith("/admin/crashes") },
 ];
 
