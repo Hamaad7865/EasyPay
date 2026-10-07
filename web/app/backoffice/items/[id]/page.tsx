@@ -147,11 +147,12 @@ async function saveLines(f: FormData) {
   });
 }
 
-async function removeLine(f: FormData) {
+// The line to remove is bound to the button, not sent as its name and value: a
+// button whose formAction is a server function has its name taken over by React.
+async function removeLine(line: string, f: FormData) {
   "use server";
   const id = String(f.get("id") ?? "");
   await act("items.edit", `${PATH}/${id}`, async (c, ctx) => {
-    const line = String(f.get("remove") ?? "");
     if (!UUID.test(line)) throw new Refused("That line is no longer there. Reload the page.");
     await ruled(() => c.query(`select variant_archive($1, $2)`, [ctx.tenantId, line]));
     return "Line removed. Receipts that sold it keep its name.";
@@ -424,7 +425,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                           {d.mayCost && <td className="num"><input name={`cost:${v.id}`} defaultValue={rupees(v.cost)} inputMode="decimal" aria-label={`Cost of ${v.name}`} className="narrow" /></td>}
                           <td className="num strong">{v.qty <= 0 ? <span className="badge red">{fmtQty(v.qty)}</span> : fmtQty(v.qty)}</td>
                           <td>
-                            <Submit className="btn-link danger" name="remove" value={v.id} formAction={removeLine} formNoValidate aria-label={`Remove ${v.name}`}>
+                            <Submit className="btn-link danger" formAction={removeLine.bind(null, v.id)} formNoValidate aria-label={`Remove ${v.name}`}>
                               Remove
                             </Submit>
                           </td>
