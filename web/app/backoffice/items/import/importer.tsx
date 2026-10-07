@@ -24,6 +24,17 @@ const WHY: Record<string, string> = {
   "product-has-problems": "Another row of this product has a problem, so the whole product waits.",
 };
 
+// The server, asked. A request that never gets an answer (the connection dropped,
+// the file too large to send) must not leave the screen saying "Reading the
+// file" for good: it comes back as a refusal like any other.
+async function ask(rows: ImportRow[], dry: boolean): ReturnType<typeof importCatalog> {
+  try {
+    return await importCatalog(rows, dry);
+  } catch {
+    return { ok: false, message: dry ? "The file could not be sent to be checked. Check the connection and choose it again." : "The import could not be sent. Check the connection, then choose the file again: what was already saved is not saved twice." };
+  }
+}
+
 type Stage = { at: "start" } | { at: "busy"; what: string } | { at: "checked"; rows: ImportRow[]; result: ImportResult; file: string } | { at: "done"; result: ImportResult };
 
 // A catalog from a spreadsheet, in three steps on one screen: choose the file,
@@ -48,7 +59,7 @@ export function Importer() {
       setNote("That file has a header and no rows.");
       return;
     }
-    const answer = await importCatalog(rows, true);
+    const answer = await ask(rows, true);
     if (!answer.ok) {
       setStage({ at: "start" });
       setNote(answer.message);
@@ -60,7 +71,7 @@ export function Importer() {
 
   async function run(rows: ImportRow[]) {
     setStage({ at: "busy", what: "Importing" });
-    const answer = await importCatalog(rows, false);
+    const answer = await ask(rows, false);
     if (!answer.ok) {
       setStage({ at: "start" });
       setNote(answer.message);

@@ -82,12 +82,25 @@ const near = (a, b) => Math.abs(Number(a) - b) < 0.01;
     check('I3 the same file again makes nothing new', r.new_products === 0 && r.new_lines === 0 && r.products === 3 && (await count('items')) === itemsBefore + 3, JSON.stringify(r));
     check('I3 and does not double the stock', r.stock_set === 0 && r.stock_skipped === 3 && lmw2.qty === 14000, JSON.stringify(lmw2));
 
-    // I4 a changed file changes what it names
+    // I8 after "delete all transactions": the movements are gone, the quantities are not
+    await c.query(`delete from stock_movements where tenant_id = $1`, [tid]);
+    r = await run(rows, false);
+    const lmw3 = await lev(sh.id, vs[1].id);
+    check('I8 with its movements deleted and its quantity still there, a line is not given opening stock again',
+      r.stock_set === 0 && r.stock_skipped === 3 && lmw3.qty === 14000 && (await one(`select stock_qty from items where id = $1`, [mug.id])).stock_qty === 26000, JSON.stringify(r));
+
+    // I4 a changed file changes the lines it names, and only those
     r = await run([{ n: 2, ...shirt('M', 'White', { price: 135000 }) }, { n: 3, ...shirt('XL', 'White', { price: 135000 }) }], false);
     const after = (await c.query(`select name, price, sku from item_variants where item_id = $1 and deleted_at is null order by name`, [sh.id])).rows;
-    check('I4 a price in the file is the price now, a line not in it is left alone, a new line is made',
-      r.new_lines === 1 && after.length === 3 && Number(after.find((v) => v.name === 'M / White').price) === 135000
-        && after.find((v) => v.name === 'M / White').sku === 'LS-M-WH' && Number(after.find((v) => v.name === 'L / Navy').price) === 135000, JSON.stringify(after));
+    const priceOf = (name) => Number(after.find((v) => v.name === name).price);
+    check('I4 a price in the file is that line\'s price now, and a new line is made',
+      r.new_lines === 1 && after.length === 3 && priceOf('M / White') === 135000 && priceOf('XL / White') === 135000
+        && after.find((v) => v.name === 'M / White').sku === 'LS-M-WH', JSON.stringify(after));
+    check('I4 a line the file does not name keeps its price, and so does the product',
+      priceOf('L / Navy') === 129000 && Number((await one(`select price from items where id = $1`, [sh.id])).price) === 129000, JSON.stringify(after));
+    // a simple product is its own line: the file's price is its price
+    r = await run([{ n: 2, name: 'Ceramic mug', price: 35000 }], false);
+    check('I4 a simple product takes the price the file gives it', Number((await one(`select price from items where id = $1`, [mug.id])).price) === 35000);
 
     // I5 problems, row by row
     const bad = [
