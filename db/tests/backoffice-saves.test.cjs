@@ -146,6 +146,35 @@ function lib(name) {
       check('T2 a tax that never existed is refused, the item keeping its own', unknown === false && (await carried()).join() === vat, JSON.stringify(await carried()));
     }
 
+    // ---- a product's cost, saved by someone who may not see cost ----
+    {
+      const product = (o) => ({ tenantId: tid, id: o.id, name: o.name, price: o.price ?? 12000, cost: o.cost ?? null, category: null, brand: null, supplier: null, supplierCode: null, available: true, counted: true });
+      const row = async (id) => q1(`select name, price::int as price, cost::int as cost from items where id = $1`, [id]);
+      const saveP = (editing, o, may) => asApp(tid, () => saves.saveProductRow(c, editing, product(o), may));
+      const shirt = crypto.randomUUID();
+      check('K1 someone who may see cost saves a product with its cost', (await saveP(false, { id: shirt, name: 'Shirt', cost: 6200 }, true)) === true
+        && JSON.stringify(await row(shirt)) === '{"name":"Shirt","price":12000,"cost":6200}', JSON.stringify(await row(shirt)));
+      // the form of someone who may not see cost has no cost field: it arrives empty
+      const blind = await saveP(true, { id: shirt, name: 'Linen shirt', price: 13000, cost: null }, false);
+      check('K2 a save by someone who may not see cost changes the rest and leaves the cost', blind === true && JSON.stringify(await row(shirt)) === '{"name":"Linen shirt","price":13000,"cost":6200}', JSON.stringify(await row(shirt)));
+      const forged = await saveP(true, { id: shirt, name: 'Linen shirt', price: 13000, cost: 1 }, false);
+      check('K2 also when a cost is sent anyway', forged === true && (await row(shirt)).cost === 6200, JSON.stringify(await row(shirt)));
+      const cap = crypto.randomUUID();
+      await saveP(false, { id: cap, name: 'Cap', cost: 900 }, false);
+      check('K2 a product they add starts with no cost', (await row(cap)).cost === null, JSON.stringify(await row(cap)));
+      check('K1 someone who may see cost changes it, or clears it', (await saveP(true, { id: shirt, name: 'Linen shirt', price: 13000, cost: 6400 }, true)) === true && (await row(shirt)).cost === 6400
+        && (await saveP(true, { id: cap, name: 'Cap', cost: null }, true)) === true && (await row(cap)).cost === null);
+      check('K3 a product removed meanwhile is not said to be saved', (await saveP(true, { id: crypto.randomUUID(), name: 'Gone' }, true)) === false);
+
+      const m = (await q1(`insert into item_variants (tenant_id, item_id, name, price, cost) values ($1, $2, 'M', 13000, 6400) returning id`, [tid, shirt])).id;
+      const l = (await q1(`insert into item_variants (tenant_id, item_id, name, price, cost) values ($1, $2, 'L', 13000, 6400) returning id`, [tid, shirt])).id;
+      const lines = async () => (await c.query(`select name, sku, price::int as price, cost::int as cost from item_variants where item_id = $1 order by name`, [shirt])).rows.map((r) => [r.name, r.sku, r.price, r.cost].join(':')).join(' ');
+      await asApp(tid, () => saves.saveVariantLines(c, tid, shirt, [{ id: m, barcode: null, sku: 'LS-M', price: 13500, cost: null }, { id: l, barcode: null, sku: 'LS-L', price: 13500, cost: 1 }], false));
+      check('K4 the lines saved by someone who may not see cost keep their cost', (await lines()) === 'L:LS-L:13500:6400 M:LS-M:13500:6400', await lines());
+      await asApp(tid, () => saves.saveVariantLines(c, tid, shirt, [{ id: m, barcode: null, sku: 'LS-M', price: 13500, cost: 6600 }, { id: l, barcode: null, sku: 'LS-L', price: 13500, cost: null }], true));
+      check("K4 someone who may see cost changes a line's cost, or clears it", (await lines()) === 'L:LS-L:13500: M:LS-M:13500:6600', await lines());
+    }
+
     // ---- a choice added to a group of add-ons ----
     {
       const group = (await q1(`insert into modifier_groups (tenant_id, name) values ($1, 'Extras') returning id`, [tid])).id;

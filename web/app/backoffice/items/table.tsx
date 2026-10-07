@@ -56,8 +56,10 @@ const LOW = 5000; // five or fewer left, as the Stock page counts it
 // name, category, tax, add-ons, barcode) is in a panel that slides in from the
 // right when its name is tapped: the list stays where it was behind it.
 export function ItemsTable({
-  items, cats, taxes, groups, start, problem, quickSave, bulkSave, saveItem, mode,
+  items, cats, taxes, groups, start, problem, quickSave, bulkSave, saveItem, mode, showCost,
 }: {
+  // a shop's list shows cost and margin, to someone who may see cost; anyone else gets the tax instead
+  showCost: boolean;
   // a shop's product opens on a page of its own; a restaurant's item in the panel
   mode: Mode;
   items: Item[]; cats: { id: string; name: string }[]; taxes: Tax[]; groups: AddonGroup[]; start: Start;
@@ -71,6 +73,7 @@ export function ItemsTable({
   const edited = editing && editing !== "new" ? (items.find((i) => i.id === editing) ?? null) : null;
   const panelOpen = editing === "new" || edited !== null;
   const shop = mode === "retail";
+  const costs = shop && showCost;
   const router = useRouter();
   const edit = (id: string) => t.set("edit", id);
   // what a tap on a product or on Add does: its page for a shop, the panel for a restaurant
@@ -119,7 +122,7 @@ export function ItemsTable({
   const soldOut = items.filter((i) => !i.is_available).length;
   const noTax = items.filter((i) => !i.tax).length;
   const withStock = items.some((i) => i.stock !== null);
-  const cols = withStock ? 9 : 8;
+  const cols = (withStock ? 9 : 8) - (shop && !costs ? 1 : 0);
   // ticking: the box in the title takes every line the list is showing
   const here = shown.filter((i) => picked.has(i.id)).length;
   const pick = (id: string) =>
@@ -140,8 +143,8 @@ export function ItemsTable({
   const csv = () =>
     shop
       ? downloadCsv("products", [
-          ["Product", "Category", "Price", "Cost", "Margin", "Variants", "SKU", "Barcode", "On sale", "In stock"],
-          ...shown.map((i) => [i.name, i.cat ?? "", (i.price / 100).toFixed(2), i.cost_shown ?? "", i.margin_shown ?? "", i.variants, i.sku ?? "", i.barcode ?? "", i.is_available ? "Yes" : "Off sale", i.stock === null ? "" : i.stock / 1000]),
+          ["Product", "Category", "Price", ...(costs ? ["Cost", "Margin"] : ["Tax"]), "Variants", "SKU", "Barcode", "On sale", "In stock"],
+          ...shown.map((i) => [i.name, i.cat ?? "", (i.price / 100).toFixed(2), ...(costs ? [i.cost_shown ?? "", i.margin_shown ?? ""] : [i.tax ?? ""]), i.variants, i.sku ?? "", i.barcode ?? "", i.is_available ? "Yes" : "Off sale", i.stock === null ? "" : i.stock / 1000]),
         ])
       : downloadCsv("items", [
           ["Item", "Category", "Price", "Tax", "Add-on groups", "SKU", "Barcode", "On sale", "In stock"],
@@ -235,8 +238,8 @@ export function ItemsTable({
               <th />
               <SortTh t={t} k="name" label={shop ? "Product" : "Item"} />
               <SortTh t={t} k="category" label="Category" />
-              <th className={shop ? "num" : undefined}>{shop ? "Cost" : "Tax"}</th>
-              <th className={shop ? "num" : undefined}>{shop ? "Margin" : "Add-ons"}</th>
+              <th className={costs ? "num" : undefined}>{costs ? "Cost" : "Tax"}</th>
+              {costs ? <th className="num">Margin</th> : !shop && <th>Add-ons</th>}
               {withStock && <SortTh t={t} k="stock" label="Stock" num />}
               <SortTh t={t} k="price" label="Price" num />
               <th>On sale</th>
@@ -282,7 +285,7 @@ export function ItemsTable({
                       <span className="muted">None</span>
                     )}
                   </td>
-                  {shop ? (
+                  {costs ? (
                     <>
                       <td className="num">{it.cost_shown ?? <span className="muted">Not set</span>}</td>
                       <td className="num">{it.margin_shown ?? <span className="muted">None</span>}</td>
@@ -290,7 +293,7 @@ export function ItemsTable({
                   ) : (
                     <>
                       <td>{it.tax ?? <span className="badge amber">No tax set</span>}</td>
-                      <td>{it.addons > 0 ? `${it.addons} ${it.addons === 1 ? "group" : "groups"}` : <span className="muted">None</span>}</td>
+                      {!shop && <td>{it.addons > 0 ? `${it.addons} ${it.addons === 1 ? "group" : "groups"}` : <span className="muted">None</span>}</td>}
                     </>
                   )}
                   {withStock && (

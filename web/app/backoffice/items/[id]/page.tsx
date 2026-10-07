@@ -5,7 +5,7 @@ import { readTenant } from "@/lib/db";
 import { act, on, Refused, text, UUID } from "@/lib/action";
 import { parseRs } from "@/lib/money";
 import { fmtQty } from "@/lib/report";
-import { setItemTax } from "@/lib/saves";
+import { saveProductRow, saveVariantLines, setItemTax } from "@/lib/saves";
 import { Card, Flash, PageHead, type Search } from "../../ui";
 import { Submit } from "../../busy";
 import { PriceFields, type TaxChoice } from "./price-fields";
@@ -75,32 +75,18 @@ async function saveProduct(f: FormData) {
       if (!UUID.test(tax)) throw new Refused("Pick the tax this product carries.");
       const reorder = units(f, "reorder");
       const orderQty = units(f, "order_qty");
-      const row = [
-        ctx.tenantId, id, name, price, cost,
-        UUID.test(category) ? category : null,
-        text(f, "brand", 60) || null,
-        UUID.test(supplier) ? supplier : null,
-        text(f, "supplier_code", 60) || null,
-        on(f, "available"), on(f, "track_stock"),
-      ];
+      // a cost is only written for someone who may see cost: their form has no cost field
+      const mayCost = (await c.query(`select has_perm($1, 'costs.view') as ok`, [ctx.employeeId])).rows[0].ok as boolean;
+      const product = {
+        tenantId: ctx.tenantId, id, name, price, cost,
+        category: UUID.test(category) ? category : null,
+        brand: text(f, "brand", 60) || null,
+        supplier: UUID.test(supplier) ? supplier : null,
+        supplierCode: text(f, "supplier_code", 60) || null,
+        available: on(f, "available"), counted: on(f, "track_stock"),
+      };
       await ruled(async () => {
-        if (editing) {
-          const done = await c.query(
-            `update items set name = $3, price = $4, cost = $5, category_id = $6, brand = $7,
-                    supplier_id = (select s.id from suppliers s where s.tenant_id = $1 and s.id = $8 and s.deleted_at is null),
-                    supplier_code = $9, is_available = $10, track_stock = $11
-              where tenant_id = $1 and id = $2 and deleted_at is null`,
-            row,
-          );
-          if (done.rowCount !== 1) throw new Refused("That product is no longer there.");
-        } else {
-          await c.query(
-            `insert into items (tenant_id, id, name, price, cost, category_id, brand, supplier_id, supplier_code, is_available, track_stock)
-             values ($1, $2, $3, $4, $5, $6, $7,
-                     (select s.id from suppliers s where s.tenant_id = $1 and s.id = $8 and s.deleted_at is null), $9, $10, $11)`,
-            row,
-          );
-        }
+        if (!(await saveProductRow(c, editing, product, mayCost))) throw new Refused("That product is no longer there.");
         // a simple product carries its own codes; one with variants has them on its lines
         if (f.has("sku") || f.has("barcode")) {
           await c.query(`update items set sku = $3, barcode = $4 where tenant_id = $1 and id = $2`, [ctx.tenantId, id, text(f, "sku", 60) || null, code(f, "barcode", 64)]);
@@ -155,14 +141,8 @@ async function saveLines(f: FormData) {
       if (price === null || (costText !== "" && cost === null)) throw new Refused("A price or a cost on one of the lines is not a number.");
       return { id: v, barcode: code(f, `barcode:${v}`, 64), sku: text(f, `sku:${v}`, 60) || null, price, cost };
     });
-    await ruled(() =>
-      c.query(
-        `update item_variants v set barcode = x.barcode, sku = x.sku, price = x.price, cost = x.cost
-           from jsonb_to_recordset($3::jsonb) as x(id uuid, barcode text, sku text, price bigint, cost bigint)
-          where v.tenant_id = $1 and v.item_id = $2 and v.id = x.id and v.deleted_at is null`,
-        [ctx.tenantId, id, JSON.stringify(lines)],
-      ),
-    );
+    const mayCost = (await c.query(`select has_perm($1, 'costs.view') as ok`, [ctx.employeeId])).rows[0].ok as boolean;
+    await ruled(() => saveVariantLines(c, ctx.tenantId, id, lines, mayCost));
     return lines.length === 1 ? "1 line saved." : `${lines.length} lines saved.`;
   });
 }
@@ -224,7 +204,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   const isNew = id === "new";
   if (!isNew && !UUID.test(id)) notFound();
   const d = await readTenant(ctx.tenantId, async (c) => {
-    const [item, variants, cats, taxes, suppliers] = await Promise.all([
+    const [item, variants, cats, taxes, suppliers, may] = await Promise.all([
       isNew
         ? Promise.resolve({ rows: [] as ItemRow[] })
         : c.query(
@@ -249,6 +229,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
       c.query(`select id, name from categories where tenant_id = $1 and deleted_at is null order by sort_order, name`, [ctx.tenantId]),
       c.query(`select id, name, rate_bp, type, is_default from taxes where tenant_id = $1 and deleted_at is null order by is_default desc, name`, [ctx.tenantId]),
       c.query(`select id, name from suppliers where tenant_id = $1 and deleted_at is null order by lower(name)`, [ctx.tenantId]),
+      c.query(`select has_perm($1, 'costs.view') as costs`, [ctx.employeeId]),
     ]);
     return {
       item: (item.rows[0] as ItemRow | undefined) ?? null,
@@ -256,6 +237,8 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
       cats: cats.rows as { id: string; name: string }[],
       taxes: taxes.rows as (TaxChoice & { is_default: boolean })[],
       suppliers: suppliers.rows as { id: string; name: string }[],
+      // cost is drawn, and sent to the browser, only for someone who may see it
+      mayCost: may.rows[0].costs as boolean,
     };
   });
   if (!isNew && !d.item) notFound();
@@ -319,7 +302,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
             </label>
           </Card>
           <Card title="Price">
-            <PriceFields cost={rupees(item?.cost ?? null)} price={item ? rupees(item.price) : ""} tax={tax} taxes={d.taxes} />
+            <PriceFields showCost={d.mayCost} cost={d.mayCost ? rupees(item?.cost ?? null) : ""} price={item ? rupees(item.price) : ""} tax={tax} taxes={d.taxes} />
             {hasLines && <p className="muted" style={{ margin: "12px 0 0" }}>A change here reaches the variants that are at this price or cost. One priced differently keeps its own.</p>}
           </Card>
           <Card title="Stock">
@@ -423,7 +406,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                         <th>Barcode</th>
                         <th>SKU</th>
                         <th className="num">Price (Rs)</th>
-                        <th className="num">Cost (Rs)</th>
+                        {d.mayCost && <th className="num">Cost (Rs)</th>}
                         <th className="num">On hand</th>
                         <th />
                       </tr>
@@ -438,7 +421,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                           <td><input name={`barcode:${v.id}`} defaultValue={v.barcode ?? ""} maxLength={64} aria-label={`Barcode of ${v.name}`} autoComplete="off" style={{ width: 150 }} /></td>
                           <td><input name={`sku:${v.id}`} defaultValue={v.sku ?? ""} maxLength={60} aria-label={`SKU of ${v.name}`} autoComplete="off" style={{ width: 120 }} /></td>
                           <td className="num"><input name={`price:${v.id}`} defaultValue={rupees(v.price)} required inputMode="decimal" aria-label={`Price of ${v.name}`} className="narrow" /></td>
-                          <td className="num"><input name={`cost:${v.id}`} defaultValue={rupees(v.cost)} inputMode="decimal" aria-label={`Cost of ${v.name}`} className="narrow" /></td>
+                          {d.mayCost && <td className="num"><input name={`cost:${v.id}`} defaultValue={rupees(v.cost)} inputMode="decimal" aria-label={`Cost of ${v.name}`} className="narrow" /></td>}
                           <td className="num strong">{v.qty <= 0 ? <span className="badge red">{fmtQty(v.qty)}</span> : fmtQty(v.qty)}</td>
                           <td>
                             <Submit className="btn-link danger" name="remove" value={v.id} formAction={removeLine} formNoValidate aria-label={`Remove ${v.name}`}>

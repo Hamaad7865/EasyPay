@@ -15,7 +15,8 @@ const rs = (v: number) => "Rs " + v.toLocaleString("en-US", { minimumFractionDig
 // What a product costs the shop, what it sells for and the tax it carries,
 // with the margin worked out as the figures are typed: what the shop keeps of
 // the price once the tax in it and the cost are taken out.
-export function PriceFields({ cost, price, tax, taxes }: { cost: string; price: string; tax: string; taxes: TaxChoice[] }) {
+// Someone who may not see cost gets the price and the tax alone.
+export function PriceFields({ cost, price, tax, taxes, showCost }: { cost: string; price: string; tax: string; taxes: TaxChoice[]; showCost: boolean }) {
   const [c, setC] = useState(cost);
   const [p, setP] = useState(price);
   const [t, setT] = useState(tax);
@@ -27,10 +28,12 @@ export function PriceFields({ cost, price, tax, taxes }: { cost: string; price: 
   return (
     <>
       <div className="grid-3" style={{ gap: "0 20px" }}>
-        <label className="field">
-          Cost (Rs)
-          <input name="cost" value={c} onChange={(e) => setC(e.target.value)} inputMode="decimal" placeholder="What you pay for one" />
-        </label>
+        {showCost && (
+          <label className="field">
+            Cost (Rs)
+            <input name="cost" value={c} onChange={(e) => setC(e.target.value)} inputMode="decimal" placeholder="What you pay for one" />
+          </label>
+        )}
         <label className="field">
           Selling price (Rs)
           <input name="price" value={p} onChange={(e) => setP(e.target.value)} required inputMode="decimal" />
@@ -47,7 +50,7 @@ export function PriceFields({ cost, price, tax, taxes }: { cost: string; price: 
           </select>
         </label>
       </div>
-      {margin ? (
+      {!showCost ? null : margin ? (
         <p className={margin.each < 0 ? "note danger" : "note ok"} style={{ margin: 0 }}>
           <strong>Margin {margin.pct.toFixed(1)}%</strong>: {rs(margin.each)} on each one{chosen && chosen.rate_bp > 0 && chosen.type === "included" ? ", after the tax" : ""}.
           {margin.each < 0 && " It sells for less than it costs."}

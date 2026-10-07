@@ -19,6 +19,8 @@ export type ImportResult = {
 export async function importCatalog(rows: ImportRow[], dry: boolean): Promise<{ ok: true; result: ImportResult } | { ok: false; message: string }> {
   try {
     const ctx = await requirePerm("items.edit");
+    // a file writes costs: it is for someone who may see them
+    await requirePerm("costs.view");
     if (ctx.mode !== "retail") return { ok: false, message: "Importing a catalog is for shops." };
     if (!Array.isArray(rows) || rows.length === 0) return { ok: false, message: "The file has no rows." };
     if (rows.length > 5000) return { ok: false, message: "A file can hold 5,000 rows at most. Split it in two." };

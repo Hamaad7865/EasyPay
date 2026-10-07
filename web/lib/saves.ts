@@ -139,3 +139,48 @@ export async function savePrinter(c: PoolClient, tenantId: string, id: string, v
   );
   return r.rowCount === 1;
 }
+
+// A shop's product, as its page saves it (the row; its tax, codes and reorder
+// level are saved beside it).
+export type ProductRow = {
+  tenantId: string; id: string; name: string; price: number; cost: number | null; category: string | null; brand: string | null;
+  supplier: string | null; supplierCode: string | null; available: boolean; counted: boolean;
+};
+
+// False when the product to change is no longer there. A cost is only written
+// by someone who may see cost: their form has no cost field, so what arrives
+// from it is empty, and saving that would wipe the cost they cannot see. For
+// anyone else the cost stays as it was, and a product they add has none.
+export async function saveProductRow(c: PoolClient, editing: boolean, p: ProductRow, mayCost: boolean): Promise<boolean> {
+  const row = [p.tenantId, p.id, p.name, p.price, mayCost ? p.cost : null, p.category, p.brand, p.supplier, p.supplierCode, p.available, p.counted];
+  if (editing) {
+    const done = await c.query(
+      `update items set name = $3, price = $4, cost = case when $12 then $5::bigint else cost end, category_id = $6, brand = $7,
+              supplier_id = (select s.id from suppliers s where s.tenant_id = $1 and s.id = $8 and s.deleted_at is null),
+              supplier_code = $9, is_available = $10, track_stock = $11
+        where tenant_id = $1 and id = $2 and deleted_at is null`,
+      [...row, mayCost],
+    );
+    return done.rowCount === 1;
+  }
+  await c.query(
+    `insert into items (tenant_id, id, name, price, cost, category_id, brand, supplier_id, supplier_code, is_available, track_stock)
+     values ($1, $2, $3, $4, $5, $6, $7,
+             (select s.id from suppliers s where s.tenant_id = $1 and s.id = $8 and s.deleted_at is null), $9, $10, $11)`,
+    row,
+  );
+  return true;
+}
+
+export type VariantLine = { id: string; barcode: string | null; sku: string | null; price: number; cost: number | null };
+
+// The lines of a product, saved together in one statement. Their costs are
+// only written by someone who may see cost, as for the product itself.
+export async function saveVariantLines(c: PoolClient, tenantId: string, item: string, lines: VariantLine[], mayCost: boolean): Promise<void> {
+  await c.query(
+    `update item_variants v set barcode = x.barcode, sku = x.sku, price = x.price, cost = case when $4 then x.cost else v.cost end
+       from jsonb_to_recordset($3::jsonb) as x(id uuid, barcode text, sku text, price bigint, cost bigint)
+      where v.tenant_id = $1 and v.item_id = $2 and v.id = x.id and v.deleted_at is null`,
+    [tenantId, item, JSON.stringify(lines), mayCost],
+  );
+}

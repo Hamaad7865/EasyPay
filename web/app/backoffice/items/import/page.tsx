@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { onlyFor } from "@/lib/tenant";
+import { ask } from "@/lib/db";
 import { PageHead } from "../../ui";
 import { Importer } from "./importer";
 
@@ -7,7 +8,9 @@ import { Importer } from "./importer";
 // (catalog_import, migration 0071): this page reads the file in the browser,
 // shows what a run would do, and then asks for it.
 export default async function ImportPage() {
-  await onlyFor("retail");
+  const ctx = await onlyFor("retail");
+  // a file writes costs, so importing is for someone who may see cost
+  const costs = (await ask(`select has_perm($1, 'costs.view') as ok`, [ctx.employeeId])).rows[0]?.ok as boolean;
   return (
     <div>
       <PageHead
@@ -16,7 +19,7 @@ export default async function ImportPage() {
       >
         <Link href="/backoffice/items" className="btn btn-quiet">Back to products</Link>
       </PageHead>
-      <Importer />
+      {costs ? <Importer /> : <p className="note warn">A file carries what each product costs, so importing is for someone who may see cost. Ask the owner to tick See cost and profit on your role.</p>}
     </div>
   );
 }

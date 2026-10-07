@@ -36,6 +36,8 @@ export async function GET(req: Request) {
   }
   if (ctx.mode !== "retail") return new Response("Not found", { status: 404 });
   const template = new URL(req.url).searchParams.get("template") === "1";
+  // the Cost column is filled only for someone who may see cost; left empty, an import keeps the cost a line has
+  const costs = template || (await readTenant(ctx.tenantId, async (c) => (await c.query(`select has_perm($1, 'costs.view') as ok`, [ctx.employeeId])).rows[0].ok as boolean));
   const rows = template
     ? []
     : await readTenant(ctx.tenantId, async (c) =>
@@ -68,7 +70,7 @@ export async function GET(req: Request) {
     const pair = (n: number) => (vals[n] ? [r.option_names[n] ?? "", vals[n]] : ["", ""]);
     lines.push(
       [r.name, r.category, r.brand, r.supplier, r.supplier_code, ...pair(0), ...pair(1), ...pair(2), r.sku, r.barcode,
-        rupees(r.price), rupees(r.cost), r.tax, units(r.reorder_point), units(r.reorder_qty), units(Math.max(0, r.qty))]
+        rupees(r.price), costs ? rupees(r.cost) : "", r.tax, units(r.reorder_point), units(r.reorder_qty), units(Math.max(0, r.qty))]
         .map(cell)
         .join(","),
     );

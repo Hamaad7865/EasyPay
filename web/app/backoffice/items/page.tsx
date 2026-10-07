@@ -175,6 +175,8 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
         [ctx.tenantId],
       )
     ).rows as ItemRow[],
+    // cost and margin are worked out, and sent to the browser, only for someone who may see cost
+    costs: (await c.query(`select has_perm($1, 'costs.view') as ok`, [ctx.employeeId])).rows[0].ok as boolean,
   }));
   const decimals = withDefaults(d.menu.settings).decimals;
   // what the shop keeps of the price once the tax in it and the cost are taken out, in percent
@@ -203,8 +205,8 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
     tax_id: r.tax_id,
     group_ids: r.group_ids ?? [],
     own_stock: r.track_stock,
-    cost_shown: r.cost === null ? null : money(Number(r.cost), decimals),
-    margin_shown: margin(r),
+    cost_shown: !d.costs || r.cost === null ? null : money(Number(r.cost), decimals),
+    margin_shown: d.costs ? margin(r) : null,
     variants: r.variants,
     codes: r.variant_codes ?? "",
   }));
@@ -230,6 +232,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
       <ItemsTable
         key={startKey(sp, start)}
         mode={ctx.mode}
+        showCost={d.costs}
         items={items}
         cats={d.menu.cats}
         taxes={d.menu.taxes}
