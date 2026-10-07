@@ -94,6 +94,7 @@ export const GROUPS: NavGroup[] = [
     icon: Boxes,
     links: [
       { href: "/backoffice/stock", label: "Stock on hand", only: "retail", icon: Boxes, words: "inventory quantity low out below zero value reorder adjust damaged expired lost found" },
+      { href: "/backoffice/purchase-orders", label: "Purchase orders", only: "retail", icon: ClipboardList, words: "buy order supplier receive delivery arrived invoice po" },
       { href: "/backoffice/suppliers", label: "Suppliers", only: "retail", icon: Truck, words: "vendors wholesalers contacts who we buy from" },
       { href: "/backoffice/stock-movements", label: "Movements", only: "retail", icon: ArrowLeftRight, words: "history log stock in out sold received adjusted counted" },
     ],

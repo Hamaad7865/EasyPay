@@ -62,7 +62,7 @@ const STOCK: PermGroup = {
   title: "Stock",
   perms: [
     ["stock.view", "See stock and its movements"],
-    ["stock.receive", "Order from suppliers and receive deliveries"],
+    ["stock.receive", "Order from suppliers and receive deliveries, with their costs"],
     ["stock.adjust", "Adjust stock: damaged, lost, found"],
     ["stock.count", "Run stock counts"],
     ["suppliers.edit", "Manage suppliers"],
