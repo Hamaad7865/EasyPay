@@ -31,6 +31,8 @@ import com.restopos.core.database.DrawerCountEntity
 import com.restopos.core.database.EmployeeEntity
 import com.restopos.core.database.EmployeeStoreEntity
 import com.restopos.core.database.ItemEntity
+import com.restopos.core.database.ItemVariantEntity
+import com.restopos.core.database.StockLevelEntity
 import com.restopos.core.database.ItemModGroupCrossRef
 import com.restopos.core.database.ItemTaxCrossRef
 import com.restopos.core.database.ModifierEntity
@@ -114,6 +116,8 @@ class PullWorker @AssistedInject constructor(
                     // nothing now. Drop the catalog mirror and pull from the start.
                     db.withTransaction {
                         db.catalog().clearCatalog()
+                        db.retail().clearVariants()
+                        db.retail().clearLevels()
                         db.staff().clearStaff()
                         db.tables().clearTables()
                         db.ops().clearPrinters()
@@ -172,8 +176,38 @@ class PullWorker @AssistedInject constructor(
                 dao.upsertItems(rows.map {
                     ItemEntity(id(it), str(it, "tenant_id") ?: "", str(it, "category_id"), str(it, "name") ?: "", lng(it, "price") ?: 0, bool(it, "is_available", true), str(it, "tile_color"), str(it, "image_path"), str(it, "deleted_at"), lng(it, "server_seq"),
                         tags = (it.jsonObject["dietary_tags"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { t -> runCatching { t.jsonPrimitive.contentOrNull }.getOrNull() }?.joinToString(",") ?: "",
-                        barcode = str(it, "barcode")?.trim()?.ifEmpty { null })
+                        barcode = str(it, "barcode")?.trim()?.ifEmpty { null },
+                        sku = str(it, "sku")?.trim()?.ifEmpty { null }, sold_by = str(it, "sold_by") ?: "each", track_stock = bool(it, "track_stock", false),
+                        option_names = (it.jsonObject["option_names"] as? kotlinx.serialization.json.JsonArray)?.toString() ?: "[]")
                 })
+            }
+            // A shop's variants, and what this shop holds of each product. A
+            // level the server has is the figure; what this till sold since
+            // is taken off it again when the sale is made (TicketRepository.pay)
+            // and is in the server's figure once the sale has gone up, which
+            // every sync does before it pulls.
+            val retail = db.retail()
+            changes["item_variants"]?.let { rows ->
+                retail.upsertVariants(rows.mapNotNull {
+                    val item = str(it, "item_id") ?: return@mapNotNull null
+                    ItemVariantEntity(
+                        id(it), str(it, "tenant_id") ?: "", item, str(it, "name") ?: "", lng(it, "price") ?: 0,
+                        str(it, "sku")?.trim()?.ifEmpty { null }, str(it, "barcode")?.trim()?.ifEmpty { null },
+                        (it.jsonObject["option_values"] as? kotlinx.serialization.json.JsonArray)?.toString() ?: "[]",
+                        str(it, "deleted_at"), lng(it, "server_seq"),
+                    )
+                })
+            }
+            changes["stock_levels"]?.let { rows ->
+                val kept = ArrayList<StockLevelEntity>()
+                rows.forEach {
+                    val item = str(it, "item_id") ?: return@forEach
+                    val at = str(it, "store_id") ?: store
+                    val variant = str(it, "variant_id") ?: ""
+                    if (str(it, "deleted_at") != null) retail.dropLevel(at, item, variant)
+                    else kept.add(StockLevelEntity(at, item, variant, (lng(it, "qty") ?: 0).toInt(), lng(it, "server_seq")))
+                }
+                retail.upsertLevels(kept)
             }
             changes["modifier_groups"]?.let { rows ->
                 dao.upsertGroups(rows.map {

@@ -232,7 +232,9 @@ class OrderOps @Inject constructor(
         val types = db.ops().allPaymentTypes().associateBy { it.id }
         return ReceiptDoc(
             kind = if (r.type == "refund") "refund" else "receipt", number = r.number, time = r.device_time,
-            lines = db.receipts().lines(r.id).map { com.restopos.core.print.DocLine(it.qty, it.name_snapshot, Calc.lineAmount(it.unit_price, it.qty)) },
+            lines = db.receipts().lines(r.id).map {
+                com.restopos.core.print.DocLine(it.qty, it.name_snapshot, Calc.lineAmount(it.unit_price, it.qty), was = it.list_price?.let { p -> Calc.lineAmount(p, it.qty) }, priceNote = it.price_label)
+            },
             subtotal = r.subtotal, rounding = r.rounding, total = r.total,
             payments = db.receipts().payments(r.id).map { DocPayment(types[it.payment_type_id]?.name ?: "Paid", it.amount, it.tendered, it.change, it.reference) },
         )
@@ -277,7 +279,10 @@ class OrderOps @Inject constructor(
     // works the amount out from the receipt itself and refuses one that is a
     // cent off; the till works out the same amount (RefundCalc), because it is
     // what the cashier hands over, online or not.
-    suspend fun refund(receiptId: String, reason: String, paymentTypeId: String, approver: StaffMember? = null, picks: Map<String, Int>? = null): Result<ReceiptEntity> = runCatching {
+    // restock: the goods go back on the shelf. Off (they are faulty), the
+    // server takes them back and writes them off as damaged; this till's copy
+    // of the shelf is then left as it is.
+    suspend fun refund(receiptId: String, reason: String, paymentTypeId: String, approver: StaffMember? = null, picks: Map<String, Int>? = null, restock: Boolean = true): Result<ReceiptEntity> = runCatching {
         require(reason.isNotBlank()) { "Say why it is refunded" }
         staff.allow("sale.refund", "refund", approver)
         val orig = db.ops().receipt(receiptId) ?: error("That receipt is not on this tablet")
@@ -352,9 +357,15 @@ class OrderOps @Inject constructor(
         db.withTransaction {
             db.receipts().insertReceipt(refund)
             db.receipts().insertLines(
-                if (back == null) sold.map { ReceiptLineEntity(Uuid7.next(), tenant, id, it.name_snapshot, it.unit_price, it.qty, it.ticket_line_id) }
-                else back.mapNotNull { (s, q) -> sold.firstOrNull { it.ticket_line_id == s.line.id }?.let { ReceiptLineEntity(Uuid7.next(), tenant, id, it.name_snapshot, it.unit_price, q, s.line.id) } },
+                if (back == null) sold.map { ReceiptLineEntity(Uuid7.next(), tenant, id, it.name_snapshot, it.unit_price, it.qty, it.ticket_line_id, it.list_price, it.price_kind, it.price_label) }
+                else back.mapNotNull { (s, q) -> sold.firstOrNull { it.ticket_line_id == s.line.id }?.let { ReceiptLineEntity(Uuid7.next(), tenant, id, it.name_snapshot, it.unit_price, q, s.line.id, it.list_price, it.price_kind, it.price_label) } },
             )
+            // what came back is on this till's copy of the shelf again, unless it is not being put back
+            if (restock) {
+                val returned = if (back == null) sold.mapNotNull { r -> r.ticket_line_id?.let { db.tickets().line(it) }?.let { it to r.qty } }
+                else back.mapNotNull { (s, q) -> db.tickets().line(s.line.id)?.let { it to q } }
+                db.moveStock(store, returned)
+            }
             if (amount > 0) db.receipts().insertPayments(listOf(ReceiptPaymentEntity(Uuid7.next(), tenant, id, type.id, amount)))
             db.catalog().upsertDevices(listOf(device.copy(last_receipt_seq = seq)))
             db.outbox().enqueue(op("refund.create", buildJsonObject {
@@ -369,6 +380,7 @@ class OrderOps @Inject constructor(
                     if (amount > 0) add(buildJsonObject { put("payment_type_id", type.id); put("amount", amount) })
                 })
                 staff.approvedBy("sale.refund", approver)?.let { put("approved_by", it) }
+                if (!restock) put("restock", false)
             }))
         }
         pushNow(context)

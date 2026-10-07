@@ -36,6 +36,8 @@ data class PosSettings(
     val onePrinter: Boolean = false,
     // the drawer is counted note by note and coin by coin, in place of typing the amount
     val drawerByNotes: Boolean = false,
+    // the business is a shop: the till shows the sell screen, not tables and a kitchen
+    val retail: Boolean = false,
 ) {
     fun shop(fallbackName: String): Shop =
         Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer)
@@ -75,6 +77,7 @@ data class PosSettings(
                 kitchenSound = d.bool("kitchenSound") ?: true,
                 onePrinter = d.bool("onePrinter") ?: false,
                 drawerByNotes = d.bool("drawerByNotes") ?: false,
+                retail = d.str("businessType") == "retail",
             )
         }
     }

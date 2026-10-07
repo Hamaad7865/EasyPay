@@ -455,7 +455,7 @@ class TicketRepository @Inject constructor(
             }
             val modIds = mods.map { it.id }.sorted()
             val lines = db.tickets().lines(t.id).first()
-            val match = lines.filter { it.voided_at == null && it.sent_to_kitchen_at == null && it.item_id == itemId && (it.note ?: "") == (note ?: "") && it.course == course && it.seat == seat }
+            val match = lines.filter { it.voided_at == null && it.sent_to_kitchen_at == null && it.item_id == itemId && it.variant_id == null && it.price_kind == null && (it.note ?: "") == (note ?: "") && it.course == course && it.seat == seat }
                 .firstOrNull { db.tickets().modIds(it.id).sorted() == modIds }
             if (match != null) {
                 setQty(match.id, match.qty + qty, "quantity change")
@@ -648,12 +648,14 @@ class TicketRepository @Inject constructor(
                     device_time = now, doc = doc),
             )
             db.receipts().insertLines(payLines.map {
-                ReceiptLineEntity(Uuid7.next(), tenant, receiptId, it.name_snapshot, it.unit_price, it.qty, it.id)
+                ReceiptLineEntity(Uuid7.next(), tenant, receiptId, it.name_snapshot, it.unit_price, it.qty, it.id, it.list_price, it.price_kind, it.price_label)
             })
             db.receipts().insertPayments(payments.map {
                 ReceiptPaymentEntity(Uuid7.next(), tenant, receiptId, it.paymentTypeId, it.amount, it.tendered, it.change, it.reference)
             })
             db.tickets().markPaid(payLines.map { it.id })
+            // what was sold leaves this till's copy of the shelf at once; the server's figure comes back with the next sync
+            db.moveStock(store, payLines.map { it to -it.qty })
             if (closing) db.tickets().setStatus(t.id, "paid")
             db.catalog().upsertDevices(listOf(device.copy(last_receipt_seq = seq)))
             db.outbox().enqueue(op("receipt.create", buildJsonObject {

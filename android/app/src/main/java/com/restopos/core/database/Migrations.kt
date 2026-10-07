@@ -118,4 +118,34 @@ object Migrations {
             db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
         }
     }
+
+    // 8 -> 9: what a shop sells with. A product's variants and what the shop
+    // holds of each product; a product's SKU, how it is sold and whether its
+    // stock is counted; and, on a line of a sale and of a receipt, the price
+    // it was listed at when it is charged something else.
+    val V8_V9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `item_variants` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `item_id` TEXT NOT NULL, `name` TEXT NOT NULL, `price` INTEGER NOT NULL, `sku` TEXT, `barcode` TEXT, `option_values` TEXT NOT NULL, `deleted_at` TEXT, `server_seq` INTEGER, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_item_variants_item_id` ON `item_variants` (`item_id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_item_variants_barcode` ON `item_variants` (`barcode`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_item_variants_sku` ON `item_variants` (`sku`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `stock_levels` (`store_id` TEXT NOT NULL, `item_id` TEXT NOT NULL, `variant_id` TEXT NOT NULL, `qty` INTEGER NOT NULL, `server_seq` INTEGER, PRIMARY KEY(`store_id`, `item_id`, `variant_id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_stock_levels_item_id` ON `stock_levels` (`item_id`)")
+            db.execSQL("ALTER TABLE `items` ADD COLUMN `sku` TEXT")
+            db.execSQL("ALTER TABLE `items` ADD COLUMN `sold_by` TEXT NOT NULL DEFAULT 'each'")
+            db.execSQL("ALTER TABLE `items` ADD COLUMN `track_stock` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `items` ADD COLUMN `option_names` TEXT NOT NULL DEFAULT '[]'")
+            db.execSQL("ALTER TABLE `ticket_lines` ADD COLUMN `list_price` INTEGER")
+            db.execSQL("ALTER TABLE `ticket_lines` ADD COLUMN `price_kind` TEXT")
+            db.execSQL("ALTER TABLE `ticket_lines` ADD COLUMN `price_label` TEXT")
+            db.execSQL("ALTER TABLE `ticket_lines` ADD COLUMN `price_by` TEXT")
+            db.execSQL("ALTER TABLE `receipt_lines` ADD COLUMN `list_price` INTEGER")
+            db.execSQL("ALTER TABLE `receipt_lines` ADD COLUMN `price_kind` TEXT")
+            db.execSQL("ALTER TABLE `receipt_lines` ADD COLUMN `price_label` TEXT")
+            // The server has been sending variants all along and this till
+            // read past them; stock levels and the products' new columns are
+            // there too. Pull again from the start so they arrive.
+            db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
+        }
+    }
 }

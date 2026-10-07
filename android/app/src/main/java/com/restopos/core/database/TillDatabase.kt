@@ -16,6 +16,10 @@ import androidx.room.RoomDatabase
 // Version 6 adds drawer counts, seats and customers.
 // Version 7 adds what the service screens need: an order type's kind, the
 // takeaway board's details on an order, kitchen display tickets and bookings.
+// Version 8 adds an item's barcode and which order line a receipt line paid.
+// Version 9 adds what a shop sells with: a product's variants and what the
+// shop holds of each, a product's SKU and how it is sold, and on a line of a
+// sale the price it was listed at when it is charged something else.
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -30,8 +34,9 @@ import androidx.room.RoomDatabase
         ShiftEntity::class, PunchEntity::class, TableEntity::class,
         PrinterEntity::class, SettingsEntity::class, CashMoveEntity::class, DayCloseEntity::class, DrawerCountEntity::class,
         CustomerEntity::class, KdsTicketEntity::class, BookingEntity::class,
+        ItemVariantEntity::class, StockLevelEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
@@ -45,4 +50,5 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun ops(): OpsDao
     abstract fun customers(): CustomerDao
     abstract fun service(): ServiceDao
+    abstract fun retail(): RetailDao
 }

@@ -82,6 +82,14 @@ data class TicketLineEntity(
     // kitchen has ticked it off
     val kds_id: String? = null,
     val kitchen_done: Boolean = false,
+    // A line charged something other than its listed price says so: what it
+    // was listed at, whether that is a discount or a changed price
+    // (discount | override), the words for the receipt ("10% off"), and who
+    // allowed it. unit_price is always what is charged.
+    val list_price: Long? = null,
+    val price_kind: String? = null,
+    val price_label: String? = null,
+    val price_by: String? = null,
 )
 
 @Entity(tableName = "ticket_line_modifiers", primaryKeys = ["line_id", "modifier_id"])
@@ -172,4 +180,8 @@ data class ReceiptLineEntity(
     // refund of part of a receipt names what comes back; a receipt issued
     // before version 8 has none and can only be refunded whole.
     val ticket_line_id: String? = null,
+    // what the line was listed at when it was charged something else, and why
+    val list_price: Long? = null,
+    val price_kind: String? = null,
+    val price_label: String? = null,
 )

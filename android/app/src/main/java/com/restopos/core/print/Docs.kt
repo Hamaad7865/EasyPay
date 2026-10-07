@@ -19,6 +19,10 @@ data class DocLine(
     val course: Int? = null,
     val cat: String? = null, // its category, for the day closing; never printed on a receipt
     val seat: Int? = null, // the seat it is for, on the kitchen ticket
+    // a line charged something other than its listed price: what it would
+    // have come to, and the words for why ("10% off", "Price changed")
+    val was: Long? = null,
+    val priceNote: String? = null,
 )
 
 @Serializable
@@ -205,6 +209,8 @@ object Docs {
         p.rule()
         d.lines.forEach { l ->
             p.row("${qty(l.qty)} ${l.name}", n(l.amount))
+            // the price it was listed at, and what was done to it
+            if (l.was != null && l.was != l.amount) p.wrapped(listOfNotNull("was ${n(l.was)}", l.priceNote?.takeIf { it.isNotBlank() }).joinToString(", "), indent = "  ")
             l.mods.forEach { m -> p.wrapped("+ $m", indent = "  ") }
             l.note?.takeIf { it.isNotBlank() }?.let { p.wrapped("* $it", indent = "  ") }
         }

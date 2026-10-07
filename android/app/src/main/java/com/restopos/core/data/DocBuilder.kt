@@ -59,6 +59,7 @@ class DocBuilder @Inject constructor(
             l.qty, l.name_snapshot, Calc.lineAmount(l.unit_price, l.qty) + db.tickets().modSum(l.id),
             db.tickets().modNames(l.id), l.note, l.course,
             l.item_id?.let { db.ops().categoryOfItem(it)?.name }, l.seat,
+            was = l.list_price?.let { Calc.lineAmount(it, l.qty) + db.tickets().modSum(l.id) }, priceNote = l.price_label,
         )
     }
 

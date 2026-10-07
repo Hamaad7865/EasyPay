@@ -53,6 +53,13 @@ data class ItemEntity(
     val tags: String = "",
     // what a scanner reads off the packet, when the item has one
     val barcode: String? = null,
+    // a shop's product: its stock-keeping code, whether it is sold each or by
+    // weight, whether its stock is counted, and the names of its options
+    // ("Size", "Colour") as a JSON array when it has variants
+    val sku: String? = null,
+    val sold_by: String = "each",
+    val track_stock: Boolean = false,
+    val option_names: String = "[]",
 )
 
 @Entity(tableName = "modifier_groups")
