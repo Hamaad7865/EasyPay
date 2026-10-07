@@ -75,3 +75,32 @@
 ### Task 4: see it
 - [ ] Type-check; every view drawn from sample rows, with and without `costs.view`; every suite, one at a time; a production build.
 - [ ] "What happened when this plan was run", at the end of this file.
+
+---
+
+## What happened when this plan was run (2026-10-08)
+
+Built as written, with the differences below. Commits `160501d` and `4907d61` on `restopos`, dev only, not pushed. No migration.
+
+**As built:**
+
+- `web/lib/stock-reports.ts`: `LOSSES_SQL`, `COUNTED_SQL`, `UNSOLD_SQL`, `itemSalesSql`. `db/tests/stock-reports.test.cjs` asks them as the tenant's own connection, in one rolled-back transaction, with sales and a refund pushed through the sync operations (27 checks).
+- `/backoffice/reports/stock`, four views: Stock value, Reorder list, Losses, Not selling. Under Reports in a shop's menu, as Stock reports.
+- Item sales, for a shop and for whoever may see costs: Without VAT, Cost, Profit, Margin, a Profit figure on top, and a line saying how much of the sales has no cost on file.
+
+**Different from the plan:**
+
+- **The sums (`valueBy`, `isLow`, `suggestedQty`, `reorderList`, `margin`) are in `web/lib/stock.ts`**, beside the sums they build on, with their checks in `stock.test.mjs`. `stock-reports.ts` holds SQL only and imports nothing, so the suite can compile that one file.
+- **`itemSalesSql` serves every business.** Without cost it is the question the page always asked, so a restaurant's page did not move: its HTML, drawn from the same sample rows before and after, is the same byte for byte.
+- **A row whose sales are only partly costed says so** ("Some of these sales have no cost"): its profit is over the part that has one, so it is not the Without VAT column less the Cost column.
+- The reports' shared filter bar can now carry a hidden field (the view to come back to). Losses open on this month so far, not on today alone.
+
+**Found while testing:** the till's `ticket.add_line` does not carry a variant yet (that is piece 4). The suite's sales are of products without variants; variants are in its stock value, reorder and not-selling checks. Cost on Item sales for a variant is matched on the variant in the SQL, and nothing has run it.
+
+**Seen and not seen.** `stock-reports` 27 checks, `stock-counts` 37, `purchase-orders` 45, `stock-adjust` 31, `backoffice-saves` 66, `isolation` 10: all pass (the whole set of 41 suites passed earlier the same day, after migration 0076; nothing in the database changed since). The pure checks, the type-check and a production build are clean. The page's fixed queries were planned against dev; `itemSalesSql` is put together at run time, and the suite runs both of its forms. Drawn to HTML from sample rows: every view of Stock reports with and without the right to see costs, empty, for someone who sees reports and not stock, and for a restaurant (not found); Item sales for a restaurant, a shop with costs and a shop without. **The four views were looked at in a real browser** on a temporary page with sample rows (deleted afterwards), for their layout only. **Nobody has opened these pages signed in**, and the CSV and Print buttons were not pressed on them (the buttons are the reports' own, unchanged: the file is the tables on the page).
+
+**Left for later:**
+
+- The reorder list points to Purchase orders; it does not start the order itself.
+- "Not selling" counts from when a sale reached the server, as "sold in 30 days" on Stock on hand does, not from the receipt's own time.
+- Production needs migrations 0064 to 0076 (none from this step).
