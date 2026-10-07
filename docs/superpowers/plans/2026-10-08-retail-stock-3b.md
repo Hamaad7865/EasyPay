@@ -112,3 +112,30 @@ One file. In this order:
 ### Task 7: see it
 
 - [ ] Every suite, one at a time; build; the record at the end of this file; tell the user what is theirs to open signed in.
+
+---
+
+## What happened when this plan was run (2026-10-08)
+
+Built as written, with the differences below. Commits `1ef665f` to `ee6d427` on `restopos`, dev only, not pushed.
+
+**As built:**
+
+- Migration `0074_purchase_orders.sql` and `db/tests/purchase-orders.test.cjs` (45 checks, passing first time after the migration). `doc_lines` is the one place a form's lines are read: it validates them and adds two lines for one product together. `delivery_receive` takes a lock on the delivery's id before looking for it, so two sends of one delivery wait their turn instead of the second failing on the id.
+- `web/lib/orders.ts` with its node test.
+- `/backoffice/purchase-orders` (the orders, New order, the latest deliveries), `/backoffice/purchase-orders/<id>` (a draft's editor, the receive form, what was ordered, each delivery, Print, Close, Cancel) and `/backoffice/purchase-orders/receive` (a delivery nobody ordered). The Stock group has Purchase orders, with how many are on their way; Stock on hand has "Receive a delivery".
+
+**Different from the plan:**
+
+- **What an order or a delivery cost is shown to whoever may order and receive** (`stock.receive`), with or without `costs.view`: they type the supplier's invoice. The permission is worded "Order from suppliers and receive deliveries, with their costs". Someone who may only see stock sees quantities and no amounts.
+- **A product that was not on the order cannot be added on the order's own receive form.** The database takes it (rule D10); the form lists the order's lines only. Until that is added, such a product is received with "Receive without an order".
+- The receive form says what the delivery leaves still to come, and marks a cost that was changed. It does not work out the new average cost per line as the board's second note did: it says in words that the cost typed becomes the product's cost and the average is worked out again.
+- No labels from a delivery yet (one label per unit received): the labels page takes products, not a delivery.
+
+**Seen and not seen.** Suites, one at a time: `purchase-orders`, `stock-adjust`, `stock-engine`, `stock-sales`, `stock-locks`, `catalog`, `catalog-import`, `pos-operations` (its T11 now holds the two delivery tables to the rule for receipts), `backoffice-saves`, `isolation`, `crash-reports`: all pass. Type-check and a production build are clean. Every query of the new pages was planned against dev. The orders list, an order as a draft, sent, part received and received (seen by someone with every right, and by someone who may only see stock), and the receive page were drawn to HTML from sample rows. **The two typed forms were used in a real browser** on a temporary page with sample lines and a stand-in action (deleted afterwards): a scanned barcode adds a line and a second scan adds one more; a name with one match is added with Enter, which never sends the form; letters in a quantity are marked and hold the save back; "1,5" is one and a half; the receive form starts on what is still to come, says what will still be missing, marks a changed cost, and its button counts the units; what both forms post is what the server actions read. **Nobody has run an order end to end signed in**: placing one, sending it, receiving it in two parts, closing one, cancelling one.
+
+**Left for later:**
+
+- A product not on the order, on the order's receive form; labels for a delivery; a supplier's orders listed on the Suppliers page.
+- What was typed is lost when a save is refused (the page is drawn again from the database), as on a product's page.
+- Production needs migrations 0064 to 0074.
