@@ -37,7 +37,7 @@ The behaviour reference is Lightspeed Retail (X-Series), read on 2026-10-07 at `
 
 **How it reaches the back office.** `tenantContext()` already joins `tenants`; it carries the type to every page and to the shell.
 
-**How it reaches the till.** `tenants` is not in the pull. `pos_settings` is, and the till reads its JSON loosely, ignoring keys it does not know. A trigger on `tenants` keeps `pos_settings.data.businessType` in step, so a till learns the type through the pull it already makes. `tenants.business_type` stays the one source of truth.
+**How it reaches the till.** `tenants` is not in the pull. `pos_settings` is, and the till reads its JSON loosely, ignoring keys it does not know. The platform function that changes the type writes `pos_settings.data.businessType` in the same transaction, so a till learns the type through the pull it already makes. A missing key means restaurant. `tenants.business_type` stays the one source of truth.
 
 **Old APKs.** A till below the first retail version, belonging to a retail tenant, gets "update required" (the existing 426 answer, made aware of the tenant's type). It never shows restaurant screens to a shop.
 
@@ -81,7 +81,7 @@ Removing a product, variant or supplier that has history is the soft delete that
 
 ### The stock figure
 
-`stock_levels`: one row per shop and per product or variant, holding quantity on hand (thousandths, as elsewhere), average cost (cents), reorder level and reorder quantity.
+`stock_levels`: one row per shop and per product or variant, holding quantity on hand (thousandths, as elsewhere), average cost (cents, kept to four decimals so repeated deliveries do not drift), reorder level and reorder quantity. A level that falls to zero keeps its row: "checked and empty" is not the same as "never stocked".
 
 `items.stock_qty` stays, maintained as the item's total, so the present till and the present Stock page keep working without change.
 
@@ -89,7 +89,7 @@ Selling is never blocked by stock. A negative figure means a delivery was not en
 
 ### Movements
 
-Every change to a quantity writes one row in `stock_movements`. The table gains `store_id`, `variant_id`, `unit_cost`, and a reference to the document the movement came from (`ref_type`, `ref_id`, `ref_line_id`). The reference is unique where present, which is what makes a receipt that syncs twice, or a double-clicked Receive, move stock once.
+Every change to a quantity writes one row in `stock_movements`. The table gains `store_id`, `variant_id`, `unit_cost`, and a reference to the document the movement came from (`ref_type`, `ref_id`). A document moves one product in one shop once, which is what makes a receipt that syncs twice, or a double-clicked Receive, move stock once.
 
 Reasons: `sale`, `refund`, `receive`, `supplier_return`, `count`, `opening`, `damaged`, `expired`, `lost`, `internal`, `found`, and the existing `adjust`. The CHECK constraint is widened; nothing is renamed.
 
@@ -109,6 +109,8 @@ Not in this build: spreading freight and duty over a delivery, orders in a forei
 ### One engine
 
 One database function, `stock_move`, is the only code that writes a movement and changes a level. It locks the level row, writes the movement, updates quantity and average cost, and keeps `items.stock_qty` in step.
+
+Everything locks the level first and the item's row second, so a sale and an adjustment never wait on each other the wrong way round. A count works out its difference under that lock (`stock_count_item`), so two people counting one product at once build on each other.
 
 Its callers:
 
@@ -138,7 +140,7 @@ The product page has four parts:
 
 **CSV import.** Download the template, upload, and see each row's problems before anything is saved. Then import the good rows or fix the file. Import creates products and updates existing ones by SKU. Nothing is half-saved. Export is the same file.
 
-**Barcode labels.** A printable sheet from the browser for chosen products, or for a received delivery (one label per unit received). A label shows name, variant, price and barcode. A product with no barcode gets one made by EasyPay, in the range reserved for in-store codes. Barcodes are drawn as Code 128 by our own code, with no library to download. Layouts: common A4 label sheets and a single-label roll.
+**Barcode labels.** A printable sheet from the browser for chosen products, or for a received delivery (one label per unit received). A label shows name, variant, price and barcode. A product with no barcode gets one made by EasyPay: an EAN-13 in the range reserved for in-store codes, numbered so two people can never be handed the same one. The check digit, the bars and the label sheet start from Kids Corner's `lib/barcodes` (section 11), so there is no library to download. Layouts: common A4 label sheets and a single-label roll.
 
 ### Stock › Stock on hand
 
@@ -205,7 +207,7 @@ Line discount and line price change are added to the server for both modes. Only
 
 **Paying.** The payment screen that exists: cash with change, card, split payments, receipt printed.
 
-**Returns.** From Receipts: find the sale, pick the lines and quantities coming back, refund to the chosen method. The goods go back into stock at the cost they left at. This is today's part-refund.
+**Returns.** From Receipts: find the sale, pick the lines and quantities coming back, refund to the chosen method. The goods go back into stock at the cost they left at. This is today's part-refund. A switch, "Put back into stock", is on by default; off (a faulty item), the goods come back and leave again as damaged (section 11).
 
 **Tabs in retail.** Sell, Receipts, Customers, Products & stock (look up a product, see what is left, change a price), Today, More (cash drawer, open and close day).
 
@@ -217,6 +219,8 @@ A retail sale is a ticket of the existing kind `counter`.
 |---|---|
 | Till offline | It keeps selling. Stock is applied when the receipts sync. |
 | Two tills sell the last one | Both sales stand. Stock shows −1 and appears under Negative. |
+| An adjustment out, a return to a supplier or a transfer for more than the shop holds | Refused. Only a sale can take a level below zero. |
+| Two people count one product at once | The second builds on the first. Neither is lost. |
 | A receipt syncs twice | It moves stock once. |
 | Double-click on Receive | It counts once. |
 | More arrives than was ordered | Accepted, shown as over-received. |
@@ -249,7 +253,22 @@ Each piece gets its own implementation plan and ends in something the user can o
 
 Offered to the user and left out: bundles and cases that break into singles; a full supplier-return document; emailing orders to suppliers; gift receipts; customer accounts and store credit; camera scanning; custom adjustment reasons; freight and duty spread over a delivery; foreign-currency orders; serial numbers; an online store; price books; gift cards; layaway.
 
-## 11. To verify while planning
+## 11. Taken from Kids Corner
+
+Kids Corner (`C:\Projects\KidsCorner`) is the user's own retail system, in use in a shop. On 2026-10-07 they pointed to it as a source of logic. Its migrations record faults found in real use; each is a rule here.
+
+| Kids Corner | What it learned | Where it lands here |
+|---|---|---|
+| 045 atomic stock count | Two people counting one product at once: the second overwrote the first. | Piece 1: `stock_count_item` works out the difference under the level's lock. |
+| 009 stock floor, 029 transfer needs the stock | Stock must not be driven below zero by hand; a transfer must check what its source holds. | Pieces 3 and 5: an adjustment out, a return to a supplier and a transfer are refused when they would take a level below zero. A sale is the one exception, because a till sells offline and cannot ask first; Kids Corner's till is online and refuses the sale. |
+| 030 received purchases are closed | A received order's lines were overwritten by an editor left open. | Piece 3: once received, a delivery's lines are a record. The database refuses a change, not only the page. |
+| 018 a return does not always go back on the shelf | A faulty item came back into sellable stock. | Piece 4: the return screen has "Put back into stock", on by default. Off, the goods come back and leave again as damaged, so the loss is on the report. |
+| 007, 008 in-store barcodes | Numbers handed out to two people at once collided. | Piece 2: in-store barcodes are EAN-13, reserved in blocks in one statement. Start from Kids Corner's `lib/barcodes` (check digit, bars, label sheet), which has tests. Supplier barcodes are kept as they come. |
+| 046 zero-balance locations | A shop at zero looked like a shop never checked. | Piece 1: a level at zero keeps its row. |
+
+Also worth reading there when its piece is planned: `components/products/variant-matrix.tsx` and `generate-variants-dialog.tsx` (piece 2), `lib/purchases` with supplier terms and expected dates (piece 3), `app/(admin)/stock/page.tsx` with its movements, locations and reorder tabs (piece 3), the till's stock check screen (piece 4).
+
+## 12. To verify while planning
 
 These are facts the plans must check in the code, not assume:
 
