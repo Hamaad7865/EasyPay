@@ -43,6 +43,23 @@ function lib(name) {
     check('N2 something that is not a list is the usual five', notes({ kitchenNotes: 'Rush' }).join('|') === usual && notes({ kitchenNotes: null }).join('|') === usual);
   }
 
+  // ---- a price typed in a form (no database) ----
+  {
+    const { parseRs } = lib('money');
+    const got = (cases) => cases.map(([typed]) => `${JSON.stringify(typed)}=${parseRs(typed)}`).join(' ');
+    const reads = (cases) => cases.every(([typed, cents]) => parseRs(typed) === cents);
+    const prices = [['12', 1200], ['12.5', 1250], ['12.50', 1250], ['0', 0], ['0.05', 5], [' 99 ', 9900], ['12.', 1200], ['.5', 50]];
+    check('P1 a price is read in cents', reads(prices), got(prices));
+    check('P1 commas between thousands are left out', reads([['1,250', 125000], ['1,250.75', 125075]]));
+    check('P1 what the forms show is read back as it was', [0, 5, 50, 1250, 125075, 19999999].every((cents) => parseRs((cents / 100).toString()) === cents));
+    const junk = [['12abc', null], ['12 50', null], ['1e3', null], ['Rs 12', null], ['12.5.1', null]];
+    check('P2 a number with anything else after it is not a price', reads(junk), got(junk));
+    const empty = [['', null], ['   ', null], ['.', null], ['-5', null], ['+5', null], ['abc', null]];
+    check('P2 nothing, a sign or a dot alone is not a price', reads(empty), got(empty));
+    const fine = [['12.345', null], ['0.001', null]];
+    check('P2 a third decimal is refused, not rounded', reads(fine), got(fine));
+  }
+
   const env = devguard.envMap();
   const c = new Client({ connectionString: env.DATABASE_URL_UNPOOLED, ssl: { require: true } });
   await c.connect();
