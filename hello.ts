@@ -91,6 +91,28 @@ async function requireTill(req: Request): Promise<Authed> {
   return { authUserId: "", tenantId: r.tenant_id, employeeId: r.employee_id, status: r.status ?? "active", deviceId: m[1].toLowerCase(), storeId: r.store_id };
 }
 
+// A shop's till must be build 3 or later: the first with a shop's screens. An
+// older build would ring a shop's sales up as a restaurant's orders and send
+// them to a kitchen that is not there. It is answered 426, as a build below
+// MIN_TILL_VERSION is: the till says it must be updated, keeps selling and
+// keeps its outbox, and syncs again once it is. A till that does not say its
+// build is an older one still. A restaurant's till is asked nothing new, and
+// a build that is new enough costs no query.
+const SHOP_MIN_TILL = 3;
+async function tooOldForShop(req: Request, tenantId: string): Promise<boolean> {
+  const v = Number(req.headers.get("x-till-version") ?? "0");
+  if (Number.isInteger(v) && v >= SHOP_MIN_TILL) return false;
+  try {
+    const r = await pool.query(`select business_type from tenants where id = $1::uuid`, [tenantId]);
+    return r.rows[0]?.business_type === "retail";
+  } catch (err) {
+    // never in the way of a sync: a till that cannot be asked about is let through
+    console.error("business type not read:", (err as Error).message);
+    return false;
+  }
+}
+const SHOP_TOO_OLD = { error: "This till must be updated before it can sync: this business is a shop, and this build has no shop screens.", min: SHOP_MIN_TILL };
+
 const SUSPENDED = { error: "This account is suspended. Sales already made still sync; contact EasyPay to reactivate." };
 function suspended(auth: Authed): boolean {
   return auth.status !== "active";
@@ -148,7 +170,7 @@ app.use("*", async (c, next) => {
 
 // minTill: the oldest till build still accepted (0: every build is).
 app.get("/health", (c) =>
-  c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0063", minTill: Number(process.env.MIN_TILL_VERSION ?? "0") || 0 }),
+  c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0077", minTill: Number(process.env.MIN_TILL_VERSION ?? "0") || 0 }),
 );
 
 // Tenant-scoped self check: only ever returns the caller's own rows.
@@ -306,6 +328,7 @@ app.post("/sync/push", async (c) => {
   } catch (res) {
     return res as Response;
   }
+  if (await tooOldForShop(c.req.raw, auth.tenantId)) return c.json(SHOP_TOO_OLD, 426);
   const body: { ops?: unknown } = await c.req.json<{ ops?: unknown }>().catch((): { ops?: unknown } => ({}));
   if (!Array.isArray(body.ops) || body.ops.length < 1 || body.ops.length > 200) {
     return c.json({ error: "ops must be an array of 1..200" }, 400);
@@ -328,6 +351,7 @@ app.get("/sync/pull", async (c) => {
   } catch (res) {
     return res as Response;
   }
+  if (await tooOldForShop(c.req.raw, auth.tenantId)) return c.json(SHOP_TOO_OLD, 426);
   const storeId = c.req.query("storeId") ?? "";
   const cursor = Number(c.req.query("cursor") ?? "0");
   const limit = Number(c.req.query("limit") ?? "200");

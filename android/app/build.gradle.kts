@@ -31,8 +31,8 @@ android {
         applicationId = "com.restopos.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         buildConfigField("String", "FUNCTION_URL", "\"${endpoint("functionUrl")}\"")
         buildConfigField("String", "AUTH_URL", "\"${endpoint("authUrl")}\"")
         buildConfigField("String", "BACK_OFFICE_URL", "\"${endpoint("backOfficeUrl")}\"")
