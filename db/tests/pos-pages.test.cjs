@@ -36,13 +36,16 @@ function loadPos() {
   {
     const now = new Date('2026-10-07T12:00:00Z');
     const mins = (n) => new Date(now.getTime() - n * 60000);
-    check('W1 synced a few minutes ago is fine, day open or not', pos.tillState(mins(3), now, true, false) === 'ok' && pos.tillState(mins(30), now, false, false) === 'ok');
-    check('W1 a till on and quiet for one check-in is still fine', pos.tillState(mins(16), now, true, false) === 'ok');
-    check('W1 day open and nothing for over half an hour is quiet', pos.tillState(mins(31), now, true, false) === 'quiet' && pos.tillState(mins(60), now, true, false) === 'quiet');
-    check('W1 day open and nothing for over an hour wants looking at', pos.tillState(mins(61), now, true, false) === 'silent');
-    check('W1 day closed and not synced lately is a tablet put away, not a worry', pos.tillState(mins(600), now, false, false) === 'idle');
-    check('W1 a till that never synced says so', pos.tillState(null, now, true, false) === 'never');
-    check('W1 a deactivated till is that before anything else', pos.tillState(mins(1), now, true, true) === 'off' && pos.tillState(null, now, false, true) === 'off');
+    check('W1 synced a few minutes ago is fine', pos.tillState(mins(3), now, false) === 'ok' && pos.tillState(mins(30), now, false) === 'ok');
+    check('W1 a till in use that missed one check-in is still fine', pos.tillState(mins(16), now, false) === 'ok');
+    // A till left alone stops checking in, so the database can sleep: it says
+    // nothing for as long as no one is at it, and that is no fault. Nothing
+    // tells it from a tablet that is off, so neither is called a worry.
+    check('W1 a till that has said nothing for an hour, or a night, is at rest: not a worry',
+      pos.tillState(mins(31), now, false) === 'idle' && pos.tillState(mins(61), now, false) === 'idle' && pos.tillState(mins(600), now, false) === 'idle');
+    check('W1 no state of a till is a warning any more', !Object.values(pos.STATE_BADGE).includes('amber') && !Object.values(pos.STATE_BADGE).includes('red'), JSON.stringify(pos.STATE_BADGE));
+    check('W1 a till that never synced says so', pos.tillState(null, now, false) === 'never');
+    check('W1 a deactivated till is that before anything else', pos.tillState(mins(1), now, true) === 'off' && pos.tillState(null, now, true) === 'off');
     check('W2 how long ago, in words', pos.ago(mins(0), now) === 'just now' && pos.ago(mins(7), now) === '7 min ago' && pos.ago(mins(120), now) === '2 h ago'
       && pos.ago(mins(135), now) === '2 h 15 min ago' && pos.ago(mins(60 * 30), now) === 'yesterday' && pos.ago(mins(60 * 24 * 9), now) === '9 days ago',
       [0, 7, 120, 135, 1800, 12960].map((n) => pos.ago(mins(n), now)).join(' | '));
@@ -50,8 +53,8 @@ function loadPos() {
     check('W2 a length of time', pos.span(40) === '40 s' && pos.span(720) === '12 min' && pos.span(3 * 3600 + 300) === '3 h 05 min' && pos.span(3 * 86400) === '3 days' && pos.span(-5) === '0 s',
       [40, 720, 11100, 259200].map((n) => pos.span(n)).join(' | '));
     check('W3 the line on a till never says more than is known',
-      pos.stateLine('ok', mins(2), now) === 'Synced 2 min ago' && pos.stateLine('quiet', mins(44), now) === 'Quiet for 44 min'
-      && pos.stateLine('silent', mins(135), now) === 'Not heard from for 2 h 15 min' && pos.stateLine('idle', mins(60 * 20), now) === 'Last synced 20 h ago'
+      pos.stateLine('ok', mins(2), now) === 'Synced 2 min ago' && pos.stateLine('idle', mins(44), now) === 'Last synced 44 min ago'
+      && pos.stateLine('idle', mins(60 * 20), now) === 'Last synced 20 h ago'
       && pos.stateLine('never', null, now) === 'Not synced yet' && pos.stateLine('off', null, now) === 'Deactivated');
     check('W4 late is more than two minutes after the till wrote it', pos.isLate(121) && !pos.isLate(120) && !pos.isLate(0) && !pos.isLate(null) && !pos.isLate(-900));
     check('W5 what a drawer should hold', pos.expectedCash('100000', '5000', '20000', '7000') === 118000 && pos.expectedCash(null, null, null, null) === 0);
@@ -139,7 +142,7 @@ function loadPos() {
       await c.query(`select device_heard($1, 'pull', 5)`, [dev]);
       const after = (await read(tid, pos.TILLS, [tid, day])).find((r) => r.id === dev);
       check('T1 once it syncs, that is when it was last heard from, with its build', after.synced !== null && after.before_times === false && after.till_version === 5 && after.last_pull_at !== null && after.last_push_at === null);
-      check('T1 and it reads as synced', pos.tillState(new Date(after.seen), new Date(), true, false) === 'ok');
+      check('T1 and it reads as synced', pos.tillState(new Date(after.seen), new Date(), false) === 'ok');
       const none = await read(other, pos.TILLS, [tid, day]);
       check('T1 another restaurant asking for this one\'s tills gets nothing', none.length === 0, String(none.length));
     }

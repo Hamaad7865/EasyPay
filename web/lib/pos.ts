@@ -2,28 +2,26 @@
 // queries the pages are drawn from.
 //
 // The back office knows when a till last synced, not whether it is connected
-// this second. A till sends each sale as it is made and otherwise checks in
-// about every 15 minutes, so one that is on and quiet can go that long
-// without a word. The wording below never claims more than that.
+// this second. A till sends each sale as it is made, and while someone is at
+// it checks in about every 15 minutes. Left untouched for half an hour it
+// stops asking, and syncs again at the next touch: the database is paid for
+// by the hour it is awake, and a till asking for news all night kept it
+// awake for nothing. So a till that says nothing is a till no one is at, or a
+// tablet that is off, and nothing here can tell the two apart. Neither is
+// called a fault. The wording below never claims more than that.
 
-export type TillState = "off" | "never" | "ok" | "quiet" | "silent" | "idle";
+export type TillState = "off" | "never" | "ok" | "idle";
 
-export const FRESH_MINUTES = 30; // a check-in or two may be late before it means anything
-export const SILENT_MINUTES = 60; // with its day open, a till this quiet wants looking at
+export const FRESH_MINUTES = 30; // a till in use checks in twice in this time
 
 // off     the till was deactivated
 // never   it has not synced since it was set up
-// ok      it synced in the last half hour
-// quiet   its day is open and it has said nothing for over half an hour
-// silent  its day is open and it has said nothing for over an hour
-// idle    its day is closed and it has not synced lately, which is a tablet put away
-export function tillState(seen: Date | null, now: Date, dayOpen: boolean, deactivated: boolean): TillState {
+// ok      it synced in the last half hour: someone is at it
+// idle    it has said nothing for longer: no one is at it, or the tablet is off
+export function tillState(seen: Date | null, now: Date, deactivated: boolean): TillState {
   if (deactivated) return "off";
   if (!seen) return "never";
-  const minutes = (now.getTime() - seen.getTime()) / 60000;
-  if (minutes <= FRESH_MINUTES) return "ok";
-  if (!dayOpen) return "idle";
-  return minutes > SILENT_MINUTES ? "silent" : "quiet";
+  return (now.getTime() - seen.getTime()) / 60000 <= FRESH_MINUTES ? "ok" : "idle";
 }
 
 // How long ago, the way someone would say it.
@@ -55,15 +53,13 @@ export function span(seconds: number): string {
 export const LATE_SECONDS = 120;
 export const isLate = (seconds: number | null) => seconds !== null && seconds > LATE_SECONDS;
 
-export const STATE_BADGE: Record<TillState, string> = { off: "", never: "", ok: "green", quiet: "amber", silent: "red", idle: "" };
+export const STATE_BADGE: Record<TillState, string> = { off: "", never: "", ok: "green", idle: "" };
 
 export function stateLine(state: TillState, seen: Date | null, now: Date): string {
   switch (state) {
     case "off": return "Deactivated";
     case "never": return "Not synced yet";
     case "ok": return `Synced ${ago(seen!, now)}`;
-    case "quiet": return `Quiet for ${span((now.getTime() - seen!.getTime()) / 1000)}`;
-    case "silent": return `Not heard from for ${span((now.getTime() - seen!.getTime()) / 1000)}`;
     case "idle": return `Last synced ${ago(seen!, now)}`;
   }
 }

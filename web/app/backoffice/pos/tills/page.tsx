@@ -10,8 +10,10 @@ import { Stat } from "../../reports/parts";
 
 // Every till of the restaurant: when it was last heard from, the day open on
 // it, and what it has done today. The back office hears from a till when it
-// syncs (each sale as it is made, and about every 15 minutes otherwise), so
-// this page says when that last was and never that a till is "online".
+// syncs: each sale as it is made, and about every 15 minutes while someone is
+// at it. A till left alone stops asking after half an hour and syncs again at
+// the next touch. So this page says when a till last synced, never that it is
+// "online", and never that a silent one is in trouble: it cannot know.
 export default async function Tills() {
   const ctx = await tenantContext();
   const d = await readTenant(ctx.tenantId, async (c) => {
@@ -24,12 +26,11 @@ export default async function Tills() {
   const m = (v: string | number | null) => money(Number(v ?? 0), d.s.decimals);
   const tills = d.rows.map((t) => {
     const seen = t.seen ? new Date(t.seen) : null;
-    return { ...t, seenAt: seen, state: tillState(seen, now, t.shift_id !== null, t.off) };
+    return { ...t, seenAt: seen, state: tillState(seen, now, t.off) };
   });
   const active = tills.filter((t) => !t.off);
   const fresh = active.filter((t) => t.state === "ok");
   const open = active.filter((t) => t.shift_id !== null);
-  const worry = active.filter((t) => t.state === "silent" || t.state === "quiet");
   const newest = Math.max(0, ...active.map((t) => t.till_version ?? 0));
   const when = (v: string | null) => (v ? `${ago(new Date(v), now)} · ${at(v)}` : "Not yet");
 
@@ -37,7 +38,7 @@ export default async function Tills() {
     <div>
       <PageHead
         title="Tills"
-        lede="Every till set up for this restaurant: when it last synced, the day open on it, and what it has done today. A till syncs each sale as it is made and checks in about every 15 minutes otherwise, so a till that is on and quiet can go that long without a word."
+        lede="Every till set up for this restaurant: when it last synced, the day open on it, and what it has done today. A till syncs each sale as it is made, and checks in about every 15 minutes while someone is using it. Left untouched for half an hour it stops asking, and syncs again at the next touch: a till that has said nothing for a while is one no one is at, or a tablet that is off."
       />
       {tills.length === 0 ? (
         <Empty icon={TabletSmartphone} title="No till is set up yet">Sign in on a tablet with the EasyPay app to set it up as a till. It shows here as soon as it has.</Empty>
@@ -53,13 +54,6 @@ export default async function Tills() {
               <Stat label="Receipts today" value={String(active.reduce((a, t) => a + t.sales, 0))} note="as of each till's last sync" />
             )}
           </div>
-
-          {worry.map((t) => (
-            <div key={t.id} className={"note " + (t.state === "silent" ? "danger" : "warn")} role="status">
-              <strong>{t.name} has its day open and has not synced for {span((now.getTime() - t.seenAt!.getTime()) / 1000)}</strong>
-              Check that the tablet is on and has a network. A till keeps selling without one and sends its sales when it is back, so until then its figures here are behind what is in its drawer.
-            </div>
-          ))}
 
           {tills.map((t) => {
             const expected = expectedCash(t.opening_float, t.cash_taken, t.cash_in, t.cash_out);
