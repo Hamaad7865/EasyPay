@@ -67,3 +67,63 @@ The shell shows a shop: Sell, Receipts, Customers, Products & stock, Today, More
 ## Not tonight, and why
 
 Installing on the user's emulator (it signs them out and migrates their till's data with nobody watching), and a run signed in to a shop (a sign-in is the user's). The record ends with the exact click-through for them.
+
+---
+
+## What happened when this plan was run (2026-10-08, night)
+
+Built as written, with the differences below. Commits `9e2a859` to `09db609` on `restopos`. Migration 0077 is on dev; the till API with the shop gate is deployed to the dev branch; nothing is on production and nothing is pushed.
+
+**As built:**
+
+- **Server (4a).** Migration `0077_retail_till.sql`, made by `gen` from the live definitions with each change an exact replacement (a function that had moved on would have stopped it). `db/tests/retail-till.test.cjs`, 31 checks, pushes what the till pushes.
+- **The till's data (4b).** Room 8 to 9; `LinePrice` (pure) with 10 unit tests; `RetailSales`; the receipt and the refund carry the listed price; the stock copy moves with sales and returns.
+- **The screens (4c).** `feature/retail`: Sell (the approved board), the variant picker, the number sheet (weight, quantity, price, percent, rupees), the note sheet, the parked list, the discount on a sale, Products & stock. A shop's keys in the shell. The return's stock switch on Receipts.
+- **The gate (4d).** `hello.ts` answers 426 to a shop's till below build 3; the till is build 3 (0.3.0). `db/tests/api-shop-gate.test.cjs`, 10 checks against the deployed dev API.
+
+**Different from the plan, or added to it:**
+
+- **A debug-only made-up business** (`android/app/src/debug`): `DemoReceiver` fills a tablet that was never set up from `assets/demo-shop.json`, as a shop or (`--es type restaurant`) as a restaurant, and refuses one that is set up. It is not in the release build. It exists so the screens can be run with no login.
+- **`db/scripts/replay-demo-outbox.cjs`** makes the same business on dev in a rolled-back transaction and sends it a till's own outbox. `db/tests/retail-till-replay.test.cjs` does that with two recorded outboxes of build 3 (a shop's 28 operations, a restaurant's 14): 24 checks.
+- **A shop's sale is never sent to a kitchen.** A counter order goes to the kitchen when it is paid; for a shop that would have made a kitchen ticket per sale. Found reading `OrderOps.afterPay`; switched off for a shop.
+- **A sheet that is typed into sits at the top of the screen** (`Sheet(top = true)`), found on the emulator: the keyboard covered the note's Save. The discount on a sale is typed on the till's own keys for the same reason.
+- **Today is worded for a shop**: refunded, average sale, parked; no covers, no channels.
+- The plan's "parity fixture" between `Calc` and the server was not needed: the line's price is worked out on the till only and the server stores it; the replay test is the stronger proof (the till's real figures against the server's).
+
+**Run on a device.** A separate emulator made for this (`easypay_claude_test`, never the user's): 
+
+1. **The upgrade.** A version-8 database built from `schemas/8.json` with a restaurant's rows (an open order with a paid and an unpaid line, a receipt, an unsent operation, a cursor) was opened by the new build: version 9, every row intact, the new columns empty, the cursor back to 0, no error. `check_room` also compares the hand-written migration with `schemas/9.json` column by column.
+2. **A shop.** Clock in with a PIN, open the day with a float; two mugs by tapping; a shirt through the picker (L / Navy, "3 left"); 350 g of rice on the number sheet; 10% off the shirt line; park; a mug by typing its barcode; a code no product has (nothing added, and it says so); the parked sale brought back; Rs 2,000 cash, Rs 171 change; the tiles' stock down by what was sold. A part return of one mug, not put back into stock. As the cashier: a discount and then a price change, each stopped for the owner's PIN; paid by card. Then: a quantity typed (12), rupees off each, a note, a line removed, a new customer, 5% off the sale, cash. Products & stock, Today, More, the cash drawer (it expected the float plus cash sales less the cash refund, to the cent).
+3. **A restaurant, same build.** The floor plan, a table seated for two, a quantity changed, sent to the kitchen, paid in cash and the table freed; a quick sale by card; a refund, with no stock switch offered.
+4. **Both outboxes were sent to the dev server** (rolled back): every operation applied, every receipt equal to the cent, nothing flagged for review, each changed price naming who allowed it, every stock figure the same on the till and the server, and the return that was not put back written off as damaged.
+
+No crash in the device log through any of it.
+
+**Not run, and why:**
+
+- **Nothing was installed on the user's emulator**, and no till was signed in to a real business: a sign-in is the user's. The sync itself (push and pull over the network from the till) was therefore not run from a device; its two halves were: the till's operations against the server's functions (the replay), and the API's routes with a till's key (`api-shop-gate`, `api-till-key`).
+- **A real barcode scanner.** The till tells a scanner from a keyboard by the device the keys come from; `adb` types as a virtual keyboard, so codes were typed into the search box and entered. The lookup is the same function.
+- **A printer.** The receipt's "was Rs 1,290.00, 10% off" line is in the layout and was seen on the receipt's screen, not on paper.
+- **The pull of stock levels into a till** was checked on the server (`retail-till` A10) and in the till's reader by reading it, not by a till pulling.
+
+**Found and left for the user to decide or see:**
+
+- The restaurant's own sheets that are typed into (an order's note, a typed discount) are hidden by the keyboard in the same way; they were not changed.
+- A shop's customer form still says "Note (allergies, what they like)".
+- A new shop still gets the order types Dine-in, Takeaway and Delivery from `ensure_pos_basics`; its sales are all "Counter", and the back office's order-type filter lists the others.
+- `item.set_price` on a variant keeps no record of who changed it (a product's price does).
+- Production needs migrations 0064 to 0077, then the API, then build 3 on the tablets. A shop must not be switched on before its tablets have build 3: the gate will stop them syncing until they do.
+
+**For the user: seeing it without a login.** With an emulator that has no EasyPay data on it (never the till in use):
+
+```bash
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
+```bash
+adb shell am start -n com.restopos.app/.MainActivity
+```
+```bash
+adb shell am broadcast -n com.restopos.app/com.restopos.debug.DemoReceiver -a com.restopos.app.DEMO_SHOP
+```
+
+Close the app and open it again. The two members of staff and their PINs are in `android/app/src/debug/assets/demo-shop.json`.
