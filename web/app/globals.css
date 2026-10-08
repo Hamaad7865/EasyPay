@@ -1238,3 +1238,52 @@ button[aria-busy="true"]::after {
   .adm-nav a:has(> .wait[data-on]) { animation: none; opacity: 0.6; }
   .confirm[open], .confirm[open]::backdrop { animation: none; }
 }
+
+/* The import's sheet (backoffice/items/import): the file itself as a grid, a
+   list above each column to say what the column is, and beside it what each
+   row will do. The grid and the statuses are two panes of one height that
+   scroll together, so every row is 36px in both, whatever is in it. */
+.sheet { display: flex; align-items: stretch; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.sheet-grid { flex: 1; min-width: 0; height: 26rem; overflow: auto; background: #fff; }
+.bo-main .sheet-grid table, .sheet-grid table { width: max-content; min-width: 100%; margin: 0; border: 0; border-radius: 0; box-shadow: none; overflow: visible; background: #fff; border-collapse: separate; border-spacing: 0; font-size: 13px; table-layout: fixed; }
+.bo-main .sheet-grid th, .bo-main .sheet-grid td, .sheet-grid th, .sheet-grid td { box-sizing: border-box; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); }
+.sheet-grid thead th { position: sticky; top: 0; z-index: 2; height: 68px; width: 172px; padding: 8px; background: #f7f8fa; text-align: left; vertical-align: top; font-weight: 400; text-transform: none; letter-spacing: 0; }
+.sheet-grid th.sheet-no, .sheet-grid td.sheet-no { position: sticky; left: 0; width: 52px; padding: 0 8px; text-align: right; color: var(--ink3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.sheet-grid thead th.sheet-no { z-index: 3; vertical-align: bottom; padding-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px; }
+.sheet-grid td.sheet-no { z-index: 1; }
+.sheet-col { display: flex; align-items: center; gap: 6px; height: 16px; margin-bottom: 6px; color: var(--ink3); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10.5px; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheet-grid thead select { width: 100%; height: 30px; padding: 0 6px; font-size: 12.5px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; color: var(--ink); }
+.sheet-grid thead select.unread { color: var(--ink3); }
+.bo-main .sheet-grid td, .sheet-grid td { height: 36px; padding: 0 6px; background: #fff; white-space: nowrap; overflow: hidden; }
+.bo-main .sheet-grid tr:last-child td { border-bottom: 1px solid var(--line); }
+.bo-main .sheet-grid tbody tr:hover td { background: #fff; }
+.bo-main .sheet-grid tbody tr.bad td, .sheet-grid tr.bad td { background: #fef5f4; }
+.bo-main .sheet-grid tbody tr.new td, .sheet-grid tr.new td { background: #fffbec; }
+.sheet-in { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sheet-grid button.sheet-cell { display: block; flex: 0 1 auto; min-width: 0; height: 26px; line-height: 26px; padding: 0 5px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; border-radius: 6px; background: transparent; box-shadow: none; color: var(--ink); font: inherit; font-weight: 400; text-align: left; cursor: text; }
+.sheet-grid button.sheet-cell:hover:not(:disabled) { background: var(--accent-soft); transform: none; }
+.sheet-grid button.sheet-cell.sheet-void { color: #c3c8d2; }
+.sheet-grid button.sheet-fix { display: inline-flex; flex: none; height: 22px; padding: 0 8px; border: 1px solid #c9e2ca; border-radius: 999px; background: var(--accent-soft); box-shadow: none; color: var(--accent); font-size: 11px; font-weight: 600; cursor: pointer; }
+.sheet-grid button.sheet-fix:hover { background: #d9ecd9; transform: none; }
+.sheet-grid .badge { flex: none; padding: 1px 7px; font-size: 10.5px; }
+/* (the back office sizes every input; this one is a cell) */
+.sheet-grid td input { width: 100% !important; min-width: 96px; height: 28px !important; padding: 0 6px !important; border: 1px solid var(--accent) !important; border-radius: 6px !important; box-shadow: 0 0 0 3px rgba(63, 132, 67, 0.18); outline: none; font-size: 13px !important; }
+.sheet-status { flex: none; display: flex; flex-direction: column; width: 380px; height: 26rem; border-left: 1px solid var(--line-strong); background: #fff; }
+.sheet-status-head { box-sizing: border-box; flex: none; height: 68px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: #f7f8fa; }
+.sheet-status-head .sheet-col { justify-content: space-between; text-transform: uppercase; }
+.sheet-says { display: flex; align-items: center; height: 30px; color: var(--ink2); font-size: 12.5px; }
+.sheet-status-list { flex: 1; min-height: 0; overflow-y: auto; }
+.sheet-status-list ul { margin: 0; padding: 0; list-style: none; }
+.sheet-status-list li { box-sizing: border-box; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.sheet-n { flex: none; width: 34px; text-align: right; color: var(--ink3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.sheet-status-list .badge { flex: none; }
+.sheet-why { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink3); }
+.sheet-why.bad { color: var(--red); }
+.sheet-why.new { color: var(--amber); }
+.sheet button.sheet-fold { display: inline-flex; width: 20px; height: 18px; padding: 0; border: 0; border-radius: 4px; background: transparent; box-shadow: none; color: var(--ink3); font-size: 14px; line-height: 1; cursor: pointer; }
+.sheet button.sheet-fold:hover { background: #e9ebef; color: var(--ink); transform: none; }
+.sheet button.sheet-unfold { display: block; flex: none; width: 34px; height: auto; padding: 0; border: 0; border-left: 1px solid var(--line-strong); border-radius: 0; background: #f7f8fa; box-shadow: none; color: var(--ink3); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; writing-mode: vertical-rl; cursor: pointer; }
+.sheet button.sheet-unfold:hover { background: #eef0f3; color: var(--ink); transform: none; }
+.sheet-hint { font-size: 12.5px; }
+.sheet-foot { border-bottom: 1px solid var(--line); }
+@media (max-width: 900px) { .sheet-status { width: 220px; } .sheet-hint { display: none; } }
