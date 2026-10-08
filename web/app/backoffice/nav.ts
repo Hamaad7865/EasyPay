@@ -47,7 +47,8 @@ import type { Mode } from "@/lib/mode";
 // things someone might type when looking for the page.
 // `only`: the one kind of business that has this page (none: both have it).
 // `retail`: what a shop calls it, when that differs.
-export type NavLink = { href: string; label: string; icon: LucideIcon; words?: string; only?: Mode; retail?: string };
+// `premium`: a page of the premium tier, which another plan does not have.
+export type NavLink = { href: string; label: string; icon: LucideIcon; words?: string; only?: Mode; retail?: string; premium?: true };
 export type NavGroup = { id: string; title: string; icon: LucideIcon; links: NavLink[]; retail?: string };
 // The number beside a page in the menu, and what it counts, said in full (counts/route.ts).
 export type NavCount = { n: number; say: string; tone?: "red" };
@@ -127,7 +128,7 @@ export const GROUPS: NavGroup[] = [
     icon: Store,
     links: [
       { href: "/backoffice/tables", label: "Tables", only: "restaurant", icon: LayoutGrid, words: "floor plan rooms areas seats" },
-      { href: "/backoffice/bookings", label: "Bookings", only: "restaurant", icon: CalendarClock, words: "reservations" },
+      { href: "/backoffice/bookings", label: "Bookings", only: "restaurant", premium: true, icon: CalendarClock, words: "reservations" },
       { href: "/backoffice/customers", label: "Customers", icon: Contact, words: "guests phone" },
       { href: "/backoffice/printers", label: "Printers", icon: Printer, words: "kitchen bar receipt ip usb" },
       { href: "/backoffice/receipt-design", label: "Receipt design", icon: ReceiptText, words: "logo header footer paper" },
@@ -158,22 +159,24 @@ export const isOn = (href: string, path: string) =>
     : under(href, path) && !GROUPS.some((g) => g.links.some((l) => l.href.length > href.length && under(l.href, path)));
 // The group a page sits in, for this kind of business: one address can be in
 // two groups (Stock), one for each kind.
-export const groupOf = (path: string, mode: Mode) => groupsFor(mode).find((g) => g.links.some((l) => isOn(l.href, path)))?.id ?? null;
+export const groupOf = (path: string, mode: Mode, premium: boolean) =>
+  groupsFor(mode, premium).find((g) => g.links.some((l) => isOn(l.href, path)))?.id ?? null;
 
-// The groups one kind of business has, under the names it uses. The menu and
-// the search both draw from this, so they cannot disagree about what exists.
-export function groupsFor(mode: Mode): NavGroup[] {
+// The groups one kind of business has on its plan, under the names it uses.
+// The menu and the search both draw from this, so they cannot disagree about
+// what exists.
+export function groupsFor(mode: Mode, premium: boolean): NavGroup[] {
   return GROUPS.map((g) => ({
     ...g,
     title: mode === "retail" && g.retail ? g.retail : g.title,
     links: g.links
-      .filter((l) => !l.only || l.only === mode)
+      .filter((l) => (!l.only || l.only === mode) && (!l.premium || premium))
       .map((l) => (mode === "retail" && l.retail ? { ...l, label: l.retail } : l)),
   })).filter((g) => g.links.length > 0);
 }
 
 // Every page with the group it sits in, for the search.
-export const pagesOf = (mode: Mode): (NavLink & { group: string | null })[] => [
+export const pagesOf = (mode: Mode, premium: boolean): (NavLink & { group: string | null })[] => [
   { ...HOME, group: null },
-  ...groupsFor(mode).flatMap((g) => g.links.map((l) => ({ ...l, group: g.title }))),
+  ...groupsFor(mode, premium).flatMap((g) => g.links.map((l) => ({ ...l, group: g.title }))),
 ];

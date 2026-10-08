@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BUSINESS_TYPES, PLANS } from "@/lib/platform";
+import { BUSINESS_TYPES, PLAN_HELP, PLANS } from "@/lib/platform";
 import { Submit, Wait } from "../../../backoffice/busy";
 import { cap, day, dayTime, Notes, supportId } from "../../bits";
 import { ConfirmSubmit } from "../../confirm";
@@ -295,6 +295,7 @@ export function TenantView({
                   </select>
                   <Submit className="btn-quiet">Change plan</Submit>
                 </div>
+                <span className="help">{PLAN_HELP}</span>
               </form>
               <form action={actions.setBusinessType} className="adm-part">
                 {which}

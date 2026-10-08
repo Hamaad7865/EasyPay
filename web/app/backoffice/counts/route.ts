@@ -60,7 +60,8 @@ export async function GET() {
   // and the counts still being counted
   if (r.counts_open > 0) put("/backoffice/stock-counts", r.counts_open, "count being counted", "counts being counted");
   put("/backoffice/tables", r.tables, "table", "tables");
-  put("/backoffice/bookings", r.bookings, "booking from today on", "bookings from today on");
+  // a page of the premium tier: no number for a restaurant that does not have it
+  if (ctx.premium) put("/backoffice/bookings", r.bookings, "booking from today on", "bookings from today on");
   put("/backoffice/customers", r.customers, "customer", "customers");
   put("/backoffice/printers", r.printers, "printer", "printers");
   put("/backoffice/staff", r.staff, "member of staff", "members of staff");

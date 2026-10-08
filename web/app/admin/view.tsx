@@ -1,5 +1,5 @@
 import { Store } from "lucide-react";
-import { BUSINESS_TYPES, PLANS } from "@/lib/platform";
+import { BUSINESS_TYPES, PLAN_HELP, PLANS } from "@/lib/platform";
 import { Submit } from "../backoffice/busy";
 import type { Start } from "../backoffice/table-kit";
 import { Empty } from "../backoffice/ui";
@@ -144,6 +144,7 @@ export function AdminHome({
                   </label>
                 ))}
               </div>
+              <span className="help">{PLAN_HELP}</span>
             </div>
           </div>
           <div className="card-foot">

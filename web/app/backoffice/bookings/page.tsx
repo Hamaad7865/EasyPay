@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CalendarCheck } from "lucide-react";
 import { onlyFor } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
+import { PREMIUM_ONLY } from "@/lib/plan";
 import { act, int, Refused, text, uuid } from "@/lib/action";
 import * as saves from "@/lib/saves";
 import { Card, Empty, Flash, one, PageHead, type Search } from "../ui";
@@ -16,6 +17,9 @@ const STATUS = [
   ["cancelled", "Cancelled"],
 ] as const;
 const NO_TABLE = "That table is not one of the booking's store. Pick another, or leave the table for later.";
+// Bookings are a page of the premium tier (lib/plan.ts). The till's bookings
+// are refused by the server the same way (0085).
+const NOT_PREMIUM = `Bookings are ${PREMIUM_ONLY}. Nothing was changed.`;
 
 // What a booking form holds. The day and time are the restaurant's own: they
 // are turned into a moment with the store's time zone, in the query.
@@ -40,6 +44,7 @@ function fields(f: FormData) {
 async function addBooking(f: FormData) {
   "use server";
   await act("backoffice.access", PATH, async (c, ctx) => {
+    if (!ctx.premium) throw new Refused(NOT_PREMIUM);
     const b = fields(f);
     const done = await saves.addBooking(c, ctx.tenantId, uuid(f, "store_id"), b);
     if (done === "no-store") throw new Refused("That store is gone.");
@@ -51,6 +56,7 @@ async function addBooking(f: FormData) {
 async function saveBooking(f: FormData) {
   "use server";
   await act("backoffice.access", PATH, async (c, ctx) => {
+    if (!ctx.premium) throw new Refused(NOT_PREMIUM);
     const b = fields(f);
     const status = String(f.get("status"));
     if (!STATUS.some(([k]) => k === status)) throw new Refused("Pick where the booking stands.");
@@ -69,6 +75,21 @@ type Row = {
 export default async function BookingsPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await onlyFor("restaurant");
+  // Not on this restaurant's plan: the page says so and shows nothing else.
+  // The bookings it has are kept, and are here again when the plan is.
+  if (!ctx.premium) {
+    return (
+      <div>
+        <PageHead title="Bookings" lede="Tables reserved for a party at a time, taken here or on a till." />
+        <Card title={`Bookings are ${PREMIUM_ONLY}`}>
+          <p>
+            This restaurant&apos;s plan does not include bookings. Any bookings already taken are kept, and are here
+            again when the plan is changed. Ask EasyPay to switch Premium on.
+          </p>
+        </Card>
+      </div>
+    );
+  }
   const show = one(sp.show) === "past" ? "past" : "coming";
   const d = await readTenant(ctx.tenantId, async (c) => ({
     stores: (await c.query(`select id, name, to_char(now() at time zone timezone, 'YYYY-MM-DD') as today from stores where tenant_id = $1 and deleted_at is null order by created_at`, [ctx.tenantId]))

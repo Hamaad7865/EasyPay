@@ -22,6 +22,7 @@ export default async function BackofficeLayout({ children }: { children: React.R
     <div className="bo">
       <Side
         mode={ctx.mode}
+        premium={ctx.premium}
         drawn={Date.now()}
         folded={jar.get("bo-menu")?.value === "closed"}
         opened={groups == null ? null : groups.split(".").filter((g) => GROUPS.some((x) => x.id === g))}

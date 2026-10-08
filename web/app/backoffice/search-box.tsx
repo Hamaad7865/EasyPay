@@ -45,8 +45,8 @@ export function useSearchKey() {
   return key;
 }
 
-export function SearchBox({ mode }: { mode: Mode }) {
-  const all = useMemo(() => pagesOf(mode), [mode]);
+export function SearchBox({ mode, premium }: { mode: Mode; premium: boolean }) {
+  const all = useMemo(() => pagesOf(mode, premium), [mode, premium]);
   const router = useRouter();
   const path = usePathname();
   const dialog = useRef<HTMLDialogElement>(null);

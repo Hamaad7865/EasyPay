@@ -58,8 +58,12 @@ export function adminMessage(e: unknown): string {
   return MESSAGES[raw] ?? "That did not work. Nothing was changed.";
 }
 
-// Plans are plain labels: there is no billing behind them yet.
+// There is no billing behind a plan, but it is no longer only a label: premium
+// and trial carry the premium features of a restaurant (lib/plan.ts, 0085).
 export const PLANS = ["trial", "standard", "premium"] as const;
+// said beside the plan wherever an admin picks one
+export const PLAN_HELP =
+  "Premium and Trial switch on the kitchen display, kitchen screens and Bookings for a restaurant. Standard keeps printed kitchen tickets. A till has the change after its next sync.";
 
 // What a client is given: a restaurant or a retail shop. Only set here.
 export const BUSINESS_TYPES = ["restaurant", "retail"] as const;

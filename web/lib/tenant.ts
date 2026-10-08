@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
 import { asMode, type Mode } from "@/lib/mode";
+import { hasPremium } from "@/lib/plan";
 import { auth } from "@/lib/auth/server";
 import { ask } from "@/lib/db";
 
@@ -13,6 +14,8 @@ export type TenantContext = {
   statusReason: string | null;
   // a restaurant or a retail shop: decides which pages exist and what they are called
   mode: Mode;
+  // the plan carries the premium pages (bookings, kitchen screens): lib/plan.ts
+  premium: boolean;
   // for the shell around every page: the restaurant's name and who is signed in
   tenantName: string | null;
   employeeName: string | null;
@@ -34,7 +37,7 @@ export const tenantContext = cache(async (): Promise<TenantContext> => {
   const user = data?.user;
   if (!user) redirect("/login");
   const found = await ask(
-    `select e.id, e.tenant_id, e.name as employee_name, r.name as role, t.status, t.status_reason, t.name as tenant_name, t.business_type,
+    `select e.id, e.tenant_id, e.name as employee_name, r.name as role, t.status, t.status_reason, t.name as tenant_name, t.business_type, t.plan,
             has_perm(e.id, 'backoffice.access') as may_enter
        from employees e
        join tenants t on t.id = e.tenant_id
@@ -52,6 +55,7 @@ export const tenantContext = cache(async (): Promise<TenantContext> => {
     status: row.status as string,
     statusReason: (row.status_reason as string | null) ?? null,
     mode: asMode(row.business_type),
+    premium: hasPremium(row.plan),
     tenantName: (row.tenant_name as string | null) ?? null,
     employeeName: (row.employee_name as string | null) ?? null,
   };

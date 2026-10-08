@@ -66,10 +66,12 @@ function Count({ c }: { c: NavCount | undefined }) {
 }
 
 export function Side({
-  restaurant, id, employee, role, signOut, folded, opened, drawn, mode,
+  restaurant, id, employee, role, signOut, folded, opened, drawn, mode, premium,
 }: {
   // a restaurant or a shop: which pages the menu has, and what it calls them
   mode: Mode;
+  // the plan carries the premium pages
+  premium: boolean;
   restaurant: string;
   // the start of the restaurant's id: what to quote to EasyPay support
   id: string;
@@ -86,8 +88,8 @@ export function Side({
   drawn: number;
 }) {
   const path = usePathname();
-  const here = groupOf(path, mode);
-  const groups = useMemo(() => groupsFor(mode), [mode]);
+  const here = groupOf(path, mode, premium);
+  const groups = useMemo(() => groupsFor(mode, premium), [mode, premium]);
   const key = useSearchKey();
   const [away, setAway] = useState(folded);
   // The group holding the page that is open is open, on the server and in the
@@ -303,7 +305,7 @@ export function Side({
         </div>
       </aside>
       {/* once, and outside the menu: it has to open with the menu folded away too */}
-      <SearchBox mode={mode} />
+      <SearchBox mode={mode} premium={premium} />
     </>
   );
 }

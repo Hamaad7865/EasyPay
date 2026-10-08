@@ -414,7 +414,8 @@ export default async function BackofficeHome({
       title: `${plural(now.flagged, "receipt needs", "receipts need")} review`,
       text: "A till reported something that does not add up: a price that changed, a payment that was short or doubled.",
     });
-  if (now.up_pending > 0)
+  // bookings are a page of the premium tier: nothing about them for another plan
+  if (ctx.premium && now.up_pending > 0)
     needs.push({
       tone: "amber", icon: CalendarClock, chip: "To confirm", go: "Open bookings", href: "/backoffice/bookings",
       title: `${plural(now.up_pending, "booking", "bookings")} to confirm`,
@@ -609,6 +610,7 @@ export default async function BackofficeHome({
             >
               <span className="now-val">{now.open_n}</span>
             </NowRow>
+            {ctx.mode === "restaurant" && ctx.premium && (
             <NowRow
               icon={CalendarClock}
               label="Bookings today"
@@ -622,6 +624,7 @@ export default async function BackofficeHome({
             >
               <span className="now-val">{now.book_n}</span>
             </NowRow>
+            )}
             <NowRow
               icon={Timer}
               label="Day"
@@ -638,7 +641,7 @@ export default async function BackofficeHome({
         </section>
       </div>
 
-      {ctx.mode === "restaurant" && (
+      {ctx.mode === "restaurant" && ctx.premium && (
       <section className="pane rise" style={{ ...rise(3), marginBottom: 8 }}>
         <div className="pane-head">
           <div>
