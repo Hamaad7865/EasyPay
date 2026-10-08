@@ -41,3 +41,6 @@ enabled = true
 #   npx wrangler secret put NEON_AUTH_BASE_URL       the sign-in service's address for that database
 #   npx wrangler secret put NEON_AUTH_COOKIE_SECRET  a long random value (openssl rand -base64 32)
 # Until all three are there the back office answers "not switched on yet".
+# The first two are better not typed: `node cloudflare/production-settings.cjs --apply`
+# reads them from Neon, checks them and sets them. One that is there but wrong
+# (pasted badly) shows as "Internal Server Error" from /api/auth/*.
