@@ -129,6 +129,15 @@ interface ReceiptDao {
     )
     fun find(store: String, device: String?, q: String, limit: Int = 200): Flow<List<ReceiptEntity>>
 
+    // The receipt this till issued last, a sale's or a refund's: what "Reprint
+    // last receipt" prints. An exchange writes its refund and then its sale
+    // in one go: the sale, written second, is the last.
+    @Query(
+        """SELECT * FROM receipts WHERE store_id = :store AND device_id = :device AND deleted_at IS NULL
+           ORDER BY device_time DESC, rowid DESC LIMIT 1""",
+    )
+    suspend fun last(store: String, device: String): ReceiptEntity?
+
     // ---- receipts that came from the server ----
     @Upsert suspend fun upsertPulled(r: ReceiptEntity)
     @Upsert suspend fun upsertPulledLines(rows: List<ReceiptLineEntity>)

@@ -49,6 +49,7 @@ import com.restopos.core.data.LinePrice
 import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.DiscountEntity
 import com.restopos.core.database.ItemEntity
+import com.restopos.core.database.ReceiptEntity
 import com.restopos.core.ui.Caps
 import com.restopos.core.ui.Field
 import com.restopos.core.ui.Gap
@@ -63,6 +64,8 @@ import com.restopos.core.ui.VI
 import com.restopos.core.ui.VIcon
 import com.restopos.core.ui.press
 import com.restopos.feature.customers.CustomerPicker
+import com.restopos.feature.more.MoreSheets
+import com.restopos.feature.more.MoreViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -76,28 +79,45 @@ private const val BARS = "M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12"
 // left (its lines, what it comes to, Park, Discount, Pay), the products on
 // the right (a box to scan or search into, the categories, a tile for each
 // product with what is left of it).
+// more: the till's cash drawer, behind the More sheet's drawer and cash keys.
+// onReceipts: where a refund or an exchange starts.
 @Composable
-fun RetailSellScreen(vm: RetailViewModel, onPay: () -> Unit) {
+fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit, onReceipts: () -> Unit) {
     val ui by vm.ui.collectAsState()
     val picking by vm.picking.collectAsState()
     val asking by vm.asking.collectAsState()
     val parked by vm.parked.collectAsState()
     val exchange by vm.exchange.collectAsState()
-    var sheet by remember { mutableStateOf<String?>(null) } // parked | discount | customer | clear
+    var sheet by remember { mutableStateOf<String?>(null) } // parked | discount | customer | clear | more | note | in | out
     var noting by remember { mutableStateOf<SaleLine?>(null) }
     LaunchedEffect(Unit) { vm.open() }
     // while this screen is open, a scanned barcode rings its product up
     LaunchedEffect(Unit) { Scanner.codes.collect { vm.scanned(it) } }
 
     Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        Sale(ui, parked.size, exchange, vm, onParked = { sheet = "parked" }, onCustomer = { sheet = "customer" }, onDiscount = { sheet = "discount" }, onClear = { sheet = "clear" }, onNote = { noting = it }, onPay = onPay)
+        Sale(
+            ui, parked.size, exchange, vm, onParked = { sheet = "parked" }, onCustomer = { sheet = "customer" }, onDiscount = { sheet = "discount" },
+            onClear = { sheet = "clear" }, onMore = { sheet = "more" }, onSaleNote = { sheet = "note" }, onNote = { noting = it }, onPay = onPay,
+        )
         Products(vm, Modifier.weight(1f))
     }
 
     picking?.let { VariantSheet(it, vm) }
     asking?.let { NumSheet(it) { vm.closeAsk() } }
-    noting?.let { l -> NoteSheet(l, onDismiss = { noting = null }) { note -> vm.setNote(l.line.id, note); noting = null } }
+    noting?.let { l ->
+        NoteSheet("Note on this line", l.name + (l.variant?.let { ", $it" } ?: ""), l.line.note, "Gift wrapped, engraving, a serial number…", onDismiss = { noting = null }) { note -> vm.setNote(l.line.id, note); noting = null }
+    }
+    // cash in and cash out are the till's own, the ones Settings opens
+    MoreSheets(more, sheet?.takeIf { it == "in" || it == "out" }, onDismiss = { sheet = null }, onCloseShift = {})
     when (sheet) {
+        "more" -> SaleMore(ui, vm, onDismiss = { sheet = null }) { pick ->
+            when (pick) {
+                "receipts" -> { sheet = null; onReceipts() }
+                "drawer" -> { sheet = null; more.openDrawer() }
+                else -> sheet = pick // note | in | out
+            }
+        }
+        "note" -> NoteSheet("Note on this sale", "It prints on the receipt.", ui.ticket?.note, "To be collected Friday, a gift, an order number…", onDismiss = { sheet = null }) { note -> vm.setSaleNote(note); sheet = null }
         "parked" -> ParkedSheet(parked.map { ParkedRow(it.id, it.ticket.order_no ?: "Sale", it.lines.filter { l -> !l.line.paid }.size, it.due, it.openedAt) }, onDismiss = { sheet = null }) { id -> vm.resume(id); sheet = null }
         "discount" -> DiscountSheet(ui, vm) { sheet = null }
         "customer" -> CustomerPicker(ui.ticket?.customer_id, what = "sale", onDismiss = { sheet = null }) { id -> vm.setCustomer(id); sheet = null }
@@ -116,7 +136,8 @@ fun RetailSellScreen(vm: RetailViewModel, onPay: () -> Unit) {
 @Composable
 private fun Sale(
     ui: SaleUi, parked: Int, exchange: ExchangeDraft?, vm: RetailViewModel,
-    onParked: () -> Unit, onCustomer: () -> Unit, onDiscount: () -> Unit, onClear: () -> Unit, onNote: (SaleLine) -> Unit, onPay: () -> Unit,
+    onParked: () -> Unit, onCustomer: () -> Unit, onDiscount: () -> Unit, onClear: () -> Unit, onMore: () -> Unit, onSaleNote: () -> Unit,
+    onNote: (SaleLine) -> Unit, onPay: () -> Unit,
 ) {
     Column(Modifier.width(440.dp).fillMaxHeight().clip(RoundedCornerShape(20.dp)).background(V.Panel)) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 10.dp, top = 12.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -159,15 +180,24 @@ private fun Sale(
         }
 
         Column(Modifier.fillMaxWidth().background(V.PanelFoot).padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // the note on the whole sale, as the receipt will carry it: tap to change it
+            ui.ticket?.note?.takeIf { it.isNotBlank() }?.let { note ->
+                Row(Modifier.fillMaxWidth().clickable(onClick = onSaleNote), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    VIcon(VI.Note, 16.dp, V.Text3)
+                    T("“$note”", 13.sp, 600, V.Text2, Modifier.weight(1f), lines = 2, height = 17.sp)
+                }
+            }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Small(L.subtotal, Money.format(ui.listed))
                 if (ui.off != 0L) Small("Discounts" + (ui.discount?.let { " · ${it.name}" } ?: ""), Money.format(-ui.off))
                 if (ui.totals.tax != 0L) Small(if (ui.taxOnTop == 0L) "VAT, included" else "VAT", Money.format(ui.totals.tax))
                 if (ui.totals.rounding != 0L) Small("Rounding", Money.format(ui.totals.rounding))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                VBtn("Park sale", Modifier.weight(1f), height = 48.dp, radius = 14.dp, fg = if (ui.empty) V.Off else V.Text) { vm.park() }
-                VBtn(if (ui.discount != null) "Discount · ${ui.discount.name}" else "Discount on sale", Modifier.weight(1f), height = 48.dp, radius = 14.dp, fg = if (ui.empty) V.Off else V.Text, onClick = onDiscount)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                VBtn("Park sale", Modifier.weight(1f), height = 48.dp, radius = 14.dp, pad = 10.dp, fg = if (ui.empty) V.Off else V.Text) { vm.park() }
+                VBtn(if (ui.discount != null) "Discount · ${ui.discount.name}" else "Discount on sale", Modifier.weight(1.35f), height = 48.dp, radius = 14.dp, pad = 10.dp, fg = if (ui.empty) V.Off else V.Text, onClick = onDiscount)
+                // More is for an empty sale too: the receipt a customer asks for again is the one just paid
+                VBtn(L.more, Modifier.weight(0.85f), height = 48.dp, radius = 14.dp, pad = 10.dp, icon = VI.More, onClick = onMore)
             }
             Row(
                 Modifier.fillMaxWidth().height(64.dp).press { if (vm.mayPay()) onPay() }.clip(RoundedCornerShape(16.dp)).background(if (ui.empty) V.GreenOff else V.Green).padding(horizontal = 22.dp),
@@ -449,15 +479,65 @@ internal fun NumSheet(a: NumAsk, onDismiss: () -> Unit) {
     }
 }
 
+// A note being typed: on one line, or on the whole sale.
 @Composable
-private fun NoteSheet(l: SaleLine, onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    var note by remember(l) { mutableStateOf(l.line.note ?: "") }
+private fun NoteSheet(title: String, sub: String, was: String?, hint: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    var note by remember(was) { mutableStateOf(was ?: "") }
     Sheet(onDismiss = onDismiss, width = 520.dp, top = true) {
-        SheetHead("Note on this line", l.name + (l.variant?.let { ", $it" } ?: ""), onDismiss)
-        Field(note, { note = it.take(120) }, "Gift wrapped, engraving, a serial number…", Modifier.fillMaxWidth(), height = 56.dp, onDone = { onSave(note) })
+        SheetHead(title, sub, onDismiss)
+        Field(note, { note = it.take(120) }, hint, Modifier.fillMaxWidth(), height = 56.dp, onDone = { onSave(note) })
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (!l.line.note.isNullOrBlank()) VBtn("Take the note off", Modifier.weight(1f), V.RedWash, V.RedText, 56.dp) { onSave("") }
+            if (!was.isNullOrBlank()) VBtn("Take the note off", Modifier.weight(1f), V.RedWash, V.RedText, 56.dp) { onSave("") }
             VBtn("Save", Modifier.weight(1f), V.Green, V.GreenInk, 56.dp, weight = 800) { onSave(note) }
+        }
+    }
+}
+
+// What else the counter needs besides ringing up, after the More of a
+// restaurant's order: the last receipt again, where a refund starts, a note
+// on the sale, the drawer. What the sale panel already has a key for (park,
+// discount, customer, clear) is not said twice.
+@Composable
+private fun SaleMore(ui: SaleUi, vm: RetailViewModel, onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    // the receipt this till issued last; read when the sheet opens
+    var last by remember { mutableStateOf<ReceiptEntity?>(null) }
+    var read by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { last = vm.lastReceipt(); read = true }
+    val note = ui.ticket?.note?.takeIf { it.isNotBlank() }
+    Sheet(onDismiss = onDismiss, width = 620.dp) {
+        SheetHead(L.more, "For this sale and this till", onDismiss)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            val r = last
+            MoreKey(
+                VI.Print, "Reprint last receipt",
+                when { r != null -> (if (r.type == "refund") "Refund " else "") + "${r.number} · ${Money.format(r.total)}"; read -> "This till has issued no receipt yet"; else -> "" },
+                Modifier.weight(1f), live = r != null,
+            ) { r?.let { vm.reprint(it); onDismiss() } }
+            MoreKey(VI.Receipt, "Refund or exchange", "Find the receipt, then what comes back", Modifier.weight(1f)) { onPick("receipts") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // an empty sale takes no note; one left on it can still be taken off
+            MoreKey(VI.Note, "Sale note", note ?: if (ui.empty) "Ring something up first" else "Prints on the receipt", Modifier.weight(1f), live = !ui.empty || note != null) { onPick("note") }
+            MoreKey(VI.Cash, "Open the cash drawer", "Without a sale. It is written down.", Modifier.weight(1f)) { onPick("drawer") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MoreKey(VI.Plus, "Cash in", "Money put into the drawer", Modifier.weight(1f)) { onPick("in") }
+            MoreKey(VI.Minus, "Cash out", "Money taken out of the drawer", Modifier.weight(1f)) { onPick("out") }
+        }
+    }
+}
+
+// One key of the More sheet: what it does, and under it what it would do it to.
+@Composable
+private fun MoreKey(icon: String, label: String, sub: String, modifier: Modifier, live: Boolean = true, onClick: () -> Unit) {
+    Row(
+        modifier.height(68.dp).clip(RoundedCornerShape(12.dp)).background(V.Key).then(if (live) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        VIcon(icon, 20.dp, if (live) V.Dim else V.Off)
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            T(label, 15.sp, 700, if (live) V.Text else V.Off)
+            if (sub.isNotEmpty()) T(sub, 12.5.sp, 600, if (live) V.Text2 else V.Text3)
         }
     }
 }

@@ -414,7 +414,7 @@ fun MainShell(
                         }
                     }
                     Screen.Split -> SplitScreen(onBack = { shell.go(if (retail) Screen.Sell else Screen.Order) }, onPay = { shell.go(Screen.Pay) })
-                    Screen.Sell -> RetailSellScreen(sell, onPay = { shell.go(Screen.Pay) })
+                    Screen.Sell -> RetailSellScreen(sell, more, onPay = { shell.go(Screen.Pay) }, onReceipts = { shell.go(Screen.Receipts) })
                     Screen.Products -> { val vm: ProductsViewModel = hiltViewModel(); ProductsScreen(vm) }
                     Screen.Takeaway -> { val vm: BoardViewModel = hiltViewModel(); BoardScreen(vm, onOrder = { shell.go(Screen.Order) }, onPay = { shell.go(Screen.Pay) }) }
                     Screen.Kitchen -> { val vm: KdsViewModel = hiltViewModel(); KdsScreen(vm) }

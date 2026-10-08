@@ -24,6 +24,7 @@ import com.restopos.core.database.DiscountEntity
 import com.restopos.core.database.ItemEntity
 import com.restopos.core.database.ItemLeft
 import com.restopos.core.database.ItemVariantEntity
+import com.restopos.core.database.ReceiptEntity
 import com.restopos.core.database.TicketEntity
 import com.restopos.core.database.TicketLineEntity
 import com.restopos.core.database.TillDatabase
@@ -386,6 +387,29 @@ class RetailViewModel @Inject constructor(
                 session.setPendingDiscount(null)
             }
         }
+    }
+
+    // ---- the More sheet ----
+    // The receipt this till issued last, whoever rang it up: the one a
+    // customer still at the counter asks for again.
+    suspend fun lastReceipt(): ReceiptEntity? {
+        val store = session.storeId() ?: return null
+        val device = session.deviceId() ?: return null
+        return db.receipts().last(store, device)
+    }
+
+    fun reprint(r: ReceiptEntity) = viewModelScope.launch {
+        approved("${if (r.type == "refund") "Refund" else "Receipt"} ${r.number} sent to the printer") { by -> orderOps.reprint(r.id, by) }
+    }
+
+    // a remark on the whole sale ("deliver Friday"): it prints on the receipt
+    // An empty sale takes no note (it would wait for the next customer), but
+    // one left on a sale whose lines were taken off can still be taken off.
+    fun setSaleNote(note: String) = viewModelScope.launch {
+        if (_ui.value.empty && note.isNotBlank()) { Toaster.say("Ring something up first"); return@launch }
+        if (_ui.value.ticket == null) return@launch
+        tickets.setNote(note.trim().take(120)).onFailure { Toaster.say(it.message) }
+        reload()
     }
 
     fun mayPay(): Boolean {
