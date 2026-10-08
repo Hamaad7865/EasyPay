@@ -101,7 +101,20 @@ class DemoReceiver : BroadcastReceiver() {
                     // Standard has no Kitchen and no Bookings screen. Left out, the settings carry
                     // none, as before there were plans, and the till shows everything.
                     val plan = intent.getStringExtra("plan")?.trim()?.takeIf { it.isNotEmpty() }
+                    // --es screen 10.0.2.2:9310: a kitchen screen at that address, showing everything, with
+                    // the pairing code every debug build's kitchen tablet has (AppNav). From one emulator the
+                    // PC is 10.0.2.2; "adb forward tcp:9310 tcp:9310" on the kitchen's emulator joins the two.
+                    val screen = intent.getStringExtra("screen")?.trim()?.takeIf { it.isNotEmpty() && restaurant }
                     seed(context, deps.db(), deps.session(), restaurant, plan)
+                    if (screen != null) {
+                        val shop = Json.parseToJsonElement(context.assets.open("demo-shop.json").bufferedReader().use { it.readText() })
+                        deps.db().ops().upsertPrinters(listOf(
+                            com.restopos.core.database.PrinterEntity(
+                                id = "d0000000-0000-4000-8000-0000000000c1", tenant_id = shop.str("tenant")!!, store_id = shop.obj("store").str("id")!!,
+                                name = "Kitchen", kind = "screen", address = screen, pair_code = "KTCHN234", all_items = true,
+                            ),
+                        ))
+                    }
                     Log.i(TAG, "seeded a " + (if (restaurant) "restaurant" else "shop") + (plan?.let { " on the $it plan" } ?: "") + ": close the app and open it again")
                 }
             } catch (e: Exception) {

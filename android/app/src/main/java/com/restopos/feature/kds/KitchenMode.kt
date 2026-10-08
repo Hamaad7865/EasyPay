@@ -126,7 +126,8 @@ class KitchenModeViewModel @Inject constructor(
 
     val state: StateFlow<State> = combine(shelf.watch(), book.heard, tick) { held, heard, now ->
         val recall = held.any { it.bumpedAt != null && it.bumpedAt > now - ScreenBook.RECALL_MS }
-        val name = held.maxByOrNull { it.receivedAt }?.screen?.takeIf { it.isNotBlank() }
+        // what the tills call this screen: its name in the back office
+        val name = heard?.screen?.takeIf { it.isNotBlank() } ?: held.maxByOrNull { it.receivedAt }?.screen?.takeIf { it.isNotBlank() }
         State(
             ready = true, paired = heard != null || held.isNotEmpty(),
             ui = KdsUi(kitchenCards(held), emptyList(), recall, loaded = true, title = name ?: "Kitchen screen", heard = heard?.text(now)),
@@ -247,7 +248,7 @@ fun KitchenModeScreen(vm: KitchenModeViewModel = hiltViewModel(), onBecomeTill: 
         }
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Caps("This tablet", V.Text2)
-            PrefRow("Address", "The tills find the screen at this address. Keep it the same on the router, as for a printer.") { T(address, 16.sp, 700, lines = 2) }
+            PrefRow("Address", "The tills find the screen at this address. Keep it the same on the router, as for a printer.") { T(addressOf(address) ?: "Not on Wi-Fi", 16.sp, 700, lines = 2) }
             PrefRow("Pairing code", "Typed in the back office, under Printers, with the address.") { T(spaced(code), 18.sp, 800, spacing = 2.sp) }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 VBtn("Make a new code", Modifier.weight(1f), height = 48.dp) { asking = "code" }
@@ -284,6 +285,11 @@ fun KitchenModeScreen(vm: KitchenModeViewModel = hiltViewModel(), onBecomeTill: 
 // "ABCD 2345": a code read off one screen and typed on another, in two halves
 private fun spaced(code: String): String = if (code.length == 8) code.substring(0, 4) + " " + code.substring(4) else code
 
+// The address to type, alone: "Wi-Fi, 192.168.1.60" is what a till's start
+// screen says, and someone would type all of it. Null when the tablet is on
+// no network.
+internal fun addressOf(network: String): String? = network.substringAfter(", ", "").trim().takeIf { it.isNotEmpty() }
+
 // Before any till has spoken to it: where to type what, and what to type.
 @Composable
 private fun Waiting(address: String, code: String, problem: String?, onSettings: () -> Unit) {
@@ -301,8 +307,11 @@ private fun Waiting(address: String, code: String, problem: String?, onSettings:
             }
             problem?.let { T(it, 14.sp, 600, V.RedText, Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(V.RedWash).padding(horizontal = 14.dp, vertical = 11.dp), lines = 4) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Fact("Address", address, Modifier.weight(1f))
+                Fact("Address", addressOf(address) ?: "Not on Wi-Fi", Modifier.weight(1f), wide = true)
                 Fact("Pairing code", spaced(code), Modifier.weight(1f), wide = true)
+            }
+            if (addressOf(address) == null) {
+                T("This tablet is not on a network. Join the restaurant's Wi-Fi, the same one the tills are on.", 14.sp, 600, V.AmberText, lines = 3, align = TextAlign.Center)
             }
             T(
                 "In the back office, under Printers, add a Kitchen screen with this address and this code. The tills have it after their next sync.",

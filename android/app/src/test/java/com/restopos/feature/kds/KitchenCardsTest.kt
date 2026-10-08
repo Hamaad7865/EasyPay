@@ -52,6 +52,15 @@ class KitchenCardsTest {
         assertEquals(listOf("#1"), kitchenCards(listOf(ticket("k-1"), ticket("k-2", "t-2", "T2", 1, bumped = 5))).map { it.no })
     }
 
+    // what is shown is what gets typed into the back office: the address alone
+    @Test
+    fun theAddressToTypeIsShownAlone() {
+        assertEquals("192.168.1.60", addressOf("Wi-Fi, 192.168.1.60"))
+        assertEquals("10.0.0.5", addressOf("Ethernet, 10.0.0.5"))
+        assertEquals(null, addressOf("Offline"))
+        assertEquals(null, addressOf("Wi-Fi"))
+    }
+
     @Test
     fun whatTheHeaderSaysOfTheTill() {
         val h = Heard("t-1", "Terminal 01", at = 100_000)

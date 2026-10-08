@@ -15,9 +15,13 @@ data class ScreenLine(
 )
 
 // One till's ticket as a kitchen screen holds it: this screen's part of one
-// send. `receivedAt` is this tablet's own clock, and is what its age is
-// counted from: two tablets' clocks drift apart, and a ticket must not arrive
-// already late. `bumpedAt` is set once the cooks have it at the pass.
+// send. `receivedAt` is what its age is counted from, on this tablet's own
+// clock: when it arrived, less how long it had already waited at the till
+// (the till says, by its own clock). Two tablets' clocks drift apart, so a
+// ticket is never aged by comparing one with the other: it must not arrive
+// already late because a clock is wrong, and must not arrive looking fresh
+// when it waited ten minutes for a screen that was off. `bumpedAt` is set
+// once the cooks have it at the pass.
 data class ScreenTicket(
     val id: String, val till: String, val tillName: String, val tillCode: String, val screen: String,
     val no: Int, val label: String, val kind: String, val covers: Int?, val waiter: String?, val remark: String?,
@@ -40,8 +44,9 @@ interface ScreenShelf {
     suspend fun prune(before: Long)
 }
 
-// A till this screen heard from, and when (this tablet's clock).
-data class Heard(val till: String, val name: String, val at: Long) {
+// A till this screen heard from, and when (this tablet's clock); and what
+// that till calls this screen, which is its name in the back office.
+data class Heard(val till: String, val name: String, val at: Long, val screen: String = "") {
     // For the screen's header: "Terminal 01 · just now", "Terminal 01 · 40 s
     // ago", and once a till has been silent for a minute, that it has: a
     // kitchen that is not being sent orders should be able to see why.
@@ -82,10 +87,12 @@ class ScreenBook(
             val was = shelf.ticket(t.id)
             if (was != null && was.till != req.till) continue
             val kept = was?.lines?.associateBy { it.id }.orEmpty()
+            // how long it waited at the till before it got here, by the till's clock alone
+            val waited = if (req.now > 0) (req.now - t.sentAt).coerceIn(0, RECALL_MS) else 0
             shelf.save(
                 ScreenTicket(
                     t.id, req.till, req.tillName, req.tillCode, req.screen, t.no, t.label, t.kind, t.covers, t.waiter, t.remark, t.sentAt,
-                    receivedAt = was?.receivedAt ?: now, bumpedAt = was?.bumpedAt,
+                    receivedAt = was?.receivedAt ?: (now - waited), bumpedAt = was?.bumpedAt,
                     lines = t.lines.map { l -> ScreenLine(l.id, l.qty, l.name, l.detail, kept[l.id]?.done ?: false, kept[l.id]?.voided ?: false) },
                 ),
             )
@@ -101,7 +108,7 @@ class ScreenBook(
                 shelf.save(t.copy(bumpedAt = if (m.bumped) t.bumpedAt ?: now else null))
             }
         }
-        _heard.value = Heard(req.till, req.tillName, now)
+        _heard.value = Heard(req.till, req.tillName, now, req.screen)
         Wire.encode(
             WireReply(
                 ok = true, build = build, epoch = shelf.epoch(), seq = shelf.lastSeq(req.till),

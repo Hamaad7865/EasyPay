@@ -139,6 +139,7 @@ class ScreenLink @Inject constructor(
             val request = WireRequest(
                 till = device ?: "", tillName = till?.name ?: "Till", tillCode = till?.code ?: "", screen = s.name,
                 put = put.mapNotNull { Wire.decodeTicket(it.payload) }, marks = out.mapNotNull { Wire.decodeMark(it.mark) }, after = state.read_to,
+                now = System.currentTimeMillis(),
             )
             val payload = Wire.encode(request, s.pair_code.orEmpty())
             withContext(Dispatchers.IO) { runCatching { ScreenClient.exchange(at.first, at.second, payload) }.getOrNull() }?.let { Wire.decodeReply(it) }
@@ -189,7 +190,7 @@ class ScreenLink @Inject constructor(
         val till = device?.let { db.catalog().device(it) }
         val request = WireRequest(
             till = device ?: "", tillName = till?.name ?: "Till", tillCode = till?.code ?: "", screen = s.name,
-            put = put.mapNotNull { Wire.decodeTicket(it.payload) }, after = 0,
+            put = put.mapNotNull { Wire.decodeTicket(it.payload) }, after = 0, now = System.currentTimeMillis(),
         )
         val payload = Wire.encode(request, s.pair_code.orEmpty())
         val reply = withContext(Dispatchers.IO) { runCatching { ScreenClient.exchange(at.first, at.second, payload) }.getOrNull() }?.let { Wire.decodeReply(it) }

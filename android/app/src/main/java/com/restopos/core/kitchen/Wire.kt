@@ -44,11 +44,14 @@ data class WireMark(
 
 // `screen` is the screen's name in the back office, for its header. `put` is
 // the tickets the screen has not confirmed yet; `after` the number of the
-// last of the cooks' changes this till has taken.
+// last of the cooks' changes this till has taken. `now` is the till's own
+// clock as it asks: with a ticket's `sentAt`, off the same clock, it says how
+// long the ticket has already waited (a screen that was switched off gets its
+// orders late), whatever the two tablets' clocks say of each other.
 @Serializable
 data class WireRequest(
     val v: Int = Wire.VERSION, val till: String, val tillName: String, val tillCode: String, val screen: String,
-    val put: List<WireTicket> = emptyList(), val marks: List<WireMark> = emptyList(), val after: Long = 0,
+    val put: List<WireTicket> = emptyList(), val marks: List<WireMark> = emptyList(), val after: Long = 0, val now: Long = 0,
 )
 
 // `error` when not ok: "refused" (not signed with this screen's code), or

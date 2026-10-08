@@ -20,9 +20,12 @@ class ScreenBookTest {
     private fun ticket(id: String, vararg lines: String, no: Int = 1, label: String = "Table 4") =
         WireTicket(id, no, label, "Dine-in", 2, "Aisha", null, sentAt = 500, lines = lines.map { WireLine(it, 1, "Item $it") })
 
-    private fun ask(till: String = "t-1", put: List<WireTicket> = emptyList(), marks: List<WireMark> = emptyList(), after: Long = 0, with: String = code, v: Int = Wire.VERSION): WireReply =
+    private fun ask(
+        till: String = "t-1", put: List<WireTicket> = emptyList(), marks: List<WireMark> = emptyList(), after: Long = 0, with: String = code, v: Int = Wire.VERSION,
+        tillClock: Long = 0,
+    ): WireReply =
         runBlocking {
-            val out = Wire.encode(WireRequest(v = v, till = till, tillName = "Terminal $till", tillCode = till.uppercase(), screen = "Grill", put = put, marks = marks, after = after), with)
+            val out = Wire.encode(WireRequest(v = v, till = till, tillName = "Terminal $till", tillCode = till.uppercase(), screen = "Grill", put = put, marks = marks, after = after, now = tillClock), with)
             val (first, second) = out.trimEnd('\n').split('\n')
             Wire.decodeReply(book.answer(first, second).trimEnd('\n'))!!
         }
@@ -64,6 +67,37 @@ class ScreenBookTest {
         assertEquals(listOf("a", "b"), t.lines.map { it.id })
         // counted from when this tablet got it, on this tablet's clock
         assertEquals(now, t.receivedAt)
+    }
+
+    // A screen that was switched off gets its orders late. The guests have
+    // waited all the same: the ticket's timer says how long, not 0:00.
+    @Test
+    fun aTicketThatWaitedForTheScreenShowsHowLongItHasWaited() {
+        val tenMinutes = 10 * 60_000L
+        // sent at 500 by the till's clock, put when the till's clock says ten minutes later
+        ask(put = listOf(ticket("k-1", "a")), tillClock = 500 + tenMinutes)
+        assertEquals(now - tenMinutes, open().single().receivedAt)
+    }
+
+    // The till's clock may be an hour ahead of this tablet's, or behind it:
+    // only the difference between two times on the till's own clock is used.
+    @Test
+    fun aTillWhoseClockIsWrongDoesNotAgeATicket() {
+        val anHourAhead = now + 3_600_000L
+        val sent = WireTicket("k-1", 1, "Table 4", "Dine-in", 2, null, null, sentAt = anHourAhead, lines = listOf(WireLine("a", 1, "Item a")))
+        ask(put = listOf(sent), tillClock = anHourAhead + 2_000)
+        assertEquals(now - 2_000, open().single().receivedAt)
+        // a till that says the ticket was sent after "now" (its clock was put back in between) waited nothing
+        val odd = sent.copy(id = "k-2", lines = listOf(WireLine("b", 1, "Item b")))
+        ask(put = listOf(odd), tillClock = anHourAhead - 60_000)
+        assertEquals(now, open().first { it.id == "k-2" }.receivedAt)
+    }
+
+    @Test
+    fun theHeaderKnowsWhatTheTillCallsThisScreen() {
+        ask()
+        assertEquals("Grill", book.heard.value?.screen)
+        assertEquals("Terminal t-1", book.heard.value?.name)
     }
 
     @Test
