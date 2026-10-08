@@ -26,7 +26,7 @@ name: release the till (APK)
 #   repository variables (same page, Variables), production's addresses:
 #     TILL_FUNCTION_URL           the till API (https://…-api.….neon.tech)
 #     TILL_AUTH_URL               the sign-in service (https://…neonauth…/neondb/auth)
-#     BACK_OFFICE_URL             optional; https://easypaypos.pages.dev when not set
+#     BACK_OFFICE_URL             optional; https://easypaypos.com when not set
 #
 # EVERY release must be signed with the SAME key: Android refuses an update
 # signed with another, and the only way past that is to uninstall the till,
@@ -128,7 +128,7 @@ jobs:
           {
             printf 'functionUrl=%s\n' "$FUNCTION_URL"
             printf 'authUrl=%s\n' "$AUTH_URL"
-            printf 'backOfficeUrl=%s\n' "${BACK_OFFICE_URL:-https://easypaypos.pages.dev}"
+            printf 'backOfficeUrl=%s\n' "${BACK_OFFICE_URL:-https://easypaypos.com}"
             printf 'keystoreFile=%s\n' "$RUNNER_TEMP/easypay.jks"
             printf 'keystorePassword=%s\n' "$KEYSTORE_PASSWORD"
             printf 'keyAlias=%s\n' "$KEY_ALIAS"

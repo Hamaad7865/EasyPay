@@ -31,7 +31,7 @@ const PROJECT = 'snowy-fire-89764432';
 const BRANCH = 'production';
 // the production compute's host begins with this; the dev branch's does not
 const HOST = 'ep-soft-poetry';
-const LIVE = 'https://easypaypos.pages.dev';
+const LIVE = 'https://easypaypos.com';
 
 // ---- the rules: each returns what is wrong, or null ----
 

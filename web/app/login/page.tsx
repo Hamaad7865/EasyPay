@@ -35,7 +35,7 @@ export default function LoginPage() {
     }
     // Everyone goes to the back office, which sends a platform admin on to
     // /admin (a login with no restaurant lands on the page that says so, and
-    // that page knows an admin). Not "/": at easypaypos.pages.dev that is the
+    // that page knows an admin). Not "/": at easypaypos.com that is the
     // public site. The button stays busy until the page is there.
     router.push("/backoffice");
     router.refresh();

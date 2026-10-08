@@ -5,7 +5,7 @@ name: release to production
 #   1. the database's migrations   (production cannot be behind the code)
 #   2. the till API                (Neon Functions, production branch)
 #   3. the back office             (Cloudflare Worker easypay-backoffice)
-#   4. the public site and the front door (Cloudflare Pages, easypaypos.pages.dev)
+#   4. the public site and the front door (Cloudflare Pages, easypaypos.com)
 #
 # Started by a person, from the Actions tab (Run workflow). It is not started
 # by a push: more than one hand writes to this branch, and a migration is not

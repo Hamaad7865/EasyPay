@@ -1,4 +1,5 @@
-# easypaypos.pages.dev: the public site, and the front door to the back office.
+# easypaypos.com (the project's own address is easypaypos.pages.dev): the public
+# site, and the front door to the back office.
 #
 # A Cloudflare Pages project. What it serves is the `site/` folder as it is;
 # `site/_worker.js` hands the back office's addresses (/login, /backoffice,

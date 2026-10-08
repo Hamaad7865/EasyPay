@@ -33,7 +33,7 @@ const BRANCH = process.env.EASYPAY_SETTINGS_BRANCH || 'production';
 const HOST = 'ep-soft-poetry';
 const WORKER = 'easypay-backoffice';
 const REPO = 'Hamaad7865/EasyPay';
-const LIVE = 'https://easypaypos.pages.dev';
+const LIVE = 'https://easypaypos.com';
 const WRANGLER = 'wrangler@4.117.0'; // the version web/ builds and deploys with
 
 // ---- the checks: each returns what is wrong with a value, or null ----

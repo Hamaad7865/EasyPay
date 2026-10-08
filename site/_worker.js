@@ -1,10 +1,10 @@
-// The front door of easypaypos.pages.dev.
+// The front door of easypaypos.com.
 //
 // This folder is the public site, served as it is. The back office (sign-in,
 // the pages behind it, the admin area) is a separate Worker, `web/` built for
 // Cloudflare; this file hands its addresses to it over a service binding
 // (BACKOFFICE, see cloudflare/pages/wrangler.toml), so the two are one site:
-// easypaypos.pages.dev is the site and easypaypos.pages.dev/login the sign-in.
+// easypaypos.com is the site and easypaypos.com/login the sign-in.
 //
 // The request goes on untouched, address and all: the back office checks that
 // a form was sent from the address it is served at, and sets its sign-in

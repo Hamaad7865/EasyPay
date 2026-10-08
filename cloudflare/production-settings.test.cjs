@@ -28,7 +28,7 @@ ok("the sign-in service's address is accepted, with or without a closing slash",
 ok('a whole NAME=value line is refused', () => assert.match(wrongAuth('NEON_AUTH_BASE_URL=' + AUTH, ''), /not an https address/));
 ok('a quoted address is refused', () => assert.match(wrongAuth(`"${AUTH}"`, ''), /not an https address/));
 ok('a control character is refused', () => assert.match(wrongAuth('\u0016', ''), /not an https address/));
-ok('an address that is not Neon Auth is refused', () => assert.match(wrongAuth('https://easypaypos.pages.dev/api/auth', ''), /not a Neon Auth host/));
+ok('an address that is not Neon Auth is refused', () => assert.match(wrongAuth('https://easypaypos.com/api/auth', ''), /not a Neon Auth host/));
 ok('an address that does not end in /auth is refused', () => assert.match(wrongAuth(AUTH.replace('/neondb/auth', ''), ''), /does not end in \/auth/));
 ok("the dev branch's sign-in address is refused", () => assert.match(wrongAuth(AUTH, AUTH + '/'), /the dev branch's/));
 

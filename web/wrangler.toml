@@ -1,6 +1,6 @@
 # The back office on Cloudflare Workers, built by the OpenNext adapter
 # (`npm run cf:build`). It has no public address of its own: people reach it
-# at easypaypos.pages.dev/login, through the Pages project that also serves
+# at easypaypos.com/login, through the Pages project that also serves
 # the public site (see ../cloudflare/pages). That project hands the back
 # office's paths to this Worker over a service binding.
 name = "easypay-backoffice"
