@@ -1,18 +1,18 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-for="restaurant">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EasyPay | Restaurant point of sale for Mauritius</title>
-<meta name="description" content="EasyPay is a restaurant point of sale for Mauritius: tables, kitchen tickets, split bills, the cash drawer and the day's reports on an Android tablet, with a back office in your browser.">
-<link rel="canonical" href="https://easypaypos.pages.dev/">
+<title>EasyPay | Point of sale for restaurants and shops in Mauritius</title>
+<meta name="description" content="EasyPay is a point of sale for restaurants and shops in Mauritius. Tables, kitchen tickets and split bills for a restaurant; barcodes, stock, returns and exchanges for a shop. On an Android tablet, with a back office in your browser.">
+<link rel="canonical" href="https://easypaypos.com/">
 <meta name="theme-color" content="#fafaf6">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="EasyPay">
-<meta property="og:title" content="EasyPay | Restaurant point of sale for Mauritius">
-<meta property="og:description" content="The floor, the kitchen and the till on one tablet, with a back office in your browser.">
-<meta property="og:url" content="https://easypaypos.pages.dev/">
-<meta property="og:image" content="https://easypaypos.pages.dev/assets/og.png">
+<meta property="og:title" content="EasyPay | Point of sale for restaurants and shops in Mauritius">
+<meta property="og:description" content="A restaurant’s floor and kitchen, or a shop’s counter and stock, on one tablet, with a back office in your browser.">
+<meta property="og:url" content="https://easypaypos.com/">
+<meta property="og:image" content="https://easypaypos.com/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
@@ -21,9 +21,18 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400..800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/site.css">
 <link rel="stylesheet" href="css/mock.css">
-<script>document.documentElement.classList.add("js")</script>
+<script>
+  // before anything is drawn: script is on, and whether this visit is a shop's
+  // (#shop or a shop's section in the address, or what was picked last time)
+  (function (d) {
+    d.classList.add("js");
+    var shop = /^#(shop|selling|stock|returns)$/.test(location.hash), kept = "";
+    try { kept = localStorage.getItem("easypay-for") || ""; } catch (e) {}
+    if (shop || (!location.hash && kept === "shop")) d.setAttribute("data-for", "shop");
+  })(document.documentElement);
+</script>
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"EasyPay","applicationCategory":"BusinessApplication","operatingSystem":"Android","url":"https://easypaypos.pages.dev/","description":"A restaurant point of sale for Mauritius: tables, kitchen tickets, split bills, the cash drawer and the day's reports on an Android tablet, with a back office in the browser."}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"EasyPay","applicationCategory":"BusinessApplication","operatingSystem":"Android","url":"https://easypaypos.com/","description":"A point of sale for restaurants and shops in Mauritius: tables, kitchen tickets and split bills for a restaurant; barcodes, stock, returns and exchanges for a shop. On an Android tablet, with a back office in the browser."}
 </script>
 </head>
 <body>
@@ -33,6 +42,16 @@
   <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14M18 13l-6 6-6-6"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z"/></symbol>
+  <symbol id="i-bars" viewBox="0 0 24 24"><path d="M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12"/></symbol>
+  <symbol id="i-floor" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="6" rx="1.5"/><rect x="14" y="4" width="7" height="6" rx="1.5"/><rect x="3" y="14" width="7" height="6" rx="1.5"/><circle cx="17.5" cy="17" r="3"/></symbol>
+  <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/></symbol>
+  <symbol id="i-split" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 10h18M12 10v9"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.2"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M3 8 12 3l9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
 </svg>
 
 <div class="wash" aria-hidden="true"></div>
@@ -46,10 +65,25 @@
       <span>EasyPay</span>
     </a>
     <nav class="nav-links" aria-label="Main">
-      <a href="#floor">Front of house</a>
-      <a href="#kitchen">Kitchen</a>
-      <a href="#payment">Payment</a>
+      <div class="nav-drop">
+        <button class="nav-key" type="button" aria-expanded="false" aria-controls="nav-product">Product <svg class="ico"><use href="#i-chev"/></svg></button>
+        <div class="nav-panel" id="nav-product">
+          <div class="nav-col">
+            <p>For restaurants</p>
+            <a href="#floor"><svg class="ico"><use href="#i-floor"/></svg><span><b>Front of house</b>The floor plan, tables and bookings</span></a>
+            <a href="#kitchen"><svg class="ico"><use href="#i-ticket"/></svg><span><b>Kitchen and bar</b>Each ticket to the right printer</span></a>
+            <a href="#payment"><svg class="ico"><use href="#i-split"/></svg><span><b>Payment</b>Split bills, cash and receipts</span></a>
+          </div>
+          <div class="nav-col">
+            <p>For shops</p>
+            <a href="#selling"><svg class="ico"><use href="#i-bars"/></svg><span><b>Selling</b>Scan or tap, sizes, weight, parked sales</span></a>
+            <a href="#stock"><svg class="ico"><use href="#i-box"/></svg><span><b>Stock</b>What is left, deliveries and counts</span></a>
+            <a href="#returns"><svg class="ico"><use href="#i-back"/></svg><span><b>Returns</b>Refund or exchange from the receipt</span></a>
+          </div>
+        </div>
+      </div>
       <a href="#backoffice">Back office</a>
+      <a href="#start">Getting started</a>
       <a href="#faq">Questions</a>
     </nav>
     <div class="nav-end">
@@ -59,9 +93,15 @@
     </div>
   </div>
   <div class="nav-sheet" id="nav-sheet" hidden>
+    <p>For restaurants</p>
     <a href="#floor">Front of house</a>
-    <a href="#kitchen">Kitchen</a>
+    <a href="#kitchen">Kitchen and bar</a>
     <a href="#payment">Payment</a>
+    <p>For shops</p>
+    <a href="#selling">Selling</a>
+    <a href="#stock">Stock</a>
+    <a href="#returns">Returns</a>
+    <p>Both</p>
     <a href="#backoffice">Back office</a>
     <a href="#faq">Questions</a>
     <a data-signin hidden>Sign in</a>
@@ -75,12 +115,23 @@
 <section class="hero" id="top">
   <div class="wrap">
     <div class="hero-copy" data-solid>
-      <p class="eyebrow" data-rise style="--i:0">Restaurant point of sale · Made for Mauritius</p>
-      <h1 data-rise style="--i:1">The floor, the kitchen and the till. <span class="dim">On one tablet.</span></h1>
-      <p class="lede" data-rise style="--i:2">EasyPay runs a restaurant's service from the first table to the last receipt: seat a party, send the order to the kitchen, split the bill and close the day. The menu, the staff and the reports live in a back office you open in your browser.</p>
+      <div class="pick" data-rise style="--i:0">
+        <p class="eyebrow">Point of sale for your</p>
+        <div class="pick-keys" role="group" aria-label="What EasyPay is shown for">
+          <i aria-hidden="true"></i>
+          <button type="button" data-pick="restaurant" aria-pressed="true">Restaurant</button>
+          <button type="button" data-pick="shop" aria-pressed="false">Shop</button>
+        </div>
+        <p class="eyebrow dim">Made for Mauritius</p>
+      </div>
+      <h1 data-only="restaurant" data-rise style="--i:1">The floor, the kitchen and the till. <span class="dim">On one tablet.</span></h1>
+      <h1 data-only="shop" data-rise style="--i:1">The counter, the shelves and the till. <span class="dim">On one tablet.</span></h1>
+      <p class="lede" data-only="restaurant" data-rise style="--i:2">EasyPay runs a restaurant's service from the first table to the last receipt: seat a party, send the order to the kitchen, split the bill and close the day. The menu, the staff and the reports live in a back office you open in your browser.</p>
+      <p class="lede" data-only="shop" data-rise style="--i:2">EasyPay runs a shop's day from the first scan to the last receipt: ring up a sale, take the payment, handle a return and know what is left on the shelf. The products, the stock and the reports live in a back office you open in your browser.</p>
       <div class="hero-cta" data-rise style="--i:3">
         <a class="btn-demo" href="#demo">Book a demo <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a>
-        <a class="btn-quiet" href="#floor">See how a service runs <svg class="ico"><use href="#i-down"/></svg></a>
+        <a class="btn-quiet" data-only="restaurant" href="#floor">See how a service runs <svg class="ico"><use href="#i-down"/></svg></a>
+        <a class="btn-quiet" data-only="shop" href="#selling">See how a sale goes <svg class="ico"><use href="#i-down"/></svg></a>
       </div>
     </div>
 
@@ -90,27 +141,33 @@
           <div class="till">
             <div class="t-bar">
               <span class="t-menu"><i></i><i></i><i></i></span>
-              <div class="t-tabs">
-                <span class="t-tab is-on" data-go="floor" data-for="floor order">Tables<b>5</b></span>
+              <div class="t-tabs" data-only="restaurant">
+                <span class="t-tab is-on" data-of="floor order">Tables<b>5</b></span>
                 <span class="t-tab">Quick sale</span>
-                <span class="t-tab" data-go="board" data-for="board">Takeaway<b>7</b></span>
-                <span class="t-tab" data-go="kitchen" data-for="kitchen">Kitchen<b>7</b></span>
+                <span class="t-tab" data-of="board">Takeaway<b>7</b></span>
+                <span class="t-tab" data-of="kitchen">Kitchen<b>7</b></span>
                 <span class="t-tab">Bookings<b>2</b></span>
                 <span class="t-tab">Orders</span>
+              </div>
+              <div class="t-tabs" data-only="shop">
+                <span class="t-tab is-on" data-of="sell">Sell</span>
+                <span class="t-tab" data-of="receipts">Receipts</span>
+                <span class="t-tab">Products &amp; stock</span>
+                <span class="t-tab">Stock check</span>
               </div>
               <div class="t-meta"><i class="t-sync"></i><span class="t-clock">19:42</span><span class="t-staff"><em>P</em>Priya</span></div>
             </div>
             <div class="t-body">
 
               <!-- the floor -->
-              <div class="t-screen t-floor is-on" data-screen="floor">
+              <div class="t-screen t-floor is-on" data-screen="floor" data-only="restaurant">
                 <div class="t-main">
                   <div class="t-areas"><span class="is-on">Main room<b>5/11</b></span><span>Terrace<b>2/6</b></span><span>Bar<b>0/4</b></span></div>
                   <div class="t-plan">
                     <div class="tb seated" style="left:5%;top:9%;width:17%;height:19%"><b>1</b><i>Rs 960</i><u>12 min</u></div>
                     <div class="tb free" style="left:28%;top:9%;width:17%;height:19%"><b>2</b><i>4 seats</i></div>
                     <div class="tb bill round" style="left:52%;top:5%;width:14%"><b>3</b><i>Rs 2,410</i><u>Bill printed</u></div>
-                    <div class="tb seated" data-go="order" style="left:72%;top:9%;width:23%;height:19%"><b>4</b><i>Rs 1,837</i><u>34 min</u></div>
+                    <div class="tb seated" style="left:72%;top:9%;width:23%;height:19%"><b>4</b><i>Rs 1,837</i><u>34 min</u></div>
                     <div class="tb free round" style="left:7%;top:41%;width:13%"><b>5</b><i>2 seats</i></div>
                     <div class="tb held" style="left:28%;top:41%;width:17%;height:19%"><b>6</b><i>20:00</i><u>Nadia · 4</u></div>
                     <div class="tb seated" style="left:51%;top:41%;width:17%;height:19%"><b>7</b><i>Rs 540</i><u>6 min</u></div>
@@ -136,7 +193,7 @@
               </div>
 
               <!-- an order -->
-              <div class="t-screen t-order" data-screen="order">
+              <div class="t-screen t-order" data-screen="order" data-only="restaurant">
                 <section class="t-ticket">
                   <header><div><b>Table 4</b><span>Main room · Priya</span></div><div class="t-covers"><i>−</i>3 covers<i>+</i></div></header>
                   <div class="t-lines">
@@ -179,7 +236,7 @@
               </div>
 
               <!-- the kitchen -->
-              <div class="t-screen t-kds" data-screen="kitchen">
+              <div class="t-screen t-kds" data-screen="kitchen" data-only="restaurant">
                 <div class="t-kds-head">
                   <div class="t-seg"><span class="is-on">All</span><span>Kitchen</span><span>Bar</span></div>
                   <p class="t-allday"><b>All day</b>Alouda 8 · Mine bouilli 3 · Briani 2 · Cari ourite 2 · Riz frit 2</p>
@@ -225,7 +282,7 @@
               </div>
 
               <!-- takeaway and delivery -->
-              <div class="t-screen t-board" data-screen="board">
+              <div class="t-screen t-board" data-screen="board" data-only="restaurant">
                 <div class="t-cols">
                   <div class="t-col">
                     <h6>New<b>3</b></h6>
@@ -246,16 +303,98 @@
                 </div>
               </div>
 
+              <!-- a shop: the sale down the left, the products on the right -->
+              <div class="t-screen t-order t-sell is-on" data-screen="sell" data-only="shop">
+                <section class="t-ticket">
+                  <header><div><b>Sale</b><span>Counter 1 · Priya</span></div><div class="t-cust">Add customer</div></header>
+                  <div class="t-lines">
+                    <div class="t-line"><span class="q">1</span><span class="n">Polo shirt<small>M · Navy</small></span><span class="p">890.00</span></div>
+                    <div class="t-line"><span class="q">1</span><span class="n">Canvas tote</span><span class="p">450.00</span></div>
+                    <div class="t-line"><span class="q">2</span><span class="n">Notebook A5</span><span class="p">300.00</span></div>
+                  </div>
+                  <footer>
+                    <div class="t-sum"><span>Subtotal</span><span>1,640.00</span></div>
+                    <div class="t-sum off"><span>Discount 10%</span><span>−164.00</span></div>
+                    <div class="t-sum total"><span>Total</span><span>Rs 1,476.00</span></div>
+                    <div class="t-keys"><span>Park sale</span><span class="disc">Discount · 10% off</span><span>More</span></div>
+                    <div class="t-keys big one"><span class="pay">Pay Rs 1,476.00</span></div>
+                  </footer>
+                </section>
+                <section class="t-pane">
+                  <div class="t-find"><div class="t-search">Scan, or search a name, SKU or barcode</div><span class="t-scan"><svg class="ico"><use href="#i-bars"/></svg></span></div>
+                  <div class="t-cats">
+                    <span class="is-on" style="--c:#3f8443">All</span><span style="--c:#2a8fa8">Clothing</span><span style="--c:#c9622d">Bags</span><span style="--c:#8b6cff">Stationery</span><span style="--c:#b8862a">Home</span><span style="--c:#b0443c">Gifts</span>
+                  </div>
+                  <div class="t-items">
+                    <div class="t-item"><b>Polo shirt</b><span>Rs 890</span><i class="t-left">11 left</i></div>
+                    <div class="t-item"><b>T-shirt</b><span>Rs 490</span><i class="t-left">24 left</i></div>
+                    <div class="t-item"><b>Linen shirt</b><span>Rs 1,250</span><i class="t-left">6 left</i></div>
+                    <div class="t-item"><b>Denim jacket</b><span>Rs 2,400</span><i class="t-left few">2 left</i></div>
+                    <div class="t-item"><b>Canvas tote</b><span>Rs 450</span><i class="t-left few">4 left</i></div>
+                    <div class="t-item"><b>Leather wallet</b><span>Rs 780</span><i class="t-left">9 left</i></div>
+                    <div class="t-item"><b>Notebook A5</b><span>Rs 150</span><i class="t-left few">1 left</i></div>
+                    <div class="t-item"><b>Gel pen</b><span>Rs 35</span><i class="t-left">60 left</i></div>
+                    <div class="t-item"><b>Scented candle</b><span>Rs 320</span><i class="t-left none">Out</i></div>
+                    <div class="t-item"><b>Ceramic mug</b><span>Rs 260</span><i class="t-left">14 left</i></div>
+                    <div class="t-item"><b>Dried mango</b><span>Rs 620 a kilo</span><i class="t-left">4.2 kg left</i></div>
+                    <div class="t-item"><b>Gift wrap</b><span>Rs 50</span><i class="t-left">31 left</i></div>
+                  </div>
+                </section>
+              </div>
+
+              <!-- a shop's receipts: the list, and one of them open -->
+              <div class="t-screen t-rcpts" data-screen="receipts" data-only="shop">
+                <section class="t-rlist">
+                  <div class="t-find"><div class="t-search">Scan a receipt, or type its number</div><span class="t-scan"><svg class="ico"><use href="#i-bars"/></svg></span></div>
+                  <ul>
+                    <li class="is-on"><b>000214</b><span>Today 15:42 · Priya</span><em>Rs 1,476.00</em></li>
+                    <li><b>000213</b><span>Today 15:31 · Kevin</span><em>Rs 620.00</em></li>
+                    <li><b>000212</b><span>Today 15:18 · Priya</span><em>Rs 2,890.00</em></li>
+                    <li><b>000211</b><span>Today 14:57 · Priya</span><em>Rs 150.00</em></li>
+                    <li><b>000210</b><span>Today 14:40 · Kevin</span><em>Rs 1,040.00</em></li>
+                    <li><b>000209</b><span>Today 14:12 · Kevin</span><em>Rs 490.00</em></li>
+                  </ul>
+                </section>
+                <section class="t-ropen">
+                  <header><div><b>Receipt 000214</b><span>Today 15:42 · Cash · Priya</span></div><em class="t-chip">Paid</em></header>
+                  <div class="t-rlines">
+                    <div class="t-line"><span class="q">1</span><span class="n">Polo shirt<small>M · Navy</small></span><span class="p">890.00</span></div>
+                    <div class="t-line"><span class="q">1</span><span class="n">Canvas tote</span><span class="p">450.00</span></div>
+                    <div class="t-line"><span class="q">2</span><span class="n">Notebook A5</span><span class="p">300.00</span></div>
+                    <div class="t-sum off"><span>Discount 10%</span><span>−164.00</span></div>
+                    <div class="t-sum total"><span>Total</span><span>Rs 1,476.00</span></div>
+                  </div>
+                  <footer class="t-keys"><span>Print again</span><span>Exchange</span><span class="refund">Refund</span></footer>
+                </section>
+              </div>
+
+              <!-- what the film lays over a screen: a payment, the paper that prints, the finger -->
+              <div class="f-sheet"></div>
+              <div class="f-slip"><div class="paper"></div></div>
+              <i class="f-hand"></i>
+
             </div>
           </div>
         </div>
       </div>
 
-      <div class="switch" aria-label="Screens of the till">
-        <button type="button" class="is-on" data-show="floor" aria-pressed="true">Floor</button>
-        <button type="button" data-show="order" aria-pressed="false">Order</button>
-        <button type="button" data-show="kitchen" aria-pressed="false">Kitchen</button>
-        <button type="button" data-show="board" aria-pressed="false">Takeaway</button>
+      <!-- the film: what is happening, a key for each chapter, and a way to stop it -->
+      <p class="film-cap"><span data-only="restaurant">A service on the till, from the table to the receipt.</span><span data-only="shop">A sale on the till, from the first scan to a return.</span></p>
+      <div class="film-bar">
+        <div class="switch" data-only="restaurant" aria-label="Chapters of the restaurant's film">
+          <button type="button" class="is-on" data-chapter="seat" aria-pressed="true">Seat</button>
+          <button type="button" data-chapter="order" aria-pressed="false">Order</button>
+          <button type="button" data-chapter="kitchen" aria-pressed="false">Kitchen</button>
+          <button type="button" data-chapter="pay" aria-pressed="false">Pay</button>
+          <button type="button" data-chapter="takeaway" aria-pressed="false">Takeaway</button>
+        </div>
+        <div class="switch" data-only="shop" aria-label="Chapters of the shop's film">
+          <button type="button" class="is-on" data-chapter="scan" aria-pressed="true">Scan</button>
+          <button type="button" data-chapter="discount" aria-pressed="false">Discount</button>
+          <button type="button" data-chapter="charge" aria-pressed="false">Pay</button>
+          <button type="button" data-chapter="return" aria-pressed="false">Return</button>
+        </div>
+        <button class="film-pause" type="button" aria-pressed="false" hidden><svg class="ico"><use href="#i-pause"/></svg><span>Pause</span></button>
       </div>
     </div>
 
@@ -266,13 +405,13 @@
       <li>Network or USB</li>
       <li>Cash drawer</li>
       <li>Barcode scanner</li>
-      <li>English · Français · Kreol Morisien</li>
+      <li data-only="restaurant">English · Français · Kreol Morisien</li>
     </ul>
   </div>
 </section>
 
 <!-- ================= front of house ================= -->
-<section class="feature" id="floor">
+<section class="feature" id="floor" data-only="restaurant">
   <div class="wrap feature-grid">
     <div class="stage stage--a" data-solid data-reveal>
       <div class="mock" aria-hidden="true">
@@ -300,7 +439,7 @@
 </section>
 
 <!-- ================= kitchen and bar ================= -->
-<section class="feature feature--flip" id="kitchen">
+<section class="feature feature--flip" id="kitchen" data-only="restaurant">
   <div class="wrap feature-grid">
     <div class="stage stage--b" data-solid data-reveal>
       <div class="mock" aria-hidden="true">
@@ -340,7 +479,7 @@
 </section>
 
 <!-- ================= payment ================= -->
-<section class="feature" id="payment">
+<section class="feature" id="payment" data-only="restaurant">
   <div class="wrap feature-grid">
     <div class="stage stage--c" data-solid data-reveal>
       <div class="mock" aria-hidden="true">
@@ -397,15 +536,151 @@
   </div>
 </section>
 
+<!-- ================= a shop: selling ================= -->
+<section class="feature" id="selling" data-only="shop">
+  <div class="wrap feature-grid">
+    <div class="stage stage--a" data-solid data-reveal>
+      <div class="mock" aria-hidden="true">
+        <div class="till piece v-variant">
+          <div class="v-sheet">
+            <p class="v-kicker">Polo shirt · Rs 890</p>
+            <h6>Size</h6>
+            <div class="v-chips" data-loop="size"><span>S<i>4 left</i></span><span class="is-on">M<i>3 left</i></span><span>L<i>5 left</i></span><span class="none">XL<i>Out</i></span></div>
+            <h6>Colour</h6>
+            <div class="v-chips"><span class="is-on">Navy</span><span>White</span><span>Olive</span></div>
+            <div class="v-charge">Add · <b data-loop-says>M</b>, Navy</div>
+          </div>
+          <div class="v-weigh">
+            <p class="v-kicker">Dried mango · Rs 620 a kilo</p>
+            <p class="v-due">0.350<small> kg</small></p>
+            <p class="v-eq"><span>0.350 × 620</span><b>Rs 217.00</b></p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="copy" data-solid>
+      <p class="eyebrow" data-reveal>Selling</p>
+      <h2 data-reveal="focus">Scan it, tap it, sell it. <span class="dim">The sale builds itself.</span></h2>
+      <ul class="points">
+        <li data-reveal><h3>A barcode or a tile</h3><p>A scanner that types like a keyboard rings a product up by its barcode, and every product has a tile to tap. The same product again adds one more to its line.</p></li>
+        <li data-reveal><h3>Sizes, colours and weight</h3><p>A product that comes in sizes or colours asks which one, and each choice says what is left. One sold by weight asks for the kilos.</p></li>
+        <li data-reveal><h3>A discount, or another price</h3><p>Ten or twenty percent off a line in one tap, your own figure, or a discount on the whole sale. A changed price holds for this sale only, and can ask for a manager.</p></li>
+        <li data-reveal><h3>Serve the next customer first</h3><p>Park the sale as it is and start another. Parked sales wait behind one key until their customer is back at the counter.</p></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= a shop: stock ================= -->
+<section class="feature feature--flip" id="stock" data-only="shop">
+  <div class="wrap feature-grid">
+    <div class="stage stage--b" data-solid data-reveal>
+      <div class="mock" aria-hidden="true">
+        <div class="till piece v-stock">
+          <div class="v-sheet">
+            <p class="v-kicker">Stock check · what this shop holds</p>
+            <p class="v-name">Polo shirt<span>Rs 890</span></p>
+            <ul class="v-rows" data-loop="stock">
+              <li><span>S · Navy</span><em>4</em></li>
+              <li><span>M · Navy</span><em data-count>12</em></li>
+              <li><span>L · Navy</span><em>5</em></li>
+              <li><span>M · White</span><em>7</em></li>
+              <li class="none"><span>XL · Navy</span><em>Out</em></li>
+            </ul>
+          </div>
+          <div class="v-tiles">
+            <div class="t-item"><b>Canvas tote</b><span>Rs 450</span><i class="t-left few">4 left</i></div>
+            <div class="t-item"><b>Notebook A5</b><span>Rs 150</span><i class="t-left few">1 left</i></div>
+            <div class="t-item"><b>Scented candle</b><span>Rs 320</span><i class="t-left none">Out</i></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="copy" data-solid>
+      <p class="eyebrow" data-reveal>Stock</p>
+      <h2 data-reveal="focus">Know what is on the shelf. <span class="dim">Without walking to it.</span></h2>
+      <ul class="points">
+        <li data-reveal><h3>Every tile says what is left</h3><p>Amber when few are left, red when it is out. A sale takes from stock by itself, so there is nothing to keep count of at the till.</p></li>
+        <li data-reveal><h3>A stock check at the counter</h3><p>Scan a product or type its name: the till shows what the shop holds of each size and colour, with its price.</p></li>
+        <li data-reveal><h3>Deliveries, counts and corrections</h3><p>In the back office: purchase orders to your suppliers, deliveries received against them, stock counts, and a movement written for every change.</p></li>
+        <li data-reveal><h3>Your whole catalog in one go</h3><p>Bring your products in from a spreadsheet, with their sizes, colours and barcodes, and print barcode labels for the ones that have none.</p></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= a shop: returns ================= -->
+<section class="feature" id="returns" data-only="shop">
+  <div class="wrap feature-grid">
+    <div class="stage stage--c" data-solid data-reveal>
+      <div class="mock" aria-hidden="true">
+        <div class="till piece v-pay v-return">
+          <div class="paper-wrap tilt-l">
+            <div class="paper receipt">
+              <p class="p-head">YOUR SHOP</p>
+              <p class="p-sub">Your address and VAT number</p>
+              <hr>
+              <p class="p-row"><span>Receipt 000214</span><span>15:42</span></p>
+              <hr>
+              <p class="p-row"><span>1 Polo shirt M Navy</span><span>890.00</span></p>
+              <p class="p-row"><span>1 Canvas tote</span><span>450.00</span></p>
+              <p class="p-row"><span>2 Notebook A5</span><span>300.00</span></p>
+              <hr>
+              <p class="p-row"><span>Discount 10%</span><span>-164.00</span></p>
+              <p class="p-row p-total"><span>TOTAL</span><span>Rs 1,476.00</span></p>
+              <p class="p-row"><span>VAT 15% included</span><span>192.52</span></p>
+              <p class="p-row"><span>Cash</span><span>2,000.00</span></p>
+              <p class="p-row"><span>Change</span><span>524.00</span></p>
+              <p class="p-foot">Thank you</p>
+              <div class="p-bars"><i></i></div>
+              <p class="p-code">000214</p>
+            </div>
+          </div>
+          <div class="v-paybox">
+            <p class="v-kicker">Receipt 000214 · Refund</p>
+            <p class="v-due">Rs 801.00</p>
+            <ul class="v-shares">
+              <li class="now"><b>1</b><span>Polo shirt, M Navy</span><em>801.00</em><svg class="ico"><use href="#i-check"/></svg></li>
+              <li class="kept"><b>1</b><span>Canvas tote</span><em>kept</em></li>
+              <li class="kept"><b>2</b><span>Notebook A5</span><em>kept</em></li>
+            </ul>
+            <p class="v-opt"><span>Put back into stock</span><i class="tog"></i></p>
+            <div class="v-types"><span class="is-on">Cash</span><span>Card</span><span>Transfer</span></div>
+            <div class="v-charge">Refund Rs 801.00</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="copy" data-solid>
+      <p class="eyebrow" data-reveal>Returns</p>
+      <h2 data-reveal="focus">Scan the receipt. <span class="dim">The sale opens, ready to put right.</span></h2>
+      <ul class="points">
+        <li data-reveal><h3>The receipt finds itself</h3><p>Every receipt prints a barcode at its foot. Scan it and the sale opens. Without the paper, find it by its number: the last 30 days are there, from every till in the shop.</p></li>
+        <li data-reveal><h3>Refund what comes back</h3><p>Take off what the customer keeps, pick how the money goes back and give a reason. The goods go back into stock, or are written off as damaged when they are faulty.</p></li>
+        <li data-reveal><h3>An exchange in one sale</h3><p>What comes back pays for what the customer takes instead, and only the difference is paid or given back.</p></li>
+        <li data-reveal><h3>Paid the wrong way?</h3><p>Change how a receipt was paid without touching its amount. Who corrected it, and when, is kept.</p></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
 <!-- ================= the rest of the till ================= -->
 <section class="more" id="more">
   <div class="wrap">
     <div class="head" data-solid>
       <p class="eyebrow" data-reveal>Also on the till</p>
-      <h2 data-reveal="focus">The small things a service runs on. <span class="dim">Already there.</span></h2>
+      <h2 data-only="restaurant" data-reveal="focus">The small things a service runs on. <span class="dim">Already there.</span></h2>
+      <h2 data-only="shop" data-reveal="focus">The small things a shop's day runs on. <span class="dim">Already there.</span></h2>
     </div>
     <div class="bento" data-solid>
-      <article class="cell cell--wide" data-reveal>
+      <article class="cell cell--wide" data-only="shop" data-reveal>
+        <div class="crumb crumb--orders" aria-hidden="true">
+          <span><b>2</b>parked</span><span><b>Sale</b>3 lines<i>Rs 1,640</i></span><span><b>Sale</b>1 line<i>Rs 490</i></span>
+        </div>
+        <h3>Park a sale, serve the next</h3>
+        <p>A customer went back for one more thing? Park the sale and ring up the next one. The key at the top of the sale says how many are waiting, and a day does not close while one is unpaid.</p>
+      </article>
+      <article class="cell cell--wide" data-only="restaurant" data-reveal>
         <div class="crumb crumb--orders" aria-hidden="true">
           <span><b>A-12</b>Takeaway<i>19:55</i></span><span><b>D-3</b>Delivery<i>20:10</i></span><span><b>C-41</b>Counter<i>Paid</i></span>
         </div>
@@ -417,30 +692,46 @@
           <span class="wait"><i></i>3 sales waiting to sync</span><span class="ok"><i></i>Everything is synced</span>
         </div>
         <h3>It keeps selling when the internet drops</h3>
-        <p>Orders and payments are saved on the tablet and sent on when the connection returns. Printing runs on your own network or a USB cable, so it never waits for the internet.</p>
+        <p><span data-only="restaurant">Orders</span><span data-only="shop">Sales</span> and payments are saved on the tablet and sent on when the connection returns. Printing runs on your own network or a USB cable, so it never waits for the internet.</p>
       </article>
       <article class="cell" data-reveal>
         <div class="crumb crumb--pin" aria-hidden="true">
           <p>Refund Rs 320 · who approves?</p><div><i class="on"></i><i class="on"></i><i></i><i></i></div>
         </div>
         <h3>A second PIN for what matters</h3>
-        <p>A refund, a void after the kitchen has the order, a discount or opening the drawer can ask for a manager, who taps their name and enters their own PIN.</p>
+        <p data-only="restaurant">A refund, a void after the kitchen has the order, a discount or opening the drawer can ask for a manager, who taps their name and enters their own PIN.</p>
+        <p data-only="shop">A refund, a discount, a changed price or opening the drawer can ask for a manager, who taps their name and enters their own PIN. It is done in the cashier's name, with who approved it kept.</p>
       </article>
       <article class="cell" data-reveal>
         <div class="crumb crumb--cash" aria-hidden="true">
           <p><span>Rs 2,000 × 3</span><span>6,000</span></p><p><span>Rs 500 × 5</span><span>2,500</span></p><p><span>Rs 200 × 4</span><span>800</span></p><p class="sum"><span>Difference</span><span>Rs 0</span></p>
         </div>
         <h3>A drawer counted your way</h3>
-        <p>Type what you counted, or count note by note from Rs 2,000 down to Rs 1. Cash in, cash out, an X report at any time, and the Z report when you close.</p>
+        <p data-only="restaurant">Type what you counted, or count note by note from Rs 2,000 down to Rs 1. Cash in, cash out, an X report at any time, and the Z report when you close.</p>
+        <p data-only="shop">Type what you counted, or count note by note. Cash in and cash out print a slip for the drawer, a count is taken when the drawer changes hands, and the day closes on one.</p>
       </article>
-      <article class="cell" data-reveal>
+      <article class="cell" data-only="shop" data-reveal>
+        <div class="crumb crumb--out" aria-hidden="true">
+          <p><span>Scented candle</span><i class="tog"></i></p><p class="off"><span>Not on sale</span></p>
+        </div>
+        <h3>Off sale in one tap</h3>
+        <p>Something should not be sold today? Switch it off on Products &amp; stock. It cannot be rung up, by tile or by barcode, until it is switched back on.</p>
+      </article>
+      <article class="cell" data-only="restaurant" data-reveal>
         <div class="crumb crumb--out" aria-hidden="true">
           <p><span>Poisson grillé</span><i class="tog"></i></p><p class="off"><span>Sold out</span></p>
         </div>
         <h3>Sold out in one tap</h3>
         <p>Run out of the grilled fish? Switch it off on the till. It stays on the menu, greyed, until it is back.</p>
       </article>
-      <article class="cell" data-reveal>
+      <article class="cell" data-only="shop" data-reveal>
+        <div class="crumb crumb--clock" aria-hidden="true">
+          <p><span>Nadia R.</span><i>5 912 3456</i></p><p><span>Receipt 000214</span><i>Sent by WhatsApp</i></p><p class="off"><span>Kevin L.</span><i>kevin@…</i></p>
+        </div>
+        <h3>A customer on the sale</h3>
+        <p>Find a customer by name, phone or e-mail, or add a new one at the counter. Their name prints on the receipt, and the receipt can go to them by e-mail or WhatsApp.</p>
+      </article>
+      <article class="cell" data-only="restaurant" data-reveal>
         <div class="crumb crumb--lang" aria-hidden="true">
           <span class="is-on">English</span><span>Français</span><span>Kreol Morisien</span>
         </div>
@@ -454,7 +745,14 @@
         <h3>Clock in, clock out</h3>
         <p>Staff clock in with their PIN and sign their own sales. The back office turns the punches into a time-card report.</p>
       </article>
-      <article class="cell" data-reveal>
+      <article class="cell" data-only="shop" data-reveal>
+        <div class="crumb crumb--cash" aria-hidden="true">
+          <p><span>Polo shirt</span><span>Rs 890</span></p><p><span>New price</span><span>Rs 790</span></p><p class="sum"><span>On every till</span><span>at its next sync</span></p>
+        </div>
+        <h3>A new price from the counter</h3>
+        <p>Scan a product on Products &amp; stock and give it a new price. Every till in the shop has it at its next sync, and the back office keeps what it was.</p>
+      </article>
+      <article class="cell" data-only="restaurant" data-reveal>
         <div class="crumb crumb--stock" aria-hidden="true">
           <p><span>Alouda</span><i>24 left</i></p><p class="low"><span>Briani poulet</span><i>3 left</i></p><p><span>Local beer</span><i>41 left</i></p>
         </div>
@@ -470,7 +768,8 @@
   <div class="wrap">
     <div class="head" data-solid>
       <p class="eyebrow" data-reveal>Back office</p>
-      <h2 data-reveal="focus">Your restaurant, in your browser. <span class="dim">Change the menu tonight; the tablet has it at its next sync.</span></h2>
+      <h2 data-only="restaurant" data-reveal="focus">Your restaurant, in your browser. <span class="dim">Change the menu tonight; the tablet has it at its next sync.</span></h2>
+      <h2 data-only="shop" data-reveal="focus">Your shop, in your browser. <span class="dim">Change a price tonight; every till has it at its next sync.</span></h2>
     </div>
     <div class="stage stage--office" data-solid data-reveal>
       <div class="browser" aria-hidden="true">
@@ -480,19 +779,24 @@
             <p class="bo-brand"><img src="assets/mark.png" alt="">EasyPay</p>
             <a class="is-on">Dashboard</a>
             <h6>Reports</h6>
-            <a>Sales summary</a><a>Item sales</a><a>Order details</a><a>Tax</a><a>Sales periods</a><a>Day closing</a><a>Time cards</a><a>Receipts</a>
-            <h6>Menu</h6>
-            <a>Categories</a><a>Items</a><a>Add-ons</a><a>Taxes</a><a>Discounts</a><a>Stock</a>
-            <h6>Restaurant</h6>
-            <a>Tables</a><a>Bookings</a><a>Customers</a><a>Printers</a>
+            <a>Sales summary</a><a>Item sales</a><a data-only="shop">Stock reports</a><a data-only="restaurant">Order details</a><a>Tax</a><a data-only="restaurant">Sales periods</a><a>Day closing</a><a>Time cards</a><a>Receipts</a>
+            <h6 data-only="restaurant">Menu</h6>
+            <a data-only="restaurant">Categories</a><a data-only="restaurant">Items</a><a data-only="restaurant">Add-ons</a><a data-only="restaurant">Taxes</a><a data-only="restaurant">Discounts</a><a data-only="restaurant">Stock</a>
+            <h6 data-only="restaurant">Restaurant</h6>
+            <a data-only="restaurant">Tables</a><a data-only="restaurant">Bookings</a><a data-only="restaurant">Customers</a><a data-only="restaurant">Printers</a>
+            <h6 data-only="shop">Catalog</h6>
+            <a data-only="shop">Categories</a><a data-only="shop">Products</a><a data-only="shop">Import products</a><a data-only="shop">Barcode labels</a><a data-only="shop">Taxes</a><a data-only="shop">Discounts</a>
+            <h6 data-only="shop">Stock</h6>
+            <a data-only="shop">Stock on hand</a><a data-only="shop">Purchase orders</a><a data-only="shop">Suppliers</a><a data-only="shop">Counts</a><a data-only="shop">Movements</a>
           </aside>
           <div class="bo-main">
             <div class="bo-top"><div><b>Good evening</b><span>Tuesday 6 October</span></div><em>Today</em></div>
             <div class="bo-tiles">
               <div><span>Net sales</span><b>Rs 48,260</b><i class="up">12% on last Tuesday</i></div>
-              <div><span>Receipts</span><b>64</b><i>148 covers</i></div>
-              <div><span>Average check</span><b>Rs 754</b><i>per receipt</i></div>
-              <div><span>Open orders</span><b>5</b><i>Rs 8,867 not yet paid</i></div>
+              <div><span>Receipts</span><b>64</b><i data-only="restaurant">148 covers</i><i data-only="shop">171 items sold</i></div>
+              <div><span data-only="restaurant">Average check</span><span data-only="shop">Average sale</span><b>Rs 754</b><i>per receipt</i></div>
+              <div data-only="restaurant"><span>Open orders</span><b>5</b><i>Rs 8,867 not yet paid</i></div>
+              <div data-only="shop"><span>Running low</span><b>7</b><i>five or fewer left</i></div>
             </div>
             <div class="bo-row">
               <div class="bo-card bo-chart">
@@ -509,7 +813,14 @@
               </div>
               <div class="bo-card bo-top5">
                 <p><b>Best sellers</b><span>Today</span></p>
-                <ol>
+                <ol data-only="shop">
+                  <li><span>T-shirt</span><i style="--w:100%"></i><em>32</em></li>
+                  <li><span>Gel pen</span><i style="--w:88%"></i><em>28</em></li>
+                  <li><span>Notebook A5</span><i style="--w:69%"></i><em>22</em></li>
+                  <li><span>Canvas tote</span><i style="--w:47%"></i><em>15</em></li>
+                  <li><span>Polo shirt</span><i style="--w:34%"></i><em>11</em></li>
+                </ol>
+                <ol data-only="restaurant">
                   <li><span>Alouda</span><i style="--w:100%"></i><em>41</em></li>
                   <li><span>Mine frite poulet</span><i style="--w:93%"></i><em>38</em></li>
                   <li><span>Briani poulet</span><i style="--w:66%"></i><em>27</em></li>
@@ -522,7 +833,13 @@
         </div>
       </div>
     </div>
-    <div class="quarters" data-solid>
+    <div class="quarters" data-only="shop" data-solid>
+      <div data-reveal><h3>The catalog</h3><p>Products with their sizes and colours, cost and margin, barcodes and VAT. Bring them in from a spreadsheet and print barcode labels for the shelf.</p></div>
+      <div data-reveal><h3>The stock</h3><p>What you hold of every product, purchase orders to your suppliers, deliveries, counts and adjustments, with a movement kept for every change.</p></div>
+      <div data-reveal><h3>The numbers</h3><p>Sales, products, tax and day closing, the worth of your stock and what to reorder. Every report downloads as a spreadsheet file for your accountant.</p></div>
+      <div data-reveal><h3>The people</h3><p>A PIN for each member of staff, and roles that decide who may refund, discount, change a price, open the drawer or see the figures.</p></div>
+    </div>
+    <div class="quarters" data-only="restaurant" data-solid>
       <div data-reveal><h3>The menu</h3><p>Categories in your colours, items, add-ons and options, discounts. VAT at 15%, zero-rated and exempt items, with prices that include or exclude tax.</p></div>
       <div data-reveal><h3>The numbers</h3><p>Sales, items, orders, tax, sales periods, day closing and time cards. Every report downloads as a spreadsheet file for your accountant.</p></div>
       <div data-reveal><h3>The people</h3><p>A PIN for each member of staff, and roles that decide who may refund, discount, void, open the drawer or see the figures.</p></div>
@@ -538,9 +855,9 @@
       <p class="eyebrow" data-reveal>Getting started</p>
       <h2 data-reveal="focus">Three steps to your first sale.</h2>
       <ol class="steps">
-        <li data-reveal><h3>Book a demo</h3><p>We walk you through a full service on the till and show you the back office behind it.</p></li>
-        <li data-reveal><h3>We open your restaurant</h3><p>We create your account and your logins. You add the menu, the tables and the staff in the back office, at your own pace.</p></li>
-        <li data-reveal><h3>Install and sell</h3><p>Install EasyPay on your tablet, sign in, connect the printer and print a test page. The next ticket is a real one.</p></li>
+        <li data-reveal><h3>Book a demo</h3><p data-only="restaurant">We walk you through a full service on the till and show you the back office behind it.</p><p data-only="shop">We walk you through a sale, a return and a stock check on the till, and show you the back office behind it.</p></li>
+        <li data-reveal><h3 data-only="restaurant">We open your restaurant</h3><h3 data-only="shop">We open your shop</h3><p data-only="restaurant">We create your account and your logins. You add the menu, the tables and the staff in the back office, at your own pace.</p><p data-only="shop">We create your account and your logins. You bring in your products, their stock and the staff in the back office, at your own pace.</p></li>
+        <li data-reveal><h3>Install and sell</h3><p>Install EasyPay on your tablet, sign in, connect the printer and print a test page. The next <span data-only="restaurant">ticket</span><span data-only="shop">receipt</span> is a real one.</p></li>
       </ol>
     </div>
     <div class="kit" data-solid data-reveal>
@@ -548,9 +865,9 @@
       <dl>
         <div><dt>A tablet</dt><dd>Android 8 or later, used in landscape.<span>Required</span></dd></div>
         <div><dt>A receipt printer</dt><dd>ESC/POS, 58 mm or 80 mm paper, on your network or by USB cable.<span>Required</span></dd></div>
-        <div><dt>Kitchen and bar printers</dt><dd>The same kind, one for each place tickets should come out.<span>Optional</span></dd></div>
-        <div><dt>A cash drawer</dt><dd>Opened from the till, counted at the end of the sales period.<span>Optional</span></dd></div>
-        <div><dt>A barcode scanner</dt><dd>Any scanner that types like a keyboard, by USB or Bluetooth.<span>Optional</span></dd></div>
+        <div data-only="restaurant"><dt>Kitchen and bar printers</dt><dd>The same kind, one for each place tickets should come out.<span>Optional</span></dd></div>
+        <div><dt>A cash drawer</dt><dd>Opened from the till, and counted when the day closes.<span>Optional</span></dd></div>
+        <div><dt>A barcode scanner</dt><dd>Any scanner that types like a keyboard, by USB or Bluetooth.<span data-only="restaurant">Optional</span><span data-only="shop">Recommended</span></dd></div>
       </dl>
     </div>
   </div>
@@ -561,12 +878,13 @@
   <div class="wrap faq-grid">
     <div class="head" data-solid>
       <p class="eyebrow" data-reveal>Questions</p>
-      <h2 data-reveal="focus">What restaurants ask us first.</h2>
+      <h2 data-only="restaurant" data-reveal="focus">What restaurants ask us first.</h2>
+      <h2 data-only="shop" data-reveal="focus">What shops ask us first.</h2>
     </div>
     <div class="faq-list" data-solid>
       <details data-reveal>
         <summary>Does it work when the internet goes down?<svg class="ico"><use href="#i-plus"/></svg></summary>
-        <p>Yes. Orders and payments are saved on the tablet and sent to the back office when the connection returns. Printing goes over your own network or a USB cable and does not need the internet at all.</p>
+        <p>Yes. <span data-only="restaurant">Orders</span><span data-only="shop">Sales</span> and payments are saved on the tablet and sent to the back office when the connection returns. Printing goes over your own network or a USB cable and does not need the internet at all.</p>
       </details>
       <details data-reveal>
         <summary>Which printers does it work with?<svg class="ico"><use href="#i-plus"/></svg></summary>
@@ -576,17 +894,30 @@
         <summary>Can I take card payments?<svg class="ico"><use href="#i-plus"/></svg></summary>
         <p>Yes, alongside your card terminal. Take the payment on the terminal, then record it as a card payment on the till. The till does not talk to the terminal itself.</p>
       </details>
-      <details data-reveal>
+      <details data-only="shop" data-reveal>
+        <summary>Can I bring in the products I already have?<svg class="ico"><use href="#i-plus"/></svg></summary>
+        <p>Yes. The back office reads a spreadsheet of your products, with their sizes, colours, prices and barcodes, shows you what it understood and adds them in one go. After that, products and prices are yours to change there, and tills pick the changes up at their next sync.</p>
+      </details>
+      <details data-only="shop" data-reveal>
+        <summary>Do I need a barcode scanner?<svg class="ico"><use href="#i-plus"/></svg></summary>
+        <p>No, but it is faster with one. Every product has a tile to tap and can be found by its name. A scanner that types like a keyboard, by USB or Bluetooth, works as it is. Scanning with the tablet's camera is not supported yet.</p>
+      </details>
+      <details data-only="shop" data-reveal>
+        <summary>My products have no barcodes. Can it make them?<svg class="ico"><use href="#i-plus"/></svg></summary>
+        <p>Yes. The back office gives a product a barcode of its own and prints labels for it, on a sheet or on a roll, for you to stick on.</p>
+      </details>
+      <details data-only="restaurant" data-reveal>
         <summary>Can I change the menu and prices myself?<svg class="ico"><use href="#i-plus"/></svg></summary>
         <p>Yes. Categories, items, add-ons, taxes and prices are all yours to edit in the back office. Tablets pick the changes up at their next sync.</p>
       </details>
-      <details data-reveal>
+      <details data-only="restaurant" data-reveal>
         <summary>Which languages does the till speak?<svg class="ico"><use href="#i-plus"/></svg></summary>
         <p>English, French and Kreol Morisien. The language is chosen on the tablet, from the side menu, and can be changed at any time.</p>
       </details>
       <details data-reveal>
         <summary>How do I get an account?<svg class="ico"><use href="#i-plus"/></svg></summary>
-        <p>We open every account ourselves. Book a demo, and once you are happy we create your restaurant and your logins. From there the menu, the tables and the staff are yours to set up in the back office.</p>
+        <p data-only="restaurant">We open every account ourselves. Book a demo, and once you are happy we create your restaurant and your logins. From there the menu, the tables and the staff are yours to set up in the back office.</p>
+        <p data-only="shop">We open every account ourselves. Book a demo, and once you are happy we create your shop and your logins. From there the products, the stock and the staff are yours to set up in the back office.</p>
       </details>
     </div>
   </div>
@@ -599,15 +930,16 @@
       <div class="demo-copy">
         <p class="eyebrow" data-reveal>Book a demo</p>
         <h2 data-reveal="focus">Making it easier for you. <span class="dim">Starting with a look at the till.</span></h2>
-        <p class="demo-lede" data-reveal>Tell us about your restaurant and we will arrange a time to show you a full service, from the first table to the Z report.</p>
+        <p class="demo-lede" data-only="restaurant" data-reveal>Tell us about your restaurant and we will arrange a time to show you a full service, from the first table to the Z report.</p>
+        <p class="demo-lede" data-only="shop" data-reveal>Tell us about your shop and we will arrange a time to show you a full day, from the first scan to the close.</p>
         <p class="demo-direct" data-direct hidden data-reveal></p>
       </div>
       <form class="demo-form" data-demo-form novalidate data-reveal>
         <label>Your name<input name="name" type="text" autocomplete="name" required></label>
-        <label>Restaurant<input name="restaurant" type="text" autocomplete="organization" required></label>
+        <label><b data-only="restaurant">Restaurant</b><b data-only="shop">Shop</b><input name="business" type="text" autocomplete="organization" required></label>
         <label>Phone or WhatsApp<input name="phone" type="tel" autocomplete="tel" inputmode="tel" required></label>
-        <label>Anything we should know? <span>Optional</span><textarea name="note" rows="3" placeholder="Number of tables, takeaway or dine-in, printers you already have"></textarea></label>
-        <p class="form-error" role="alert" hidden>Add your name, your restaurant and a phone number so we can reach you.</p>
+        <label>Anything we should know? <span>Optional</span><textarea name="note" rows="3" placeholder="Number of tables, takeaway or dine-in, printers you already have" data-shop="What you sell, how many products, a scanner or printers you already have"></textarea></label>
+        <p class="form-error" role="alert" hidden>Add your name, your <span data-only="restaurant">restaurant</span><span data-only="shop">shop</span> and a phone number so we can reach you.</p>
         <div class="form-send">
           <button class="btn-demo btn-demo--light" type="submit" data-via="whatsapp" hidden>Send on WhatsApp <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></button>
           <button class="btn-demo btn-demo--light" type="submit" data-via="email">Send by e-mail <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></button>
@@ -624,22 +956,22 @@
   <div class="wrap foot-grid">
     <div class="foot-brand">
       <img src="assets/badge.png" alt="EasyPay. Making it easier for you." width="132" height="136">
-      <p>A point of sale for restaurants, made for Mauritius.</p>
+      <p>A point of sale for restaurants and shops, made for Mauritius.</p>
     </div>
     <nav aria-label="The till">
       <h4>The till</h4>
-      <a href="#floor">Front of house</a><a href="#kitchen">Kitchen and bar</a><a href="#payment">Payment</a><a href="#more">Takeaway and delivery</a>
+      <a href="#floor">Front of house</a><a href="#kitchen">Kitchen and bar</a><a href="#payment">Payment</a><a href="#selling">Selling in a shop</a><a href="#stock">Stock</a><a href="#returns">Returns</a>
     </nav>
     <nav aria-label="The back office">
       <h4>The back office</h4>
-      <a href="#backoffice">Menu and stock</a><a href="#backoffice">Reports</a><a href="#backoffice">Staff and roles</a><a data-signin hidden>Sign in</a>
+      <a href="#backoffice"><span data-only="restaurant">Menu and stock</span><span data-only="shop">Catalog and stock</span></a><a href="#backoffice">Reports</a><a href="#backoffice">Staff and roles</a><a data-signin hidden>Sign in</a>
     </nav>
     <nav aria-label="Start">
       <h4>Start</h4>
       <a href="#start">What you need</a><a href="#faq">Questions</a><a href="#demo">Book a demo</a>
     </nav>
   </div>
-  <div class="wrap foot-end"><span>© 2026 EasyPay</span><span>easypaypos.pages.dev</span></div>
+  <div class="wrap foot-end"><span>© 2026 EasyPay</span><span>easypaypos.com</span></div>
 </footer>
 
 <script src="js/config.js"></script>

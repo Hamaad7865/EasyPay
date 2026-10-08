@@ -44,6 +44,76 @@
   addEventListener("keydown", (e) => { if (e.key === "Escape" && !sheet.hidden) { openSheet(false); toggle.focus(); } });
   matchMedia("(min-width: 1081px)").addEventListener("change", () => openSheet(false));
 
+  // "Product" opens its panel under the pointer, or at a tap or a key press
+  const drop = $(".nav-drop");
+  if (drop) {
+    const key = $(".nav-key", drop);
+    let shut = 0, hovered = 0;
+    const isOpen = () => drop.classList.contains("is-open");
+    const open = (on) => {
+      clearTimeout(shut);
+      drop.classList.toggle("is-open", on);
+      key.setAttribute("aria-expanded", String(on));
+    };
+    if (mouse) {
+      drop.addEventListener("pointerenter", () => { hovered = Date.now(); open(true); });
+      drop.addEventListener("pointerleave", () => { shut = setTimeout(() => open(false), 180); });
+    }
+    // a click that follows the pointer's arrival is not a second wish to close it
+    key.addEventListener("click", () => { if (Date.now() - hovered > 400) open(!isOpen()); });
+    drop.addEventListener("click", (e) => { if (e.target.closest("a")) open(false); });
+    drop.addEventListener("focusout", (e) => { if (!drop.contains(e.relatedTarget)) open(false); });
+    document.addEventListener("click", (e) => { if (!drop.contains(e.target)) open(false); });
+    addEventListener("keydown", (e) => { if (e.key === "Escape" && isOpen()) { open(false); key.focus(); } });
+  }
+
+  // ---- a restaurant's page or a shop's ----
+  //
+  // <html data-for> says which, and the stylesheet shows the pieces marked for
+  // it (data-only). It is set before the page is drawn, by the script in the
+  // head. From here it changes when the visitor picks in the hero, or follows
+  // a link to a section that belongs to the other one.
+
+  const root = document.documentElement;
+  const picked = [];
+  const whose = () => (root.dataset.for === "shop" ? "shop" : "restaurant");
+  const note = $('textarea[name="note"]');
+  if (note) note.dataset.restaurant = note.placeholder;
+  const dress = () => {
+    for (const k of $$("[data-pick]")) k.setAttribute("aria-pressed", String(k.dataset.pick === whose()));
+    if (note) note.placeholder = note.dataset[whose()] || note.placeholder;
+  };
+  const setFor = (who) => {
+    if (who === whose()) return;
+    root.dataset.for = who;
+    try { localStorage.setItem("easypay-for", who); } catch (e) { /* a visit that keeps nothing still works */ }
+    dress();
+    for (const tell of picked) tell(who);
+    // the page is another height now: the dots behind it are laid out again
+    dispatchEvent(new Event("resize"));
+  };
+  dress();
+  for (const k of $$("[data-pick]")) {
+    k.addEventListener("click", () => {
+      setFor(k.dataset.pick);
+      // an address that can be sent to a shop's owner
+      history.replaceState(null, "", k.dataset.pick === "shop" ? "#shop" : location.pathname + location.search);
+    });
+  }
+  // a link to a section of the other one shows that one first, so the section is there to go to
+  const belongs = (hash) => {
+    if (hash === "#shop") return "shop";
+    const part = hash.length > 1 && document.getElementById(hash.slice(1));
+    const only = part && part.closest("[data-only]");
+    return only ? only.dataset.only : "";
+  };
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest('a[href^="#"]');
+    const who = a && belongs(a.getAttribute("href"));
+    if (who) setFor(who);
+  }, true);
+  addEventListener("hashchange", () => { const who = belongs(location.hash); if (who) setFor(who); });
+
   // the link of the part of the page being read
   const links = $$(".nav-links a");
   const parts = links.map((a) => $(a.getAttribute("href"))).filter(Boolean);
@@ -76,46 +146,548 @@
     for (const el of waiting) io.observe(el);
   }
 
-  // ---- the tablet: four screens of the till, turning on their own ----
+  // ---- the tablet: a sale played by itself ----
+  //
+  // A film of a few chapters for a restaurant, and another for a shop. A
+  // chapter is a list of things done one after the other: say a line, tap
+  // something (a dot shows where), change what the screen holds, wait. Each
+  // chapter first puts its screens back as they are written in the page, so it
+  // can be played on its own, from its key, and the film loops cleanly.
+  //
+  // It plays only while it is on screen and the tab is in front, and never for
+  // a visitor who asked for less motion: they get the screens as written, and
+  // the keys still turn them.
 
   (() => {
     const stage = $(".stage--hero");
     if (!stage) return;
-    const keys = $$(".switch button", stage);
-    const bar = $(".switch", stage);
-    const order = keys.map((k) => k.dataset.show);
-    const TURN = 5500;
-    let at = 0, timer = 0, auto = !still, inView = true;
-    bar.style.setProperty("--turn", TURN + "ms");
+    const body = $(".t-body", stage);
+    const cap = $(".film-cap", stage);
+    const hand = $(".f-hand", stage);
+    const sheet = $(".f-sheet", stage);
+    const slip = $(".f-slip", stage);
+    const pause = $(".film-pause", stage);
+    const screens = $$("[data-screen]", stage);
+    const written = new Map(screens.map((s) => [s.dataset.screen, s.innerHTML]));
+    const capWritten = cap.innerHTML;
+    const scr = (name) => screens.find((s) => s.dataset.screen === name);
+    const reset = (name) => { const s = scr(name); s.innerHTML = written.get(name); return s; };
+    const phone = matchMedia("(max-width: 620px)");
+    const rs = (n) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const again = (el, cls) => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
 
     const show = (name) => {
-      at = Math.max(0, order.indexOf(name));
-      for (const s of $$("[data-screen]", stage)) s.classList.toggle("is-on", s.dataset.screen === name);
-      for (const t of $$(".t-tab", stage)) t.classList.toggle("is-on", (t.dataset.for || "").split(" ").includes(name));
-      for (const k of keys) {
-        const on = k.dataset.show === name;
+      for (const s of screens) s.classList.toggle("is-on", s.dataset.screen === name);
+      for (const t of $$(".t-tab", stage)) t.classList.toggle("is-on", (t.dataset.of || "").split(" ").includes(name));
+    };
+    // on a phone half the tablet shows: it slides to the half where things happen
+    const look = (to) => {
+      if (!phone.matches) { stage.removeAttribute("data-look"); return; }
+      let side = to;
+      if (typeof to !== "string") {
+        const b = body.getBoundingClientRect(), r = to.getBoundingClientRect();
+        side = (r.left + r.width / 2 - b.left) / b.width > 0.52 ? "right" : "left";
+      }
+      stage.dataset.look = side;
+    };
+    const lay = (html, where) => { sheet.innerHTML = html; sheet.classList.toggle("left", where === "left"); sheet.classList.add("is-up"); look(where === "left" ? "left" : "right"); };
+    const print = (html) => { $(".paper", slip).innerHTML = html; slip.classList.add("is-out"); look("right"); };
+    const clear = () => {
+      sheet.classList.remove("is-up");
+      slip.classList.remove("is-out");
+      hand.classList.remove("is-on", "is-down");
+      // a run stopped between two lines must not leave the line faded out
+      cap.classList.remove("is-turning");
+    };
+
+    // a run of the film stops at its next wait once another has begun
+    let turn = 0;
+    const STOP = {};
+    const player = (mine) => {
+      const wait = (ms) => new Promise((ok) => setTimeout(ok, ms)).then(() => { if (mine !== turn) throw STOP; });
+      return {
+        wait,
+        say: async (words) => {
+          cap.classList.add("is-turning");
+          await wait(200);
+          cap.textContent = words;
+          cap.classList.remove("is-turning");
+        },
+        tap: async (el, after = 280) => {
+          look(el);
+          const b = body.getBoundingClientRect(), r = el.getBoundingClientRect();
+          hand.style.left = ((r.left + r.width / 2 - b.left) / b.width) * 100 + "%";
+          hand.style.top = ((r.top + r.height / 2 - b.top) / b.height) * 100 + "%";
+          hand.classList.add("is-on");
+          await wait(660);
+          hand.classList.add("is-down");
+          again(el, "is-tapped");
+          await wait(170);
+          hand.classList.remove("is-down");
+          await wait(after);
+        },
+      };
+    };
+
+    // ---- what both tills share: a payment in cash, and the paper ----
+
+    const paySheet = (who, due, given) => `
+      <p class="v-kicker">${who}</p><p class="v-due">Rs ${rs(due)}</p>
+      <div class="v-types"><span class="is-on">Cash</span><span>Card</span><span>Transfer</span></div>
+      <div class="f-given"><span>Exact</span>${given.map((g) => `<span data-given="${g}">${g.toLocaleString("en-US")}</span>`).join("")}</div>
+      <p class="f-change"><span>Change</span><b>Rs 0.00</b></p>
+      <div class="v-charge">Charge Rs ${rs(due)}</div>`;
+    const takeCash = async (f, who, due, given, gave) => {
+      lay(paySheet(who, due, given));
+      await f.wait(650);
+      const key = $(`[data-given="${gave}"]`, sheet);
+      await f.tap(key, 120);
+      key.classList.add("is-on");
+      const change = $(".f-change", sheet);
+      $("b", change).textContent = "Rs " + rs(gave - due);
+      change.classList.add("is-in");
+      await f.say("The change to give is worked out.");
+      await f.wait(500);
+      const charge = $(".v-charge", sheet);
+      await f.tap(charge, 100);
+      charge.classList.add("is-paid");
+      charge.textContent = "Paid · change Rs " + rs(gave - due);
+    };
+    const row = (a, b, cls = "") => `<p class="p-row${cls}"><span>${a}</span><span>${b}</span></p>`;
+
+    // ---- a restaurant: table 2 ----
+
+    const DISHES = { "Mine frite poulet": 220, "Briani poulet": 290, "Cari poulet": 280 };
+    const ORDER = [["Mine frite poulet", 2], ["Briani poulet", 1], ["Cari poulet", 1]];
+    const tile = (s, name) => $$(".t-item", s).find((t) => $("b", t).textContent === name);
+    const lineOf = (s, name) => $$(".t-line", s).find((l) => l.dataset.name === name);
+
+    // the order screen as table 2's, holding these dishes
+    const table2 = (dishes, sentAt) => {
+      const o = reset("order");
+      $(".t-ticket header b", o).textContent = "Table 2";
+      const box = $(".t-lines", o);
+      box.innerHTML = dishes.length ? "" : `<p class="t-empty">Tap a dish to start the order</p>`;
+      for (const [name, qty] of dishes) dish(o, name, qty, false);
+      if (sentAt) sent(o, sentAt);
+      return o;
+    };
+    const bill = (o) => {
+      const sub = $$(".t-line", o).reduce((n, l) => n + Number(l.dataset.qty) * DISHES[l.dataset.name], 0);
+      const out = $$(".t-sum span:last-child", o);
+      out[0].textContent = rs(sub);
+      out[1].textContent = rs(sub * 0.1);
+      out[2].textContent = "Rs " + rs(sub * 1.1);
+      return sub * 1.1;
+    };
+    // one more of a dish on the order: a new line, or one more on its line
+    const dish = (o, name, qty = 1, lively = true) => {
+      const box = $(".t-lines", o);
+      const empty = $(".t-empty", box);
+      if (empty) box.innerHTML = `<p class="t-group new">New</p>`;
+      else if (!$(".t-group", box)) box.insertAdjacentHTML("afterbegin", `<p class="t-group new">New</p>`);
+      let line = lineOf(o, name);
+      if (!line) {
+        box.insertAdjacentHTML("beforeend", `<div class="t-line${lively ? " is-new" : ""}" data-name="${name}" data-qty="0"><span class="q"></span><span class="n">${name}</span><span class="p"></span></div>`);
+        line = box.lastElementChild;
+      } else if (lively) again($(".q", line), "is-bump");
+      line.dataset.qty = Number(line.dataset.qty) + qty;
+      $(".q", line).textContent = line.dataset.qty;
+      $(".p", line).textContent = rs(line.dataset.qty * DISHES[name]);
+      bill(o);
+      if (lively) again($(".t-sum.total span:last-child", o), "is-bump");
+    };
+    const sent = (o, at) => {
+      const group = $(".t-group", o);
+      group.className = "t-group";
+      group.textContent = "Sent to the kitchen · " + at;
+      for (const l of $$(".t-line", o)) l.classList.add("sent");
+    };
+
+    // ---- a shop: one sale ----
+
+    const GOODS = {
+      "Polo shirt": { price: 890, had: 12, variant: "M · Navy" },
+      "Canvas tote": { price: 450, had: 5 },
+      "Notebook A5": { price: 150, had: 3 },
+    };
+    const SALE = [["Polo shirt", 1], ["Canvas tote", 1], ["Notebook A5", 2]];
+    // the sell screen holding these products, with this much off the sale
+    const sale = (goods, off = 0) => {
+      const s = reset("sell");
+      $(".t-lines", s).innerHTML = goods.length ? "" : `<p class="t-empty">Scan a product to start</p>`;
+      for (const name of Object.keys(GOODS)) left(s, name, 0);
+      for (const [name, qty] of goods) ring(s, name, qty, false);
+      discount(s, off, false);
+      return s;
+    };
+    // what a tile says is left of its product, once this many are on the sale
+    const left = (s, name, sold, lively) => {
+      const badge = $(".t-left", tile(s, name));
+      const n = GOODS[name].had - sold;
+      badge.textContent = n > 0 ? n + " left" : "Out";
+      badge.classList.toggle("few", n > 0 && n <= 5);
+      badge.classList.toggle("none", n <= 0);
+      if (lively) again(badge, "is-bump");
+    };
+    const total = (s) => {
+      const sub = $$(".t-line", s).reduce((n, l) => n + Number(l.dataset.qty) * GOODS[l.dataset.name].price, 0);
+      const off = Number(s.dataset.off || 0);
+      const out = $$(".t-sum span:last-child", s);
+      out[0].textContent = rs(sub);
+      out[1].textContent = "−" + rs((sub * off) / 100);
+      out[2].textContent = "Rs " + rs(sub * (1 - off / 100));
+      $(".pay", s).textContent = sub ? "Pay Rs " + rs(sub * (1 - off / 100)) : "Pay";
+      return sub * (1 - off / 100);
+    };
+    // one more of a product on the sale: a new line, or one more on its line
+    const ring = (s, name, qty = 1, lively = true) => {
+      const box = $(".t-lines", s);
+      const empty = $(".t-empty", box);
+      if (empty) empty.remove();
+      let line = lineOf(s, name);
+      if (!line) {
+        const v = GOODS[name].variant;
+        box.insertAdjacentHTML("beforeend", `<div class="t-line${lively ? " is-new" : ""}" data-name="${name}" data-qty="0"><span class="q"></span><span class="n">${name}${v ? `<small>${v}</small>` : ""}</span><span class="p"></span></div>`);
+        line = box.lastElementChild;
+      } else if (lively) again($(".q", line), "is-bump");
+      line.dataset.qty = Number(line.dataset.qty) + qty;
+      $(".q", line).textContent = line.dataset.qty;
+      $(".p", line).textContent = rs(line.dataset.qty * GOODS[name].price);
+      left(s, name, Number(line.dataset.qty), lively);
+      total(s);
+      if (lively) again($(".t-sum.total span:last-child", s), "is-bump");
+    };
+    const discount = (s, off, lively = true) => {
+      s.dataset.off = off;
+      const key = $(".disc", s);
+      key.textContent = off ? `Discount · ${off}% off` : "Discount on sale";
+      key.classList.toggle("is-set", !!off);
+      const line = $(".t-sum.off", s);
+      line.hidden = !off;
+      $("span", line).textContent = `Discount ${off}%`;
+      total(s);
+      if (lively) again($(".t-sum.total span:last-child", s), "is-bump");
+    };
+    // a scanner types a barcode into the box, and the till acts on it
+    const scan = async (f, find, code) => {
+      look(find);
+      const box = $(".t-search", find), idle = box.textContent;
+      find.classList.add("is-scan");
+      box.textContent = code;
+      await f.wait(560);
+      find.classList.remove("is-scan");
+      box.textContent = idle;
+    };
+
+    // ---- the chapters ----
+
+    const CHAPTERS = {
+      seat: { ms: 5200, screen: "floor", play: async (f) => {
+        const floor = reset("floor");
+        show("floor");
+        await f.say("A party of three walks in. Tap a free table.");
+        await f.wait(500);
+        const t2 = $$(".t-plan .tb", floor).find((t) => $("b", t).textContent === "2");
+        await f.tap(t2);
+        t2.classList.replace("free", "seated");
+        t2.innerHTML = "<b>2</b><i>3 covers</i><u>Just seated</u>";
+        $(".t-areas .is-on b", floor).textContent = "6/11";
+        await f.wait(1100);
+      } },
+      order: { ms: 9600, screen: "order", play: async (f) => {
+        const o = table2([]);
+        show("order");
+        await f.say("Tap what they ask for. The bill adds itself up.");
+        for (const [name, qty] of ORDER) {
+          for (let n = 0; n < qty; n++) { await f.tap(tile(o, name), 160); dish(o, name); look("left"); await f.wait(380); }
+        }
+        await f.wait(500);
+      } },
+      kitchen: { ms: 11200, screen: "kitchen", play: async (f) => {
+        const o = table2(ORDER);
+        show("order");
+        await f.say("One tap sends it. Each dish prints where it is made.");
+        await f.wait(300);
+        await f.tap($(".send", o), 120);
+        sent(o, "19:42");
+        print(`<p class="p-head">KITCHEN</p>${row("Table 2", "3 covers")}${row("19:42", "Priya")}<hr>
+          <p class="p-item"><b>2</b>Mine frite poulet</p><p class="p-item"><b>1</b>Briani poulet</p><p class="p-item"><b>1</b>Cari poulet</p><hr>`);
+        await f.wait(2300);
+        clear();
+        const k = reset("kitchen");
+        $(".t-tickets", k).insertAdjacentHTML("afterbegin", `<article class="t-tk is-fresh">
+          <header><b>Table 2</b><span>3 covers · Priya</span><em>00:04</em></header>
+          <ul><li><i>2</i><span>Mine frite poulet</span></li><li><i>1</i><span>Briani poulet</span></li><li><i>1</i><span>Cari poulet</span></li></ul>
+          <footer>Bump</footer></article>`);
+        show("kitchen");
+        look("left");
+        await f.say("The kitchen screen has it too, with a clock on every ticket.");
+        const fresh = $(".t-tk.is-fresh", k), clock = $("header em", fresh);
+        for (let s = 5; s <= 8; s++) { await f.wait(700); clock.textContent = "00:0" + s; }
+        const first = $("li", fresh);
+        await f.tap(first, 100);
+        first.classList.add("done");
+        await f.wait(900);
+      } },
+      pay: { ms: 12400, screen: "order", play: async (f) => {
+        const o = table2(ORDER, "19:42");
+        show("order");
+        await f.say("They ask for the bill. Cash, card, or split between them.");
+        await f.wait(400);
+        await f.tap($(".pay", o), 100);
+        await takeCash(f, "Table 2 · 3 covers", 1111, [1200, 1500, 2000], 1200);
+        print(`<p class="p-head">YOUR RESTAURANT</p><hr>${row("Table 2", "20:31")}<hr>
+          ${row("2 Mine frite poulet", "440.00")}${row("1 Briani poulet", "290.00")}${row("1 Cari poulet", "280.00")}<hr>
+          ${row("Service charge 10%", "101.00")}${row("TOTAL", "Rs 1,111.00", " p-total")}${row("Cash", "1,200.00")}${row("Change", "89.00")}<p class="p-foot">Thank you</p>`);
+        await f.say("The receipt prints, and the table is free for the next party.");
+        await f.wait(2600);
+        clear();
+        reset("floor");
+        show("floor");
+        look("left");
+        await f.wait(1100);
+      } },
+      takeaway: { ms: 6400, screen: "board", play: async (f) => {
+        const b = reset("board");
+        show("board");
+        await f.say("Takeaway and delivery wait on their own board, each with the time it is due.");
+        await f.wait(900);
+        const cols = $$(".t-col", b), card = $(".t-card", cols[0]);
+        await f.tap(card, 120);
+        $(".t-card", cols[1]).before(card);
+        again(card, "is-moved");
+        $("h6 b", cols[0]).textContent = "2";
+        $("h6 b", cols[1]).textContent = "3";
+        await f.wait(1500);
+      } },
+
+      scan: { ms: 10400, screen: "sell", play: async (f) => {
+        const s = sale([]);
+        show("sell");
+        await f.say("Scan a barcode, or tap a tile. The sale builds itself.");
+        await f.wait(500);
+        const find = $(".t-find", s);
+        for (const [name, code] of [["Polo shirt", "6 009 880 124 573"], ["Canvas tote", "6 009 880 204 182"]]) {
+          await scan(f, find, code);
+          ring(s, name);
+          look("left");
+          await f.wait(900);
+        }
+        await f.say("Every tile says what is left of its product.");
+        for (let n = 0; n < 2; n++) { await f.tap(tile(s, "Notebook A5"), 420); ring(s, "Notebook A5"); }
+        look("left");
+        await f.wait(900);
+      } },
+      discount: { ms: 7400, screen: "sell", play: async (f) => {
+        const s = sale(SALE);
+        show("sell");
+        await f.say("A discount on the whole sale, or on a single line.");
+        await f.wait(400);
+        await f.tap($(".disc", s), 100);
+        lay(`<p class="v-kicker">Discount on sale</p><div class="f-pick"><span>10% off</span><span>20% off</span><span>Another percentage</span><span>Rupees off</span></div>`, "left");
+        await f.wait(650);
+        const ten = $(".f-pick span", sheet);
+        await f.tap(ten, 100);
+        ten.classList.add("is-on");
+        await f.wait(350);
+        clear();
+        discount(s, 10);
+        await f.say("It comes off every line in proportion, and the total follows.");
+        await f.wait(1500);
+      } },
+      charge: { ms: 12000, screen: "sell", play: async (f) => {
+        const s = sale(SALE, 10);
+        show("sell");
+        await f.say("Cash: tap what the customer gave.");
+        await f.wait(400);
+        await f.tap($(".pay", s), 100);
+        await takeCash(f, "Sale · 4 items", 1476, [1500, 2000, 5000], 2000);
+        print(`<p class="p-head">YOUR SHOP</p><hr>${row("Receipt 000214", "15:42")}<hr>
+          ${row("1 Polo shirt M Navy", "890.00")}${row("1 Canvas tote", "450.00")}${row("2 Notebook A5", "300.00")}<hr>
+          ${row("Discount 10%", "-164.00")}${row("TOTAL", "Rs 1,476.00", " p-total")}${row("Cash", "2,000.00")}${row("Change", "524.00")}
+          <div class="p-bars"></div><p class="p-code">000214</p>`);
+        await f.say("The receipt prints with a barcode at its foot.");
+        await f.wait(2700);
+        clear();
+        sale([]);
+        look("left");
+        await f.wait(700);
+      } },
+      "return": { ms: 12600, screen: "receipts", play: async (f) => {
+        const r = reset("receipts");
+        const open = $(".t-ropen", r), whole = open.innerHTML;
+        const first = $(".t-rlist li", r);
+        first.classList.remove("is-on");
+        open.innerHTML = `<p class="t-wait">Scan the barcode at the foot of a receipt, or tap one in the list.</p>`;
+        show("receipts");
+        look("left");
+        await f.say("A customer is back with the shirt. Scan the receipt and it opens.");
+        await f.wait(800);
+        await scan(f, $(".t-find", r), "000214");
+        first.classList.add("is-on");
+        open.innerHTML = whole;
+        look("right");
+        await f.wait(1000);
+        await f.tap($(".refund", open), 100);
+        $("footer", open).outerHTML = `<div class="t-refund"><p><b>Refund Rs 1,476.00</b><span>Cash · put back into stock</span></p><span class="go">Refund</span></div>`;
+        await f.say("Take off what the customer keeps.");
+        const lines = $$(".t-rlines .t-line", open), sum = $(".t-refund b", open);
+        for (const [i, amount] of [[1, "1,071.00"], [2, "801.00"]]) {
+          await f.tap(lines[i], 100);
+          lines[i].classList.add("kept");
+          sum.textContent = "Refund Rs " + amount;
+          again(sum, "is-bump");
+        }
+        await f.wait(300);
+        await f.tap($(".go", open), 100);
+        const chip = $(".t-chip", open);
+        chip.textContent = "Refunded Rs 801.00";
+        chip.classList.add("back");
+        $(".t-refund", open).innerHTML = `<p><b>Rs 801.00 given back</b><span>The polo shirt is back in stock</span></p>`;
+        await f.say("The money goes back, and the shirt goes back into stock.");
+        await f.wait(1700);
+      } },
+    };
+    const FILMS = { restaurant: ["seat", "order", "kitchen", "pay", "takeaway"], shop: ["scan", "discount", "charge", "return"] };
+
+    // ---- the player ----
+
+    let at = 0, paused = false, inView = false;
+    const bars = $$(".switch", stage);
+    const light = (name) => {
+      for (const k of $$(".switch button", stage)) {
+        const on = k.dataset.chapter === name;
         k.classList.toggle("is-on", on);
         k.setAttribute("aria-pressed", String(on));
       }
     };
-    const run = () => {
-      clearTimeout(timer);
-      const go = auto && inView && !document.hidden;
-      bar.classList.toggle("is-auto", go);
-      if (go) timer = setTimeout(() => { show(order[(at + 1) % order.length]); restart(); }, TURN);
+    // the lit key fills up over the length of its chapter
+    const fill = (ms) => {
+      for (const b of bars) {
+        b.classList.remove("is-auto");
+        if (!ms) continue;
+        b.style.setProperty("--turn", ms + "ms");
+        void b.offsetWidth;
+        b.classList.add("is-auto");
+      }
     };
-    // the lit key's bar starts again from empty
-    const restart = () => { bar.classList.remove("is-auto"); void bar.offsetWidth; run(); };
-    // once someone picks a screen, the tablet stops turning by itself
-    const pick = (name) => { auto = false; show(name); run(); };
+    const play = async () => {
+      const mine = ++turn;
+      clear();
+      fill(0);
+      const names = FILMS[whose()];
+      at %= names.length;
+      light(names[at]);
+      if (still) { show(CHAPTERS[names[at]].screen); return; }
+      if (paused || !inView || document.hidden) return;
+      const f = player(mine);
+      try {
+        for (;;) {
+          const chapter = CHAPTERS[names[at]];
+          light(names[at]);
+          fill(chapter.ms);
+          const began = performance.now();
+          await chapter.play(f);
+          await f.wait(Math.max(400, chapter.ms - (performance.now() - began)));
+          clear();
+          at = (at + 1) % names.length;
+        }
+      } catch (e) {
+        if (e !== STOP) throw e;
+      }
+    };
+    const setPaused = (on) => {
+      paused = on;
+      pause.setAttribute("aria-pressed", String(on));
+      $("use", pause).setAttribute("href", on ? "#i-play" : "#i-pause");
+      $("span", pause).textContent = on ? "Play" : "Pause";
+    };
 
-    for (const k of keys) k.addEventListener("click", () => pick(k.dataset.show));
-    for (const el of $$("[data-go]", stage)) el.addEventListener("click", () => pick(el.dataset.go));
-    document.addEventListener("visibilitychange", restart);
-    if ("IntersectionObserver" in window) {
-      new IntersectionObserver(([e]) => { inView = e.isIntersecting; restart(); }, { threshold: 0.35 }).observe(stage);
+    for (const k of $$(".switch button", stage)) {
+      k.addEventListener("click", () => {
+        at = FILMS[whose()].indexOf(k.dataset.chapter);
+        setPaused(false);
+        play();
+      });
     }
-    run();
+    pause.addEventListener("click", () => { setPaused(!paused); play(); });
+    pause.hidden = still;
+    // the other kind of business: its film from the start, and the line as written until it speaks
+    picked.push(() => { at = 0; cap.innerHTML = capWritten; for (const s of screens) reset(s.dataset.screen); show(whose() === "shop" ? "sell" : "floor"); play(); });
+    document.addEventListener("visibilitychange", play);
+    if ("IntersectionObserver" in window) {
+      new IntersectionObserver(([e]) => { inView = e.isIntersecting; play(); }, { threshold: 0.3 }).observe(stage);
+    } else {
+      inView = true;
+      play();
+    }
+  })();
+
+  // ---- smaller movement in the sections, only while each is on screen ----
+
+  (() => {
+    if (still || !("IntersectionObserver" in window)) return;
+    // calls `step(n)` every `ms` while `el` is on screen, counting from 0 each time it comes back
+    const live = (el, ms, step) => {
+      if (!el) return;
+      let timer = 0, n = 0;
+      new IntersectionObserver(([e]) => {
+        clearInterval(timer);
+        el.classList.toggle("is-live", e.isIntersecting);
+        if (e.isIntersecting) { n = 0; step(0); timer = setInterval(() => step(++n), ms); }
+      }, { threshold: 0.35 }).observe(el);
+    };
+    const bump = (el) => { el.classList.remove("is-bump"); void el.offsetWidth; el.classList.add("is-bump"); };
+
+    // the kitchen: the ticket's clock runs, and a line is ticked when it is done
+    const tk = $(".v-kitchen .t-tk");
+    if (tk) {
+      const clock = $("header em", tk), lines = $$("li", tk);
+      live(tk, 1000, (n) => {
+        const s = 571 + (n % 8);
+        clock.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+        lines[1].classList.toggle("done", n % 8 >= 4);
+      });
+    }
+
+    // a split bill: the last share is paid, and the bill is settled
+    const box = $(".v-pay:not(.v-return) .v-paybox");
+    if (box) {
+      const last = $(".v-shares li:last-child", box), charge = $(".v-charge", box);
+      const due = last.innerHTML, ask = charge.textContent;
+      live(box, 2400, (n) => {
+        const paid = n % 2 === 1;
+        last.className = paid ? "paid" : "now";
+        last.innerHTML = paid ? `<b>3</b><span>Card</span><em>612.34</em><svg class="ico"><use href="#i-check"/></svg>` : due;
+        charge.textContent = paid ? "Paid in full" : ask;
+      });
+    }
+
+    // a product with sizes: one is picked, and the key says which
+    const sizes = $('[data-loop="size"]');
+    if (sizes) {
+      const chips = $$("span:not(.none)", sizes), says = $("[data-loop-says]");
+      live(sizes, 1700, (n) => {
+        const on = chips[(n + 1) % chips.length];
+        for (const c of chips) c.classList.toggle("is-on", c === on);
+        says.textContent = on.firstChild.textContent;
+      });
+    }
+
+    // stock: every sale takes one, and the figure turns amber when few are left
+    const count = $('[data-loop="stock"] [data-count]');
+    if (count) {
+      live(count.closest("ul"), 1300, (n) => {
+        const left = 12 - (n % 10);
+        count.textContent = left;
+        count.parentNode.classList.toggle("few", left <= 5);
+        if (n) bump(count);
+      });
+    }
+
+    // the scanner's line over a receipt's barcode is the stylesheet's, while this is set
+    live($(".v-return"), 60000, () => {});
   })();
 
   // ---- the demo form: writes the message, the visitor's own app sends it ----
@@ -134,25 +706,27 @@
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       const via = (e.submitter && e.submitter.dataset.via) || (digits ? "whatsapp" : "email");
-      const need = ["name", "restaurant", "phone"].map((n) => form.elements[n]);
+      const need = ["name", "business", "phone"].map((n) => form.elements[n]);
       const missing = need.filter((f) => !f.value.trim());
       for (const f of need) f.classList.toggle("is-missing", missing.includes(f));
       error.hidden = !missing.length;
       if (missing.length) { missing[0].focus(); return; }
 
       const v = (n) => form.elements[n].value.trim();
+      // the message says which till to show: a restaurant's or a shop's
+      const shop = whose() === "shop";
       const text = [
-        "Hello EasyPay, I would like a demo.",
+        `Hello EasyPay, I would like a demo for my ${shop ? "shop" : "restaurant"}.`,
         "",
         `Name: ${v("name")}`,
-        `Restaurant: ${v("restaurant")}`,
+        `${shop ? "Shop" : "Restaurant"}: ${v("business")}`,
         `Phone: ${v("phone")}`,
         v("note") ? `Note: ${v("note")}` : "",
       ].filter((line, i) => line || i === 1).join("\n");
 
       location.href = via === "whatsapp" && digits
         ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
-        : `mailto:${cfg.email}?subject=${encodeURIComponent("Demo for " + v("restaurant"))}&body=${encodeURIComponent(text)}`;
+        : `mailto:${cfg.email}?subject=${encodeURIComponent("Demo for " + v("business"))}&body=${encodeURIComponent(text)}`;
     });
     form.addEventListener("input", (e) => e.target.classList.remove("is-missing"));
   })();

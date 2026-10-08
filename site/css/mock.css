@@ -308,6 +308,146 @@
 .bo-top5 li i { grid-column: 1 / -1; height: 0.4em; border-radius: 1em; background: linear-gradient(90deg, #3f8443 var(--w), #e8f3e8 var(--w)); }
 .bo-top5 li em { grid-row: 1; grid-column: 2; font-weight: 700; }
 
+/* ---- a shop's till: the sale down the left, the products on the right ---- */
+
+/* the sell screen is the order screen's two columns with a shop's words */
+.t-cust { padding: 0.6em 0.95em; border-radius: 0.8em; background: var(--t-bg); font-size: 0.86em; font-weight: 600; color: var(--t-text2); }
+.t-find { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.55em; }
+.t-find .t-search { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background-color 0.25s, box-shadow 0.25s, color 0.25s; }
+.t-scan { width: 3.2em; border-radius: 0.9em; background: var(--t-key); display: grid; place-items: center; color: var(--t-text2); transition: background-color 0.25s, color 0.25s; }
+.t-scan .ico { width: 1.55em; height: 1.55em; stroke-width: 2; }
+/* a barcode was read: for a moment the box holds what the scanner typed */
+.t-find.is-scan .t-search { background: var(--t-greenwash); box-shadow: inset 0 0 0 0.12em var(--t-green); color: var(--t-greentext); font-family: var(--mono); letter-spacing: 0.14em; }
+.t-find.is-scan .t-scan { background: var(--t-green); color: #fff; }
+/* what is left of a product: amber when few are left, red when it is out */
+.t-left { margin-top: auto; align-self: flex-start; padding: 0.28em 0.6em; border-radius: 0.5em; background: var(--t-greenwash); color: var(--t-greentext); font-size: 0.68em; font-weight: 800; letter-spacing: 0.03em; transition: background-color 0.3s, color 0.3s; }
+.t-left.few { background: #3a2a08; color: var(--t-ambertext); }
+.t-left.none { background: #3a1c1e; color: #ff8a8e; }
+.t-sell .t-keys:not(.big) { grid-template-columns: 1fr 1.55fr 0.75fr; }
+.t-keys.big.one { grid-template-columns: 1fr; }
+.t-keys .disc.is-set { background: var(--t-greenwash); color: var(--t-greentext); }
+.t-sum.off { color: var(--t-greentext); }
+.t-empty { margin: 2.6em 0 0; text-align: center; font-size: 0.95em; color: var(--t-text3); }
+
+/* a shop's receipts: the list, and the one that is open */
+.t-rcpts { display: grid; grid-template-columns: 27em minmax(0, 1fr); }
+.t-rlist { display: flex; flex-direction: column; gap: 0.9em; min-height: 0; padding: 1.3em; background: var(--t-panel); border-right: 1px solid var(--t-hline); }
+.t-rlist ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.5em; }
+.t-rlist li { display: grid; grid-template-columns: 1fr auto; column-gap: 0.6em; row-gap: 0.1em; padding: 0.72em 0.9em; border-radius: 0.8em; background: var(--t-bg); box-shadow: inset 0 0 0 1px var(--t-stroke); transition: background-color 0.3s, box-shadow 0.3s; }
+.t-rlist li b { font-family: var(--mono); font-weight: 500; font-size: 0.98em; }
+.t-rlist li span { grid-column: 1; font-size: 0.78em; color: var(--t-text2); }
+.t-rlist li em { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 0.92em; font-weight: 700; }
+.t-rlist li.is-on { background: #222e26; box-shadow: inset 0 0 0 0.12em var(--t-green); }
+.t-ropen { display: flex; flex-direction: column; min-width: 0; padding: 1.3em 1.5em 1.5em; }
+.t-ropen header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 1em; border-bottom: 1px solid var(--t-row); }
+.t-ropen header b { display: block; font-size: 1.3em; }
+.t-ropen header span { font-size: 0.8em; color: var(--t-text2); }
+.t-chip { padding: 0.42em 0.95em; border-radius: 2em; background: var(--t-greenwash); color: var(--t-greentext); font-size: 0.82em; font-weight: 700; }
+.t-chip.back { background: var(--t-violetwash); color: var(--t-violettext); }
+.t-rlines { flex: 1; min-height: 0; padding-top: 0.4em; }
+.t-rlines .t-line { transition: opacity 0.3s; }
+/* in a refund, what the customer keeps is taken off */
+.t-rlines .t-line.kept { opacity: 0.36; }
+.t-rlines .t-line.kept .n { text-decoration: line-through; }
+.t-rlines .t-sum:first-of-type { margin-top: 0.7em; }
+.t-keys .refund { background: var(--t-amber); color: var(--t-amberink); font-weight: 800; }
+.t-wait { margin: auto; max-width: 21em; text-align: center; font-size: 1.02em; line-height: 1.45; color: var(--t-text3); }
+.t-refund { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 1em; padding: 0.85em 0.85em 0.85em 1.2em; border-radius: 1em; background: var(--t-panel); box-shadow: inset 0 0 0 1px var(--t-stroke); }
+.t-refund b { display: block; font-size: 1.3em; }
+.t-refund span { font-size: 0.8em; color: var(--t-text2); }
+.t-refund .go { padding: 1em 1.7em; border-radius: 0.8em; background: var(--t-amber); color: var(--t-amberink); font-size: 1em; font-weight: 800; }
+
+/* ---- what the film lays over the tablet's screens ---- */
+
+/* something just rung up, pressed, or changed */
+.t-line.is-new { animation: line-in 0.5s var(--out) both; }
+@keyframes line-in { from { opacity: 0; transform: translateX(-0.9em); } }
+.is-tapped { animation: tapped 0.42s var(--out); }
+@keyframes tapped { 30% { filter: brightness(1.55); } }
+.is-bump { animation: bump 0.45s var(--out); }
+@keyframes bump { 35% { transform: scale(1.16); } }
+.t-tk.is-fresh, .t-card.is-moved { animation: pop 0.6s var(--out) both; }
+.t-tk.is-fresh { box-shadow: inset 0 0 0 0.14em var(--t-green); }
+@keyframes pop { from { opacity: 0; transform: translateY(0.7em) scale(0.94); } }
+.tb { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.4s, color 0.4s; }
+
+/* a sheet that comes up over the screen: the payment, the discounts */
+.f-sheet { position: absolute; right: 1.5em; bottom: 1.5em; z-index: 3; width: 27em; padding: 1.4em; border-radius: 1.4em; background: var(--t-bg); box-shadow: 0 0 0 1px var(--t-stroke2), 0 2em 4em -1em rgba(0, 0, 0, 0.85), 0 0 0 100em rgba(8, 9, 11, 0.45); opacity: 0; visibility: hidden; transform: translateY(1.8em); transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s 0.45s; }
+.f-sheet.is-up { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+.f-sheet.left { left: 1.3em; right: auto; bottom: 9.6em; width: 24.4em; }
+.f-given { margin-top: 0.5em; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.45em; }
+.f-given span { padding: 0.75em 0; border-radius: 0.8em; background: var(--t-key); text-align: center; font-size: 0.9em; font-weight: 700; transition: background-color 0.25s, color 0.25s; }
+.f-given .is-on { background: var(--t-text); color: var(--t-header); }
+.f-change { display: flex; justify-content: space-between; align-items: baseline; margin: 0.6em 0 0; padding: 0.7em 0.95em; border-radius: 0.8em; background: var(--t-greenwash); color: var(--t-greentext); font-weight: 600; opacity: 0.25; transition: opacity 0.3s; }
+.f-change.is-in { opacity: 1; }
+.f-change b { font-size: 1.35em; color: #fff; }
+.f-sheet .v-charge { transition: background-color 0.3s, color 0.3s; }
+.f-sheet .v-charge.is-paid { background: var(--t-greenwash); color: var(--t-greentext); }
+.f-pick { margin-top: 0.8em; display: grid; gap: 0.45em; }
+.f-pick span { padding: 0.85em 1em; border-radius: 0.8em; background: var(--t-key); font-weight: 600; transition: background-color 0.25s, color 0.25s; }
+.f-pick .is-on { background: var(--t-green); color: #fff; }
+
+/* the paper comes out from under the top bar, as from a printer */
+.t-bar { position: relative; z-index: 5; }
+.f-slip { position: absolute; top: 0; right: 3.4em; z-index: 4; width: 15.5em; transform: translateY(-104%); transition: transform 0.55s cubic-bezier(0.4, 0, 0.2, 1); filter: drop-shadow(0 1.2em 1.4em rgba(0, 0, 0, 0.6)); }
+.f-slip.is-out { transform: none; transition: transform 1.25s cubic-bezier(0.25, 0.7, 0.3, 1); }
+.f-slip .paper { padding: 1.3em 1.1em 1.9em; font-size: 0.74em; }
+
+/* where a finger taps */
+.f-hand { position: absolute; left: 50%; top: 62%; z-index: 6; width: 3em; height: 3em; margin: -1.5em 0 0 -1.5em; border-radius: 50%; pointer-events: none; background: rgba(255, 255, 255, 0.26); box-shadow: 0 0 0 0.14em rgba(255, 255, 255, 0.8), 0 0.4em 1.2em rgba(0, 0, 0, 0.5); opacity: 0; transition: left 0.6s cubic-bezier(0.4, 0, 0.2, 1), top 0.6s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s, transform 0.15s; }
+.f-hand.is-on { opacity: 1; }
+.f-hand.is-down { transform: scale(0.76); background: rgba(255, 255, 255, 0.55); }
+.f-hand::after { content: ""; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 0.14em rgba(255, 255, 255, 0.75); opacity: 0; }
+.f-hand.is-down::after { animation: ring 0.55s var(--out); }
+@keyframes ring { from { opacity: 0.9; transform: scale(1); } to { opacity: 0; transform: scale(2.4); } }
+
+/* ---- a shop's pieces, shown on their own ---- */
+
+.v-sheet { padding: 1.5em; border-radius: 1.5em; background: var(--t-bg); box-shadow: 0 2.4em 3.6em -2em rgba(16, 44, 24, 0.6); }
+.v-sheet h6 { margin: 1.15em 0 0.55em; }
+.v-sheet .v-charge { margin-top: 1.25em; }
+
+/* a product with variants asks which one; one sold by weight asks how much */
+.v-variant { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr); gap: 1.2em; align-items: end; }
+.v-chips { display: flex; flex-wrap: wrap; gap: 0.45em; }
+.v-chips span { display: grid; justify-items: center; min-width: 3.7em; padding: 0.6em 0.9em; border-radius: 0.8em; background: var(--t-key); font-weight: 700; transition: background-color 0.3s, color 0.3s; }
+.v-chips i { font-size: 0.66em; font-weight: 600; color: var(--t-text3); transition: color 0.3s; }
+.v-chips .is-on { background: var(--t-text); color: var(--t-header); }
+.v-chips .is-on i { color: #4d5562; }
+.v-chips .none { opacity: 0.45; }
+.v-weigh { padding: 1.3em; border-radius: 1.3em; background: var(--t-panel); box-shadow: inset 0 0 0 1px var(--t-stroke), 0 2.4em 3.6em -2em rgba(16, 44, 24, 0.6); transform: rotate(2deg); }
+.v-weigh .v-due { margin-bottom: 0.35em; }
+.v-due small { font-size: 0.45em; font-weight: 600; letter-spacing: 0; color: var(--t-text2); }
+.v-eq { display: flex; justify-content: space-between; align-items: baseline; margin: 0; padding-top: 0.75em; border-top: 1px solid var(--t-row); font-size: 0.86em; color: var(--t-text2); }
+.v-eq b { font-size: 1.2em; color: var(--t-greentext); }
+
+/* a stock check, beside tiles that say what is left */
+.v-stock { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: 1.2em; align-items: center; }
+.v-name { display: flex; justify-content: space-between; align-items: baseline; margin: 0.3em 0 0.8em; font-size: 1.5em; font-weight: 800; letter-spacing: -0.02em; }
+.v-name span { font-size: 0.6em; font-weight: 600; letter-spacing: 0; color: var(--t-text2); }
+.v-rows { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.4em; }
+.v-rows li { display: flex; justify-content: space-between; align-items: center; padding: 0.55em 0.6em 0.55em 0.95em; border-radius: 0.8em; background: var(--t-panel); box-shadow: inset 0 0 0 1px var(--t-stroke); font-size: 0.95em; }
+.v-rows em { min-width: 2.9em; padding: 0.22em 0.6em; border-radius: 0.5em; background: var(--t-greenwash); color: var(--t-greentext); text-align: center; font-weight: 800; transition: background-color 0.3s, color 0.3s; }
+.v-rows .few em { background: #3a2a08; color: var(--t-ambertext); }
+.v-rows .none em { background: #3a1c1e; color: #ff8a8e; }
+.v-tiles { display: grid; gap: 0.65em; }
+.v-tiles .t-item { min-height: 5.7em; background: var(--t-bg); box-shadow: inset 0 0 0 1px var(--t-stroke), 0 1.8em 2.6em -1.8em rgba(16, 44, 24, 0.7); }
+
+/* a return: the receipt with its barcode, and the refund it opens */
+.v-return { grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr); }
+.p-bars { position: relative; overflow: hidden; height: 3.4em; margin: 1em 14% 0.3em; background: repeating-linear-gradient(90deg, #23211d 0 0.14em, transparent 0.14em 0.32em, #23211d 0.32em 0.6em, transparent 0.6em 0.74em, #23211d 0.74em 0.82em, transparent 0.82em 1.1em); }
+/* the scanner's line, drawn only while the piece is on screen */
+.p-bars i { position: absolute; top: 0; bottom: 0; left: 0; width: 0.2em; background: #e23b3b; box-shadow: 0 0 0.9em 0.35em rgba(226, 59, 59, 0.5); opacity: 0; }
+.is-live .p-bars i { animation: sweep 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+@keyframes sweep { 0% { left: 0; opacity: 0; } 12% { opacity: 1; } 58% { left: calc(100% - 0.2em); opacity: 1; } 70%, 100% { left: calc(100% - 0.2em); opacity: 0; } }
+.p-code { text-align: center; letter-spacing: 0.32em; }
+.v-shares .kept { opacity: 0.42; }
+.v-shares .kept em { font-weight: 500; color: var(--t-text3); }
+.v-opt { display: flex; justify-content: space-between; align-items: center; margin: 0.75em 0 0; padding: 0.6em 0.8em; border-radius: 0.85em; background: var(--t-panel); box-shadow: inset 0 0 0 1px var(--t-stroke); font-size: 0.92em; font-weight: 600; }
+.v-opt .tog { position: relative; width: 2.5em; height: 1.45em; border-radius: 2em; background: var(--t-green); }
+.v-opt .tog::after { content: ""; position: absolute; right: 0.2em; top: 0.2em; width: 1.05em; height: 1.05em; border-radius: 50%; background: #fff; }
+.v-return .v-charge { background: var(--t-amber); color: var(--t-amberink); }
+
 /* ---- narrower windows ---- */
 
 @media (max-width: 900px) {
@@ -316,13 +456,18 @@
 @media (max-width: 620px) {
   /* on a phone the tablet is shown larger and runs off the side of its
      stage, so the half that is seen can be read */
-  .stage--hero .tablet { width: 190%; max-width: none; margin: 0; }
+  .stage--hero .tablet { width: 190%; max-width: none; margin: 0; transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1); }
+  /* the film slides the tablet to keep what is moving in the half that shows */
+  .stage--hero[data-look="right"] .tablet { transform: translateX(-47.4%); }
   .till.piece { --u: 3.3; }
-  .v-kitchen, .v-pay { grid-template-columns: minmax(0, 1fr); gap: 1.6em; }
+  .v-kitchen, .v-pay, .v-variant, .v-stock { grid-template-columns: minmax(0, 1fr); gap: 1.6em; }
   .v-kitchen .paper-wrap, .v-pay .paper-wrap { width: 78%; margin: 0 auto; }
+  .v-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .v-weigh { width: 78%; margin: 0 auto; }
   .bo { --u: 1.25; grid-template-columns: 13em minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .t-screen { transform: none; }
+  .f-hand, .f-slip, .f-sheet { display: none; }
 }

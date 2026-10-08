@@ -44,6 +44,9 @@ body {
   text-rendering: optimizeLegibility;
 }
 [hidden] { display: none !important; }
+/* The page is a restaurant's or a shop's: <html data-for> says which (the
+   visitor picks in the hero), and a piece marked data-only is one's alone. */
+html[data-for="shop"] [data-only="restaurant"], html[data-for="restaurant"] [data-only="shop"] { display: none !important; }
 img, svg { display: block; max-width: 100%; }
 h1, h2, h3, h4, p, ul, ol, dl, dd, figure { margin: 0; }
 ul, ol { padding: 0; list-style: none; }
@@ -106,6 +109,39 @@ button, input, textarea { font: inherit; color: inherit; }
 .nav-links a:hover { background: rgba(23, 32, 26, 0.06); }
 .nav-links a.is-here { color: var(--leaf-deep); }
 
+/* "Product" opens a panel: what the till does for a restaurant, and for a shop */
+.nav-drop { position: relative; }
+.nav-key { display: inline-flex; align-items: center; gap: 6px; padding: 9px 11px 9px 14px; border: 0; border-radius: 999px; background: transparent; cursor: pointer; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); transition: background-color 0.2s var(--ease), color 0.2s var(--ease); }
+.nav-key .ico { width: 15px; height: 15px; stroke-width: 2.6; transition: transform 0.35s var(--out); }
+.nav-key:hover, .nav-drop.is-open .nav-key { background: rgba(23, 32, 26, 0.06); }
+.nav-drop.is-open .nav-key { color: var(--leaf-deep); }
+.nav-drop.is-open .nav-key .ico { transform: rotate(180deg); }
+.nav-panel {
+  position: absolute; left: -18px; top: calc(100% + 16px); z-index: 5;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: min(660px, 92vw); padding: 10px;
+  border-radius: 28px; background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 0 0 1px rgba(227, 231, 222, 0.9), 0 34px 64px -28px rgba(40, 70, 48, 0.5), 0 10px 24px -14px rgba(40, 70, 48, 0.28);
+  opacity: 0; visibility: hidden; transform: translateY(-8px) scale(0.985); transform-origin: 60px 0;
+  transition: opacity 0.2s var(--ease), transform 0.3s var(--out), visibility 0s 0.3s;
+}
+.nav-drop.is-open .nav-panel { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+/* the pointer crosses the gap between the key and the panel without losing it */
+.nav-panel::before { content: ""; position: absolute; left: 0; right: 0; top: -18px; height: 18px; }
+.nav-col { padding: 10px 8px 8px; border-radius: 20px; transition: background-color 0.3s var(--ease); }
+/* the column of what the page is showing */
+html[data-for="restaurant"] .nav-col:first-child, html[data-for="shop"] .nav-col:last-child { background: linear-gradient(160deg, #eaf4ea 0%, #f4f5e8 100%); }
+.nav-col p { padding: 6px 12px 8px; font-family: var(--mono); font-size: 12.5px; font-weight: 500; letter-spacing: 0.09em; text-transform: uppercase; color: var(--leaf-deep); }
+.nav-panel a { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-radius: 16px; }
+.nav-panel a:hover { background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1px var(--line); }
+.nav-panel a .ico { flex: none; width: 42px; height: 42px; padding: 10px; border-radius: 13px; background: #fff; box-shadow: 0 0 0 1px var(--line); color: var(--leaf-deep); stroke-width: 1.7; transition: background-color 0.2s var(--ease), color 0.2s var(--ease); }
+.nav-panel a:hover .ico { background: var(--leaf); color: #fff; box-shadow: none; }
+.nav-panel a span { display: grid; gap: 1px; font-size: 13.5px; font-weight: 500; line-height: 1.35; color: var(--ink-2); }
+.nav-panel a b { font-size: 15.5px; font-weight: 700; letter-spacing: -0.015em; color: var(--ink); }
+/* the panel's lines arrive one after the other */
+.nav-drop.is-open .nav-panel a { animation: rise 0.5s var(--out) both; }
+.nav-drop.is-open .nav-panel a:nth-of-type(2) { animation-delay: 45ms; }
+.nav-drop.is-open .nav-panel a:nth-of-type(3) { animation-delay: 90ms; }
+
 .nav-end { display: flex; align-items: center; gap: 8px; }
 .nav-signin { padding: 9px 14px; border-radius: 999px; text-decoration: none; font-family: var(--mono); font-size: 14px; letter-spacing: 0.01em; transition: background-color 0.2s var(--ease); }
 .nav-signin:hover { background: rgba(23, 32, 26, 0.06); }
@@ -150,6 +186,8 @@ button, input, textarea { font: inherit; color: inherit; }
 .nav-sheet a:not(.btn-demo) { padding: 13px 16px; border-radius: 16px; text-decoration: none; font-weight: 600; }
 .nav-sheet a:not(.btn-demo):hover { background: rgba(23, 32, 26, 0.06); }
 .nav-sheet .btn-demo { margin-top: 8px; justify-content: space-between; }
+.nav-sheet p { padding: 12px 16px 2px; font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3); }
+.nav-sheet p:first-child { padding-top: 6px; }
 
 /* ---- shared type ---- */
 
@@ -163,6 +201,16 @@ h3 { font-size: 18px; font-weight: 700; line-height: 1.3; letter-spacing: -0.015
 
 .hero { padding: clamp(124px, 13vw, 184px) var(--gutter) 0; }
 .hero-copy { max-width: 880px; }
+
+/* what the page is shown for: a restaurant or a shop */
+.pick { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.pick-keys { position: relative; display: grid; grid-template-columns: 1fr 1fr; padding: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.72); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85), 0 6px 18px -8px rgba(60, 90, 66, 0.45); }
+/* the dark thumb slides under the one that is picked */
+.pick-keys i { position: absolute; left: 4px; top: 4px; bottom: 4px; width: calc(50% - 4px); border-radius: 999px; background: var(--ink); box-shadow: 0 6px 14px -6px rgba(23, 32, 26, 0.7); transition: transform 0.5s var(--out); }
+html[data-for="shop"] .pick-keys i { transform: translateX(100%); }
+.pick-keys button { position: relative; height: 38px; padding: 0 22px; border: 0; border-radius: 999px; background: transparent; cursor: pointer; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink-2); transition: color 0.3s var(--ease); }
+.pick-keys button:hover { color: var(--ink); }
+html[data-for="restaurant"] [data-pick="restaurant"], html[data-for="shop"] [data-pick="shop"] { color: #fff; }
 .hero-copy h1 { margin-top: 22px; }
 .lede { margin-top: 26px; max-width: 640px; font-size: clamp(17px, 1.35vw, 20px); line-height: 1.55; color: var(--ink-2); }
 .hero-cta { margin-top: 34px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -202,6 +250,16 @@ h3 { font-size: 18px; font-weight: 700; line-height: 1.3; letter-spacing: -0.015
 .switch button.is-on::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--leaf-lit); transform: scaleX(0); transform-origin: left; }
 .switch.is-auto button.is-on::after { animation: fill var(--turn, 5.5s) linear forwards; }
 @keyframes fill { to { transform: scaleX(1); } }
+
+/* the film the tablet plays: a line saying what is happening, a key for each
+   chapter, and a key that stops it */
+.film-cap { margin: clamp(16px, 2.2vw, 30px) auto 0; min-height: 1.5em; max-width: 52ch; text-align: center; font-size: clamp(15.5px, 1.3vw, 19px); font-weight: 600; letter-spacing: -0.015em; color: var(--ink); text-wrap: balance; transition: opacity 0.2s var(--ease), transform 0.3s var(--out); }
+.film-cap.is-turning { opacity: 0; transform: translateY(6px); }
+.film-bar { margin-top: 14px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
+.film-bar .switch { margin: 0; flex-wrap: wrap; justify-content: center; border-radius: 26px; }
+.film-pause { display: inline-flex; align-items: center; gap: 6px; height: 50px; padding: 0 18px 0 14px; border: 0; border-radius: 999px; cursor: pointer; background: rgba(255, 255, 255, 0.6); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7), 0 6px 18px -8px rgba(60, 90, 66, 0.35); font-size: 14.5px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink-2); transition: color 0.2s var(--ease); }
+.film-pause:hover { color: var(--ink); }
+.film-pause .ico { width: 16px; height: 16px; stroke-width: 2.6; }
 
 .strip { margin-top: 26px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 0; font-family: var(--mono); font-size: 13.5px; color: var(--ink-2); }
 .strip li { padding: 0 18px; border-left: 1px solid var(--line); }
@@ -334,6 +392,7 @@ h3 { font-size: 18px; font-weight: 700; line-height: 1.3; letter-spacing: -0.015
 
 .demo-form { display: grid; gap: 14px; padding: clamp(18px, 2.4vw, 32px); border-radius: 24px; background: rgba(255, 255, 255, 0.07); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
 .demo-form label { display: grid; gap: 7px; font-size: 14.5px; font-weight: 600; color: #dbe7dc; }
+.demo-form label b { font-weight: inherit; }
 .demo-form label span { font-family: var(--mono); font-weight: 400; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #8fa596; }
 .demo-form label:has(span) { grid-template-columns: 1fr auto; align-items: baseline; }
 .demo-form label:has(span) textarea { grid-column: 1 / -1; }
@@ -374,6 +433,7 @@ h3 { font-size: 18px; font-weight: 700; line-height: 1.3; letter-spacing: -0.015
   [data-rise] { animation: none; }
   .js [data-reveal], .js [data-reveal="focus"] { opacity: 1; transform: none; filter: none; transition: none; }
   .switch.is-auto button.is-on::after { animation: none; }
+  .nav-drop.is-open .nav-panel a { animation: none; }
   * { transition-duration: 0.01ms !important; }
 }
 
@@ -407,6 +467,8 @@ h3 { font-size: 18px; font-weight: 700; line-height: 1.3; letter-spacing: -0.015
   .site-head.is-stuck .nav, .site-head.is-open .nav { padding: 8px 8px 8px 16px; }
   .bento, .quarters { grid-template-columns: minmax(0, 1fr); }
   .switch button { height: 38px; font-size: 14px; }
+  .film-pause { height: 48px; }
+  .pick-keys button { padding: 0 18px; }
   .strip li { padding: 0 12px; }
   .strip-label { width: 100%; padding-left: 0; }
   .strip li:nth-child(2) { padding-left: 0; border-left: 0; }
