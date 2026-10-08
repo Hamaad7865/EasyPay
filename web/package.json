@@ -5,7 +5,11 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:preview": "opennextjs-cloudflare build && wrangler dev",
+    "cf:deploy": "opennextjs-cloudflare build && wrangler deploy"
   },
   "dependencies": {
     "@neondatabase/auth": "0.5.0-beta",
@@ -16,10 +20,12 @@
     "react-dom": "19.0.0"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.20.2",
     "@types/node": "22.x",
     "@types/pg": "^8.23.1",
     "@types/react": "19.0.0",
     "@types/react-dom": "^19.0.0",
-    "typescript": "5.7.2"
+    "typescript": "5.7.2",
+    "wrangler": "^4.117.0"
   }
 }

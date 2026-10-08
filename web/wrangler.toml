@@ -1,0 +1,43 @@
+# The back office on Cloudflare Workers, built by the OpenNext adapter
+# (`npm run cf:build`). It has no public address of its own: people reach it
+# at easypaypos.pages.dev/login, through the Pages project that also serves
+# the public site (see ../cloudflare/pages). That project hands the back
+# office's paths to this Worker over a service binding.
+name = "easypay-backoffice"
+# cloudflare-worker.mjs is the adapter's Worker (.open-next/worker.js) behind
+# one check: that the three settings below are there.
+main = "cloudflare-worker.mjs"
+
+# Must be 2024-09-23 or later for the OpenNext adapter, and a real past date.
+compatibility_date = "2026-07-30"
+
+# Required: node-postgres opens its connection through the Node.js layer, and
+# lib/pin.ts hashes a staff PIN with node:crypto.
+compatibility_flags = ["nodejs_compat"]
+
+# No workers.dev address and no preview addresses: the only way in is the
+# Pages project, so there is one address to trust in the sign-in service.
+workers_dev = false
+preview_urls = false
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
+
+# The database is in Singapore (Neon, AWS ap-southeast-1) and every page asks
+# it several questions. This runs the Worker beside the database instead of
+# near whoever is asking, so each question is a short trip (lib/db.ts opens a
+# connection per question here: Workers cannot keep one between requests).
+# From Mauritius one such connection takes about 0.7 s; from beside the
+# database, a few milliseconds.
+[placement]
+region = "aws:ap-southeast-1"
+
+[observability]
+enabled = true
+
+# SECRETS: set once on the Worker, never written here.
+#   npx wrangler secret put DATABASE_URL             the pooled connection string of the database
+#   npx wrangler secret put NEON_AUTH_BASE_URL       the sign-in service's address for that database
+#   npx wrangler secret put NEON_AUTH_COOKIE_SECRET  a long random value (openssl rand -base64 32)
+# Until all three are there the back office answers "not switched on yet".

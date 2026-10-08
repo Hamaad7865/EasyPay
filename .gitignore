@@ -11,6 +11,11 @@ web/.next/
 web/out/
 web/build/
 
+# cloudflare: the back office built for Workers, wrangler's local state, local settings
+web/.open-next/
+.wrangler/
+.dev.vars
+
 # android
 android/.gradle/
 android/build/

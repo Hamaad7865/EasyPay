@@ -33,9 +33,11 @@ export default function LoginPage() {
       setBusy(false);
       return;
     }
-    // "/" sends a platform admin to /admin and everyone else to their back
-    // office. The button stays busy until that page is there.
-    router.push("/");
+    // Everyone goes to the back office, which sends a platform admin on to
+    // /admin (a login with no restaurant lands on the page that says so, and
+    // that page knows an admin). Not "/": at easypaypos.pages.dev that is the
+    // public site. The button stays busy until the page is there.
+    router.push("/backoffice");
     router.refresh();
   }
 
