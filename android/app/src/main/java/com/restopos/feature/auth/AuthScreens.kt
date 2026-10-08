@@ -69,6 +69,9 @@ fun AuthScreen(
     vm: AuthViewModel = hiltViewModel(),
     reauth: Boolean = false,
     onCancel: (() -> Unit)? = null,
+    // The tablet is to be a kitchen screen, not a till: offered when a tablet
+    // is first set up, never when a till is being signed in again.
+    onKitchen: (() -> Unit)? = null,
     onSignedIn: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -150,6 +153,17 @@ fun AuthScreen(
                 "Your password goes to EasyPay's sign-in service and is not kept on this tablet.",
                 12.sp, 500, V.Text3, Modifier.fillMaxWidth(), lines = 2, align = TextAlign.Center, height = 17.sp,
             )
+        }
+        // The other thing a tablet can be: a screen in the kitchen that shows
+        // the orders the tills send it. It needs no login.
+        if (!forgot && !reauth && onKitchen != null) {
+            Column(
+                Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(12.dp)).background(V.Well).padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                QuietLink("Set up as a kitchen screen", enabled = !busy, onClick = onKitchen)
+                T("For a tablet in the kitchen: it shows the orders as they are sent. It needs no login.", 12.sp, 500, V.Text3, lines = 2, align = TextAlign.Center, height = 17.sp)
+            }
         }
     }
 }

@@ -4,9 +4,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.Serializable
 
 // A line on a kitchen screen: as it was sent, and what has happened to it
 // since. A voided line stays, struck through: the cooks must see it go.
+@Serializable
 data class ScreenLine(
     val id: String, val qty: Int, val name: String, val detail: String = "",
     val done: Boolean = false, val voided: Boolean = false,
@@ -39,7 +41,20 @@ interface ScreenShelf {
 }
 
 // A till this screen heard from, and when (this tablet's clock).
-data class Heard(val till: String, val name: String, val at: Long)
+data class Heard(val till: String, val name: String, val at: Long) {
+    // For the screen's header: "Terminal 01 · just now", "Terminal 01 · 40 s
+    // ago", and once a till has been silent for a minute, that it has: a
+    // kitchen that is not being sent orders should be able to see why.
+    fun text(now: Long): String {
+        val s = ((now - at) / 1000).coerceAtLeast(0)
+        return when {
+            s < 10 -> "$name · just now"
+            s < 60 -> "$name · $s s ago"
+            s < 3600 -> "No till for ${s / 60} min"
+            else -> "No till for ${s / 3600} h"
+        }
+    }
+}
 
 // The kitchen tablet's side of the link: what it does with a till's request,
 // what it answers, and what a cook's tap does. One thing at a time: a till's

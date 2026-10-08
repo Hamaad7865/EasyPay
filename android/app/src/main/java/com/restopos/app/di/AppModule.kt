@@ -35,6 +35,12 @@ object AppModule {
             .addMigrations(Migrations.V1_V2, Migrations.V2_V3, Migrations.V3_V4, Migrations.V4_V5, Migrations.V5_V6, Migrations.V6_V7, Migrations.V7_V8, Migrations.V8_V9, Migrations.V9_V10, Migrations.V10_V11)
             .build()
 
+    // What a tablet set up as a kitchen screen keeps (core/kitchen): its own
+    // file, so a till's database has none of it and it has none of a till's.
+    @Provides @Singleton
+    fun kitchenDatabase(@ApplicationContext ctx: Context): com.restopos.core.kitchen.KitchenDatabase =
+        Room.databaseBuilder(ctx, com.restopos.core.kitchen.KitchenDatabase::class.java, "kitchen.db").build()
+
     @Provides @Singleton
     fun sessionStore(@ApplicationContext ctx: Context): SessionStore = SessionStore(ctx)
 }

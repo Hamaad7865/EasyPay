@@ -216,6 +216,9 @@ private val LIGHT = booleanPreferencesKey("light_mode_v2")
 private val LAST_PULL = longPreferencesKey("last_pull")
 private val LAST_USE = longPreferencesKey("last_use")
 private val LANG = stringPreferencesKey("lang")
+private val MODE = stringPreferencesKey("mode")
+private val PAIR_CODE = stringPreferencesKey("pair_code")
+private val KITCHEN_EPOCH = stringPreferencesKey("kitchen_epoch")
 private val SEQ_DAY = stringPreferencesKey("seq_day")
 private val Context.sessionPrefs by preferencesDataStore("device")
 
@@ -232,6 +235,26 @@ class SessionStore(private val context: Context) {
     suspend fun deviceId(): String? = store.data.map { it[DEVICE] }.first()
     suspend fun tenantId(): String? = store.data.map { it[TENANT] }.first()
     suspend fun isSetUp(): Boolean = storeId() != null && deviceId() != null
+
+    // ---- a tablet set up as a kitchen screen, not as a till (core/kitchen) ----
+    // It belongs to no business and has no login: it shows what the tills of
+    // the restaurant send it over the Wi-Fi. What it keeps here: that it is
+    // one, the pairing code it shows (typed into the back office, under
+    // Printers), and an id made at each set-up, by which a till knows a
+    // tablet that was set up afresh and holds nothing it was sent before.
+    suspend fun isKitchen(): Boolean = store.data.map { it[MODE] == "kitchen" }.first()
+    suspend fun setKitchen(code: String) {
+        store.edit {
+            it[MODE] = "kitchen"
+            if (it[PAIR_CODE] == null) it[PAIR_CODE] = code
+            it[KITCHEN_EPOCH] = java.util.UUID.randomUUID().toString()
+        }
+    }
+    val pairCode: Flow<String?> = store.data.map { it[PAIR_CODE] }
+    suspend fun pairCode(): String = pairCode.first().orEmpty()
+    suspend fun setPairCode(code: String) { store.edit { it[PAIR_CODE] = code } }
+    suspend fun kitchenEpoch(): String = store.data.map { it[KITCHEN_EPOCH] }.first().orEmpty()
+    suspend fun leaveKitchen() { store.edit { it.remove(MODE); it.remove(PAIR_CODE); it.remove(KITCHEN_EPOCH) } }
     suspend fun businessName(): String? = store.data.map { it[BUSINESS] }.first()
     suspend fun setBusinessName(name: String) { store.edit { it[BUSINESS] = name } }
 

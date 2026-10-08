@@ -1,0 +1,158 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "fd39591a3152ea4780dad969650a7304",
+    "entities": [
+      {
+        "tableName": "screen_tickets",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `till` TEXT NOT NULL, `till_name` TEXT NOT NULL, `till_code` TEXT NOT NULL, `screen` TEXT NOT NULL, `no` INTEGER NOT NULL, `label` TEXT NOT NULL, `kind` TEXT NOT NULL, `covers` INTEGER, `waiter` TEXT, `remark` TEXT, `sent_at` INTEGER NOT NULL, `received_at` INTEGER NOT NULL, `bumped_at` INTEGER, `lines` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "till",
+            "columnName": "till",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "till_name",
+            "columnName": "till_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "till_code",
+            "columnName": "till_code",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "screen",
+            "columnName": "screen",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "no",
+            "columnName": "no",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "label",
+            "columnName": "label",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "covers",
+            "columnName": "covers",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "waiter",
+            "columnName": "waiter",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "remark",
+            "columnName": "remark",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sent_at",
+            "columnName": "sent_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "received_at",
+            "columnName": "received_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bumped_at",
+            "columnName": "bumped_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lines",
+            "columnName": "lines",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "screen_marks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`seq` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `till` TEXT NOT NULL, `mark` TEXT NOT NULL, `at` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "seq",
+            "columnName": "seq",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "till",
+            "columnName": "till",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mark",
+            "columnName": "mark",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "at",
+            "columnName": "at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "seq"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_screen_marks_till",
+            "unique": false,
+            "columnNames": [
+              "till"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_screen_marks_till` ON `${TABLE_NAME}` (`till`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'fd39591a3152ea4780dad969650a7304')"
+    ]
+  }
+}

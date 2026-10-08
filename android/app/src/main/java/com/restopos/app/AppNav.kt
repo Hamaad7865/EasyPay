@@ -5,7 +5,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import com.restopos.core.kitchen.PairCode
+import com.restopos.feature.kds.KitchenModeScreen
+import kotlinx.coroutines.launch
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -22,7 +26,8 @@ import com.restopos.feature.start.StartScreen
 import com.restopos.feature.sync.RejectedScreen
 
 // Launch modes (spec 7/8): POS and KDS share this APK, chosen at device setup.
-// KDS screen lands in Phase 6; the route constant reserves it.
+// A tablet is a till (it signs in, then names itself) or a kitchen screen
+// (Routes.KDS: no login; it shows what the tills send it over the Wi-Fi).
 object Routes {
     const val AUTH = "auth"
     const val DEVICE = "device"
@@ -43,9 +48,12 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
     // A tablet that has been set up opens on the start screen, with or
     // without a network: everything it shows is on the tablet. Sign-in is only
     // the first-run path.
+    // A tablet set up as a kitchen screen is nothing else: it opens on the
+    // kitchen display, has no login and never reaches the till's screens.
     val start by produceState<String?>(initialValue = null) {
-        value = if (session.isSetUp()) Routes.START else Routes.AUTH
+        value = if (session.isKitchen()) Routes.KDS else if (session.isSetUp()) Routes.START else Routes.AUTH
     }
+    val scope = rememberCoroutineScope()
     val startRoute = start ?: return
     LaunchedEffect(startRoute) {
         if (startRoute == Routes.START) SyncScheduler.startPeriodic(context)
@@ -68,7 +76,20 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
     NavHost(nav, startDestination = startRoute) {
         composable(Routes.AUTH) {
             val vm: AuthViewModel = hiltViewModel()
-            AuthScreen(vm) { nav.navigate(Routes.DEVICE) { popUpTo(Routes.AUTH) { inclusive = true } } }
+            AuthScreen(
+                vm,
+                onKitchen = {
+                    scope.launch {
+                        // a debug build's code is always the same one, so two emulators can be paired without typing
+                        session.setKitchen(if (BuildConfig.DEBUG) "KTCHN234" else PairCode.make())
+                        nav.navigate(Routes.KDS) { popUpTo(0) { inclusive = true } }
+                    }
+                },
+            ) { nav.navigate(Routes.DEVICE) { popUpTo(Routes.AUTH) { inclusive = true } } }
+        }
+        // The kitchen screen: the whole of a kitchen tablet.
+        composable(Routes.KDS) {
+            KitchenModeScreen(onBecomeTill = { nav.navigate(Routes.AUTH) { popUpTo(0) { inclusive = true } } })
         }
         composable(Routes.DEVICE) {
             StoreDeviceScreen(onReady = {
