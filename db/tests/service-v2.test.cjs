@@ -19,7 +19,8 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
   const tid = crypto.randomUUID();
   const other = crypto.randomUUID();
   const q1 = async (sql, args) => (await c.query(sql, args)).rows[0];
-  await c.query(`insert into tenants (id, tenant_id, name) values ('${tid}','${tid}','V2-Probe'), ('${other}','${other}','V2-Other')`);
+  // the probe is on the premium plan: its bookings are a premium feature (0085)
+  await c.query(`insert into tenants (id, tenant_id, name, plan) values ('${tid}','${tid}','V2-Probe','premium'), ('${other}','${other}','V2-Other','standard')`);
   const store = (await q1(`insert into stores (tenant_id, name, code) values ('${tid}','Main','V2S1') returning id`)).id;
   const otherStore = (await q1(`insert into stores (tenant_id, name, code) values ('${other}','Main','V2S2') returning id`)).id;
   await c.query(`insert into pos_devices (tenant_id, store_id, name, code) values ('${tid}','${store}','T1','T1')`);
