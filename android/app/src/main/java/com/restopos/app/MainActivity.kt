@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
+import com.restopos.core.data.PosSettings
 import com.restopos.core.network.AuthClient
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.SyncScheduler
@@ -144,7 +145,11 @@ class MainActivity : ComponentActivity() {
                             // leave it unpaid on the server with no till able to charge it.
                             val unpaid = db.tickets().unpaidOrderCount()
                             if (unpaid > 0L) {
-                                Toast.makeText(this@MainActivity, "$unpaid open orders are not paid yet. Take payment or void their lines (Orders), then sign out.", Toast.LENGTH_LONG).show()
+                                // a shop has sales, the one on the screen and those under Parked, and no Orders key
+                                val said = if (PosSettings.parse(db.ops().settings()).retail)
+                                    "$unpaid ${if (unpaid == 1L) "sale is" else "sales are"} not paid yet, on the screen or under Parked. Take payment or clear ${if (unpaid == 1L) "it" else "them"}, then sign out."
+                                else "$unpaid open orders are not paid yet. Take payment or void their lines (Orders), then sign out."
+                                Toast.makeText(this@MainActivity, said, Toast.LENGTH_LONG).show()
                                 return@launch
                             }
                             SyncScheduler.stop(this@MainActivity)
