@@ -30,7 +30,7 @@ export default async function ItemRank({ searchParams }: { searchParams: Search 
       title="Item sales"
       lede={
         shop
-          ? "What sells, ranked by what it brought in. Sales are shelf prices, before any discount on the bill; refunds are taken off."
+          ? "What sells, ranked by what it brought in. Sales are what each line was charged (a discount on the line itself is already off), before any discount on the whole sale; refunds are taken off."
           : "What sells, ranked by what it brought in. Amounts are menu prices with add-ons, before any discount on the bill; refunds are taken off."
       }
     />

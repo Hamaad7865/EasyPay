@@ -3,6 +3,7 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { money, withDefaults } from "@/lib/settings";
 import { basics, RECEIPTS } from "@/lib/report";
+import { lineOffSql } from "@/lib/stock-reports";
 import { Card, Empty, PageHead, type Search } from "../../ui";
 import { Delta, Figure, SpanPicker, Standouts, pct, per, period, range, totals } from "../parts";
 
@@ -58,7 +59,7 @@ export default async function StaffPerformance({ searchParams }: { searchParams:
                           count(*) filter (where type = 'sale' and ticket_id is null)::int as loose,
                           count(*) filter (where type = 'refund')::int as refunds,
                           coalesce(sum(total) filter (where type = 'refund'), 0)::float8 as refunded,
-                          coalesce(sum(sign * discount_total), 0)::float8 as discounts,
+                          coalesce(sum(sign * (discount_total + ${lineOffSql(ctx.mode === "retail", "r", "discount")})), 0)::float8 as discounts,
                           coalesce(sum(signed_total) filter (where covers > 0), 0)::float8 as seated
                      from r group by employee_id)
            select e.name, per.net, per.accounts, per.loose, per.refunds, per.refunded, per.discounts, per.seated,

@@ -232,6 +232,33 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     check('T1 another tenant asking for ours sees nothing', seen.sales === 0 && seen.losses === '' && seen.quiet === 0 && seen.stock === 0, JSON.stringify(seen));
     const counted = (await ask(rep.COUNTED_SQL, [tid, store, '2026-09-01', '2026-09-30']))[0];
     check('what counts corrected in the same days is none here', counted.counts === 0 && counted.qty === 0 && Number(counted.value) === 0, JSON.stringify(counted));
+
+    // ---- discounts given on one line, and prices typed for one sale ----
+    // (last: these sales would change what the reports above are asked about)
+    const prices = async (as = tid, kind = 'all') => { const x = (await ask(rep.linePricesSql(report.RECEIPTS), [tid, day, day, null, null, kind], as))[0]; return Number(x.off) + '/' + Number(x.changed); };
+    check('D1 with nothing changed on a line, nothing is counted (a discount on the bill is the receipt\'s own)', (await prices()) === '0/0', await prices());
+    // two belts at Rs 100.00 instead of Rs 115.00 (Rs 30.00 off), a mug typed at Rs 100.00 (Rs 15.00 under), a scarf typed at Rs 125.00 (Rs 10.00 over)
+    const beltLine = id();
+    const s4 = await sale([
+      { id: beltLine, item_id: belt, qty: 2000, unit_price: 10000, list_price: 11500, price_kind: 'discount', price_label: 'Rs 15.00 off', approved_by: emp },
+      { item_id: mug, unit_price: 10000, list_price: 11500, price_kind: 'override', approved_by: emp },
+      { item_id: scarf, unit_price: 12500, list_price: 11500, price_kind: 'override', approved_by: emp },
+      hat,
+    ], { payments: [{ payment_type_id: cash, amount: 54000 }] });
+    check('D2 a discount on a line is counted apart from a price typed, which counts under and over the listed price',
+      s4.said === 'applied' && (await prices()) === '3000/500', s4.said + ' ' + (await prices()));
+    const s4r = await one(`select total, discount_total, needs_review from receipts where id = $1`, [s4.rc]);
+    check('D2 the receipt holds none of it as its own discount, and is not flagged', Number(s4r.total) === 54000 && Number(s4r.discount_total) === 0 && s4r.needs_review === false, JSON.stringify(s4r));
+    // one of the two belts comes back, at the Rs 100.00 it was charged
+    const beltRl = await one(`select id from receipt_lines where receipt_id = $1 and ticket_line_id = $2`, [s4.rc, beltLine]);
+    const back2 = await push([op('refund.create', { id: id(), refund_of: s4.rc, store_id: store, device_id: dev, number: 'SR-R' + (++seq), device_seq: seq, device_time: new Date().toISOString(),
+      reason: 'changed mind', lines: [{ receipt_line_id: beltRl.id, qty: 1000 }], payments: [{ payment_type_id: cash, amount: 10000 }] })]);
+    check('D3 a refund takes back its part of the discount', tag(back2[0]) === 'applied' && (await prices()) === '1500/500', tag(back2[0]) + ' ' + (await prices()));
+    check('D3 and asked for sales only, or refunds only, each has its own', (await prices(tid, 'sale')) === '3000/500' && (await prices(tid, 'refund')) === '-1500/0', (await prices(tid, 'sale')) + ' ' + (await prices(tid, 'refund')));
+    check('D4 another business sees none of it', (await prices(other.tenant_id)) === '0/0', await prices(other.tenant_id));
+    r = await sales(false, true);
+    // one belt kept at Rs 100.00. Without VAT: Rs 173.91 of the two sold, less Rs 86.96 of the one returned
+    check('D5 item sales are what the line was charged, not its listed price', r.Belt?.qty === 1000 && r.Belt?.amount === 10000 && r.Belt?.ex === 8695, fig(r.Belt));
     await c.query(`select set_config('app.tenant_id', '', true)`);
   } finally {
     await c.query('ROLLBACK');

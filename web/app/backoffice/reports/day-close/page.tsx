@@ -3,6 +3,7 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { money } from "@/lib/settings";
 import { clock, filters, fmtQty, reportStart } from "@/lib/report";
+import { lineOffSql } from "@/lib/stock-reports";
 import { Empty, PageHead, type Search } from "../../ui";
 import { ReportFilters } from "../parts";
 
@@ -23,7 +24,7 @@ type Drawer = {
 };
 type Close = {
   id: string; number: number; from_time: string | null; closed_at: string; closed_by: string | null; till: string | null;
-  totals: { sales: number; refunds: number; gross: number; refunded: number; discounts: number; tax: number };
+  totals: { sales: number; refunds: number; gross: number; refunded: number; discounts: number; changed: number; tax: number };
   payments: { name: string | null; amount: number; n: number }[];
   cats: { name: string | null; qty: number; amount: number }[];
   cash: { in: number; out: number; list: { type: string; amount: number; reason: string | null; who: string | null }[] };
@@ -34,7 +35,7 @@ type Open = {
   id: string; opened_at: string; closed_at: string | null; opening_float: string; expected_cash: string | null; counted_cash: string | null;
   opened_by: string | null; closed_by: string | null; till: string | null;
   payments: { name: string | null; kind: string | null; amount: number; n: number }[];
-  sales: { sales: number; refunds: number; gross: number; refunded: number; discounts: number };
+  sales: { sales: number; refunds: number; gross: number; refunded: number; discounts: number; changed: number };
   cash: { in: number; out: number; drawer: number; list: { type: string; amount: number; reason: string | null; at: string; who: string | null }[] };
   counts: Count[];
 };
@@ -54,12 +55,19 @@ const W = `r.tenant_id = dc.tenant_id and r.device_id = dc.device_id and r.delet
 // the drawer(s) counted to close it: the shifts of that till that ended inside it
 const INSIDE = `sh.tenant_id = dc.tenant_id and sh.device_id = dc.device_id and sh.deleted_at is null and sh.closed_at is not null
   and sh.closed_at > coalesce(dc.from_time, '-infinity'::timestamptz) and sh.closed_at <= dc.closed_at`;
-const CLOSED = `
+// Discounts are the till's own figure: what was taken off whole sales, and (a
+// shop) off single lines. What prices typed for one sale came to under the
+// listed ones is said apart, as the till's report does.
+const SIGN = `(case when r.type = 'refund' then -1 else 1 end)`;
+const given = (shop: boolean) => `
+                   'discounts', coalesce(sum(${SIGN} * (r.discount_total + ${lineOffSql(shop, "r", "discount", "r.tenant_id")})), 0),
+                   'changed', coalesce(sum(${SIGN} * ${lineOffSql(shop, "r", "override", "r.tenant_id")}), 0)`;
+const closedSql = (shop: boolean) => `
   select dc.id, dc.number, dc.from_time, dc.closed_at, e.name as closed_by, d.name as till,
          (select json_build_object('sales', count(*) filter (where r.type = 'sale'), 'refunds', count(*) filter (where r.type = 'refund'),
                    'gross', coalesce(sum(r.total) filter (where r.type = 'sale'), 0),
                    'refunded', coalesce(sum(r.total) filter (where r.type = 'refund'), 0),
-                   'discounts', coalesce(sum(case when r.type = 'refund' then -r.discount_total else r.discount_total end), 0),
+${given(shop)},
                    'tax', coalesce(sum(case when r.type = 'refund' then -r.tax_total else r.tax_total end), 0))
             from receipts r where ${W}) as totals,
          (select coalesce(json_agg(json_build_object('name', q.name, 'amount', q.amount, 'n', q.n) order by q.amount desc), '[]'::json)
@@ -103,7 +111,7 @@ const CLOSED = `
 // today), or counted and left open, from before closing was one step.
 const WINDOW = `r.tenant_id = sh.tenant_id and r.device_id = sh.device_id and r.deleted_at is null
   and coalesce(r.device_time, r.created_at) >= sh.opened_at and coalesce(r.device_time, r.created_at) <= coalesce(sh.closed_at, now())`;
-const OPEN = `
+const openSql = (shop: boolean) => `
   select sh.id, sh.opened_at, sh.closed_at, sh.opening_float, sh.expected_cash, sh.counted_cash,
          o.name as opened_by, cl.name as closed_by, d.name as till,
          (select coalesce(json_agg(json_build_object('name', q.name, 'kind', q.kind, 'amount', q.amount, 'n', q.n) order by q.amount desc), '[]'::json)
@@ -114,7 +122,7 @@ const OPEN = `
          (select json_build_object('sales', count(*) filter (where r.type = 'sale'), 'refunds', count(*) filter (where r.type = 'refund'),
                    'gross', coalesce(sum(r.total) filter (where r.type = 'sale'), 0),
                    'refunded', coalesce(sum(r.total) filter (where r.type = 'refund'), 0),
-                   'discounts', coalesce(sum(case when r.type = 'refund' then -r.discount_total else r.discount_total end), 0))
+${given(shop)})
             from receipts r where ${WINDOW}) as sales,
          (select json_build_object('in', coalesce(sum(m.amount) filter (where m.type = 'in'), 0),
                    'out', coalesce(sum(m.amount) filter (where m.type = 'out'), 0),
@@ -146,7 +154,7 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
     const f = filters(sp, l.tz);
     if (!ok) return { l, f, ok: false as const };
     // the two lists are asked for together: one trip
-    const [closed, open] = await Promise.all([c.query(CLOSED, [ctx.tenantId, f.from, f.to]), c.query(OPEN, [ctx.tenantId, f.from, f.to])]);
+    const [closed, open] = await Promise.all([c.query(closedSql(ctx.mode === "retail"), [ctx.tenantId, f.from, f.to]), c.query(openSql(ctx.mode === "retail"), [ctx.tenantId, f.from, f.to])]);
     return { l, f, ok: true as const, s, rows: closed.rows as Close[], open: open.rows as Open[] };
   });
   const head = (
@@ -234,6 +242,7 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
                     <dt>Sales</dt><dd>{m(sh.sales.gross)}</dd>
                     <dt>Refunds ({sh.sales.refunds})</dt><dd>-{m(sh.sales.refunded)}</dd>
                     <dt>Discounts given</dt><dd>{m(sh.sales.discounts)}</dd>
+                    {Number(sh.sales.changed) !== 0 && (<><dt>Prices typed, {Number(sh.sales.changed) > 0 ? "under" : "over"} the listed prices</dt><dd>{m(Math.abs(Number(sh.sales.changed)))}</dd></>)}
                     <dt>Drawer opened without a sale</dt><dd>{sh.cash.drawer}</dd>
                   </dl>
                 </div>
@@ -290,6 +299,7 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
                     <dt className="total">Total</dt><dd className="total">{m(total)}</dd>
                     <dt>Of which tax</dt><dd>{m(t.tax)}</dd>
                     <dt>Discounts given</dt><dd>{m(t.discounts)}</dd>
+                    {Number(t.changed) !== 0 && (<><dt>Prices typed, {Number(t.changed) > 0 ? "under" : "over"} the listed prices</dt><dd>{m(Math.abs(Number(t.changed)))}</dd></>)}
                   </dl>
                 </div>
                 <div>

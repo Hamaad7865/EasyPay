@@ -3,6 +3,7 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { money } from "@/lib/settings";
 import { args, filters, fmtDay, RECEIPTS, reportStart } from "@/lib/report";
+import { linePricesSql } from "@/lib/stock-reports";
 import { Card, Empty, PageHead, type Search } from "../../ui";
 import { ReportFilters, Stat } from "../parts";
 
@@ -52,6 +53,9 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
         `select e.name, count(*)::int as n, sum(r.signed_total) as amount from r
            left join employees e on e.tenant_id = $1 and e.id = r.employee_id group by e.name order by sum(r.signed_total) desc`,
       ),
+      // what a shop's till took off single lines, or charged at another price:
+      // a receipt's own discount holds neither. A restaurant's till has neither, and is not asked.
+      lines: ctx.mode === "retail" ? ((await c.query(linePricesSql(RECEIPTS), a)).rows[0] as { off: string; changed: string }) : { off: "0", changed: "0" },
     };
   });
   const head = <PageHead title="Sales summary" lede="What was sold, refunded and collected over the days you pick, and how it splits by payment method, order type and member of staff." />;
@@ -59,6 +63,9 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
   const m = (v: string | number) => money(Number(v), d.s.decimals);
   const t = d.totals;
   const net = Number(t.total) - Number(t.tax);
+  // everything taken off: on the bill, and on single lines
+  const discounts = Number(t.discounts) + Number(d.lines.off);
+  const changed = Number(d.lines.changed);
   const split = (title: string, rows: Split[], none: string) => (
     <Card title={title} flush>
       <table>
@@ -86,10 +93,16 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
         <>
           <div className="stats">
             <Stat label="Total collected" value={m(t.total)} note={`${t.sales} receipts on ${t.orders} orders`} />
-            <Stat label="Sales before refunds" value={m(t.gross)} note={Number(t.discounts) !== 0 ? `after ${m(t.discounts)} of discounts` : undefined} />
+            <Stat label="Sales before refunds" value={m(t.gross)} note={discounts !== 0 ? `after ${m(discounts)} of discounts` : undefined} />
             <Stat label="Refunds" value={m(t.refunded)} note={`${t.refunds} ${t.refunds === 1 ? "refund" : "refunds"}`} />
             <Stat label="Net of tax" value={m(net)} note={`tax ${m(t.tax)}`} />
           </div>
+          {(Number(d.lines.off) !== 0 || changed !== 0) && (
+            <p className="muted">
+              {Number(d.lines.off) !== 0 && `${m(d.lines.off)} of the discounts were given on single lines, ${m(t.discounts)} on whole sales. `}
+              {changed !== 0 && `Prices typed for one sale came to ${m(Math.abs(changed))} ${changed > 0 ? "below" : "above"} the listed prices: that is not counted as a discount.`}
+            </p>
+          )}
           <Card title="By day" flush>
             <table>
               <thead><tr><th>Day</th><th className="num">Receipts</th><th className="num">Refunds</th><th className="num">Total</th></tr></thead>

@@ -69,6 +69,35 @@ export const UNSOLD_SQL = `
 //   costed  the part of ex_vat that has a cost: profit is costed - cost
 // A receipt moves a product once, whatever its lines, so each line takes the
 // movement's cost per unit, not its total.
+// What a shop's till took off single lines, and what prices typed for one
+// sale came to against the listed ones (migration 0077). Both are kept on the
+// line, so a receipt's own discount holds neither: each line at its listed
+// price, less the line as charged. A refund gives back what its line was
+// charged, so it takes its part off both.
+//   off      discounts given on a line
+//   changed  listed price less the price typed (below zero: charged more)
+export function linePricesSql(receipts: string): string {
+  // (the same sum as lineOffSql below, over every receipt asked for at once)
+  const less = `r.sign * (line_amount(rl.list_price, rl.qty) - line_amount(rl.unit_price, rl.qty))`;
+  return `with r as (${receipts})
+       select coalesce(sum(${less}) filter (where rl.price_kind = 'discount'), 0)::bigint as off,
+              coalesce(sum(${less}) filter (where rl.price_kind = 'override'), 0)::bigint as changed
+         from r join receipt_lines rl on rl.tenant_id = $1 and rl.receipt_id = r.id
+        where rl.price_kind is not null and rl.list_price is not null`;
+}
+
+// The same for one receipt, to put beside its own discount in a sum over
+// receipts: what its lines had taken off them ('discount'), or what the
+// prices typed for it came to under the listed ones ('override'). `r` names
+// the receipt's row and `tenant` its tenant. Asked for a shop only: a
+// restaurant's till changes no line's price, so its pages ask what they did.
+export function lineOffSql(shop: boolean, r: string, kind: "discount" | "override", tenant = "$1"): string {
+  if (!shop) return "0";
+  return `(select coalesce(sum(line_amount(lo.list_price, lo.qty) - line_amount(lo.unit_price, lo.qty)), 0)
+             from receipt_lines lo
+            where lo.tenant_id = ${tenant} and lo.receipt_id = ${r}.id and lo.price_kind = '${kind}' and lo.list_price is not null)`;
+}
+
 export function itemSalesSql(receipts: string, byCategory: boolean, withCost: boolean): string {
   const by = byCategory ? `coalesce(c.name, 'No category')` : `rl.name_snapshot`;
   const cat = byCategory ? "null::text" : "max(c.name)";

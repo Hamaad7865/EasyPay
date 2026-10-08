@@ -14,7 +14,11 @@ type Head = {
   total: string; needs_review: boolean; order_name: string | null; covers: number | null; note: string | null;
   cashier: string | null; waiter: string | null; dining: string | null; table_name: string | null; refund_number: string | null;
 };
-type Line = { receipt_id: string; name: string; unit_price: string; qty: number; mods: string | null; mod_total: string; tax: string | null };
+type Line = {
+  receipt_id: string; name: string; unit_price: string; qty: number; mods: string | null; mod_total: string; tax: string | null;
+  // a shop's line that was discounted, or charged a price typed for this sale: what it was listed at, and who allowed it
+  list_price: string | null; price_kind: "discount" | "override" | null; price_label: string | null; price_by: string | null;
+};
 type Pay = { receipt_id: string; name: string | null; was: string | null; amount: string; tendered: string | null; change: string; reference: string | null };
 type Disc = { receipt_id: string; name: string; amount: string };
 
@@ -47,7 +51,9 @@ export default async function OrderDetails({ searchParams }: { searchParams: Sea
     return {
       l, f, ok: true as const, s, heads,
       lines: await rows<Line>(
-        `select rl.receipt_id, rl.name_snapshot as name, rl.unit_price, rl.qty,
+        `select rl.receipt_id, rl.name_snapshot as name, rl.unit_price, rl.qty, rl.list_price, rl.price_kind, rl.price_label,
+                (select e.name from ticket_lines tl join employees e on e.tenant_id = $1 and e.id = tl.price_by
+                  where tl.tenant_id = $1 and tl.id = rl.ticket_line_id and rl.price_kind is not null) as price_by,
                 (select string_agg(m.name_snapshot, ', ') from receipt_line_modifiers m where m.tenant_id = $1 and m.receipt_line_id = rl.id) as mods,
                 coalesce((select sum(m.price) from receipt_line_modifiers m where m.tenant_id = $1 and m.receipt_line_id = rl.id), 0) as mod_total,
                 (select string_agg(x.name_snapshot, ', ') from receipt_line_taxes x where x.tenant_id = $1 and x.receipt_line_id = rl.id) as tax
@@ -107,7 +113,15 @@ export default async function OrderDetails({ searchParams }: { searchParams: Sea
                       <tbody>
                         {d.lines.filter((x) => x.receipt_id === h.id).map((x, i) => (
                           <tr key={i}>
-                            <td>{x.name}{x.mods && <span className="sub">{x.mods}</span>}{x.tax && <span className="sub">{x.tax}</span>}</td>
+                            <td>
+                              {x.name}{x.mods && <span className="sub">{x.mods}</span>}{x.tax && <span className="sub">{x.tax}</span>}
+                              {x.price_kind && x.list_price != null && (
+                                <span className="sub">
+                                  {x.price_kind === "discount" ? (x.price_label ?? "Discount") : "Price typed for this sale"}: listed at {m(x.list_price)}
+                                  {x.price_by ? `, allowed by ${x.price_by}` : ""}
+                                </span>
+                              )}
+                            </td>
                             <td className="num">{fmtQty(x.qty)}</td>
                             <td className="num">{m(x.unit_price)}</td>
                             <td className="num">{m(Math.round((Number(x.unit_price) * x.qty) / 1000) + Number(x.mod_total))}</td>

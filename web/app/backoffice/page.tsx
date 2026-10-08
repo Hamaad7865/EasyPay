@@ -5,6 +5,7 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { fmtRs } from "@/lib/money";
 import { clock, fmtQty, RECEIPTS, today } from "@/lib/report";
+import { lineOffSql } from "@/lib/stock-reports";
 import { Go, Submit, Wait } from "./busy";
 import { SalesChart, type Day } from "./dash-chart";
 import { Card } from "./ui";
@@ -187,7 +188,7 @@ type Range = {
   hours: { hour: number; n: number; amount: number }[];
 };
 
-async function loadRange(c: PoolClient, tenantId: string, from: string, to: string, full: boolean): Promise<Range> {
+async function loadRange(c: PoolClient, tenantId: string, from: string, to: string, full: boolean, shop: boolean): Promise<Range> {
   // the days before are only compared in total, so their breakdowns are left out
   const part = (sql: string) => (full ? `(select json_agg(t) from (${sql}) t)` : "null::json");
   const row = (
@@ -204,7 +205,8 @@ async function loadRange(c: PoolClient, tenantId: string, from: string, to: stri
        )
        select (select json_build_object(
                  'gross', coalesce(sum(signed_total), 0), 'tax', coalesce(sum(sign * tax_total), 0),
-                 'discounts', coalesce(sum(sign * discount_total), 0),
+                 -- a shop's till also takes money off single lines: the receipt's own discount does not hold that
+                 'discounts', coalesce(sum(sign * (discount_total + ${lineOffSql(shop, "r", "discount")})), 0),
                  'refunds', coalesce(sum(total) filter (where type = 'refund'), 0),
                  -- what the orders that say how many guests they were came to
                  'seated', coalesce(sum(signed_total) filter (where covers > 0), 0),
@@ -380,7 +382,7 @@ export default async function BackofficeHome({
   };
   const data = await readTenant(ctx.tenantId, async (c) => {
     const range = (d: { from: string; to: string; prevFrom: string; prevTo: string }) =>
-      Promise.all([loadRange(c, ctx.tenantId, d.from, d.to, true), compare ? loadRange(c, ctx.tenantId, d.prevFrom, d.prevTo, false) : null]);
+      Promise.all([loadRange(c, ctx.tenantId, d.from, d.to, true, ctx.mode === "retail"), compare ? loadRange(c, ctx.tenantId, d.prevFrom, d.prevTo, false, ctx.mode === "retail") : null]);
     // Everything is asked for at once: one trip to the database and back for
     // the lot, instead of one each (see `pipeline` in lib/db.ts). The days
     // depend on what day it is at the store, which only the database's answer
