@@ -51,9 +51,12 @@ fun CashCountScreen(counting: Boolean = false, vm: StaffViewModel = hiltViewMode
     val message by vm.message.collectAsState()
     val result by vm.closing.collectAsState()
     val unclosed by vm.unclosed.collectAsState()
+    val drawerOpen by vm.drawerOpen.collectAsState()
     var typed by remember { mutableStateOf<String?>(null) } // null = nothing typed yet
     message?.let { m -> LaunchedEffect(m) { delay(4000); vm.messageShown() } }
     BackHandler(enabled = result != null) { onDone() }
+    // opening the day: the drawer opens for the count (a handover count during the day does not open it)
+    if (!counting) LaunchedEffect(Unit) { vm.drawerForOpening() }
 
     // opening offers what the drawer was left with last time; a handover count starts empty
     val blind = counting
@@ -90,7 +93,7 @@ fun CashCountScreen(counting: Boolean = false, vm: StaffViewModel = hiltViewMode
                         Text(if (blind) "Count the cash." else "Confirm cash amount.", color = Pos.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                         Text(
                             if (counting) "Count the cash in this till's drawer and enter the amount. You will see how it compares after you confirm. A slip prints for the handover, and the day stays open."
-                            else "Enter the cash that is in this till's drawer now: the day opens with it. Each till has its own day and its own amount.",
+                            else (if (drawerOpen) "The drawer is open for you to count it. " else "") + "Enter the cash that is in this till's drawer now: the day opens with it. Each till has its own day and its own amount.",
                             Modifier.padding(top = 10.dp, bottom = 18.dp), color = Pos.Text, fontSize = 14.sp,
                         )
                         Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(3.dp)).background(Pos.Panel).padding(14.dp), contentAlignment = Alignment.Center) {

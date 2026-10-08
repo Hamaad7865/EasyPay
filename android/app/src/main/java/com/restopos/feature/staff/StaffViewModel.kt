@@ -158,6 +158,21 @@ class StaffViewModel @Inject constructor(
 
     fun say(text: String) { _message.value = text }
 
+    // Opening the day starts with the drawer open, so that the cash in it
+    // can be counted. Once for a visit to the screen: Android rebuilding the
+    // screen must not open the drawer a second time. When the printer does
+    // not answer the person is told, since the drawer then needs its key.
+    private var drawerAsked = false
+    private val _drawerOpen = MutableStateFlow(false)
+    val drawerOpen: StateFlow<Boolean> = _drawerOpen
+    fun drawerForOpening() {
+        if (drawerAsked) return
+        drawerAsked = true
+        viewModelScope.launch {
+            repo.openDrawerToCount().onSuccess { _drawerOpen.value = it }.onFailure { _message.value = "The drawer did not open. ${it.message ?: "The printer did not answer."}" }
+        }
+    }
+
     fun open(float: Long, then: () -> Unit) = viewModelScope.launch {
         repo.open(float).fold(onSuccess = { then() }, onFailure = { _message.value = it.message })
     }

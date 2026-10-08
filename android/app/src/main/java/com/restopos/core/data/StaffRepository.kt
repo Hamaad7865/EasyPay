@@ -155,6 +155,9 @@ class StaffRepository @Inject constructor(
     // opening a day closes them first, so they do not run into the new one.
     suspend fun unclosed(): Boolean = cash.unclosed()
 
+    // The drawer, opened for whoever is about to open the day to count it.
+    suspend fun openDrawerToCount(): Result<Boolean> = cash.openDrawerToCount()
+
     // Opening the day on this till: the cash in its drawer is counted, and it
     // sells from then on. One day at a time on a till.
     suspend fun open(float: Long): Result<ShiftEntity> = runCatching {

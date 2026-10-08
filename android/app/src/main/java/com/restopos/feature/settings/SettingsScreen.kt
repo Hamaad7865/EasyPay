@@ -943,7 +943,7 @@ private fun SupportPage(vm: SettingsViewModel, shop: Boolean, network: String, o
 }
 
 private val HELP = listOf(
-    "Starting the day" to "Clock in: tap Clock in/out, pick your name and enter your PIN. Then open the day: someone allowed to taps their name on the start screen and counts the cash in the drawer. The till sells from then on.",
+    "Starting the day" to "Clock in: tap Clock in/out, pick your name and enter your PIN. Then open the day: someone allowed to taps their name on the start screen and counts the cash in the drawer, which opens for the count. The till sells from then on.",
     "Serving a table" to "On Tables, tap a free table and the number of guests: its order opens. Tap the items, then Send to kitchen. The table turns blue and shows what it owes and how long it has been. Tap it again to add to the order, print the bill or take payment.",
     "Moving a table, or two tables on one bill" to "On Tables, tap the table, then Move or merge, then the table it should go to. A free table takes the order as it is. A table that has an order of its own takes this one onto its bill: the guests are added together and the first table is free. From an order, the same is under More. To pay apart again afterwards, use Split check.",
     "A counter sale" to "Tap Quick sale, tap the items, tap Pay. What was not sent goes to the kitchen when it is paid. To serve someone else before it is paid, tap New sale: the order waits under Orders, and tapping it there brings it back.",
@@ -971,7 +971,7 @@ private val HELP = listOf(
 // the one under the sale, so an entry says which it means. The cash drawer is
 // in the side menu, which has no name on the screen: "the key at the top left".
 private val SHOP_HELP = listOf(
-    "Starting the day" to "Clock in: tap Clock in/out, pick your name and enter your PIN. Then open the day: someone allowed to taps their name on the start screen and counts the cash in the drawer. The till sells from then on.",
+    "Starting the day" to "Clock in: tap Clock in/out, pick your name and enter your PIN. Then open the day: someone allowed to taps their name on the start screen and counts the cash in the drawer, which opens for the count. The till sells from then on.",
     "Ringing up a sale" to "On Sell, scan each product's barcode, or tap its tile on the right. The same product again adds one more to its line. To find a product, type its name, SKU or barcode in the box at the top, or tap its category under the box. On a line, − and + change how many, and tapping the number between them lets you type it. A code that no product carries adds nothing, and the till says so.",
     "Scanning without the keyboard" to "Tap the scan key beside the search box, on Sell, Receipts, Products & stock or Stock check. While it is lit, the box gives way to a strip that says what the last scan did, and the tablet's keyboard does not come up. Tap the key off again to search by typing. It is one switch for all of these screens.",
     "Sizes, colours and other variants" to "A product that comes in variants asks which one when it is tapped: pick the size, the colour or whatever it has, then tap Add. Where its stock is counted, each choice says what is left. Scanning a variant's own barcode adds that variant at once.",
