@@ -95,7 +95,7 @@ class AuthViewModel @Inject constructor(
             val me = runCatching { api.me() }.getOrElse {
                 if (it is ApiError && it.status == 403) {
                     auth.signOut()
-                    _state.value = AuthUiState.Error("That login is not linked to a restaurant, or it was switched off. Use another login of this restaurant.")
+                    _state.value = AuthUiState.Error("That login is not linked to a business, or it was switched off. Use another login of this business.")
                 } else {
                     _state.value = AuthUiState.Error(it.message ?: "Could not check this login")
                 }
@@ -103,7 +103,7 @@ class AuthViewModel @Inject constructor(
             }
             if (me.tenantId != tenant) {
                 auth.signOut()
-                _state.value = AuthUiState.Error("That login belongs to another restaurant. Use a login of the restaurant this tablet is set up for.")
+                _state.value = AuthUiState.Error("That login belongs to another business. Use a login of the business this tablet is set up for.")
                 return@launch
             }
             session.setNeedsSignIn(false)
