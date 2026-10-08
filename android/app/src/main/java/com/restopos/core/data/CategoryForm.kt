@@ -11,7 +11,7 @@ object CategoryForm {
     // also what a category with no colour is painted in, by its place.
     val SWATCHES = listOf(
         "#B9521C", "#2459C9", "#B83A3A", "#8F6A0E", "#A8366F", "#117785", "#6243C8", "#74513A",
-        "#2F7D4F", "#C2410C", "#475569", "#0E7490",
+        "#2F7D4F", "#1E3A8A", "#475569", "#6B8E23",
     )
     private val HEX = Regex("#[0-9A-Fa-f]{6}")
 
