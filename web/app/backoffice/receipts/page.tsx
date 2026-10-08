@@ -72,6 +72,20 @@ function describe(v: Review): string {
         .map((l) => `${l.kind === "override" ? "a price changed on one line" : "a discount on one line"}, from ${rs(l.listed)} to ${rs(l.charged)}, by someone whose role does not allow it`)
         .join("; ");
     }
+    case "discount-unapproved": {
+      // a discount on the bill that nobody was allowed to give; the bill was paid with it, so it is kept (migration 0082)
+      const discounts = (Array.isArray(d.discounts) ? d.discounts : []) as { name?: string | null; amount?: number | null; why?: string }[];
+      return discounts
+        .map((x) =>
+          x.why === "needs-approval"
+            ? `the discount ${x.name ?? ""} (${rs(x.amount)}) needs a manager, and no one who may approve it did`
+            : `a discount of ${rs(x.amount)} (${x.name ?? "Discount"}) given by someone whose role does not allow discounts`,
+        )
+        .join("; ");
+    }
+    case "refund-unapproved":
+      // the customer had the money by the time it reached the server, so it is kept (migration 0082)
+      return "Refunded by someone whose role does not allow refunds, with no approval from someone who may";
     default:
       return v.reason;
   }
@@ -152,7 +166,7 @@ export default async function ReceiptsPage({ searchParams }: { searchParams: Sea
         <Link href="/backoffice/reports/orders" className="btn-quiet">Order details report</Link>
       </PageHead>
       <Flash sp={sp} />
-      {open > 0 && <div className="note warn"><strong>{open} {open === 1 ? "receipt needs" : "receipts need"} a look</strong>The till took the money and kept selling; the reason is in the last column.</div>}
+      {open > 0 && <div className="note warn"><strong>{open} {open === 1 ? "receipt needs" : "receipts need"} a look</strong>The till took the money, or gave it back, and kept selling; the reason is in the last column.</div>}
       {rows.length === 0 ? (
         <Empty icon={Receipt} title="No receipts yet">Make a sale on the tablet and it shows here within a minute.</Empty>
       ) : (

@@ -160,7 +160,14 @@ const INSERT_ONLY = ['receipt_discounts','receipt_payments','receipt_line_taxes'
   await step('T6-noapprover', async () => { r6 = await push(empC, [
     pay(rc6, tk6, 'RDS1-T1-28', 28, { discounts: [{ discount_id: staff }], payments: [{ payment_type_id: cash, amount: 6300 }] })]); });
   check('T6 restricted discount without approver rejected', r6[0].status === 'rejected' && r6[0].code === 'approval-required', JSON.stringify(r6[0]));
-  await step('T6-approver', async () => { r6 = await push(empC, [
+  // Who approved a restricted discount is named inside the discount. As for
+  // any approval, the server takes that from a login that may vouch for staff
+  // (one that may set up tills) and from no other (migration 0082): the
+  // cashier's own login cannot name the owner there.
+  await step('T6-approver-lesser', async () => { r6 = await push(empC, [
+    pay(rc6b, tk6, 'RDS1-T1-29', 29, { discounts: [{ discount_id: staff, approved_by: empO }], payments: [{ payment_type_id: cash, amount: 6300 }] })]); });
+  check('T6 a login that may not vouch for staff cannot name the approver', r6[0].status === 'rejected' && r6[0].code === 'approval-required', JSON.stringify(r6[0]));
+  await step('T6-approver', async () => { r6 = await push(empO, [
     pay(rc6b, tk6, 'RDS1-T1-29', 29, { discounts: [{ discount_id: staff, approved_by: empO }], payments: [{ payment_type_id: cash, amount: 6300 }] })]); });
   // sub 9000, disc 2700, net 6300, VAT 945, total 7245
   check('T6 owner-approved discount applied', r6[0].status === 'applied', JSON.stringify(r6[0]));

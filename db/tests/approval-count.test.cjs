@@ -73,18 +73,24 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
     check('T1 the approval is on record: which op, who was at the till, who approved', log && log.employee_id === waiter && log.approved_by === manager && log.op_type === 'shift.open', JSON.stringify(log));
   }
 
-  // T2 a refund
+  // what a receipt or a refund is flagged for, if anything
+  const flagged = async (receiptId) => q1(`select r.needs_review, (select string_agg(v.reason, ',' order by v.reason) from receipt_reviews v where v.receipt_id = r.id) as why from receipts r where r.id = $1`, [receiptId]);
+
+  // T2 a refund. The customer has the money by the time it gets here, so one
+  // nobody was allowed to give is stored and flagged, not refused (0082).
   {
-    const s = await sale();
-    const refund = (extra) => op('refund.create', { id: crypto.randomUUID(), refund_of: s.rc, store_id: store, device_id: dev, number: 'AC-R' + (++seq), device_seq: seq,
-      reason: 'wrong order', lines: [{ receipt_line_id: s.line, qty: 1000 }], payments: [{ payment_type_id: cash, amount: 5000 }], ...extra }, waiter);
-    const no = await push([refund({})]);
-    const byWaiter = await push([refund({ approved_by: waiter2 })]);
-    const o = refund({ approved_by: manager });
+    const refund = (s, extra) => op('refund.create', { id: crypto.randomUUID(), refund_of: s.rc, store_id: store, device_id: dev, number: 'AC-R' + (++seq), device_seq: seq,
+      reason: 'wrong order', lines: [{ receipt_line_id: s.line, qty: 1000 }], payments: [{ payment_type_id: cash, amount: 5000 }], device_time: at(seq), ...extra }, waiter);
+    const a = refund(await sale(), {});
+    const no = await push([a]);
+    const b = refund(await sale(), { approved_by: waiter2 });
+    const byWaiter = await push([b]);
+    const o = refund(await sale(), { approved_by: manager });
     const yes = await push([o]);
-    check('T2 a waiter cannot refund', tag(no[0]) === 'rejected:forbidden', tag(no[0]));
-    check('T2 nor with the approval of someone who may not either', tag(byWaiter[0]) === 'rejected:forbidden', tag(byWaiter[0]));
-    check('T2 with a manager approving, the refund goes through', tag(yes[0]) === 'applied' && (await approved(o.op_id)) !== undefined, tag(yes[0]));
+    const fa = await flagged(a.payload.id), fb = await flagged(b.payload.id), fo = await flagged(o.payload.id);
+    check('T2 a refund by a waiter is stored, and flagged for the back office', tag(no[0]) === 'applied' && !!fa && fa.needs_review === true && fa.why === 'refund-unapproved', tag(no[0]) + ' ' + JSON.stringify(fa));
+    check('T2 the approval of someone who may not refund either does not clear it', tag(byWaiter[0]) === 'applied' && !!fb && fb.why === 'refund-unapproved', tag(byWaiter[0]) + ' ' + JSON.stringify(fb));
+    check('T2 with a manager approving, the refund goes through with nothing flagged', tag(yes[0]) === 'applied' && (await approved(o.op_id)) !== undefined && !!fo && fo.needs_review === false && fo.why === null, tag(yes[0]) + ' ' + JSON.stringify(fo));
   }
 
   // T3 correcting a payment type
@@ -105,13 +111,19 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
     const yes = await push([op('ticket.update_meta', { ticket_id: tk, opened_by: waiter2, approved_by: manager }, waiter)]);
     check('T4 a waiter cannot hand an order to someone else', tag(no[0]) === 'rejected:forbidden', tag(no[0]));
     check('T4 with a manager approving, the order changes hands', tag(yes[0]) === 'applied' && (await q1(`select opened_by from tickets where id = $1`, [tk])).opened_by === waiter2, tag(yes[0]));
-    const pay = (extra) => op('receipt.create', { id: crypto.randomUUID(), ticket_id: tk, store_id: store, device_id: dev, number: 'AC-' + (++seq), device_seq: seq,
+    const pay = (ticket, extra) => op('receipt.create', { id: crypto.randomUUID(), ticket_id: ticket, store_id: store, device_id: dev, number: 'AC-' + (++seq), device_seq: seq,
       discounts: [{ type: 'percent', value: 10, name: 'Friend' }], payments: [{ payment_type_id: cash, amount: 9000 }], device_time: at(seq), ...extra }, waiter);
-    const noDisc = await push([pay({})]);
-    const disc = await push([pay({ approved_by: manager })]);
-    const rc = await q1(`select total, discount_total, needs_review from receipts where ticket_id = $1`, [tk]);
-    check('T4 a waiter cannot give a discount', tag(noDisc[0]) === 'rejected:forbidden', tag(noDisc[0]));
-    check('T4 with a manager approving, 10% comes off and nothing is flagged', tag(disc[0]) === 'applied' && rc.total === '9000' && rc.discount_total === '1000' && rc.needs_review === false, tag(disc[0]) + ' ' + JSON.stringify(rc));
+    // the bill was paid with the discount on it: it is stored as paid, and flagged (0082)
+    const noDisc = await push([pay(tk, {})]);
+    const rcNo = await q1(`select id, total, discount_total from receipts where ticket_id = $1`, [tk]);
+    const fNo = rcNo ? await flagged(rcNo.id) : null;
+    check('T4 a bill with a discount by a waiter is stored as it was paid, and flagged', tag(noDisc[0]) === 'applied' && !!rcNo && rcNo.total === '9000' && rcNo.discount_total === '1000' && !!fNo && fNo.why === 'discount-unapproved',
+      tag(noDisc[0]) + ' ' + JSON.stringify(rcNo) + ' ' + JSON.stringify(fNo));
+    const tk2 = crypto.randomUUID();
+    await push([op('ticket.create', { id: tk2, store_id: store }, waiter), op('ticket.add_line', { id: crypto.randomUUID(), ticket_id: tk2, item_id: dp, qty: 2000 }, waiter)]);
+    const disc = await push([pay(tk2, { approved_by: manager })]);
+    const rc = await q1(`select total, discount_total, needs_review from receipts where ticket_id = $1`, [tk2]);
+    check('T4 with a manager approving, 10% comes off and nothing is flagged', tag(disc[0]) === 'applied' && !!rc && rc.total === '9000' && rc.discount_total === '1000' && rc.needs_review === false, tag(disc[0]) + ' ' + JSON.stringify(rc));
   }
 
   // T5 an approval counts only from a login that may vouch for staff
@@ -128,7 +140,7 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
 
   // T6 counting the drawer during the shift, then closing it: the count changes nothing about the close
   {
-    const s = await sale(); // the fourth cash sale of 50 on this shift, at(seq)
+    const s = await sale(); // one more cash sale of 50 on this shift, at(seq)
     const count = crypto.randomUUID();
     const o = op('drawer.count', { id: count, store_id: store, device_id: dev, shift_id: shift, counted: 24500, expected: 25000, device_time: at(60), approved_by: manager }, waiter);
     const r = await push([o]);
@@ -145,8 +157,9 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
     const open = await q1(`select closed_at from shifts where id = $1`, [shift]);
     const noClose = await push([op('shift.close', { id: shift, counted_cash: 20000, closed_at: at(90) }, waiter)]);
     const close = await push([op('shift.close', { id: shift, counted_cash: 20000, closed_at: at(90), approved_by: manager }, waiter)]);
-    // float 100 + the cash sales on this shift (the refund gave 50 back, one sale was discounted to 90)
-    const cashIn = Number((await q1(`select coalesce(sum(case when r.type = 'refund' then -p.amount else p.amount end), 0) as n from receipt_payments p
+    // float 100 + the cash sales on this shift (each refund gave 50 back, two sales were discounted to 90)
+    // (as the payments stand after any correction of their type, and with each refund dated by the till, as the server counts them)
+    const cashIn = Number((await q1(`select coalesce(sum(case when r.type = 'refund' then -p.amount else p.amount end), 0) as n from receipt_payments_effective p
       join receipts r on r.id = p.receipt_id where r.tenant_id = $1 and p.payment_type_id = $2`, [tid, cash])).n);
     check('T6 the shift is still open after the count', open.closed_at === null);
     check('T6 a waiter cannot close the shift, and can with a manager approving', tag(noClose[0]) === 'rejected:forbidden' && tag(close[0]) === 'applied', tag(noClose[0]) + ' ' + tag(close[0]));
