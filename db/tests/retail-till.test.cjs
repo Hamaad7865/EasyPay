@@ -201,6 +201,22 @@ const lineId = () => `00000000-0000-4000-8000-${String(++made).padStart(12, '0')
       check('A6 a price change needs its own right: one who may only discount is flagged for it, and only for it', tags(outc) === 'applied applied applied' && why && why.detail.lines.length === 1 && why.detail.lines[0].kind === 'override', tags(outc) + ' ' + JSON.stringify(why));
     }
 
+    // ---- A13 a discounted line divided between two checks (migration 0078) ----
+    {
+      const tk = await ticket();
+      // three mugs at Rs 103.50 each, listed at Rs 115.00
+      const [l1, o1] = add(tk, { item_id: mug, name_snapshot: "Mug", unit_price: 10350, list_price: 11500, price_kind: "discount", price_label: "10% off", qty: 3000 });
+      const l2 = lineId();
+      const out = await push([o1, op("ticket.split_line", { line_id: l1, new_id: l2, qty: 1000 })]);
+      const part = await line(l2);
+      check("A13 a line divided for a split check keeps what it was listed at, on both parts", tags(out) === "applied applied" && Number(part.unit_price) === 10350 && Number(part.list_price) === 11500 && part.price_kind === "discount" && part.price_label === "10% off" && part.price_by === owner && part.qty === 1000 && (await line(l1)).qty === 2000, tags(out) + " " + JSON.stringify(part));
+      const [rcA, oA] = receipt(tk, 20700, { line_ids: [l1] });
+      const [rcB, oB] = receipt(tk, 10350, { line_ids: [l2] });
+      const paid = await push([oA, oB]);
+      const rl = (await c.query(`select list_price, price_kind from receipt_lines where receipt_id = any($1::uuid[])`, [[rcA, rcB]])).rows;
+      check("A13 and paid as two checks, neither is flagged and both receipts say what the line was", tags(paid) === "applied applied" && (await reviews(rcA)) === "" && (await reviews(rcB)) === "" && rl.length === 2 && rl.every((x) => Number(x.list_price) === 11500 && x.price_kind === "discount"), tags(paid) + " " + (await reviews(rcA)) + "|" + (await reviews(rcB)) + " " + JSON.stringify(rl));
+    }
+
     // ---- A8 a return not put back on the shelf ----
     {
       const tk = await ticket();
