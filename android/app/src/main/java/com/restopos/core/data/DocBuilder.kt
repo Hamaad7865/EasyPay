@@ -11,6 +11,7 @@ import com.restopos.core.print.DocPayment
 import com.restopos.core.print.DocTax
 import com.restopos.core.print.Docs
 import com.restopos.core.print.KitchenDoc
+import com.restopos.core.print.Paper
 import com.restopos.core.print.PrintError
 import com.restopos.core.print.Printing
 import com.restopos.core.print.ReceiptDoc
@@ -107,6 +108,13 @@ class DocBuilder @Inject constructor(
         val totals = Calc.totalsRounded(calc, listOfNotNull(discount?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) }), servicePct)
         val discounts = if (discount != null && totals.discount > 0) listOf(DocAmount(discount.name, totals.discount)) else emptyList()
         return receipt("bill", t, rows, totals, discounts, emptyList(), "", System.currentTimeMillis())
+    }
+
+    // The paper as lines of text, for the till's screen: as wide as the
+    // receipt printer's paper, or the usual 80 mm when there is no printer.
+    suspend fun look(doc: ReceiptDoc): List<String> {
+        val paper = printing.receiptPrinter()?.let { printing.paper(it) } ?: Paper()
+        return Docs.receiptLook(doc, printing.shop(), paper, printing.settings().decimals)
     }
 
     // Receipts, bills and refunds come out of the cashier's printer.

@@ -65,7 +65,29 @@ class MainActivity : ComponentActivity() {
     // Keys from a keyboard or a scanner go to the screen as always. The Enter
     // that ends a scan is kept from it (it would press whatever has the focus)
     // and the code goes to the order screen instead.
+    //
+    // In scan mode (a shop's Sell, Receipts and Stock check, with the scan key
+    // lit) nothing of a scan reaches the screen: every key is taken here,
+    // before anything that has the focus sees it, and put together into the
+    // code. Nothing is typed, so nothing asks for the keyboard. The releases
+    // are taken too: a key that has the focus would take a scanner's Enter
+    // coming up as a press of itself.
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        val scanner = com.restopos.core.common.Scanner
+        if (scanner.capturing && event.device?.isVirtual == false) {
+            val ends = event.keyCode == android.view.KeyEvent.KEYCODE_ENTER || event.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER || event.keyCode == android.view.KeyEvent.KEYCODE_TAB
+            val rubs = event.keyCode == android.view.KeyEvent.KEYCODE_DEL || event.keyCode == android.view.KeyEvent.KEYCODE_FORWARD_DEL
+            // keys with no character (volume, back and the rest) go on as always
+            if (!ends && !rubs && event.unicodeChar == 0) return super.dispatchKeyEvent(event)
+            if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                when {
+                    ends -> scanner.wedge.enter()?.let { scanner.scanned(it) }
+                    rubs -> scanner.wedge.backspace()
+                    else -> scanner.wedge.key(event.unicodeChar, event.eventTime)
+                }
+            }
+            return true
+        }
         if (event.action == android.view.KeyEvent.ACTION_DOWN && event.device?.isVirtual == false) {
             val enter = event.keyCode == android.view.KeyEvent.KEYCODE_ENTER || event.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
             com.restopos.core.common.Scanner.key(event.unicodeChar, enter, event.eventTime)?.let { code ->

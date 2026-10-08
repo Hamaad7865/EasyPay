@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -54,6 +55,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.PinHash
+import com.restopos.core.common.Scanner
 import com.restopos.core.data.ServiceRepository
 import com.restopos.core.data.StaffMember
 import com.restopos.core.data.StaffRepository
@@ -103,10 +105,13 @@ import com.restopos.feature.orders.OrdersScreen
 import com.restopos.feature.pay.PayScreen
 import com.restopos.feature.pay.PayViewModel
 import com.restopos.feature.receipts.ReceiptsScreen
+import com.restopos.feature.receipts.ReceiptsViewModel
 import com.restopos.feature.retail.ProductsScreen
 import com.restopos.feature.retail.ProductsViewModel
 import com.restopos.feature.retail.RetailSellScreen
 import com.restopos.feature.retail.RetailViewModel
+import com.restopos.feature.retail.StockCheckScreen
+import com.restopos.feature.retail.StockCheckViewModel
 import com.restopos.feature.settings.SettingsScreen
 import com.restopos.feature.split.SplitScreen
 import com.restopos.feature.staff.PinCheck
@@ -137,11 +142,11 @@ import javax.inject.Inject
 // Every screen of the till. Order, Pay and Split belong to whichever order is
 // open; the rest are places. Sell and Products are a shop's: its sell screen
 // in place of tables and orders, its products and stock in place of the menu.
-enum class Screen { Floor, Order, Pay, Split, Takeaway, Kitchen, Bookings, Orders, Today, Menu, Cash, Receipts, Customers, Settings, Sell, Products }
+enum class Screen { Floor, Order, Pay, Split, Takeaway, Kitchen, Bookings, Orders, Today, Menu, Cash, Receipts, Customers, Settings, Sell, Products, StockCheck }
 
 // what only a restaurant has, and what only a shop has
 private val RESTAURANT_ONLY = setOf(Screen.Floor, Screen.Order, Screen.Takeaway, Screen.Kitchen, Screen.Bookings, Screen.Orders, Screen.Menu)
-private val SHOP_ONLY = setOf(Screen.Sell, Screen.Products)
+private val SHOP_ONLY = setOf(Screen.Sell, Screen.Products, Screen.StockCheck)
 
 data class Badges(val takeaway: Int = 0, val kitchen: Int = 0, val bookings: Int = 0)
 
@@ -200,6 +205,8 @@ class ShellViewModel @Inject constructor(
     val pending: StateFlow<Long> = db.outbox().pendingCountFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val rejected: StateFlow<Long> = db.outbox().deadCountFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val lang: StateFlow<String> = session.lang.stateIn(viewModelScope, SharingStarted.Eagerly, "en")
+    // a shop's scan mode: the scanner's keys are taken below the screen (see Scanner)
+    val scanMode: StateFlow<Boolean> = session.scanMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     fun go(to: Screen) {
         if (to != Screen.Floor) assigning.value = null
@@ -259,7 +266,8 @@ private val SHOP = listOf(
     Nav(Screen.Sell, VI.Bolt) { L.sell }, Nav(Screen.Receipts, VI.Receipt) { L.receipts }, Nav(Screen.Customers, VI.People) { L.customers },
     Nav(Screen.Products, VI.List) { L.productsStock }, Nav(Screen.Today, VI.Bars) { L.todayShort }, Nav(Screen.Settings, VI.More) { L.more },
 )
-private val SHOP_BACK = listOf(Nav(Screen.Cash, VI.Cash) { L.cashDrawer })
+// Stock check is a look-up, not a place of its own along the top: it is here and under the sale's More.
+private val SHOP_BACK = listOf(Nav(Screen.StockCheck, VI.Search) { "Stock check" }, Nav(Screen.Cash, VI.Cash) { L.cashDrawer })
 
 // What is always on screen once someone is at the till: the top bar with the
 // service screens, the open screen under it, and the side menu behind the
@@ -280,6 +288,8 @@ fun MainShell(
     val retail = kind == true
     val pay: PayViewModel = hiltViewModel()
     val more: MoreViewModel = hiltViewModel()
+    // the receipts list is held here so that a receipt scanned on the sell screen can be opened on it
+    val receipts: ReceiptsViewModel = hiltViewModel()
     val screen by shell.screen.collectAsState()
     val user by shell.user.collectAsState()
     val badges by shell.badges.collectAsState()
@@ -311,6 +321,15 @@ fun MainShell(
         }
     }
     LaunchedEffect(screen) { if (screen == Screen.Pay || screen == Screen.Split) order.open() }
+    // Scan mode holds on a shop's screens that take a scanner, and nowhere
+    // else: a payment, a restaurant's screens and the start screen get their
+    // keys as always.
+    val scanMode by shell.scanMode.collectAsState()
+    SideEffect {
+        Scanner.mode = scanMode
+        Scanner.taking = retail && (screen == Screen.Sell || screen == Screen.Products || screen == Screen.StockCheck || screen == Screen.Receipts)
+    }
+    DisposableEffect(Unit) { onDispose { Scanner.taking = false } }
     // what a printer said when it could not print behind the scenes, and what Settings has to say
     LaunchedEffect(Unit) { more.load(); more.problems.collect { Toaster.say(it) } }
     val said by more.message.collectAsState()
@@ -414,8 +433,12 @@ fun MainShell(
                         }
                     }
                     Screen.Split -> SplitScreen(onBack = { shell.go(if (retail) Screen.Sell else Screen.Order) }, onPay = { shell.go(Screen.Pay) })
-                    Screen.Sell -> RetailSellScreen(sell, more, onPay = { shell.go(Screen.Pay) }, onReceipts = { shell.go(Screen.Receipts) })
+                    Screen.Sell -> RetailSellScreen(
+                        sell, more, onPay = { shell.go(Screen.Pay) }, onReceipts = { shell.go(Screen.Receipts) },
+                        onReceipt = { id -> receipts.showId(id); shell.go(Screen.Receipts) }, onStock = { shell.go(Screen.StockCheck) },
+                    )
                     Screen.Products -> { val vm: ProductsViewModel = hiltViewModel(); ProductsScreen(vm) }
+                    Screen.StockCheck -> { val vm: StockCheckViewModel = hiltViewModel(); StockCheckScreen(vm, onBack = { shell.go(Screen.Sell) }) }
                     Screen.Takeaway -> { val vm: BoardViewModel = hiltViewModel(); BoardScreen(vm, onOrder = { shell.go(Screen.Order) }, onPay = { shell.go(Screen.Pay) }) }
                     Screen.Kitchen -> { val vm: KdsViewModel = hiltViewModel(); KdsScreen(vm) }
                     Screen.Bookings -> { val vm: BookingsViewModel = hiltViewModel(); BookingsScreen(vm, serviceLine, onAssign = { b -> b.area?.let { floor.pickZone(it) }; shell.assign(b) }, onSeated = { shell.go(Screen.Order) }) }
@@ -423,7 +446,7 @@ fun MainShell(
                     Screen.Today -> { val vm: TodayViewModel = hiltViewModel(); TodayScreen(vm, if (retail) date else serviceLine) }
                     Screen.Menu -> { val vm: MenuViewModel = hiltViewModel(); MenuStockScreen(vm) }
                     Screen.Cash -> { val vm: CashViewModel = hiltViewModel(); CashScreen(vm, onOpenPeriod = onOpenPeriod, onClosed = onLock) }
-                    Screen.Receipts -> Box(Modifier.padding(top = 12.dp)) { ReceiptsScreen(onExchange = { shell.go(Screen.Sell) }) }
+                    Screen.Receipts -> Box(Modifier.padding(top = 12.dp)) { ReceiptsScreen(receipts, onExchange = { shell.go(Screen.Sell) }) }
                     Screen.Customers -> Box(Modifier.padding(top = 12.dp)) { CustomersScreen() }
                     Screen.Settings -> Box {
                         SettingsScreen(

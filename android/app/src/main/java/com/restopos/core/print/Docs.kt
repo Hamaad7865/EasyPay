@@ -60,6 +60,13 @@ data class ReceiptDoc(
     // share this is, of how many. Its payments then hold that guest's alone.
     val share: Int? = null,
     val shares: Int? = null,
+    // Said on the paper when a receipt is printed again from the list, never
+    // kept with the receipt: that this paper is a copy, and how much of the
+    // sale has been refunded since (all of it, or part). A copy that looks
+    // like the first paper is what someone would bring to be refunded twice.
+    val reprint: Boolean = false,
+    val refunded: Long = 0,
+    val refundedAll: Boolean = false,
 )
 
 data class KitchenDoc(
@@ -146,6 +153,10 @@ data class Shop(
     val vat: String = "",
     val header: String = "",
     val footer: String = "",
+    // A shop's receipts carry their number in bars under the footer, for the
+    // till's scanner. A restaurant's till takes no scans of receipts, so its
+    // paper stays as short as it was.
+    val bars: Boolean = false,
 )
 
 // One printer's paper: how many characters fit, how far to feed, whether to cut.
@@ -192,7 +203,13 @@ object Docs {
     }
 
     // A receipt, a bill (before payment) or a refund.
-    fun receipt(d: ReceiptDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster? = null, openDrawer: Boolean = false): ByteArray {
+    fun receipt(d: ReceiptDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster? = null, openDrawer: Boolean = false): ByteArray =
+        page(d, shop, paper, decimals, logo, openDrawer).bytes()
+
+    // The same paper as lines of text, to show on the till's screen.
+    fun receiptLook(d: ReceiptDoc, shop: Shop, paper: Paper, decimals: Int): List<String> = page(d, shop, paper, decimals, null, false).look()
+
+    private fun page(d: ReceiptDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster?, openDrawer: Boolean): EscPos {
         val p = EscPos(paper.columns)
         val n = { c: Long -> num(c, decimals) }
         if (openDrawer) p.drawer()
@@ -200,6 +217,8 @@ object Docs {
         p.rule()
         p.align(EscPos.Align.Center).bold(true)
         p.line(when (d.kind) { "bill" -> "BILL"; "refund" -> "REFUND"; else -> "RECEIPT" })
+        if (d.reprint) p.line("COPY")
+        if (d.refunded > 0) p.line(if (d.refundedAll) "*** REFUNDED ***" else "*** PARTLY REFUNDED: ${n(d.refunded)} ***")
         p.bold(false).align(EscPos.Align.Left)
         if (d.number.isNotBlank()) p.row("No.", d.number)
         p.row(stamp(d.time), d.order)
@@ -246,8 +265,11 @@ object Docs {
         if (d.kind == "bill") { p.rule(); p.center("This is not a receipt") }
         d.note?.takeIf { it.isNotBlank() }?.let { p.rule(); p.wrapped("Remark: $it") }
         if (shop.footer.isNotBlank()) { p.rule(); p.center(shop.footer) }
+        // Its number in bars: scanned at a till, it opens this receipt, for
+        // another copy, a refund or an exchange. A bill has no number yet.
+        if (shop.bars && d.kind != "bill" && d.number.isNotBlank()) { p.line(); p.barcode(d.number) }
         p.end(paper)
-        return p.bytes()
+        return p
     }
 
     // What the kitchen or the bar has to make: big, and with no prices.

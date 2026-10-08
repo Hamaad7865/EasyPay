@@ -138,6 +138,15 @@ interface ReceiptDao {
     )
     suspend fun last(store: String, device: String): ReceiptEntity?
 
+    // The receipt that carries this number, whichever till of the shop issued
+    // it: what a scan of a receipt's barcode looks for. A scanner may send
+    // capitals for small letters, so case is not minded.
+    @Query(
+        """SELECT * FROM receipts WHERE store_id = :store AND deleted_at IS NULL AND number = :number COLLATE NOCASE
+           ORDER BY device_time DESC LIMIT 1""",
+    )
+    suspend fun byNumber(store: String, number: String): ReceiptEntity?
+
     // ---- receipts that came from the server ----
     @Upsert suspend fun upsertPulled(r: ReceiptEntity)
     @Upsert suspend fun upsertPulledLines(rows: List<ReceiptLineEntity>)

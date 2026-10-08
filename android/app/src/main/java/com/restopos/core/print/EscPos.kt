@@ -22,14 +22,28 @@ class EscPos(val columns: Int) {
 
     private fun raw(vararg b: Int) = apply { b.forEach { out.write(it) } }
 
-    fun align(a: Align) = raw(0x1B, 0x61, a.ordinal)
+    // The same page as lines of text, for showing the paper on a screen: what
+    // was sent as text, centred where the printer centres it, and a row of
+    // bars where a barcode prints. A picture (the logo) is left out.
+    private val seen = ArrayList<String>()
+    private val cur = StringBuilder()
+    private var centred = false
+    private fun newline() = apply {
+        raw(0x0A)
+        val s = cur.toString().trimEnd()
+        cur.clear()
+        seen.add(if (centred && s.length < columns) " ".repeat((columns - s.length) / 2) + s else s)
+    }
+    fun look(): List<String> = seen.dropLastWhile { it.isBlank() }
+
+    fun align(a: Align) = raw(0x1B, 0x61, a.ordinal).also { centred = a == Align.Center }
     fun bold(on: Boolean) = raw(0x1B, 0x45, if (on) 1 else 0)
     // wide and tall: twice the size, half the columns
     fun big(on: Boolean) = raw(0x1D, 0x21, if (on) 0x11 else 0x00)
     fun tall(on: Boolean) = raw(0x1D, 0x21, if (on) 0x01 else 0x00)
 
-    fun text(s: String) = apply { out.write(encode(s)) }
-    fun line(s: String = "") = text(s).raw(0x0A)
+    fun text(s: String) = apply { out.write(encode(s)); cur.append(s) }
+    fun line(s: String = "") = text(s).newline()
 
     // A long line is wrapped at spaces, never cut in the middle of a word
     // unless the word alone is wider than the paper.
@@ -52,7 +66,26 @@ class EscPos(val columns: Int) {
         if (parts.isEmpty()) line(right.padStart(width))
     }
 
-    fun feed(lines: Int) = apply { repeat(lines.coerceIn(0, 20)) { raw(0x0A) } }
+    fun feed(lines: Int) = apply { repeat(lines.coerceIn(0, 20)) { newline() } }
+
+    // A barcode any scanner reads (Code 128, set B: every printable ASCII
+    // character), centred, with the code in letters under it. Its bars are as
+    // wide as the paper lets them be. A code that cannot be put in bars, or
+    // is wider than the paper even with the thinnest, prints nothing.
+    fun barcode(code: String) = apply {
+        val module = barcodeModule(code, if (columns <= 32) 384 else 576) ?: return@apply
+        val data = ("{B" + code.replace("{", "{{")).toByteArray(Charsets.US_ASCII)
+        align(Align.Center)
+        raw(0x1D, 0x68, 64) // 64 dots high: 8 mm
+        raw(0x1D, 0x77, module) // dots in the thinnest bar
+        raw(0x1D, 0x48, 0) // no digits of the printer's own under it
+        raw(0x1D, 0x6B, 73, data.size)
+        out.write(data)
+        // the printer moves to the next line itself after the bars
+        seen.add(" ".repeat(((columns - BARS.length) / 2).coerceAtLeast(0)) + BARS)
+        line(code)
+        align(Align.Left)
+    }
     fun cut() = raw(0x1D, 0x56, 0x42, 0x00)
     // pin 2, the usual wiring of a drawer plugged into the printer
     fun drawer() = raw(0x1B, 0x70, 0x00, 0x19, 0xFA)
@@ -87,6 +120,20 @@ class EscPos(val columns: Int) {
         fun columnsFor(paperMm: Int): Int = if (paperMm <= 58) 32 else 48
         // dots across the printable width
         fun dotsFor(paperMm: Int): Int = if (paperMm <= 58) 384 else 576
+
+        // what stands for a barcode where the paper is shown on a screen
+        private const val BARS = "|| ||| | || ||| || | ||| || |"
+
+        // Code 128, set B: a start, the characters, a check and a stop, eleven
+        // modules each, and two more to end. How many dots that is across
+        // with bars `module` dots wide.
+        fun barcodeDots(chars: Int, module: Int): Int = ((chars + 3) * 11 + 2) * module
+        // The widest bars (3, 2 or 1 dots) with which the code fits the paper;
+        // null when it holds a character set B has not, or cannot fit.
+        fun barcodeModule(code: String, dots: Int): Int? {
+            if (code.isEmpty() || code.length > 60 || code.any { it.code !in 32..126 }) return null
+            return (3 downTo 1).firstOrNull { barcodeDots(code.length, it) <= dots }
+        }
 
         fun wrap(s: String, width: Int): List<String> {
             val w = width.coerceAtLeast(1)

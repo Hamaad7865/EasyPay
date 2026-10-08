@@ -16,11 +16,13 @@ class DocsTest {
     @After
     fun reset() { Money.decimals = 2 }
 
-    private class Paper(val lines: List<String>, val drawer: Boolean, val cut: Boolean, val raster: Boolean)
+    // barcode: what the bars carry, and how many dots wide the thinnest is; null when none printed
+    private class Paper(val lines: List<String>, val drawer: Boolean, val cut: Boolean, val raster: Boolean, val barcode: String? = null, val module: Int = 0)
 
     private fun read(bytes: ByteArray): Paper {
         val text = java.io.ByteArrayOutputStream()
         var drawer = false; var cut = false; var raster = false
+        var barcode: String? = null; var module = 0
         var i = 0
         while (i < bytes.size) {
             val b = bytes[i].toInt() and 0xFF
@@ -31,6 +33,15 @@ class DocsTest {
                 b == 0x1B && n == 0x70 -> { drawer = true; i += 5 }
                 b == 0x1D && n == 0x21 -> i += 3
                 b == 0x1D && n == 0x56 -> { cut = true; i += 4 }
+                // a barcode: its height, its bars' width, no digits of the printer's own, then Code 128 and its data
+                b == 0x1D && (n == 0x68 || n == 0x48) -> i += 3
+                b == 0x1D && n == 0x77 -> { module = bytes[i + 2].toInt() and 0xFF; i += 3 }
+                b == 0x1D && n == 0x6B -> {
+                    assertEquals("Code 128", 73, bytes[i + 2].toInt() and 0xFF)
+                    val len = bytes[i + 3].toInt() and 0xFF
+                    barcode = String(bytes, i + 4, len, Charsets.US_ASCII)
+                    i += 4 + len
+                }
                 b == 0x1D && n == 0x76 -> {
                     raster = true
                     val w = (bytes[i + 4].toInt() and 0xFF) + ((bytes[i + 5].toInt() and 0xFF) shl 8)
@@ -40,7 +51,7 @@ class DocsTest {
                 else -> { text.write(b); i++ }
             }
         }
-        return Paper(String(text.toByteArray(), Charset.forName("windows-1252")).split('\n'), drawer, cut, raster)
+        return Paper(String(text.toByteArray(), Charset.forName("windows-1252")).split('\n'), drawer, cut, raster, barcode, module)
     }
 
     private val shop = Shop("CafeTino", "Royal Road\nCurepipe", "5 123 4567", "C12345678", "VAT27000000", "Open every day", "Thank you. See you again soon.")
@@ -101,6 +112,82 @@ class DocsTest {
         assertTrue(bill.contains("BILL"))
         assertTrue(bill.contains("This is not a receipt"))
         assertFalse(bill.contains("No."))
+    }
+
+    // ---- the receipt's number in bars, and what a copy says ----
+
+    // a shop's paper: the same, with the receipt's number in bars
+    private val store = shop.copy(bars = true)
+
+    @Test
+    fun aShopsReceiptAndRefundCarryTheirNumberInBarsAndABillNone() {
+        // a restaurant's receipt has no bars
+        assertEquals(null, read(Docs.receipt(receipt, shop, Paper(), 2)).barcode)
+        val shop = store
+        val sale = read(Docs.receipt(receipt, shop, Paper(), 2))
+        // set B, then the number as it is
+        assertEquals("{BS1-T1-000128", sale.barcode)
+        // the number is under the bars in letters too, after the footer
+        assertTrue(sale.lines.indexOfLast { it.trim() == "S1-T1-000128" } > sale.lines.indexOfFirst { it.contains("Thank you") })
+        assertEquals("{BS1-T1-R000007", read(Docs.receipt(receipt.copy(kind = "refund", number = "S1-T1-R000007"), shop, Paper(), 2)).barcode)
+        assertEquals(null, read(Docs.receipt(receipt.copy(kind = "bill", number = "", payments = emptyList()), shop, Paper(), 2)).barcode)
+    }
+
+    @Test
+    fun theBarsAreAsWideAsThePaperLets() {
+        // twelve characters: 167 modules. Three dots each fit 80 mm paper (576 dots), two fit 58 mm (384).
+        assertEquals(167, EscPos.barcodeDots(12, 1))
+        assertEquals(3, read(Docs.receipt(receipt, store, Paper(48, 3, true), 2)).module)
+        assertEquals(2, read(Docs.receipt(receipt, store, Paper(32, 3, true), 2)).module)
+        // a number that starts again each day is longer: on 58 mm paper only the thinnest bars fit
+        assertEquals(1, EscPos.barcodeModule("S1-T1-0004-0012", 384))
+        assertEquals(2, EscPos.barcodeModule("S1-T1-0004-0012", 576))
+        // what set B has no character for is not put in bars, nor is nothing at all
+        assertEquals(null, EscPos.barcodeModule("Café-1", 576))
+        assertEquals(null, EscPos.barcodeModule("", 576))
+        // and never wider than the paper
+        for (n in 1..60) for (dots in listOf(384, 576)) {
+            val m = EscPos.barcodeModule("X".repeat(n), dots)
+            if (m != null) assertTrue(EscPos.barcodeDots(n, m) <= dots)
+        }
+    }
+
+    @Test
+    fun aCopySaysItIsOneAndWhatWasRefundedSince() {
+        val first = read(Docs.receipt(receipt, shop, Paper(), 2)).lines.joinToString("\n")
+        assertFalse(first.contains("COPY"))
+        assertFalse(first.contains("REFUNDED"))
+        val copy = read(Docs.receipt(receipt.copy(reprint = true), shop, Paper(), 2)).lines
+        assertEquals("COPY", copy[copy.indexOf("RECEIPT") + 1])
+        val all = read(Docs.receipt(receipt.copy(reprint = true, refunded = 42300, refundedAll = true), shop, Paper(), 2)).lines.joinToString("\n")
+        assertTrue(all.contains("*** REFUNDED ***"))
+        val part = read(Docs.receipt(receipt.copy(reprint = true, refunded = 12000), shop, Paper(32, 3, true), 2)).lines
+        assertTrue(part.any { it == "*** PARTLY REFUNDED: 120.00 ***" })
+        assertTrue(part.all { it.length <= 32 })
+        // the marks are for the paper printed again: they are not kept with the receipt
+        val json = kotlinx.serialization.json.Json { encodeDefaults = false }
+        assertFalse(json.encodeToString(ReceiptDoc.serializer(), receipt).contains("reprint"))
+    }
+
+    @Test
+    fun thePaperOnTheScreenIsThePaperThatPrints() {
+        for (cols in listOf(32, 48)) {
+            val look = Docs.receiptLook(receipt, store, Paper(cols, 3, true), 2)
+            val printed = read(Docs.receipt(receipt, store, Paper(cols, 3, true), 2)).lines
+            assertTrue(look.all { it.length <= cols })
+            // every line of text that prints is on the screen, in the same order
+            val shown = look.map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("||") }
+            assertEquals(printed.map { it.trim() }.filter { it.isNotEmpty() }, shown)
+            // what the printer centres is centred: the shop's name has as much room before as after, to one space
+            val name = look.first { it.contains("CafeTino") }
+            val before = name.length - name.trimStart().length
+            assertTrue(kotlin.math.abs(before - (cols - "CafeTino".length - before)) <= 1)
+            // an amount still sits at the end of its line
+            assertTrue(look.any { it.startsWith("TOTAL") && it.endsWith("Rs 423.00") && it.length == cols })
+            // where the bars print, the screen shows that there are bars, and no feed is left hanging under them
+            assertTrue(look.any { it.trim().startsWith("||") })
+            assertEquals("S1-T1-000128", look.last().trim())
+        }
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.restopos.feature.receipts
 import kotlinx.coroutines.flow.flatMapLatest
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,6 +41,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Money
+import com.restopos.core.common.Scanner
 import com.restopos.core.data.Approvals
 import com.restopos.core.data.DocBuilder
 import com.restopos.core.data.Exchanges
@@ -56,6 +59,8 @@ import com.restopos.core.sync.SessionStore
 import com.restopos.core.ui.Hairline
 import com.restopos.core.ui.HeadCell
 import com.restopos.core.ui.Pos
+import com.restopos.core.ui.ScanKey
+import com.restopos.core.ui.ScanPill
 import com.restopos.core.ui.Tag
 import com.restopos.core.ui.card
 import androidx.compose.ui.text.style.TextAlign
@@ -64,6 +69,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -78,6 +84,8 @@ data class ReceiptDetail(
     val refunded: Long, // how much of it has been given back
     // what can still be given back, line by line; null when it can only be refunded whole
     val lines: List<com.restopos.core.data.RefundLine>?,
+    // the paper itself, line by line, as it prints today (it says so when the sale was refunded since)
+    val look: List<String> = emptyList(),
 ) {
     val canRefund: Boolean get() = receipt.type == "sale" && (lines?.any { it.left > 0 } ?: (refunded == 0L))
 }
@@ -146,15 +154,36 @@ class ReceiptsViewModel @Inject constructor(
     fun show(r: ReceiptEntity?) = viewModelScope.launch {
         _open.value = r?.let {
             val row = db.ops().receipt(it.id) ?: it
+            val doc = docs.decode(row.doc) ?: orders.docOf(row)
             ReceiptDetail(
-                row, docs.decode(row.doc) ?: orders.docOf(row), db.receipts().payments(row.id),
+                row, doc, db.receipts().payments(row.id),
                 if (row.type == "sale") db.ops().refundedOf(row.id) else 0,
                 if (row.type == "sale") orders.refundable(row.id) else null,
+                runCatching { docs.look(orders.marked(row, doc, reprint = false)) }.getOrDefault(emptyList()),
             )
         }
     }
 
     fun showId(id: String) = viewModelScope.launch { db.ops().receipt(id)?.let { show(it) } }
+
+    // scan mode: the tablet's switch, the same one as on the sell screen
+    val scanMode: StateFlow<Boolean> = session.scanMode.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, false)
+    fun setScanMode(on: Boolean) = viewModelScope.launch { session.setScanMode(on); if (on) query.value = "" }
+
+    // A receipt's barcode was scanned: the receipt opens. Any till of the shop
+    // may have issued it.
+    fun scanned(code: String) = viewModelScope.launch {
+        val store = session.storeId() ?: return@launch
+        val r = db.receipts().byNumber(store, code.trim())
+        if (r == null) {
+            _message.value = "No receipt has the number $code. One older than 30 days is in the back office."
+            Scanner.say(false, "No receipt · $code")
+        } else {
+            query.value = ""
+            Scanner.say(true, "Found · ${r.number}")
+            show(r)
+        }
+    }
 
     // Runs something that may need someone else's go-ahead. If it does, asks
     // for it and runs the same thing again with whoever approved.
@@ -205,12 +234,20 @@ fun ReceiptsScreen(vm: ReceiptsViewModel = hiltViewModel(), onExchange: (() -> U
 
     val q by vm.query.collectAsState()
     val shop by vm.retail.collectAsState()
+    val scan by vm.scanMode.collectAsState()
+    // while this screen is open in a shop, a scanned receipt opens
+    LaunchedEffect(shop) { if (shop) Scanner.codes.collect { vm.scanned(it) } }
     Box(Modifier.fillMaxSize().background(Pos.Bg)) {
         Column(Modifier.fillMaxSize().padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedTextField(
-                q, { vm.query.value = it.take(40) }, Modifier.fillMaxWidth(), singleLine = true,
-                placeholder = { Text("Find a receipt by its number, for example " + (rows.firstOrNull()?.number ?: "S1-T1-000123")) },
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                // a shop: scan mode, as on the sell screen. Lit, a receipt's barcode opens the receipt and nothing is typed.
+                if (shop) ScanKey(scan) { vm.setScanMode(it) }
+                if (shop && scan) ScanPill(Modifier.weight(1f), idle = "Scan a receipt's barcode")
+                else OutlinedTextField(
+                    q, { vm.query.value = it.take(40) }, Modifier.weight(1f), singleLine = true,
+                    placeholder = { Text("Find a receipt by its number, for example " + (rows.firstOrNull()?.number ?: "S1-T1-000123")) },
+                )
+            }
             Column(Modifier.weight(1f, fill = false).fillMaxWidth().card()) {
                 Row(Modifier.fillMaxWidth().background(Pos.PanelDeep).padding(horizontal = 12.dp)) {
                     HeadCell("Number", 1.6f)
@@ -286,25 +323,35 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                     time.format(Date(r.device_time)) + (d.doc?.order?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "") + (d.doc?.cashier?.let { " · $it" } ?: ""),
                     Modifier.padding(bottom = 10.dp), color = Pos.Text2, fontSize = 13.sp,
                 )
-                d.doc?.lines?.forEach { l ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                        Text("${com.restopos.core.print.Docs.qty(l.qty)} ${l.name}" + if (l.mods.isEmpty()) "" else "  + " + l.mods.joinToString(", "), Modifier.weight(1f), color = Pos.Text, fontSize = 14.sp)
-                        Text(Money.format(l.amount), color = Pos.Text, fontSize = 14.sp)
+                if (d.look.isNotEmpty()) {
+                    // the receipt itself, as it prints: a narrow column of even letters on white, in the middle of the box
+                    Box(
+                        Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(RoundedCornerShape(8.dp)).background(Color.White).horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 12.dp),
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
+                        Text(d.look.joinToString("\n"), color = Color(0xFF16181D), fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, softWrap = false)
                     }
-                    // a line charged something other than its listed price says what it was
-                    if (l.was != null && l.was != l.amount) {
-                        Text(listOfNotNull("was ${Money.format(l.was)}", l.priceNote?.takeIf { it.isNotBlank() }).joinToString(", "), Modifier.padding(start = 14.dp, bottom = 2.dp), color = Pos.Text3, fontSize = 12.sp)
+                } else {
+                    d.doc?.lines?.forEach { l ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                            Text("${com.restopos.core.print.Docs.qty(l.qty)} ${l.name}" + if (l.mods.isEmpty()) "" else "  + " + l.mods.joinToString(", "), Modifier.weight(1f), color = Pos.Text, fontSize = 14.sp)
+                            Text(Money.format(l.amount), color = Pos.Text, fontSize = 14.sp)
+                        }
+                        // a line charged something other than its listed price says what it was
+                        if (l.was != null && l.was != l.amount) {
+                            Text(listOfNotNull("was ${Money.format(l.was)}", l.priceNote?.takeIf { it.isNotBlank() }).joinToString(", "), Modifier.padding(start = 14.dp, bottom = 2.dp), color = Pos.Text3, fontSize = 12.sp)
+                        }
                     }
-                }
-                d.doc?.discounts?.forEach {
-                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                        Text("Discount: ${it.name}", Modifier.weight(1f), color = Pos.Text2, fontSize = 14.sp)
-                        Text("-" + Money.format(it.amount), color = Pos.Text2, fontSize = 14.sp)
+                    d.doc?.discounts?.forEach {
+                        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                            Text("Discount: ${it.name}", Modifier.weight(1f), color = Pos.Text2, fontSize = 14.sp)
+                            Text("-" + Money.format(it.amount), color = Pos.Text2, fontSize = 14.sp)
+                        }
                     }
-                }
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp)) {
-                    Text("Total", Modifier.weight(1f), color = Pos.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Text(Money.format(r.total), color = Pos.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp)) {
+                        Text("Total", Modifier.weight(1f), color = Pos.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(Money.format(r.total), color = Pos.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
                 d.payments.groupBy { it.payment_type_id }.forEach { (type, list) ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {

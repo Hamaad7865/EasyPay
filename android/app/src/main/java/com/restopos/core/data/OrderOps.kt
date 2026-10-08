@@ -210,7 +210,16 @@ class OrderOps @Inject constructor(
     suspend fun reprint(receiptId: String, approver: StaffMember? = null): Result<Unit> = runCatching {
         staff.allow("receipts.reprint", "print a receipt again", approver)
         val r = db.ops().receipt(receiptId) ?: error("That receipt is not on this tablet")
-        docs.print(docFor(r)).getOrThrow()
+        docs.print(marked(r, docFor(r), reprint = true)).getOrThrow()
+    }
+
+    // What a receipt says about itself when it is printed again or looked at
+    // later: that the paper is a copy, and how much of the sale has been
+    // refunded since. A copy that reads like the first paper is what someone
+    // would bring to the counter to be refunded a second time.
+    suspend fun marked(r: ReceiptEntity, doc: ReceiptDoc, reprint: Boolean): ReceiptDoc {
+        val back = if (r.type == "sale") db.ops().refundedOf(r.id) else 0L
+        return doc.copy(reprint = reprint, refunded = back, refundedAll = back > 0 && back >= r.total)
     }
 
     // Another copy of a receipt that has just been issued, for the guest who

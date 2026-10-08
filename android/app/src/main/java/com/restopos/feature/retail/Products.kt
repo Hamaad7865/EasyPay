@@ -46,6 +46,8 @@ import com.restopos.core.ui.Field
 import com.restopos.core.ui.Gap
 import com.restopos.core.ui.IconKey
 import com.restopos.core.ui.L
+import com.restopos.core.ui.ScanKey
+import com.restopos.core.ui.ScanPill
 import com.restopos.core.ui.ScreenHead
 import com.restopos.core.ui.Sheet
 import com.restopos.core.ui.SheetHead
@@ -107,6 +109,10 @@ class ProductsViewModel @Inject constructor(
     val open = MutableStateFlow<ProductOpen?>(null)
     val asking = MutableStateFlow<NumAsk?>(null)
 
+    // scan mode: the tablet's switch, the same one as on the sell screen
+    val scanMode: StateFlow<Boolean> = session.scanMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    fun setScanMode(on: Boolean) = viewModelScope.launch { session.setScanMode(on); if (on) query.value = "" }
+
     fun pickCat(id: String?) { cat.value = id; query.value = "" }
 
     fun show(itemId: String) = viewModelScope.launch {
@@ -124,10 +130,10 @@ class ProductsViewModel @Inject constructor(
     fun scanned(code: String) = viewModelScope.launch {
         query.value = ""
         when (val f = sales.find(code)) {
-            is Found.Product -> show(f.item.id)
-            is Found.Pick -> show(f.item.id)
-            is Found.Several -> Toaster.say("Two products carry the code ${f.code}.")
-            is Found.Nothing -> Toaster.say("No product has the code ${f.code}.")
+            is Found.Product -> { show(f.item.id); Scanner.say(true, "Found · ${f.item.name}") }
+            is Found.Pick -> { show(f.item.id); Scanner.say(true, "Found · ${f.item.name}") }
+            is Found.Several -> { Toaster.say("Two products carry the code ${f.code}."); Scanner.say(false, "Two products carry ${f.code}") }
+            is Found.Nothing -> { Toaster.say("No product has the code ${f.code}."); Scanner.say(false, "No match · ${f.code}") }
         }
     }
 
@@ -179,12 +185,16 @@ fun ProductsScreen(vm: ProductsViewModel) {
     val asking by vm.asking.collectAsState()
     val byId = cats.associateBy { it.id }
     val searching = q.isNotBlank()
+    val scan by vm.scanMode.collectAsState()
     LaunchedEffect(Unit) { Scanner.codes.collect { vm.scanned(it) } }
 
     Column(Modifier.fillMaxSize().padding(start = 20.dp, end = 20.dp, top = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             ScreenHead("${items.size} ${if (items.size == 1) "product" else "products"}" + if (searching) " found" else "", L.productsStock, Modifier.weight(1f))
-            Box(Modifier.width(440.dp)) {
+            ScanKey(scan, size = 52.dp) { vm.setScanMode(it) }
+            // scan mode: nothing to type into, so nothing brings the keyboard up
+            if (scan) ScanPill(Modifier.width(440.dp), height = 52.dp, idle = "Scan a barcode")
+            else Box(Modifier.width(440.dp)) {
                 Field(q, { vm.query.value = it.take(60) }, "Scan, or search a name, SKU or barcode", Modifier.fillMaxWidth(), height = 52.dp, bg = V.Panel, leading = { VIcon(BARS, 20.dp, V.BlueText) })
                 if (searching) Box(Modifier.align(Alignment.CenterEnd).padding(end = 6.dp)) { IconKey(VI.Close, size = 40.dp, onClick = { vm.query.value = "" }) }
             }

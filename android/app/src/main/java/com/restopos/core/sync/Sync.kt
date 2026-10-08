@@ -194,6 +194,7 @@ private val PAY_CHECK = intPreferencesKey("pay_check")
 private val SPLIT_SHARES = stringPreferencesKey("split_shares")
 private val LEFT_HANDED = booleanPreferencesKey("left_handed")
 private val KEEP_AWAKE = booleanPreferencesKey("keep_awake")
+private val SCAN_MODE = booleanPreferencesKey("scan_mode")
 private val LIGHT = booleanPreferencesKey("light_mode_v2")
 private val LAST_PULL = longPreferencesKey("last_pull")
 private val LANG = stringPreferencesKey("lang")
@@ -263,6 +264,11 @@ class SessionStore(private val context: Context) {
     suspend fun setLeftHanded(on: Boolean) { store.edit { it[LEFT_HANDED] = on } }
     val keepAwake: Flow<Boolean> = store.data.map { it[KEEP_AWAKE] ?: true }
     suspend fun setKeepAwake(on: Boolean) { store.edit { it[KEEP_AWAKE] = on } }
+    // Scan mode, a shop's: the scan key beside the search box is lit, and a
+    // scanner's keys are taken below the screen so that no keyboard comes up.
+    // Kept on the tablet: a counter that has a scanner sets it once.
+    val scanMode: Flow<Boolean> = store.data.map { it[SCAN_MODE] ?: false }
+    suspend fun setScanMode(on: Boolean) { store.edit { it[SCAN_MODE] = on } }
     val lightMode: Flow<Boolean> = store.data.map { it[LIGHT] ?: false }
     suspend fun setLightMode(on: Boolean) { store.edit { it[LIGHT] = on } }
     // When this tablet last heard from the server.

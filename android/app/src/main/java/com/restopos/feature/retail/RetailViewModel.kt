@@ -3,6 +3,7 @@ package com.restopos.feature.retail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Money
+import com.restopos.core.common.Scanner
 import com.restopos.core.data.Approvals
 import com.restopos.core.data.Calc
 import com.restopos.core.data.DiscountPick
@@ -139,6 +140,10 @@ class RetailViewModel @Inject constructor(
     val picking = MutableStateFlow<VariantPick?>(null)
     val asking = MutableStateFlow<NumAsk?>(null)
 
+    // scan mode: the tablet's switch, the same one on every screen that takes a scanner
+    val scanMode: StateFlow<Boolean> = session.scanMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    fun setScanMode(on: Boolean) = viewModelScope.launch { session.setScanMode(on); if (on) query.value = "" }
+
     private val json = Json { ignoreUnknownKeys = true }
     private fun strings(text: String): List<String> =
         runCatching { json.parseToJsonElement(text).jsonArray.mapNotNull { it.jsonPrimitive.contentOrNull } }.getOrDefault(emptyList())
@@ -192,33 +197,47 @@ class RetailViewModel @Inject constructor(
     fun closePicker() { picking.value = null }
     fun pick(item: ItemEntity, variant: ItemVariantEntity) { picking.value = null; viewModelScope.launch { put(item, variant) } }
 
-    private suspend fun put(item: ItemEntity, variant: ItemVariantEntity?) {
+    // true when it went onto the sale now (what is weighed asks its weight first)
+    private suspend fun put(item: ItemEntity, variant: ItemVariantEntity?): Boolean {
         if (item.sold_by == "weight") {
             val unit = variant?.price ?: item.price
             asking.value = NumAsk("How heavy?", "${sales.nameOf(item, variant)} · ${Money.format(unit)} a kilo", "kg", 3, "") { typed ->
                 val grams = typed.toDoubleOrNull()?.let { Math.round(it * 1000).toInt() } ?: 0
                 if (grams <= 0) Toaster.say("Type the weight in kilos") else viewModelScope.launch { add(item, variant, grams) }
             }
-        } else add(item, variant, 1000)
+            return false
+        }
+        return add(item, variant, 1000)
     }
 
-    private suspend fun add(item: ItemEntity, variant: ItemVariantEntity?, qty: Int) {
-        sales.add(item, variant, qty).onFailure { Toaster.say(it.message) }
+    private suspend fun add(item: ItemEntity, variant: ItemVariantEntity?, qty: Int): Boolean {
+        val out = sales.add(item, variant, qty).onFailure { Toaster.say(it.message) }
         reload()
+        return out.isSuccess
     }
 
     // A barcode read by the scanner, or a whole code typed and entered: the
     // product that carries it goes on the sale. What the scanner typed into
     // the search box on its way is cleared.
-    fun scanned(code: String) = viewModelScope.launch {
+    // A receipt's own barcode is looked for first (its number is nothing like
+    // a product's code): the receipt opens, for a refund, an exchange or
+    // another copy. onReceipt takes its id to the Receipts screen.
+    fun scanned(code: String, onReceipt: (String) -> Unit = {}) = viewModelScope.launch {
         query.value = ""
+        receiptOf(code)?.let { r ->
+            Scanner.say(true, "Receipt · ${r.number}")
+            onReceipt(r.id)
+            return@launch
+        }
         when (val f = sales.find(code)) {
-            is Found.Product -> put(f.item, f.variant)
-            is Found.Pick -> tap(f.item)
-            is Found.Several -> Toaster.say("Two products carry the code ${f.code}. Find it by its name.")
-            is Found.Nothing -> Toaster.say("No product has the code ${f.code}. Nothing was added.")
+            is Found.Product -> if (put(f.item, f.variant)) Scanner.say(true, "Added · ${sales.nameOf(f.item, f.variant)}")
+            is Found.Pick -> { tap(f.item); Scanner.say(true, "Pick which · ${f.item.name}") }
+            is Found.Several -> { Toaster.say("Two products carry the code ${f.code}. Find it by its name."); Scanner.say(false, "Two products carry ${f.code}") }
+            is Found.Nothing -> { Toaster.say("No product has the code ${f.code}. Nothing was added."); Scanner.say(false, "No match · ${f.code}") }
         }
     }
+
+    private suspend fun receiptOf(code: String): ReceiptEntity? = session.storeId()?.let { db.receipts().byNumber(it, code.trim()) }
 
     // Enter in the search box: a whole code adds its product; anything else stays a search.
     fun enter() = viewModelScope.launch {

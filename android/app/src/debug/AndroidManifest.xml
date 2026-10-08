@@ -6,11 +6,15 @@
         <!-- Fills a tablet that was never set up with a made-up shop, so the
              shop's screens can be used with no login and no server:
                adb shell am broadcast -n com.restopos.app/com.restopos.debug.DemoReceiver -a com.restopos.app.DEMO_SHOP
-             It refuses a tablet that is set up for a business. -->
+             It refuses a tablet that is set up for a business.
+             DEMO_SCAN stands in for a barcode scanner, which an emulator has
+             none of: the code goes to the screen that is open, as a scan would.
+             The command, with its code, is at the top of DemoReceiver.onReceive. -->
         <receiver android:name="com.restopos.debug.DemoReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="com.restopos.app.DEMO_SHOP" />
                 <action android:name="com.restopos.app.DEMO_PULL" />
+                <action android:name="com.restopos.app.DEMO_SCAN" />
             </intent-filter>
         </receiver>
     </application>

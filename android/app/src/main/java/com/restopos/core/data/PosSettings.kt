@@ -40,7 +40,7 @@ data class PosSettings(
     val retail: Boolean = false,
 ) {
     fun shop(fallbackName: String): Shop =
-        Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer)
+        Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer, bars = retail)
 
     companion object {
         val DEFAULT_NOTES = listOf("No onion", "Less salt", "Nut allergy", "Extra chutney", "Rush")

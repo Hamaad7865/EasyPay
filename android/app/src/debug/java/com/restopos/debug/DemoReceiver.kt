@@ -62,6 +62,13 @@ class DemoReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        // A scan with no scanner (an emulator has none, and keys typed on a PC
+        // are too slow to be taken for one): the code goes where a scan goes.
+        //   adb shell am broadcast -n com.restopos.app/com.restopos.debug.DemoReceiver -a com.restopos.app.DEMO_SCAN --es code S1-T1-000123
+        if (intent.action == SCAN) {
+            intent.getStringExtra("code")?.trim()?.takeIf { it.isNotEmpty() }?.let { com.restopos.core.common.Scanner.scanned(it) }
+            return
+        }
         val pending = goAsync()
         val deps = EntryPointAccessors.fromApplication(context.applicationContext, Deps::class.java)
         CoroutineScope(Dispatchers.IO).launch {
@@ -176,5 +183,6 @@ class DemoReceiver : BroadcastReceiver() {
     private companion object {
         const val TAG = "DemoShop"
         const val PULL = "com.restopos.app.DEMO_PULL"
+        const val SCAN = "com.restopos.app.DEMO_SCAN"
     }
 }

@@ -55,6 +55,8 @@ import com.restopos.core.ui.Field
 import com.restopos.core.ui.Gap
 import com.restopos.core.ui.IconKey
 import com.restopos.core.ui.L
+import com.restopos.core.ui.ScanKey
+import com.restopos.core.ui.ScanPill
 import com.restopos.core.ui.Sheet
 import com.restopos.core.ui.SheetHead
 import com.restopos.core.ui.T
@@ -80,9 +82,10 @@ private const val BARS = "M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12"
 // the right (a box to scan or search into, the categories, a tile for each
 // product with what is left of it).
 // more: the till's cash drawer, behind the More sheet's drawer and cash keys.
-// onReceipts: where a refund or an exchange starts.
+// onReceipts: where a refund or an exchange starts. onReceipt: a receipt's
+// barcode was scanned here; its id goes to the Receipts screen, which opens it.
 @Composable
-fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit, onReceipts: () -> Unit) {
+fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit, onReceipts: () -> Unit, onReceipt: (String) -> Unit, onStock: () -> Unit) {
     val ui by vm.ui.collectAsState()
     val picking by vm.picking.collectAsState()
     val asking by vm.asking.collectAsState()
@@ -91,8 +94,8 @@ fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit
     var sheet by remember { mutableStateOf<String?>(null) } // parked | discount | customer | clear | more | note | in | out
     var noting by remember { mutableStateOf<SaleLine?>(null) }
     LaunchedEffect(Unit) { vm.open() }
-    // while this screen is open, a scanned barcode rings its product up
-    LaunchedEffect(Unit) { Scanner.codes.collect { vm.scanned(it) } }
+    // while this screen is open, a scanned barcode rings its product up, and a receipt's opens the receipt
+    LaunchedEffect(Unit) { Scanner.codes.collect { vm.scanned(it, onReceipt) } }
 
     Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Sale(
@@ -113,6 +116,7 @@ fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit
         "more" -> SaleMore(ui, vm, onDismiss = { sheet = null }) { pick ->
             when (pick) {
                 "receipts" -> { sheet = null; onReceipts() }
+                "stock" -> { sheet = null; onStock() }
                 "drawer" -> { sheet = null; more.openDrawer() }
                 else -> sheet = pick // note | in | out
             }
@@ -296,15 +300,21 @@ private fun Products(vm: RetailViewModel, modifier: Modifier) {
     val variants by vm.variantCounts.collectAsState()
     val byId = remember(cats) { cats.associateBy { it.id } }
     val searching = q.isNotBlank()
+    val scan by vm.scanMode.collectAsState()
 
     Column(modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box {
-            Field(
-                q, { vm.query.value = it.take(60) }, "Scan, or search a name, SKU or barcode", Modifier.fillMaxWidth(), height = 56.dp, bg = V.Panel, size = 16.sp,
-                leading = { VIcon(BARS, 22.dp, V.BlueText) }, onDone = { vm.enter() },
-            )
-            if (searching) {
-                Box(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) { IconKey(VI.Close, size = 40.dp, onClick = { vm.query.value = "" }) }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ScanKey(scan) { vm.setScanMode(it) }
+            // scan mode: nothing to type into, so nothing brings the keyboard up
+            if (scan) ScanPill(Modifier.weight(1f))
+            else Box(Modifier.weight(1f)) {
+                Field(
+                    q, { vm.query.value = it.take(60) }, "Scan, or search a name, SKU or barcode", Modifier.fillMaxWidth(), height = 56.dp, bg = V.Panel, size = 16.sp,
+                    leading = { VIcon(BARS, 22.dp, V.BlueText) }, onDone = { vm.enter() },
+                )
+                if (searching) {
+                    Box(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) { IconKey(VI.Close, size = 40.dp, onClick = { vm.query.value = "" }) }
+                }
             }
         }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -516,13 +526,17 @@ private fun SaleMore(ui: SaleUi, vm: RetailViewModel, onDismiss: () -> Unit, onP
             MoreKey(VI.Receipt, "Refund or exchange", "Find the receipt, then what comes back", Modifier.weight(1f)) { onPick("receipts") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MoreKey(VI.Search, "Stock check", "What the shop holds of a product", Modifier.weight(1f)) { onPick("stock") }
             // an empty sale takes no note; one left on it can still be taken off
             MoreKey(VI.Note, "Sale note", note ?: if (ui.empty) "Ring something up first" else "Prints on the receipt", Modifier.weight(1f), live = !ui.empty || note != null) { onPick("note") }
-            MoreKey(VI.Cash, "Open the cash drawer", "Without a sale. It is written down.", Modifier.weight(1f)) { onPick("drawer") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MoreKey(VI.Cash, "Open the cash drawer", "Without a sale. It is written down.", Modifier.weight(1f)) { onPick("drawer") }
             MoreKey(VI.Plus, "Cash in", "Money put into the drawer", Modifier.weight(1f)) { onPick("in") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             MoreKey(VI.Minus, "Cash out", "Money taken out of the drawer", Modifier.weight(1f)) { onPick("out") }
+            Spacer(Modifier.weight(1f))
         }
     }
 }
