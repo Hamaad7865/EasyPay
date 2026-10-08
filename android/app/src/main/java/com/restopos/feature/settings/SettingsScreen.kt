@@ -73,6 +73,7 @@ import com.restopos.app.BuildConfig
 import com.restopos.core.common.Money
 import com.restopos.core.data.Approvals
 import com.restopos.core.data.CashOps
+import com.restopos.core.data.PosSettings
 import com.restopos.core.data.Routing
 import com.restopos.core.data.StaffMember
 import com.restopos.core.data.StaffSession
@@ -127,6 +128,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -159,6 +161,11 @@ class SettingsViewModel @Inject constructor(
 
     val user: StateFlow<StaffMember?> = staff.current
     fun can(permission: String) = staff.can(permission)
+
+    // The business is a shop: Help is then a shop's. Null for the moment it
+    // takes to read the settings this tablet holds, so a shop is never shown
+    // a restaurant's help first.
+    val retail: StateFlow<Boolean?> = db.ops().settingsFlow().map<String?, Boolean?> { PosSettings.parse(it).retail }.held(null)
 
     // Does it at once when the person signed in may; otherwise asks for
     // someone who may, and does it with their go-ahead.
@@ -351,6 +358,7 @@ fun SettingsScreen(
     val printers by vm.printers.collectAsState()
     val jobs by vm.jobs.collectAsState()
     val notices by vm.notices.collectAsState()
+    val retail by vm.retail.collectAsState()
     val context = LocalContext.current
     val network by produceState(initialValue = network(context)) {
         while (true) { delay(5000); value = network(context) }
@@ -414,7 +422,8 @@ fun SettingsScreen(
                             Page.Printers -> PrintersPage(vm, more)
                             Page.Display -> DisplayPage(vm)
                             Page.Support -> SupportPage(vm, network, onSignIn, onRejected, onSignOut)
-                            Page.Help -> HelpPage()
+                            // which business this is, is read in a moment: no help is shown for the wrong one meanwhile
+                            Page.Help -> retail?.let { HelpPage(it) }
                         }
                     }
                 }
@@ -942,13 +951,45 @@ private val HELP = listOf(
     "No internet" to "Keep selling. Everything is saved on the tablet and sent by itself when the connection is back. Printing does not need the internet, only the local network.",
 )
 
-// One card of questions. A tap opens the answer under it, and closes the one
-// that was open.
+// A shop's help: its till has no tables, no kitchen and no bookings. Two keys
+// are called More there, the one on the top bar (which opens this screen) and
+// the one under the sale, so an entry says which it means. The cash drawer is
+// in the side menu, which has no name on the screen: "the key at the top left".
+private val SHOP_HELP = listOf(
+    "Starting the day" to "Clock in: tap Clock in/out, pick your name and enter your PIN. Then open the day: someone allowed to taps their name on the start screen and counts the cash in the drawer. The till sells from then on.",
+    "Ringing up a sale" to "On Sell, scan each product's barcode, or tap its tile on the right. The same product again adds one more to its line. To find a product, type its name, SKU or barcode in the box at the top, or tap its category under the box. On a line, − and + change how many, and tapping the number between them lets you type it. A code that no product carries adds nothing, and the till says so.",
+    "Scanning without the keyboard" to "Tap the scan key beside the search box, on Sell, Receipts, Products & stock or Stock check. While it is lit, the box gives way to a strip that says what the last scan did, and the tablet's keyboard does not come up. Tap the key off again to search by typing. It is one switch for all of these screens.",
+    "Sizes, colours and other variants" to "A product that comes in variants asks which one when it is tapped: pick the size, the colour or whatever it has, then tap Add. Where its stock is counted, each choice says what is left. Scanning a variant's own barcode adds that variant at once.",
+    "A product sold by weight" to "Tap or scan it, type the weight in kilos (0.350 for 350 grams) and tap Done. Each weighing is a line of its own. To weigh it again, tap the weight on its line.",
+    "A discount, or another price, on one line" to "Tap the line on the sale. 10% off and 20% off are one tap; Other % and Rs off ask for the figure, and Rs off comes off each one on the line. Change price sets another price for this sale only. The price it was listed at stays on the line, crossed out, and on the receipt. No discount puts the listed price back.",
+    "A discount on the whole sale" to "Tap Discount on sale, under the lines. Pick one of the shop's discounts or one of the percentages, or tap Another percentage or Rupees off and type it. It comes off every line in proportion when the sale is paid. One marked manager needs someone allowed to give it. Take the discount off removes it.",
+    "A note on a line or on the sale" to "For one product, tap its line, then Note: gift wrapped, a serial number. For the whole sale, tap the More key under the sale, then Sale note. Both print on the receipt.",
+    "Taking a line off, or clearing the sale" to "Tap the line, then Remove, or tap − until none is left. The bin at the top of the sale takes every line off at once, after asking. Nothing was paid, so nothing is refunded. Either may need someone allowed to take a line off a sale.",
+    "Serving someone else first" to "Tap Park sale: the sale waits as it is and an empty one takes its place. The amber key at the top of the sale says how many are parked. Tap it, then the sale you want back; the one on the screen, if it holds anything, is parked in its place.",
+    "A customer on the sale" to "Tap Add customer at the top of the sale, find them by name, phone or email, or tap New customer. Their name prints on the receipt, and Email and WhatsApp after payment start with their address or number. Everyone the shop knows is on Customers, where their details are changed.",
+    "Taking payment" to "Tap Pay and pick how it is paid. For cash, tap what the customer gave, or type it, to see the change, then tap Charge. For a card or a transfer, take the money first, then tap Charge to record it. The receipt prints; Print gives another copy, and Email or WhatsApp hands the receipt to that app on the tablet. Next sale brings back an empty sale. To share one sale between several payments, tap Split equally and set how many: each share is paid its own way.",
+    "Another copy of a receipt" to "For the last receipt this till issued, tap the More key under the sale, then Reprint last receipt. For an older one, tap it on Receipts, or scan the barcode at its foot, then tap Print again. The paper says it is a copy, and what has been refunded since.",
+    "A return or a refund" to "Scan the barcode at the foot of the customer's receipt, on Sell or on Receipts: the receipt opens. Without the paper, open Receipts (Refund or exchange, behind the More key under the sale, goes there too) and tap the receipt or type its number: the list holds the shop's receipts of the last 30 days, from every till. Tap Refund. Take off what the customer keeps, pick how the money goes back and type the reason: a refund must have one. Put back into stock stays on when the goods go on the shelf again; switch it off for something faulty, and it is written off as damaged.",
+    "An exchange" to "Open the receipt as for a refund, tap Refund, and take off what the customer keeps. Tap Exchange instead of Refund: Sell opens with the exchange at the top of the sale. Ring up what the customer takes instead, then tap the green key under the sale. What comes back pays for the new sale as far as it goes, and only the difference is paid or given back. Nothing is refunded until that sale is paid; the cross on the exchange cancels it.",
+    "The wrong payment type" to "On Receipts, tap the receipt, then Change beside how it was paid, and pick how it was really paid. The amount does not change, and who corrected it and when is kept.",
+    "Checking what is in stock" to "Stock check is in the side menu, behind the key at the top left, and behind the More key under the sale. Scan a product, or type its name, SKU or barcode and tap it: it shows what this shop holds of each variant, with its price. The figures are those of the last sync, less what this till has sold since. Nothing is changed from there.",
+    "Changing a product's price" to "On Products & stock, scan the product or search for it, then tap it. Change price (Price, on a variant) gives it a new price on every till at its next sync. Stock itself is changed in the back office: a delivery, an adjustment or a count.",
+    "Something has run out, or should not be sold" to "A tile on Sell says what is left of its product: amber when few are left, red when it is out. A product that shows out still sells. To stop one being sold, tap it on Products & stock and switch On sale off: it cannot be rung up on any till until it is switched back, and its stock is not touched.",
+    "When you are not allowed to" to "A refund, a discount, a changed price, taking a line off, printing a receipt again, opening the drawer and the like may need a manager. The till asks who approves: they tap their name and enter their own PIN, and it is done in your name with their approval on record.",
+    "Cash in, cash out and opening the drawer" to "On Sell, tap the More key under the sale, then Cash in or Cash out. Type the amount and what it is for. A slip prints for the drawer and it shows on the day's reports. Open the cash drawer opens it without a sale, and that is written down too. The same keys are on Cash drawer, in the side menu: the key at the top left opens it.",
+    "Handing the drawer to someone else" to "Open the side menu with the key at the top left and tap Cash drawer. Count the cash, type the amount and tap Record this count: a slip prints for both of you to sign, and the day carries on.",
+    "Ending the day" to "Take payment for every parked sale and for the one on the screen, or clear them: the day does not close while a sale is unpaid. Then open the side menu with the key at the top left and tap Cash drawer. Count the cash and type the amount. If you may see the day's figures, the amount starts on what the drawer should hold: change it only if you counted something else. Tap Close the day & print Z report: the day's figures are fixed and the report prints. Then clock out.",
+    "A printer does not print" to "Tap More on the top bar, then Printers. Check the printer says Connected and try a test print. A failed print has Try again next to it. A sale is recorded whether or not its receipt printed, and can be printed again once the printer answers. The cash drawer opens through the receipt printer, so it stays shut while that printer does not answer.",
+    "No internet" to "Keep selling. Everything is saved on the tablet and sent by itself when the connection is back. What is left of each product, and the receipts of the shop's other tills, catch up then too. Printing does not need the internet, only the local network.",
+)
+
+// One card of questions: a shop's, or a restaurant's. A tap opens the answer
+// under it, and closes the one that was open.
 @Composable
-private fun HelpPage() {
+private fun HelpPage(shop: Boolean) {
     var open by rememberSaveable { mutableStateOf(0) }
     Group {
-        HELP.forEachIndexed { i, (title, text) ->
+        (if (shop) SHOP_HELP else HELP).forEachIndexed { i, (title, text) ->
             if (i > 0) Line()
             val on = open == i
             val turn = animateFloatAsState(if (on) 90f else 0f, spring(dampingRatio = 0.9f, stiffness = 500f), label = "chevron")
