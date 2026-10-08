@@ -6,6 +6,10 @@ node_modules/
 .env*
 !.env.example
 
+# the till's signing key: this repository is public, and the key is kept outside it
+*.jks
+*.keystore
+
 # web (Next.js back office)
 web/.next/
 web/out/
