@@ -514,10 +514,13 @@ fun MainShell(
                 // red for something to see to, the accent for an update, amber
                 // for sales still to be sent.
                 Box {
-                    val turn = rememberInfiniteTransition(label = "sync")
-                    val angle by turn.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "turn")
                     Box(Modifier.size(40.dp).press { shell.refresh() }.clip(RoundedCornerShape(12.dp)).background(V.Panel), contentAlignment = Alignment.Center) {
-                        VIcon(SYNC, 19.dp, if (refreshing) V.Text3 else V.Text2, modifier = if (refreshing) Modifier.rotate(angle) else Modifier)
+                        // the arrows turn only while it works: a till that sits open all day has nothing running here
+                        if (refreshing) {
+                            val turn = rememberInfiniteTransition(label = "sync")
+                            val angle by turn.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "turn")
+                            VIcon(SYNC, 19.dp, V.Text3, modifier = Modifier.rotate(angle))
+                        } else VIcon(SYNC, 19.dp, V.Text2)
                     }
                     val dot = when {
                         rejected > 0 || needsSignIn -> V.Red
