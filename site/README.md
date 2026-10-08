@@ -1,11 +1,17 @@
 # EasyPay, the public site
 
-The page people see at easypaypos.com. Plain HTML, CSS and one script: no
-framework, no build step, nothing to install. It is separate from the back
-office (`web/`), which keeps its own address.
+The page people see at easypaypos.pages.dev. Plain HTML, CSS and one script:
+no framework, no build step, nothing to install. The back office (`web/`) is
+a separate program served under the same address (see Hosting).
+
+The address is written out in `index.html` (the canonical link, the tags a
+shared link is previewed from, the footer) and in `404.html`. easypaypos.com
+is not registered yet: the day it is, and points here, those are the lines
+to change.
 
 ```
 index.html      the page
+404.html        what an address with nothing behind it answers
 css/site.css    the page's look, top to bottom
 css/mock.css    the product drawn in the page: tablet, paper, back office window
 js/config.js    the site's own details (see below)
