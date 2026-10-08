@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Submit } from "../../../backoffice/busy";
 import { Chev } from "../../../backoffice/table-kit";
+import { ConfirmSubmit } from "../../confirm";
 import { Password } from "../../password";
 
 export type Login = { id: string; name: string; role: string | null; is_active: boolean; email: string | null };
@@ -10,7 +11,7 @@ type Action = (f: FormData) => Promise<void>;
 
 // A restaurant's logins as the back office shows a list: a line opens on what
 // can be done to it, a new password above and switching it off or on below,
-// so the list itself stays a list.
+// so the list itself stays a list. Switching off asks first.
 export function LoginsTable({ tenant, logins, setPassword, setActive }: { tenant: string; logins: Login[]; setPassword: Action; setActive: Action }) {
   const [open, setOpen] = useState<string | null>(null);
   const toggle = (id: string) => setOpen((was) => (was === id ? null : id));
@@ -65,7 +66,18 @@ export function LoginsTable({ tenant, logins, setPassword, setActive }: { tenant
                         <span className="muted">
                           {l.is_active && l.role === "Owner" ? "Tills signed in with this login stop syncing if it is switched off." : `Access is ${l.is_active ? "on" : "off"}.`}
                         </span>
-                        <Submit className={l.is_active ? "btn-link danger" : "btn-link"}>{l.is_active ? "Switch off" : "Switch on"}</Submit>
+                        {l.is_active ? (
+                          <ConfirmSubmit
+                            className="btn-link danger"
+                            title={`Switch off ${l.name}?`}
+                            text={(l.role === "Owner" ? "Tills signed in with this login stop syncing. " : "") + "It can no longer open the back office. You can switch it back on here."}
+                            yes="Switch off"
+                          >
+                            Switch off
+                          </ConfirmSubmit>
+                        ) : (
+                          <Submit className="btn-link">Switch on</Submit>
+                        )}
                       </form>
                     </div>
                   </td>
