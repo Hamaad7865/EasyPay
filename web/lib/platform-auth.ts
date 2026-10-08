@@ -45,11 +45,26 @@ export async function setLoginPassword(userId: string, newPassword: string): Pro
   }
 }
 
+// Ends every session a login has open. For a login that existed before it is
+// given to a client: anyone can make a login with the auth service directly,
+// and whoever made this one may still be signed in with it. Linked as it is,
+// they would be signed in as the client's owner, whatever its new password.
+export async function endSessions(userId: string): Promise<Outcome<object>> {
+  try {
+    const res = await auth.admin.revokeUserSessions({ userId });
+    if (res.error) return failure(res.error, "The login's open sessions could not be ended, so it was not handed over");
+    return { ok: true };
+  } catch {
+    return { ok: false, message: "The login service could not be reached. The login was not handed over." };
+  }
+}
+
 // A login for a restaurant: a new one, or one that already exists for that
 // email and belongs to nobody yet (someone who registered with the auth
 // service directly, or a login left over from a restaurant that never got
 // made). An existing login gets the password typed here, so the admin always
-// knows what to hand over. `created` tells the caller whether it may undo.
+// knows what to hand over, and is signed out everywhere it was signed in, so
+// nobody else comes with it. `created` tells the caller whether it may undo.
 export async function loginForRestaurant(input: {
   email: string;
   password: string;
@@ -71,6 +86,8 @@ export async function loginForRestaurant(input: {
   if (row.linked) return { ok: false, message: "That email already belongs to a client." };
   const reset = await setLoginPassword(row.id, input.password);
   if (!reset.ok) return reset;
+  const ended = await endSessions(row.id);
+  if (!ended.ok) return ended;
   return { ok: true, userId: row.id, created: false };
 }
 
