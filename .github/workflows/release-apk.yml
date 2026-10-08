@@ -89,6 +89,22 @@ jobs:
             echo "::error::v$name is already released. A release is never replaced (tablets may have it): raise versionCode and versionName for a new one. Nothing went live."
             exit 1
           fi
+      # production's three keys first: without them the release would stop a few
+      # minutes in, at the migrations, and the fix is one command on the owner's PC
+      - name: the keys that put production up to date are there
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          missing=""
+          [ -n "$NEON_API_KEY" ] || missing="$missing NEON_API_KEY"
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || missing="$missing CLOUDFLARE_API_TOKEN"
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || missing="$missing CLOUDFLARE_ACCOUNT_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::A release puts production up to date before it builds the till, and these repository secrets are not set:$missing. On the owner's PC: node cloudflare/release-keys.cjs --apply. Then run this again (Re-run jobs). Nothing went live and nothing was built."
+            exit 1
+          fi
       - name: everything the APK needs is there
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
