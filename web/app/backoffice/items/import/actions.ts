@@ -14,6 +14,8 @@ export type ImportResult = {
   stock_set?: number; stock_skipped?: number;
   // barcodes made for the lines the file added with none (a shop that has them made automatically)
   barcodes?: number;
+  // what the file adds besides products (migration 0081): categories, removed categories brought back, suppliers
+  new_categories?: string[]; revived_categories?: string[]; new_suppliers?: string[];
   problems: { n: number; name: string | null; why: string }[];
 };
 

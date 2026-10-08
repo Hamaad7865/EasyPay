@@ -205,6 +205,9 @@ const id = () => crypto.randomUUID();
       !bc.error && bc.says.includes('Your own barcodes') && bc.html.includes('name="prefix"') && bc.html.includes('value="200"') && bc.says.includes('2000000000015')
       && bc.says.includes('5 lines have no barcode yet') && bc.html.includes('href="/backoffice/items/labels"'), bc.error || (bc.says.match(/The next barcode.{0,200}/) || [bc.says.slice(0, 200)])[0]);
     check('M6 and Barcode labels points back at them', labels.html.includes('href="/backoffice/settings?tab=barcodes"'));
+    // the import: an Excel workbook or a CSV file, its columns said in the second step
+    const imp = await see(shop, '/backoffice/items/import', {});
+    check('M7 Import products opens for a shop, and takes an Excel workbook or a CSV file', !imp.error && imp.says.includes('An Excel workbook (.xlsx) or a CSV file') && imp.html.includes('.xlsx') && imp.says.includes('Download the template'), imp.error || imp.says.slice(0, 200));
     const stock = await see(shop, '/backoffice/stock', {});
     // ten of each came in; two belts sold and one came back, a scarf sold and one written off
     const beltStock = rowsOf(stock.html).find((r) => r.includes('| Belt |')), scarfStock = rowsOf(stock.html).find((r) => r.includes('| Scarf |'));
@@ -261,7 +264,7 @@ const id = () => crypto.randomUUID();
     check('R4 a restaurant is not offered Item sales by supplier or brand, and asked for one gets its items', !p.error && !p.html.includes('value="supplier"') && rowsOf(p.html).some((r) => r.includes('| Soup |')), p.error);
     p = await see(rest, '/backoffice/reports/orders', rrange);
     check('R5 Order details for a restaurant: no line says "listed at"', !p.error && rowsOf(p.html).some((r) => r.startsWith('Soup')) && !p.says.includes('listed at'), p.error);
-    for (const href of ['/backoffice/reports/stock', '/backoffice/purchase-orders', '/backoffice/stock-counts']) {
+    for (const href of ['/backoffice/reports/stock', '/backoffice/purchase-orders', '/backoffice/stock-counts', '/backoffice/items/import', '/backoffice/items/labels']) {
       const got = await see(rest, href, {});
       check('R6 a restaurant has no ' + href.split('/').pop(), got.error === 'not found', got.error || 'it opened');
     }

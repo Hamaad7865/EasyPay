@@ -1,7 +1,7 @@
 // csv.test.mjs — reading a spreadsheet's CSV (web/lib/csv.ts).
 // Usage: node web/lib/csv.test.mjs   (Node runs the .ts file itself)
 import assert from "node:assert/strict";
-import { parseCsv } from "./csv.ts";
+import { parseCsv, writeCsv } from "./csv.ts";
 
 let failures = 0;
 function check(name, fn) {
@@ -39,6 +39,14 @@ check("empty cells and empty lines are kept as they are", () => {
 check("a header alone, and nothing at all", () => {
   assert.deepEqual(parseCsv("Name,Price"), [["Name", "Price"]]);
   assert.deepEqual(parseCsv(""), []);
+});
+
+check("what is written is read back the same: commas, quotes, line breaks, accents, empty cells", () => {
+  const rows = [["Name", "Note", "Barcode"], ["Crème, brûlée", 'said "yes"', "0012345678905"], ["two\nlines", "", "a;b"], ["", "", ""]];
+  const text = writeCsv(rows);
+  assert.equal(text.charCodeAt(0), 0xfeff);
+  assert.equal(text.endsWith("\r\n"), true);
+  assert.deepEqual(parseCsv(text), rows);
 });
 
 console.log(failures === 0 ? "CSV PASS" : `CSV FAIL (${failures})`);

@@ -40,3 +40,12 @@ export function parseCsv(text: string): string[][] {
   }
   return rows;
 }
+
+// Rows of cells as a CSV file a spreadsheet opens: commas, a cell in quotes when
+// it holds a comma, a quote or a line break, lines ended the way Windows ends
+// them, and the mark at the start that tells Excel the file is UTF-8 (without
+// it an accent comes out as two wrong letters).
+export function writeCsv(rows: string[][]): string {
+  const cell = (v: string) => (/[",\r\n;\t]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v);
+  return "\ufeff" + rows.map((line) => line.map((v) => cell(String(v ?? ""))).join(",")).join("\r\n") + "\r\n";
+}

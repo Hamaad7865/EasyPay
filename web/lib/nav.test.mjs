@@ -17,20 +17,21 @@ function check(name, fn) {
 const hrefs = (mode) => groupsFor(mode).flatMap((g) => g.links.map((l) => l.href));
 const lit = (mode, path) => groupsFor(mode).flatMap((g) => g.links).filter((l) => isOn(l.href, path)).map((l) => l.label);
 
-check("a shop has Barcode labels in its Catalog, after Products; a restaurant has no such line", () => {
+check("a shop has Import products and Barcode labels in its Catalog, after Products; a restaurant has neither", () => {
   const catalog = groupsFor("retail").find((g) => g.links.some((l) => l.href === "/backoffice/items"));
   const labels = catalog.links.map((l) => l.label);
   assert.equal(catalog.title, "Catalog");
-  assert.equal(labels[labels.indexOf("Products") + 1], "Barcode labels");
+  assert.deepEqual(labels.slice(labels.indexOf("Products"), labels.indexOf("Products") + 3), ["Products", "Import products", "Barcode labels"]);
   assert.ok(!hrefs("restaurant").includes("/backoffice/items/labels"));
+  assert.ok(!hrefs("restaurant").includes("/backoffice/items/import"));
 });
 check("on Barcode labels only Barcode labels is lit, not Products above it", () => {
   assert.deepEqual(lit("retail", "/backoffice/items/labels"), ["Barcode labels"]);
 });
-check("on the products list, a product's own page and the import, Products is lit", () => {
+check("on the products list and on a product's own page, Products is lit; on the import, Import products", () => {
   assert.deepEqual(lit("retail", "/backoffice/items"), ["Products"]);
   assert.deepEqual(lit("retail", "/backoffice/items/0b0e6f0e-1111-4222-8333-444455556666"), ["Products"]);
-  assert.deepEqual(lit("retail", "/backoffice/items/import"), ["Products"]);
+  assert.deepEqual(lit("retail", "/backoffice/items/import"), ["Import products"]);
 });
 check("a page under another keeps its parent lit when it has no line of its own", () => {
   assert.deepEqual(lit("retail", "/backoffice/purchase-orders/receive"), ["Purchase orders"]);
@@ -55,7 +56,8 @@ check("the group that opens for Barcode labels is the catalog's, and the search 
   const catalog = GROUPS.find((g) => g.links.some((l) => l.href === "/backoffice/items")).id;
   assert.equal(groupOf("/backoffice/items/labels", "retail"), catalog);
   assert.ok(pagesOf("retail").some((p) => p.label === "Barcode labels"));
-  assert.ok(!pagesOf("restaurant").some((p) => p.label === "Barcode labels"));
+  assert.ok(pagesOf("retail").some((p) => p.label === "Import products"));
+  assert.ok(!pagesOf("restaurant").some((p) => p.label === "Barcode labels" || p.label === "Import products"));
 });
 
 console.log(failures === 0 ? "NAV PASS" : `NAV FAIL (${failures})`);

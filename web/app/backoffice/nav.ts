@@ -17,6 +17,7 @@ import {
   Contact,
   Database,
   FileText,
+  FileUp,
   LayoutDashboard,
   LayoutGrid,
   ListOrdered,
@@ -97,6 +98,7 @@ export const GROUPS: NavGroup[] = [
     links: [
       { href: "/backoffice/categories", label: "Categories", icon: Tags, words: "groups colours kitchen bar printer" },
       { href: "/backoffice/items", label: "Items", retail: "Products", icon: UtensilsCrossed, words: "products dishes prices barcode" },
+      { href: "/backoffice/items/import", label: "Import products", only: "retail", icon: FileUp, words: "excel xlsx csv spreadsheet upload supplier file bulk add many catalog" },
       { href: "/backoffice/items/labels", label: "Barcode labels", only: "retail", icon: Barcode, words: "print stickers price tags ean scan label roll a4 sheet" },
       { href: "/backoffice/addons", label: "Add-ons", only: "restaurant", icon: SlidersHorizontal, words: "options modifiers extras" },
       { href: "/backoffice/taxes", label: "Taxes", icon: FileText, words: "vat zero rated exempt" },
