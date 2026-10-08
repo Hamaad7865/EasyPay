@@ -103,6 +103,18 @@ class ApiClient(baseUrl: String, private val auth: AuthClient, private val versi
         return res
     }
 
+    // The newest build of the till there is to install, or null when the
+    // server names none. Asked of GET /health, which needs no login and is
+    // answered to a till of any build: one too old to sync can still find
+    // its update.
+    suspend fun latestTill(): com.restopos.core.common.TillRelease? {
+        val res = http.get("$functionUrl/health")
+        noteClock(res)
+        if (!res.status.isSuccess()) throw ApiError(res.status.value, "The server did not answer (${res.status.value})")
+        val till = res.body<com.restopos.core.network.dto.HealthResponse>().till ?: return null
+        return com.restopos.core.common.TillRelease(till.version, till.name, till.url)
+    }
+
     suspend fun me(): MeResponse =
         authed { a -> http.get("$functionUrl/me") { header(HttpHeaders.Authorization, a) } }.body()
 

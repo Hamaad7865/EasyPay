@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The one folder the till may hand to Android's installer: its own
+     "Download" folder, where an update of the till is fetched to (AppUpdater). -->
+<paths>
+    <external-files-path name="updates" path="Download/" />
+</paths>

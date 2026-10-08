@@ -1,7 +1,13 @@
 package com.restopos.feature.main
 
 import androidx.activity.compose.BackHandler
+import android.content.Context
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -55,7 +62,15 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.PinHash
+import com.restopos.app.BuildConfig
+import com.restopos.core.common.AppUpdate
 import com.restopos.core.common.Scanner
+import com.restopos.core.common.TillRelease
+import com.restopos.core.sync.AppUpdater
+import com.restopos.core.sync.Download
+import com.restopos.core.sync.SyncScheduler
+import com.restopos.core.sync.pushNow
+import dagger.hilt.android.qualifiers.ApplicationContext
 import com.restopos.core.data.ServiceRepository
 import com.restopos.core.data.StaffMember
 import com.restopos.core.data.StaffRepository
@@ -127,6 +142,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -150,6 +166,15 @@ private val SHOP_ONLY = setOf(Screen.Sell, Screen.Products, Screen.StockCheck)
 
 data class Badges(val takeaway: Int = 0, val kitchen: Int = 0, val bookings: Int = 0)
 
+// A newer build of the till: none, offered, being fetched, or here and ready to install.
+sealed interface Update {
+    val release: TillRelease?
+    data object None : Update { override val release: TillRelease? = null }
+    data class Offered(override val release: TillRelease) : Update
+    data class Fetching(override val release: TillRelease) : Update
+    data class Ready(override val release: TillRelease, val apk: android.net.Uri) : Update
+}
+
 // Behind the top bar and the side menu: which screen is open, who is signed
 // in, what is waiting (the counts on the nav keys), and whether the till is
 // in step with the server.
@@ -162,7 +187,9 @@ class ShellViewModel @Inject constructor(
     private val staffRepo: StaffRepository,
     private val tickets: TicketRepository,
     private val service: ServiceRepository,
-    api: com.restopos.core.network.ApiClient,
+    private val api: com.restopos.core.network.ApiClient,
+    private val updater: AppUpdater,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
     val screen = MutableStateFlow(Screen.Floor)
     // The business is a shop (the back office's settings say so): the till
@@ -228,6 +255,80 @@ class ShellViewModel @Inject constructor(
     fun assign(b: BookingEntity) { assigning.value = b; screen.value = Screen.Floor }
 
     fun setLang(code: String) = viewModelScope.launch { session.setLang(code) }
+
+    // ---- the key by the clock: sync now, and look for a newer build of the till ----
+    val update = MutableStateFlow<Update>(Update.None)
+    val refreshing = MutableStateFlow(false)
+    // the sheet that offers the update, its download, its install
+    val updateSheet = MutableStateFlow(false)
+
+    // What the server names as the newest build, when it is newer than this
+    // one. Null when the server could not be asked.
+    private suspend fun look(): Update? = runCatching { AppUpdate.newer(BuildConfig.VERSION_CODE, api.latestTill()) }.fold(
+        { r ->
+            val now = update.value
+            // a download under way, or done, for this same build is left as it is
+            if (r == null) Update.None else if (now.release?.version == r.version && now !is Update.Offered) now else Update.Offered(r)
+        },
+        { null },
+    )?.also { update.value = it }
+
+    // When the till opens: without a word. The key shows a dot when there is a newer build.
+    fun lookForUpdate() = viewModelScope.launch { look() }
+
+    // The key was tapped: what is waiting here is sent, what changed in the
+    // back office is fetched, and the server is asked for a newer build.
+    fun refresh() = viewModelScope.launch {
+        if (refreshing.value) return@launch
+        refreshing.value = true
+        val signedOut = session.needsSignIn.first()
+        if (!signedOut) { pushNow(context); SyncScheduler.pullNow(context) }
+        val found = look()
+        delay(600) // long enough for the key to be seen turning
+        refreshing.value = false
+        when {
+            found != null && found !is Update.None -> updateSheet.value = true
+            signedOut -> Toaster.say("This tablet has to be signed in again before it can sync.")
+            found == null -> Toaster.say("The back office could not be reached. Sales are kept on this tablet and sent when it can be.")
+            else -> Toaster.say("Syncing with the back office. This till is up to date (EasyPay ${BuildConfig.VERSION_NAME}).")
+        }
+    }
+
+    // The update is fetched while the till goes on selling; the sheet and the key say when it is here.
+    fun fetchUpdate() {
+        val r = update.value.release ?: return
+        if (update.value is Update.Fetching || update.value is Update.Ready) return
+        updater.start(r.version, r.url)
+        update.value = Update.Fetching(r)
+        viewModelScope.launch {
+            while (true) {
+                delay(1000)
+                when (val d = updater.poll()) {
+                    is Download.Ready -> { update.value = Update.Ready(r, d.apk); updateSheet.value = true; return@launch }
+                    Download.Failed, Download.None -> {
+                        update.value = Update.Offered(r)
+                        Toaster.say("The update could not be downloaded. Check the connection and try again.")
+                        return@launch
+                    }
+                    Download.Running -> Unit
+                }
+            }
+        }
+    }
+
+    // Android's own installer takes over. The first time, the tablet asks to
+    // let EasyPay install updates: its switch opens, and the key is tapped again.
+    fun installUpdate() {
+        val ready = update.value as? Update.Ready ?: return
+        updateSheet.value = false
+        runCatching {
+            if (updater.canInstall()) context.startActivity(updater.installIntent(ready.apk))
+            else {
+                context.startActivity(updater.allowIntent())
+                Toaster.say("Allow EasyPay to install updates, come back, and tap the update key again.")
+            }
+        }.onFailure { Toaster.say("This tablet would not open its installer: ${it.message}") }
+    }
 
     // The hash takes a moment by design; keep it off the main thread. Wrong
     // PINs lock that name for a minute, as on the start screen.
@@ -298,6 +399,11 @@ fun MainShell(
     val pending by shell.pending.collectAsState()
     val rejected by shell.rejected.collectAsState()
     val lang by shell.lang.collectAsState()
+    val update by shell.update.collectAsState()
+    val refreshing by shell.refreshing.collectAsState()
+    val updateSheet by shell.updateSheet.collectAsState()
+    // once, as the till opens: is there a newer build? (the key by the clock shows a dot)
+    LaunchedEffect(Unit) { shell.lookForUpdate() }
     val orderUi by order.ui.collectAsState()
     var drawer by remember { mutableStateOf(false) }
     var confirmSignOut by remember { mutableStateOf(false) }
@@ -402,8 +508,24 @@ fun MainShell(
                         }
                     }
                 }
-                if (pending > 0 || rejected > 0 || needsSignIn) {
-                    Box(Modifier.size(10.dp).clip(CircleShape).background(if (rejected > 0 || needsSignIn) V.Red else V.Amber))
+                // Sync and update, one small key by the clock: a tap sends what
+                // is waiting, fetches what changed in the back office and asks
+                // for a newer build of the till. Its dot says what is waiting:
+                // red for something to see to, the accent for an update, amber
+                // for sales still to be sent.
+                Box {
+                    val turn = rememberInfiniteTransition(label = "sync")
+                    val angle by turn.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "turn")
+                    Box(Modifier.size(40.dp).press { shell.refresh() }.clip(RoundedCornerShape(12.dp)).background(V.Panel), contentAlignment = Alignment.Center) {
+                        VIcon(SYNC, 19.dp, if (refreshing) V.Text3 else V.Text2, modifier = if (refreshing) Modifier.rotate(angle) else Modifier)
+                    }
+                    val dot = when {
+                        rejected > 0 || needsSignIn -> V.Red
+                        update !is Update.None -> V.Blue
+                        pending > 0 -> V.Amber
+                        else -> null
+                    }
+                    dot?.let { Box(Modifier.align(Alignment.TopEnd).size(11.dp).clip(CircleShape).background(V.Header).padding(2.dp).clip(CircleShape).background(it)) }
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     T(SimpleDateFormat("HH:mm", Locale.US).format(Date(now)), 18.sp, 800)
@@ -461,12 +583,46 @@ fun MainShell(
         ToastHost()
     }
 
+    if (updateSheet) UpdateSheet(update, onDismiss = { shell.updateSheet.value = false }, onFetch = { shell.fetchUpdate() }, onInstall = { shell.installUpdate() })
+
     if (confirmSignOut) {
         Sheet(onDismiss = { confirmSignOut = false }, width = 560.dp) {
             SheetHead("Sign this tablet out?", "This clears the menu and the receipt list from this tablet. Sales already synced stay in the back office. It is refused while a sale is still waiting to sync or an order is still unpaid.") { confirmSignOut = false }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 VBtn("Cancel", Modifier.weight(1f), height = 60.dp) { confirmSignOut = false }
                 VBtn("Sign out", Modifier.weight(1f), V.Red, Color.White, 60.dp, weight = 800) { confirmSignOut = false; onSignOut() }
+            }
+        }
+    }
+}
+
+// two arrows chasing each other round: sync, and look for an update
+private const val SYNC = "M20 11a8 8 0 0 0 -14.900 -3M4 4v4h4M4 13a8 8 0 0 0 14.900 3M20 20v-4h-4"
+
+// A newer build of the till: offered, then fetched while the till goes on
+// selling, then handed to Android to install. Nothing installs by itself.
+@Composable
+private fun UpdateSheet(u: Update, onDismiss: () -> Unit, onFetch: () -> Unit, onInstall: () -> Unit) {
+    val r = u.release ?: return
+    Sheet(onDismiss = onDismiss, width = 540.dp) {
+        when (u) {
+            is Update.Ready -> {
+                SheetHead("EasyPay ${r.name} is ready to install", "The till closes for a few seconds and opens again on the start screen. Open sales, and what is waiting to be sent, are kept. The first time, the tablet asks to let EasyPay install updates.", onDismiss)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    VBtn("Later", Modifier.weight(1f), height = 60.dp, onClick = onDismiss)
+                    VBtn("Install now", Modifier.weight(1f), V.Blue, Color.White, 60.dp, weight = 800, onClick = onInstall)
+                }
+            }
+            is Update.Fetching -> {
+                SheetHead("Downloading EasyPay ${r.name}", "It can take a minute or two. The till can be used meanwhile: this comes back when it is ready, and the key by the clock keeps its dot.", onDismiss)
+                VBtn("Carry on selling", Modifier.fillMaxWidth(), height = 60.dp, onClick = onDismiss)
+            }
+            else -> {
+                SheetHead("EasyPay ${r.name} is available", "This till is on EasyPay ${BuildConfig.VERSION_NAME}. The new version is downloaded first, while the till goes on selling; nothing is installed until you say so.", onDismiss)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    VBtn("Later", Modifier.weight(1f), height = 60.dp, onClick = onDismiss)
+                    VBtn("Download", Modifier.weight(1f), V.Blue, Color.White, 60.dp, weight = 800, onClick = onFetch)
+                }
             }
         }
     }

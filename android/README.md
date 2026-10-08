@@ -145,6 +145,18 @@ handoff (`feature/main/MainShell.kt` holds every screen):
   its sales until it is updated. A crash is written to a small file (where in
   the program, the version, the tablet; nothing of a sale) and sent at the
   next sync; the admin area lists them under Crashes.
+- **Sync and update, the small key by the clock:** a tap sends what is
+  waiting, fetches what changed in the back office, and asks the server for
+  a newer build of the till (`GET /health`, its `till`). Its dot is red for
+  something to see to, green for an update, amber for sales still to be sent.
+  A newer build is offered, downloaded while the till goes on selling, and
+  handed to Android's installer when the person at the till says so; nothing
+  installs by itself. For a build to be offered, three values are given when
+  the API is deployed (see `neon.ts`): `LATEST_TILL_VERSION` (its
+  `versionCode`, which must go up with every release), `LATEST_TILL_NAME`
+  ("0.4.0") and `TILL_APK_URL` (an https address the tablets can reach).
+  Android installs it over the till only if it is signed with the same key
+  as the build on the tablet, and asks once to let EasyPay install updates.
 - **Splitting equally** keeps the shares already taken on the tablet between
   guests, so a tablet that stops in the middle still knows what was paid.
 - **Printing** is done by the tablet itself over the local network (a

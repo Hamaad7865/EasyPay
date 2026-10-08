@@ -54,6 +54,13 @@ data class RegisterDeviceRequest(
     val appVersion: String? = null,
 )
 
+// GET /health: `till` is the newest build of the till there is to install, or null.
+@Serializable
+data class HealthResponse(val till: TillReleaseDto? = null)
+
+@Serializable
+data class TillReleaseDto(val version: Int = 0, val name: String = "", val url: String = "")
+
 @Serializable
 data class RegisterDeviceResponse(val deviceId: String, val lastReceiptSeq: Long = 0, val syncKey: String? = null)
 

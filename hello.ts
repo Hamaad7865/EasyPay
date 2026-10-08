@@ -192,18 +192,35 @@ const app = new Hono();
 // the till shows "must be updated", keeps selling and keeps its outbox, and
 // syncs again once it is updated. With the setting absent, or from a till
 // that does not say its version, nothing changes.
+// GET /health is answered whatever build asks: it is where a till learns that
+// there is a newer build and where its file is, and a till too old to sync is
+// the one that most needs to know.
 app.use("*", async (c, next) => {
   const min = Number(process.env.MIN_TILL_VERSION ?? "0");
   const has = c.req.header("x-till-version");
-  if (min > 0 && has !== undefined && Number(has) < min) {
+  if (c.req.path !== "/health" && min > 0 && has !== undefined && Number(has) < min) {
     return c.json({ error: "This till must be updated before it can sync.", min }, 426);
   }
   await next();
 });
 
+// The newest build of the till there is to install: its versionCode, the name
+// people know it by ("0.4.0"), and where its APK is. The three are given at
+// deploy (LATEST_TILL_VERSION, LATEST_TILL_NAME, TILL_APK_URL, see neon.ts).
+// Without a version or an https address there is no update to offer, and a
+// till is told nothing. The file itself is hosted wherever the address says:
+// the API only passes the address on.
+function latestTill(): { version: number; name: string; url: string } | null {
+  const version = Math.trunc(Number(process.env.LATEST_TILL_VERSION ?? "0")) || 0;
+  const url = (process.env.TILL_APK_URL ?? "").trim();
+  if (version <= 0 || !/^https:\/\/\S+$/i.test(url)) return null;
+  return { version, name: (process.env.LATEST_TILL_NAME ?? "").trim() || `build ${version}`, url };
+}
+
 // minTill: the oldest till build still accepted (0: every build is).
+// till: the newest build there is to install, or null (the till's update key asks here).
 app.get("/health", (c) =>
-  c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0082", minTill: Number(process.env.MIN_TILL_VERSION ?? "0") || 0 }),
+  c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0082", minTill: Number(process.env.MIN_TILL_VERSION ?? "0") || 0, till: latestTill() }),
 );
 
 // Tenant-scoped self check: only ever returns the caller's own rows.
