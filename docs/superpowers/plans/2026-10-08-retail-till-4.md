@@ -28,7 +28,7 @@
 - **A discount on a line in rupees is per unit** ("Rs 100 off each"), so a line of three is three times a whole number of cents.
 - **A line whose price was changed by someone not allowed to is stored and flagged for review, not refused.** The sale happened; refusing its receipt would lose a payment.
 - **The retail screen changes a line in place** (quantity, note, price) with one new operation, `ticket.edit_line`, for a line nothing has been done with (not paid, not voided, not sent to a kitchen). The restaurant's way (void and add again) stays for restaurants: there a kitchen may hold the line.
-- **Stock on a tile is the server's figure, less what this till sold since.** The till takes what it sells off its own copy at once; every sync brings the server's figure back. Two tills offline can both show the last one, and both can sell it: that is the design's rule.
+- **Stock on a tile is the server's figure as of the last sync, moved by what this till has done since.** The till takes what it sells off its own copy at once and puts back what it takes back onto the shelf; every sync replaces the copy with the server's figure. (A refund of a receipt another till made does not move this till's copy: the server's figure arrives with the next sync.) Two tills offline can both show the last one, and both can sell it: that is the design's rule.
 - **A return not put back on the shelf** comes back at the cost it left at and leaves again as damaged, so the Losses report holds it.
 - **A shop's till is too old below build 3**: the API answers "must be updated" to an older build of a shop, and to one that does not say its build. A restaurant's till is asked nothing new.
 
@@ -104,15 +104,15 @@ No crash in the device log through any of it.
 - **Nothing was installed on the user's emulator**, and no till was signed in to a real business: a sign-in is the user's. The sync itself (push and pull over the network from the till) was therefore not run from a device; its two halves were: the till's operations against the server's functions (the replay), and the API's routes with a till's key (`api-shop-gate`, `api-till-key`).
 - **A real barcode scanner.** The till tells a scanner from a keyboard by the device the keys come from; `adb` types as a virtual keyboard, so codes were typed into the search box and entered. The lookup is the same function.
 - **A printer.** The receipt's "was Rs 1,290.00, 10% off" line is in the layout and was seen on the receipt's screen, not on paper.
-- **The pull of stock levels into a till** was checked on the server (`retail-till` A10) and in the till's reader by reading it, not by a till pulling.
+- **The pull of stock levels into a till** was checked on the server (`retail-till` A10) and in the till's reader by reading it, not by a till pulling. (Done later the same night: see "After this record".)
 
 **Found and left for the user to decide or see:**
 
 - The restaurant's own sheets that are typed into (an order's note, a typed discount) are hidden by the keyboard in the same way; they were not changed.
-- A shop's customer form still says "Note (allergies, what they like)".
+- A shop's customer form still says "Note (allergies, what they like)". (Changed later the same night: see "After this record".)
 - A new shop still gets the order types Dine-in, Takeaway and Delivery from `ensure_pos_basics`; its sales are all "Counter", and the back office's order-type filter lists the others.
 - `item.set_price` on a variant keeps no record of who changed it (a product's price does).
-- Production needs migrations 0064 to 0077, then the API, then build 3 on the tablets. A shop must not be switched on before its tablets have build 3: the gate will stop them syncing until they do.
+- Production needs migrations 0064 to 0079 (as of the end of the night), then the API, then build 3 on the tablets. A shop must not be switched on before its tablets have build 3: the gate will stop them syncing until they do.
 
 **For the user: seeing it without a login.** With an emulator that has no EasyPay data on it (never the till in use):
 
@@ -127,3 +127,14 @@ adb shell am broadcast -n com.restopos.app/com.restopos.debug.DemoReceiver -a co
 ```
 
 Close the app and open it again. The two members of staff and their PINs are in `android/app/src/debug/assets/demo-shop.json`.
+
+## After this record (2026-10-08, later the same night)
+
+Found in review of the work above, and fixed; each has its own commit.
+
+- **A split check dropped a line's price** (`71c7e68`, migration 0078). `ticket.split_line` made the part taken off with the columns it knew by name, so that part lost what it was listed at and who allowed the change; its receipt was flagged as price drift and printed no "was". Two checks in `retail-till`, failing first.
+- **A sale could only be refunded on the till that made it, and the pull had never run on a device** (`975c0b5`). A shop's till now keeps the shop's receipts of the last 30 days as the server sends them (`PullApplier`, a class of its own): one made on another till is listed, shown line by line, reprinted and refunded, the refund worked out from the pulled lines and their taxes. The receipts list is found by number. The debug build can be given a page of the server's pull (`DEMO_PULL`): the made-up shop was emptied and filled only from dev's pull page, signed in with the pulled PIN, sold a variant from the pulled catalog with the pulled stock on its tiles, and refunded a receipt it had not made; the server took that refund. The till's shift and day reports count a discount on a line as a discount, and say price changes apart.
+- **A discount on one line showed nowhere in the back office** (`7206c4c`, `9b7b059`). The receipt's own discount does not hold it (it is on the line). The Sales summary, the dashboard, Staff performance and Day closing now count it for a shop, say prices typed for one sale apart, and Order details says on the line what it was listed at and who allowed it. A restaurant's pages ask what they asked before.
+- **Nobody could open a shop's back office on dev** (no account, and one is not made by me). `db/tests/shop-pages.test.cjs` opens the real pages, compiled from their TypeScript, with the test's own connection as the tenant's role, on a shop and on a restaurant that traded through `sync_push`: 40 checks, among them every page of a shop's menu. It is the nearest thing to signing in that can be run without an account.
+
+Piece 5 (the exchange) is in `2026-10-08-retail-exchange-5.md`.

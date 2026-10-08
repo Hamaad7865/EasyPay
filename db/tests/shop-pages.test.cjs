@@ -134,6 +134,7 @@ const id = () => crypto.randomUUID();
     // Rs 23.00 off the first sale and Rs 30.00 off the two belts. It is said under "Sales before refunds", so the belt that came back changes nothing of it
     check('S2 discounts are what was taken off whole sales and off single lines', p.says.includes('after Rs 53.00 of discounts'), (p.says.match(/after Rs [\d.,]+ of discounts/) || [])[0]);
     check('S2 and it says which is which', p.says.includes('Rs 30.00 of the discounts were given on single lines, Rs 23.00 on whole sales.'), (p.says.match(/Rs [\d.,]+ of the discounts[^.]*\./) || [])[0]);
+    check('S1 a shop is not asked about order types, nor shown a split by them', !p.says.includes('Order type') && !p.says.includes('order type'), (p.says.match(/.{30}[Oo]rder type.{30}/) || [])[0]);
     check('S3 a price typed for one sale is said apart, and is not a discount', p.says.includes('Prices typed for one sale came to Rs 15.00 below the listed prices'), (p.says.match(/Prices typed[^:]*/) || [])[0]);
 
     p = await see(shop, '/backoffice/reports/day-close', range);
@@ -145,6 +146,7 @@ const id = () => crypto.randomUUID();
 
     p = await see(shop, '/backoffice', range);
     check('S5 the dashboard opens for a shop', !p.error, p.error);
+    check('S5 without a card of order types', !p.says.includes('Order types'), (p.says.match(/.{30}Order types.{30}/) || [])[0]);
     check('S5 and counts the same discounts', /After Rs 38 of discounts and Rs 100 of refunds/i.test(p.says), (p.says.match(/After Rs [\d.,]+ of discounts[^.]{0,40}/i) || [p.says.slice(0, 200)])[0]);
 
     p = await see(shop, '/backoffice/insights/staff', range);
@@ -230,10 +232,11 @@ const id = () => crypto.randomUUID();
     const rrange = { from: rd.from, to: rd.to };
     p = await see(rest, '/backoffice/reports/sales', rrange);
     check('R1 Sales summary for a restaurant: the bill\'s discount, and nothing about lines', !p.error && p.says.includes('after Rs 23.00 of discounts') && !p.says.includes('single lines') && !p.says.includes('Prices typed'), p.error || (p.says.match(/after Rs [\d.,]+ of discounts/) || [])[0]);
+    check('R1 and its order types are there to pick and to split by', p.says.includes('Order type') && p.says.includes('order type'));
     p = await see(rest, '/backoffice/reports/day-close', rrange);
     check('R2 Day closing for a restaurant: the same', !p.error && p.says.includes('Discounts given Rs 23.00') && !p.says.includes('Prices typed'), p.error || (p.says.match(/Discounts given Rs [\d.,]+/g) || []).join(' / '));
     p = await see(rest, '/backoffice', rrange);
-    check('R3 the dashboard for a restaurant', !p.error && /After Rs 23 of discounts and Rs 0 of refunds/i.test(p.says), p.error || (p.says.match(/After Rs [\d.,]+ of discounts[^.]{0,40}/i) || [])[0]);
+    check('R3 the dashboard for a restaurant', !p.error && /After Rs 23 of discounts and Rs 0 of refunds/i.test(p.says) && p.says.includes('Order types'), p.error || (p.says.match(/After Rs [\d.,]+ of discounts[^.]{0,40}/i) || [])[0]);
     p = await see(rest, '/backoffice/insights/staff', rrange);
     check('R4 Staff performance for a restaurant', !p.error && p.says.includes('gave the most in discounts: Rs 23.00'), p.error || (p.says.match(/gave the most in discounts: Rs [\d.,]+/) || [])[0]);
     p = await see(rest, '/backoffice/reports/orders', rrange);

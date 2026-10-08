@@ -53,6 +53,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -74,6 +75,10 @@ class CustomersViewModel @Inject constructor(
     val message: StateFlow<String?> = _message
     fun messageShown() { _message.value = null }
 
+    // a shop: a customer is put on a sale, and the note is not about what they eat
+    val retail: StateFlow<Boolean> = db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).retail }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     fun search(text: String) { query.value = text }
 
     fun save(id: String?, name: String, phone: String, email: String, note: String, then: (CustomerEntity) -> Unit) = viewModelScope.launch {
@@ -90,6 +95,7 @@ class CustomersViewModel @Inject constructor(
 fun CustomersScreen(vm: CustomersViewModel = hiltViewModel()) {
     val rows by vm.rows.collectAsState()
     val message by vm.message.collectAsState()
+    val shop by vm.retail.collectAsState()
     var typed by remember { mutableStateOf("") }
     // the customer being made (blank) or changed
     var form by remember { mutableStateOf<CustomerEntity?>(null) }
@@ -137,7 +143,7 @@ fun CustomersScreen(vm: CustomersViewModel = hiltViewModel()) {
                     }
                 }
             }
-            Text("To put a customer on an order, tap Assign customer on the register.", Modifier.padding(horizontal = 6.dp), color = Pos.Text3, fontSize = 12.sp)
+            Text(if (shop) "To put a customer on a sale, tap Add customer on the Sell screen." else "To put a customer on an order, tap Assign customer on the register.", Modifier.padding(horizontal = 6.dp), color = Pos.Text3, fontSize = 12.sp)
         }
         message?.let {
             Text(
@@ -148,7 +154,7 @@ fun CustomersScreen(vm: CustomersViewModel = hiltViewModel()) {
     }
 
     if (adding || form != null) {
-        CustomerForm(form, onDismiss = { adding = false; form = null }) { name, phone, email, note ->
+        CustomerForm(form, shop = shop, onDismiss = { adding = false; form = null }) { name, phone, email, note ->
             vm.save(form?.id, name, phone, email, note) { adding = false; form = null }
         }
     }
@@ -160,11 +166,12 @@ fun CustomersScreen(vm: CustomersViewModel = hiltViewModel()) {
 fun CustomerPicker(current: String?, vm: CustomersViewModel = hiltViewModel(), what: String = "order", onDismiss: () -> Unit, onPick: (String?) -> Unit) {
     val rows by vm.rows.collectAsState()
     val message by vm.message.collectAsState()
+    val shop by vm.retail.collectAsState()
     var typed by remember { mutableStateOf("") }
     var adding by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.search("") }
     if (adding) {
-        CustomerForm(null, startName = typed, onDismiss = { adding = false }) { name, phone, email, note ->
+        CustomerForm(null, startName = typed, shop = shop, onDismiss = { adding = false }) { name, phone, email, note ->
             vm.save(null, name, phone, email, note) { made -> adding = false; onPick(made.id) }
         }
         return
@@ -206,7 +213,7 @@ fun CustomerPicker(current: String?, vm: CustomersViewModel = hiltViewModel(), w
 }
 
 @Composable
-private fun CustomerForm(initial: CustomerEntity?, startName: String = "", onDismiss: () -> Unit, onSave: (String, String, String, String) -> Unit) {
+private fun CustomerForm(initial: CustomerEntity?, startName: String = "", shop: Boolean = false, onDismiss: () -> Unit, onSave: (String, String, String, String) -> Unit) {
     var name by remember { mutableStateOf(initial?.name ?: startName) }
     var phone by remember { mutableStateOf(initial?.phone ?: "") }
     var email by remember { mutableStateOf(initial?.email ?: "") }
@@ -219,7 +226,7 @@ private fun CustomerForm(initial: CustomerEntity?, startName: String = "", onDis
                 OutlinedTextField(name, { name = it.take(120) }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
                 OutlinedTextField(phone, { phone = it.take(40) }, Modifier.fillMaxWidth(), label = { Text("Phone") }, singleLine = true)
                 OutlinedTextField(email, { email = it.take(120) }, Modifier.fillMaxWidth(), label = { Text("Email") }, singleLine = true)
-                OutlinedTextField(note, { note = it.take(200) }, Modifier.fillMaxWidth(), label = { Text("Note (allergies, what they like)") })
+                OutlinedTextField(note, { note = it.take(200) }, Modifier.fillMaxWidth(), label = { Text(if (shop) "Note (sizes, what they like)" else "Note (allergies, what they like)") })
             }
         },
         confirmButton = { Button(enabled = name.isNotBlank(), onClick = { onSave(name, phone, email, note) }) { Text("Save") } },

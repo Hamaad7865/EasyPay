@@ -804,14 +804,17 @@ export default async function BackofficeHome({
         </Card>
       </div>
 
-      <div className="grid-3 even">
+      {/* a shop's sales are all rung up at the counter: it has no order types to show */}
+      <div className={ctx.mode === "retail" ? "grid-2" : "grid-3 even"}>
         <Card title="Payment methods" lede="How the money came in">
           <Shares rows={cur.payments} total={cur.gross} none="Unknown" />
         </Card>
-        <Card title="Order types" lede="Tables, takeaway, delivery, counter">
-          <Shares rows={cur.dining} total={cur.gross} none="Not set" />
-        </Card>
-        <Card title="Categories" lede="Menu prices, before discounts" action={<More href={`/backoffice/reports/items?${days}&group=category`}>All</More>}>
+        {ctx.mode !== "retail" && (
+          <Card title="Order types" lede="Tables, takeaway, delivery, counter">
+            <Shares rows={cur.dining} total={cur.gross} none="Not set" />
+          </Card>
+        )}
+        <Card title="Categories" lede={ctx.mode === "retail" ? "What was charged, before a discount on a whole sale" : "Menu prices, before discounts"} action={<More href={`/backoffice/reports/items?${days}&group=category`}>All</More>}>
           <Shares rows={cur.cats.map((r) => ({ name: r.name, n: 0, amount: r.amount }))} total={catsTotal} none="No category" count={false} />
         </Card>
       </div>

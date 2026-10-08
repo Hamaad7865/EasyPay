@@ -61,7 +61,9 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
       lines: ctx.mode === "retail" ? ((await c.query(linePricesSql(RECEIPTS), a)).rows[0] as LinePrices) : ({ sold_off: "0", sold_changed: "0" } satisfies LinePrices),
     };
   });
-  const head = <PageHead title="Sales summary" lede="What was sold, refunded and collected over the days you pick, and how it splits by payment method, order type and member of staff." />;
+  // a shop's sales are all rung up at the counter: it has no order types to split by, or to pick
+  const shop = ctx.mode === "retail";
+  const head = <PageHead title="Sales summary" lede={`What was sold, refunded and collected over the days you pick, and how it splits by payment method${shop ? "" : ", order type"} and member of staff.`} />;
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;
   const m = (v: string | number) => money(Number(v), d.s.decimals);
   const t = d.totals;
@@ -90,7 +92,7 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
   return (
     <div>
       {head}
-      <ReportFilters path="/backoffice/reports/sales" f={d.f} l={d.l} show={["employee", "dining", "kind"]} />
+      <ReportFilters path="/backoffice/reports/sales" f={d.f} l={d.l} show={shop ? ["employee", "kind"] : ["employee", "dining", "kind"]} />
       {t.sales + t.refunds === 0 ? (
         <Empty icon={BarChart3} title="No sales in these days">Pick other dates, or clear the filters.</Empty>
       ) : (
@@ -118,11 +120,20 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
               <tfoot><tr><td>Total</td><td className="num">{t.sales}</td><td className="num">{Number(t.refunded) ? m(t.refunded) : ""}</td><td className="num">{m(t.total)}</td></tr></tfoot>
             </table>
           </Card>
-          <div className="grid-2">
-            {split("By payment method", d.payments, "Unknown")}
-            {split("By order type", d.dining, "Not set")}
-          </div>
-          {split("By employee", d.staff, "Not recorded")}
+          {shop ? (
+            <div className="grid-2">
+              {split("By payment method", d.payments, "Unknown")}
+              {split("By employee", d.staff, "Not recorded")}
+            </div>
+          ) : (
+            <>
+              <div className="grid-2">
+                {split("By payment method", d.payments, "Unknown")}
+                {split("By order type", d.dining, "Not set")}
+              </div>
+              {split("By employee", d.staff, "Not recorded")}
+            </>
+          )}
         </>
       )}
     </div>
