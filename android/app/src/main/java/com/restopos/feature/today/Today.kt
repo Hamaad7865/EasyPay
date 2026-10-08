@@ -74,6 +74,10 @@ data class TodayUi(
     val mix: List<Share> = emptyList(),
     val channels: List<Share> = emptyList(),
     val top: List<Pair<String, Long>> = emptyList(),
+    // a shop: no covers and no channels; what came back today instead
+    val retail: Boolean = false,
+    val refunded: Long = 0,
+    val refunds: Int = 0,
 )
 
 // Today's sales on this till, worked out from its own receipts: nothing here
@@ -130,6 +134,8 @@ class TodayViewModel @Inject constructor(
                     hours = (first..nowHour).map { it to (hours[it] ?: 0L) },
                     mix = shares(mix), channels = shares(channels),
                     top = db.service().bestSellers(device, start).map { it.name to (it.qty + 500) / 1000 },
+                    retail = com.restopos.core.data.PosSettings.parse(db.ops().settings()).retail,
+                    refunded = today.filter { it.type == "refund" }.sumOf { it.total }, refunds = today.count { it.type == "refund" },
                 )
             }
         }
@@ -155,9 +161,16 @@ fun TodayScreen(vm: TodayViewModel, serviceLine: String) {
         ScreenHead("$serviceLine · this till", L.todayTitle)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Kpi("Net sales", Money.format(ui.sales), ui.versus, if (ui.up) V.GreenText else V.RedText, Modifier.weight(1f))
-            Kpi("Covers", ui.covers.toString(), if (ui.covers > 0) "${Money.format(ui.sales / ui.covers)} per head" else "No table served yet", V.Text2, Modifier.weight(1f))
-            Kpi("Average check", Money.format(if (ui.checks > 0) ui.sales / ui.checks else 0), "${ui.checks} checks closed", V.Text2, Modifier.weight(1f))
-            Kpi("Still open", Money.format(ui.openDue), "${ui.openCount} orders in progress", V.Text2, Modifier.weight(1f))
+            if (ui.retail) {
+                // a shop has no tables: what came back, what a sale comes to, what is parked
+                Kpi("Refunded", Money.format(ui.refunded), if (ui.refunds == 0) "Nothing came back today" else "${ui.refunds} ${if (ui.refunds == 1) "return" else "returns"}, already off net sales", V.Text2, Modifier.weight(1f))
+                Kpi("Average sale", Money.format(if (ui.checks > 0) ui.sales / ui.checks else 0), "${ui.checks} ${if (ui.checks == 1) "sale" else "sales"}", V.Text2, Modifier.weight(1f))
+                Kpi("Parked", Money.format(ui.openDue), "${ui.openCount} ${if (ui.openCount == 1) "sale" else "sales"} waiting", V.Text2, Modifier.weight(1f))
+            } else {
+                Kpi("Covers", ui.covers.toString(), if (ui.covers > 0) "${Money.format(ui.sales / ui.covers)} per head" else "No table served yet", V.Text2, Modifier.weight(1f))
+                Kpi("Average check", Money.format(if (ui.checks > 0) ui.sales / ui.checks else 0), "${ui.checks} checks closed", V.Text2, Modifier.weight(1f))
+                Kpi("Still open", Money.format(ui.openDue), "${ui.openCount} orders in progress", V.Text2, Modifier.weight(1f))
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Column(Modifier.weight(1.6f).panel().padding(horizontal = 22.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -211,7 +224,8 @@ fun TodayScreen(vm: TodayViewModel, serviceLine: String) {
                     Box(Modifier.fillMaxWidth().height(1.dp).background(V.RowLine))
                 }
             }
-            Column(Modifier.weight(1f).panel().padding(horizontal = 22.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // a shop sells one way, over the counter: there are no channels to tell apart
+            if (!ui.retail) Column(Modifier.weight(1f).panel().padding(horizontal = 22.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 T("Sales by channel", 17.sp, 700)
                 if (ui.channels.isEmpty()) T("No sales yet today.", 14.sp, 500, V.Text3)
                 ui.channels.forEach { c ->

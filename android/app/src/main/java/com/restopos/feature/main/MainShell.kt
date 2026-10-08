@@ -420,7 +420,7 @@ fun MainShell(
                     Screen.Kitchen -> { val vm: KdsViewModel = hiltViewModel(); KdsScreen(vm) }
                     Screen.Bookings -> { val vm: BookingsViewModel = hiltViewModel(); BookingsScreen(vm, serviceLine, onAssign = { b -> b.area?.let { floor.pickZone(it) }; shell.assign(b) }, onSeated = { shell.go(Screen.Order) }) }
                     Screen.Orders -> Box(Modifier.padding(top = 12.dp)) { OrdersScreen(onOpen = { shell.go(Screen.Order) }) }
-                    Screen.Today -> { val vm: TodayViewModel = hiltViewModel(); TodayScreen(vm, serviceLine) }
+                    Screen.Today -> { val vm: TodayViewModel = hiltViewModel(); TodayScreen(vm, if (retail) date else serviceLine) }
                     Screen.Menu -> { val vm: MenuViewModel = hiltViewModel(); MenuStockScreen(vm) }
                     Screen.Cash -> { val vm: CashViewModel = hiltViewModel(); CashScreen(vm, onOpenPeriod = onOpenPeriod, onClosed = onLock) }
                     Screen.Receipts -> Box(Modifier.padding(top = 12.dp)) { ReceiptsScreen() }

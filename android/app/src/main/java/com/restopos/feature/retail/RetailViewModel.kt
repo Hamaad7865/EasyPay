@@ -320,6 +320,21 @@ class RetailViewModel @Inject constructor(
         }
     }
 
+    // a discount on the whole sale, typed on the till's keys
+    fun askSaleDiscount(percent: Boolean) {
+        asking.value = if (percent) {
+            NumAsk("Discount on the sale", "A percentage off everything on it", "%", 0, "") { typed ->
+                val pct = typed.toLongOrNull()?.takeIf { it in 1..100 }
+                if (pct == null) Toaster.say("Type a percentage from 1 to 100") else setDiscount(DiscountPick(null, "percent", pct, "$pct%"))
+            }
+        } else {
+            NumAsk("Discount on the sale", "Rupees off the whole sale", "Rs", 2, "") { typed ->
+                val off = Money.parseRs(typed)?.takeIf { it > 0 }
+                if (off == null) Toaster.say("Type the amount to take off") else setDiscount(DiscountPick(null, "amount", off, Money.format(off)))
+            }
+        }
+    }
+
     fun setCustomer(customerId: String?) = viewModelScope.launch {
         if (_ui.value.ticket == null && customerId == null) return@launch
         tickets.setCustomer(customerId).onFailure { Toaster.say(it.message) }

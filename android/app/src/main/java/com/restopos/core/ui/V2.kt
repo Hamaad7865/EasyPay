@@ -476,10 +476,12 @@ fun Field(
 }
 
 // A dialog in the design's style: a dark card on a scrim. Tapping the scrim closes it.
+// top: the sheet is typed into with the tablet's keyboard, so it sits at the
+// top of the screen, where the keyboard that opens does not cover its keys.
 @Composable
-fun Sheet(onDismiss: () -> Unit, width: Dp = 580.dp, pad: Dp = 26.dp, gap: Dp = 20.dp, content: @Composable ColumnScope.() -> Unit) {
+fun Sheet(onDismiss: () -> Unit, width: Dp = 580.dp, pad: Dp = 26.dp, gap: Dp = 20.dp, top: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().quietTap(onDismiss), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().quietTap(onDismiss).padding(top = if (top) 28.dp else 0.dp), contentAlignment = if (top) Alignment.TopCenter else Alignment.Center) {
             Column(
                 Modifier.widthIn(max = width).fillMaxWidth(0.92f).heightIn(max = 660.dp).shadow(24.dp, RoundedCornerShape(20.dp))
                     .clip(RoundedCornerShape(20.dp)).background(V.Panel).border(1.dp, V.Stroke, RoundedCornerShape(20.dp))

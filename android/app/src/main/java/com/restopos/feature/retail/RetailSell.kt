@@ -434,7 +434,7 @@ internal fun NumSheet(a: NumAsk, onDismiss: () -> Unit) {
 @Composable
 private fun NoteSheet(l: SaleLine, onDismiss: () -> Unit, onSave: (String) -> Unit) {
     var note by remember(l) { mutableStateOf(l.line.note ?: "") }
-    Sheet(onDismiss = onDismiss, width = 520.dp) {
+    Sheet(onDismiss = onDismiss, width = 520.dp, top = true) {
         SheetHead("Note on this line", l.name + (l.variant?.let { ", $it" } ?: ""), onDismiss)
         Field(note, { note = it.take(120) }, "Gift wrapped, engraving, a serial number…", Modifier.fillMaxWidth(), height = 56.dp, onDone = { onSave(note) })
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -489,15 +489,15 @@ private fun DiscountSheet(ui: SaleUi, vm: RetailViewModel, onDismiss: () -> Unit
             }
             Caps("Or type one")
         }
-        var typed by remember { mutableStateOf("") }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Field(typed, { typed = it.filter { c -> c.isDigit() }.take(6) }, "Amount", Modifier.weight(1f), height = 54.dp, number = true)
-            VBtn("% off", height = 54.dp) {
-                typed.toLongOrNull()?.takeIf { it in 1..100 }?.let { vm.setDiscount(DiscountPick(null, "percent", it, "$it%")); onDismiss() }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(5, 10, 15, 20).forEach { pct ->
+                val on = ui.discount?.discountId == null && ui.discount?.type == "percent" && ui.discount.value == pct.toLong()
+                VBtn("$pct%", Modifier.weight(1f), if (on) V.On else V.Key, if (on) V.OnText else V.Text, 54.dp) { vm.setDiscount(DiscountPick(null, "percent", pct.toLong(), "$pct%")); onDismiss() }
             }
-            VBtn("Rs off", height = 54.dp) {
-                typed.toLongOrNull()?.takeIf { it > 0 }?.let { vm.setDiscount(DiscountPick(null, "amount", it * 100, Money.format(it * 100))); onDismiss() }
-            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            VBtn("Another percentage", Modifier.weight(1f), height = 54.dp) { onDismiss(); vm.askSaleDiscount(percent = true) }
+            VBtn("Rupees off", Modifier.weight(1f), height = 54.dp) { onDismiss(); vm.askSaleDiscount(percent = false) }
         }
         if (ui.discount != null) VBtn("Take the discount off", Modifier.fillMaxWidth(), V.RedWash, V.RedText) { vm.setDiscount(null); onDismiss() }
     }
