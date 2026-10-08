@@ -249,6 +249,15 @@ database (`adb run-as`). Tablets in a restaurant get the release build.
   is still waiting. A line carries the price and modifier prices this
   till charged, and a discount carries the amount it took off, so the server
   stores the receipt as printed.
+- **Set-up:** a till is set up with a login that may set up tills (the
+  owner's, a manager's: `settings.device`). The server refuses another login
+  there with a sentence the set-up screen shows. It takes a till's word for
+  who rang something up, and who approved it, from such a login alone.
+- **What the roles do not allow:** a refund, or a bill with a discount, that
+  the server finds nobody was allowed to give (the roles changed, or someone
+  was switched off, while the till was offline) is stored as the till recorded
+  it and flagged for the back office's Receipts page; it is not rejected. The
+  money had already moved (migration 0082).
 - **Receipt numbers:** the sequence is kept on the device row and only moves
   forward; a pull never lowers it.
 - **Sign-out:** refused while unsynced changes are in the outbox; otherwise it

@@ -244,8 +244,8 @@ export function TenantView({
             <p className="adm-note">
               A login opens the back office only when its role has &quot;Sign in to the back office&quot;: an Owner&apos;s and a Manager&apos;s do, a
               Cashier&apos;s and a Waiter&apos;s do not, unless the client ticks it under Roles and permissions. Staff who only sell need no login: they get
-              a PIN in the back office, under Staff. Set a till up with the owner&apos;s or a manager&apos;s login, so that what staff do on it under
-              their PIN is recorded in their own name.
+              a PIN in the back office, under Staff. A till is set up with the owner&apos;s or a manager&apos;s login, and with no other (a role needs
+              &quot;Change settings, printers and tables&quot; for it): what staff then do on it under their PIN is recorded in their own name.
             </p>
           </section>
         </div>

@@ -12,6 +12,9 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 //   no sign-up here: a login that is not linked to a tenant gets 403.
 // - A suspended tenant keeps syncing (spec 4.4: never trap their data) but
 //   cannot register devices or change its catalog.
+// - A till is set up, and given its key, only under a login that may set up
+//   tills (settings.device): the server takes a till's word for who did what
+//   from such a login alone.
 // - A till that has been set up syncs with a key of its own (migration 0063),
 //   which does not lapse the way a login's session does. The key opens the
 //   sync routes only (push, pull of the till's own store, crash reports); it
@@ -135,6 +138,19 @@ function suspended(auth: Authed): boolean {
   return auth.status !== "active";
 }
 
+// A till is set up, and given its key, only under a login that may set up
+// tills (settings.device: the owner's, a manager's). The server takes a
+// till's word for who rang something up, and who approved it, from such a
+// login alone (sync_push). A till set up under a cashier's login would have
+// every approval ignored: a refund a manager approved with their PIN there
+// would be refused after the money had moved. So that login is told at
+// set-up which one to use, where it costs nothing yet.
+const NOT_FOR_TILLS = { error: "This login cannot set up a till. Set it up with the owner's or a manager's login; staff then use their PIN." };
+async function maySetUpTills(employeeId: string): Promise<boolean> {
+  const r = await pool.query(`select has_perm($1, 'settings.device') as ok`, [employeeId]);
+  return r.rows[0]?.ok === true;
+}
+
 // Runs fn on one pooled client with the tenant context stamped for the txn.
 // Exported for db/tests/helpers.test.cjs (keep in sync with web/lib/db.ts).
 export async function asTenant<T>(tenantId: string, fn: (q: (text: string, params?: unknown[]) => Promise<{ rows: T[] }>) => Promise<T[]>): Promise<T[]> {
@@ -187,7 +203,7 @@ app.use("*", async (c, next) => {
 
 // minTill: the oldest till build still accepted (0: every build is).
 app.get("/health", (c) =>
-  c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0077", minTill: Number(process.env.MIN_TILL_VERSION ?? "0") || 0 }),
+  c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0082", minTill: Number(process.env.MIN_TILL_VERSION ?? "0") || 0 }),
 );
 
 // Tenant-scoped self check: only ever returns the caller's own rows.
@@ -235,6 +251,7 @@ app.post("/devices/register", async (c) => {
     return res as Response;
   }
   if (suspended(auth)) return c.json(SUSPENDED, 403);
+  if (!(await maySetUpTills(auth.employeeId))) return c.json(NOT_FOR_TILLS, 403);
   type DeviceBody = { storeId?: string; deviceId?: string; name?: string; code?: string; appVersion?: string };
   const body: DeviceBody = await c.req.json<DeviceBody>().catch((): DeviceBody => ({}));
   const storeId = body.storeId ?? "";
@@ -289,6 +306,10 @@ app.post("/devices/register", async (c) => {
 // A key for a till that was set up before tills had keys, or whose key was
 // ended: asked for with a login, once. It replaces the key the till had.
 // A suspended restaurant's till is given one too: its sales must still sync.
+// The key stands for the login that asked, so it is given only to one that
+// may set up tills: a cashier's login signed in on a till would otherwise
+// replace the till's key with one in its own name. Without a key that till
+// goes on syncing with its login, as before tills had keys.
 app.post("/devices/key", async (c) => {
   let auth: Authed;
   try {
@@ -296,6 +317,7 @@ app.post("/devices/key", async (c) => {
   } catch (res) {
     return res as Response;
   }
+  if (!(await maySetUpTills(auth.employeeId))) return c.json(NOT_FOR_TILLS, 403);
   const body: { deviceId?: string } = await c.req.json<{ deviceId?: string }>().catch((): { deviceId?: string } => ({}));
   const deviceId = body.deviceId ?? "";
   if (!/^[0-9a-f-]{36}$/i.test(deviceId)) return c.json({ error: "deviceId required" }, 400);
