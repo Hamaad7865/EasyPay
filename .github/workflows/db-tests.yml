@@ -1,24 +1,60 @@
 name: db-tests
+
+# The database suites, on a throwaway copy of production: every migration is
+# applied to it first, so this is also the rehearsal of a release's
+# migrations before they are applied for real.
+#
+# Needs the repository secret NEON_API_KEY. Without it the job says so and
+# passes: the checks that need no database are in ci.yml, and a missing key
+# is not a broken build. It runs on pushes and by hand, not on pull requests:
+# this repository is public, and a pull request from anyone must not be handed
+# a key to the database.
 on:
   push:
-  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: db-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   db:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
       NEON_PROJECT_ID: snowy-fire-89764432
     steps:
+      - name: is the key for Neon there
+        id: key
+        run: |
+          if [ -z "$NEON_API_KEY" ]; then
+            echo "::warning::The repository secret NEON_API_KEY is not set, so the database suites were not run. Set it (Settings, Secrets and variables, Actions) to have every push rehearse the migrations on a copy of production."
+            echo "have=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "have=yes" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        if: steps.key.outputs.have == 'yes'
       - uses: actions/setup-node@v4
+        if: steps.key.outputs.have == 'yes'
         with:
           node-version: 24
-      - run: npm ci --no-audit --no-fund
-      - run: npm i -g neon@latest --no-audit --no-fund
+      - if: steps.key.outputs.have == 'yes'
+        run: npm ci --no-audit --no-fund
+      # the suites that open a back office page, or run its own modules, compile them with the back office's packages
+      - if: steps.key.outputs.have == 'yes'
+        run: npm ci --no-audit --no-fund --prefix web
+      - if: steps.key.outputs.have == 'yes'
+        run: npm i -g neon@latest --no-audit --no-fund
       # Throwaway branch per job: copy-on-write from production, deleted
       # afterwards. Suites must still clean up after themselves (they do),
       # the branch is the second guard. Never run these against production.
       - name: create throwaway branch
+        if: steps.key.outputs.have == 'yes'
         id: branch
         run: |
           NAME="ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
@@ -26,35 +62,44 @@ jobs:
           neon branches create --project-id "$NEON_PROJECT_ID" --name "$NAME"
           CS="$(neon connection-string "$NAME" --project-id "$NEON_PROJECT_ID" --role-name neondb_owner | grep -o 'postgresql://[^ ]*' | head -1)"
           if [ -z "$CS" ]; then echo "could not read branch connection string"; exit 1; fi
+          echo "::add-mask::$CS"
           echo "DATABASE_URL_UNPOOLED=$CS" >> "$GITHUB_ENV"
           # The pooled address too: helpers.test.cjs runs the API's and the back
           # office's own helpers, and they connect through the pooler as they do live.
           POOLED="$(neon connection-string "$NAME" --project-id "$NEON_PROJECT_ID" --role-name neondb_owner --pooled | grep -o 'postgresql://[^ ]*' | head -1)"
           if [ -z "$POOLED" ]; then echo "could not read branch pooled connection string"; exit 1; fi
+          echo "::add-mask::$POOLED"
           echo "DATABASE_URL=$POOLED" >> "$GITHUB_ENV"
       - name: write test env
+        if: steps.key.outputs.have == 'yes'
         run: |
           printf 'DATABASE_URL=%s\nDATABASE_URL_UNPOOLED=%s\nNEON_BRANCH=%s\n' "$DATABASE_URL" "$DATABASE_URL_UNPOOLED" "${{ steps.branch.outputs.name }}" > .env.local
-      - run: node db/tests/guard.test.cjs
-      - run: node db/migrate.cjs
-      - run: node db/tests/isolation.test.cjs
-      - run: node db/tests/platform.test.cjs
-      - run: node db/tests/helpers.test.cjs
-      - run: node db/tests/push-policy.test.cjs
-      - run: node db/tests/fk-setnull.test.cjs
-      - run: node db/tests/phase2.test.cjs
-      - run: node db/tests/refund-snapshots.test.cjs
-      - run: node db/tests/refund-shares.test.cjs
-      - run: node db/tests/receipt-deltas.test.cjs
-      - run: node db/tests/offline-price.test.cjs
-      - run: node db/tests/receipt-accept.test.cjs
-      - run: node db/tests/review-reasons.test.cjs
-      - run: node db/tests/truncate-lock.test.cjs
-      - run: node db/tests/truncate.test.cjs
-      - run: node db/tests/signup-lock.test.cjs
-      - run: node db/tests/vat-included.test.cjs
-      - run: node db/tests/pull-pages.test.cjs
-      - run: node db/tests/api6.test.cjs
+      - if: steps.key.outputs.have == 'yes'
+        run: node db/tests/guard.test.cjs
+      # every migration production does not have, applied to its copy
+      - name: migrations
+        if: steps.key.outputs.have == 'yes'
+        run: node db/migrate.cjs
+      # Every suite that needs only the database, one at a time. Left out:
+      # the ones that make real accounts on the sign-in service (api6,
+      # signup-lock, platform-auth) and the ones that call a deployed till API
+      # (api-shop-gate, api-till-activity, api-till-key): a throwaway branch
+      # has neither. truncate runs last: it empties every table of the branch.
+      - name: suites
+        if: steps.key.outputs.have == 'yes'
+        run: |
+          skip=" guard truncate api6 signup-lock platform-auth api-shop-gate api-till-activity api-till-key "
+          failed=""
+          for f in db/tests/*.test.cjs; do
+            s=$(basename "$f" .test.cjs)
+            case "$skip" in *" $s "*) continue;; esac
+            echo "::group::$s"
+            if node "$f"; then echo "::endgroup::"; else echo "::endgroup::"; echo "::error::$s failed"; failed="$failed $s"; fi
+          done
+          echo "::group::truncate"
+          node db/tests/truncate.test.cjs || failed="$failed truncate"
+          echo "::endgroup::"
+          if [ -n "$failed" ]; then echo "::error::failed:$failed"; exit 1; fi
       - name: delete throwaway branch
-        if: always()
+        if: always() && steps.key.outputs.have == 'yes' && steps.branch.outputs.name != ''
         run: neon branches delete "${{ steps.branch.outputs.name }}" --project-id "$NEON_PROJECT_ID"

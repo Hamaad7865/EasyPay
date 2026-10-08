@@ -1,0 +1,203 @@
+name: release to production
+
+# Puts what is on this branch live, in the one order that is safe:
+#
+#   1. the database's migrations   (production cannot be behind the code)
+#   2. the till API                (Neon Functions, production branch)
+#   3. the back office             (Cloudflare Worker easypay-backoffice)
+#   4. the public site and the front door (Cloudflare Pages, easypaypos.pages.dev)
+#
+# Started by a person, from the Actions tab (Run workflow). It is not started
+# by a push: more than one hand writes to this branch, and a migration is not
+# something to apply because someone pushed. Each step can be left out, to
+# release only the site, say.
+#
+# It runs in the environment "production". In the repository's settings
+# (Environments, production) a required reviewer can be set, and then every
+# run waits for that person's yes.
+#
+# What it needs, as repository secrets (Settings, Secrets and variables,
+# Actions). A step whose secret is missing stops with a sentence saying which.
+#   NEON_API_KEY            for the migrations and the till API
+#   CLOUDFLARE_API_TOKEN    for the back office and the site
+#   CLOUDFLARE_ACCOUNT_ID
+# and, as repository variables (same page, Variables), what the till API says
+# about the newest till build; left unset, no till is offered an update:
+#   MIN_TILL_VERSION, LATEST_TILL_VERSION, LATEST_TILL_NAME, TILL_APK_URL
+#
+# The back office's own three settings (its database, the sign-in service,
+# its cookie secret) are not here: they are kept on the Worker itself and a
+# release does not touch them (web/wrangler.toml says how they are set).
+on:
+  workflow_dispatch:
+    inputs:
+      database:
+        description: Apply the migrations production does not have yet
+        type: boolean
+        default: true
+      api:
+        description: Deploy the till API
+        type: boolean
+        default: true
+      backoffice:
+        description: Deploy the back office
+        type: boolean
+        default: true
+      site:
+        description: Deploy the public site and the front door
+        type: boolean
+        default: true
+
+concurrency:
+  # one release at a time: two would race to be the live one
+  group: release-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NEON_PROJECT_ID: snowy-fire-89764432
+
+jobs:
+  # the same checks as on every push, on exactly what is about to go live
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  database:
+    name: 1 · database migrations
+    if: ${{ inputs.database }}
+    needs: checks
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: the key for Neon is there
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: |
+          if [ -z "$NEON_API_KEY" ]; then echo "::error::The repository secret NEON_API_KEY is not set: nothing was applied."; exit 1; fi
+      - run: npm ci --no-audit --no-fund
+      - run: npm i -g neon@latest --no-audit --no-fund
+      - name: what would be applied
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: node db/migrate-production.cjs
+      # A restore point first: a branch of production as it is now, with no
+      # compute of its own (it costs storage only). Named after this run.
+      - name: restore point
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: neon branches create --project-id "$NEON_PROJECT_ID" --name "production-before-run-${{ github.run_id }}" --parent production --compute false
+      - name: apply
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: node db/migrate-production.cjs --apply
+      - name: nothing left to apply
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: node db/migrate-production.cjs | tee /dev/stderr | grep -q "Nothing to apply."
+
+  api:
+    name: 2 · till API
+    if: ${{ always() && inputs.api && needs.checks.result == 'success' && (needs.database.result == 'success' || needs.database.result == 'skipped') }}
+    needs: [checks, database]
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: the key for Neon is there
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: |
+          if [ -z "$NEON_API_KEY" ]; then echo "::error::The repository secret NEON_API_KEY is not set: the till API was not deployed."; exit 1; fi
+      - run: npm ci --no-audit --no-fund
+      - run: npm i -g neon@latest --no-audit --no-fund
+      - name: deploy
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          # what neon.ts reads: always sent, as 0 and empty when not set
+          MIN_TILL_VERSION: ${{ vars.MIN_TILL_VERSION }}
+          LATEST_TILL_VERSION: ${{ vars.LATEST_TILL_VERSION }}
+          LATEST_TILL_NAME: ${{ vars.LATEST_TILL_NAME }}
+          TILL_APK_URL: ${{ vars.TILL_APK_URL }}
+        run: neon deploy --project-id "$NEON_PROJECT_ID" --branch production --no-env-pull --update-existing --allow-protected
+
+  backoffice:
+    name: 3 · back office
+    if: ${{ always() && inputs.backoffice && needs.checks.result == 'success' && (needs.database.result == 'success' || needs.database.result == 'skipped') && (needs.api.result == 'success' || needs.api.result == 'skipped') }}
+    needs: [checks, database, api]
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: the keys for Cloudflare are there
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then echo "::error::The repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are not both set: the back office was not deployed."; exit 1; fi
+      - run: npm ci --no-audit --no-fund
+      # placeholders, as in the checks: what the back office runs with is on the Worker
+      - name: build for Cloudflare
+        env:
+          DATABASE_URL: postgresql://build:placeholder@build-placeholder.invalid/neondb
+          NEON_AUTH_BASE_URL: https://build-placeholder.invalid/neondb/auth
+          NEON_AUTH_COOKIE_SECRET: placeholder-for-the-build-only-never-used-when-running
+        run: npm run cf:build
+      - name: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy
+
+  site:
+    name: 4 · public site and front door
+    if: ${{ always() && inputs.site && needs.checks.result == 'success' && (needs.backoffice.result == 'success' || needs.backoffice.result == 'skipped') }}
+    needs: [checks, backoffice]
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: the keys for Cloudflare are there
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then echo "::error::The repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are not both set: the site was not deployed."; exit 1; fi
+      # wrangler comes with the back office's own packages
+      - run: npm ci --no-audit --no-fund
+        working-directory: web
+      # cloudflare/pages/wrangler.toml says what is served (site/) and binds
+      # the back office's Worker, which therefore has to exist by now
+      - name: deploy
+        working-directory: cloudflare/pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: ../../web/node_modules/.bin/wrangler pages deploy --branch restopos --commit-dirty=true

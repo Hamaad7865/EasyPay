@@ -1,0 +1,99 @@
+name: checks
+
+# What is checked on every push and every pull request, before anything is
+# released: the back office, the till API and the till each build and pass
+# their own tests. Nothing here reaches a database or a live service, and
+# nothing here needs a secret: this repository is public, and a pull request
+# from anyone runs these.
+#
+# The database suites are their own workflow (db-tests.yml): they need a
+# database to run against.
+on:
+  push:
+  pull_request:
+  # and from the release workflows, on exactly what they are about to release
+  workflow_call:
+
+concurrency:
+  # a newer push replaces the run of an older one; a release's run is its own
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backoffice:
+    name: back office
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: type-check
+        run: npm run typecheck
+      # each file says PASS or FAIL per check and exits non-zero on a FAIL
+      - name: unit tests
+        run: |
+          for f in lib/*.test.mjs; do
+            echo "== $f"
+            node "$f"
+          done
+      # The build that goes to Cloudflare. The three settings are needed for
+      # the build to run at all and are read again when the back office runs:
+      # what is given here is not kept in what is built (checked: none of
+      # these values is anywhere in .open-next), so they are placeholders.
+      - name: build for Cloudflare
+        env:
+          DATABASE_URL: postgresql://build:placeholder@build-placeholder.invalid/neondb
+          NEON_AUTH_BASE_URL: https://build-placeholder.invalid/neondb/auth
+          NEON_AUTH_COOKIE_SECRET: placeholder-for-the-build-only-never-used-when-running
+        run: npm run cf:build
+      - name: nothing given at build time is in what was built
+        run: |
+          if grep -rIl "build-placeholder.invalid\|placeholder-for-the-build-only" .open-next; then
+            echo "::error::a build-time setting is inside the bundle: the deployed back office would run with it"
+            exit 1
+          fi
+
+  api:
+    name: till API
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: type-check
+        run: npx -y -p typescript@5.7.2 tsc --noEmit --module esnext --target es2022 --moduleResolution bundler --esModuleInterop --skipLibCheck --strict hello.ts neon.ts
+
+  till:
+    name: till (Android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      # With no android/local.properties the build has no server addresses
+      # and no signing key: enough to compile and to run the unit tests, and
+      # nothing that could be installed on a tablet by mistake.
+      - name: unit tests and a debug build
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug

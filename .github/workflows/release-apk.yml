@@ -1,0 +1,189 @@
+name: release the till (APK)
+
+# Builds the till for clients' tablets and publishes it as a GitHub Release
+# of this repository, where a tablet can download it with no sign-in:
+#
+#   https://github.com/<owner>/<repo>/releases/latest/download/easypay.apk
+#
+# (GitHub Packages is not used: it asks for a token to download, even from a
+# public repository, and a tablet has none.)
+#
+# Started by pushing a tag named after the version in
+# android/app/build.gradle.kts ("v0.4.0" for versionName 0.4.0), or by hand
+# from the Actions tab. To release a new build: raise versionCode and
+# versionName there, commit, then
+#
+#   git tag v0.4.0 && git push github v0.4.0
+#
+# What it needs. It publishes nothing unless all of it is there: a build with
+# no key cannot be installed over the one before it, and a build with no
+# server address is a till that cannot sign in.
+#   repository secrets (Settings, Secrets and variables, Actions):
+#     ANDROID_KEYSTORE_B64        the signing key file, base64 (see android/README.md)
+#     ANDROID_KEYSTORE_PASSWORD
+#     ANDROID_KEY_ALIAS
+#     ANDROID_KEY_PASSWORD
+#   repository variables (same page, Variables), production's addresses:
+#     TILL_FUNCTION_URL           the till API (https://…-api.….neon.tech)
+#     TILL_AUTH_URL               the sign-in service (https://…neonauth…/neondb/auth)
+#     BACK_OFFICE_URL             optional; https://easypaypos.pages.dev when not set
+#
+# EVERY release must be signed with the SAME key: Android refuses an update
+# signed with another, and the only way past that is to uninstall the till,
+# which deletes what it has not synced.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-apk
+  cancel-in-progress: false
+
+permissions:
+  contents: write # to publish the release
+
+jobs:
+  # the same checks as on every push, on exactly what is about to be released
+  checks:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  apk:
+    name: build, sign and publish
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: which version this is
+        id: version
+        run: |
+          name=$(sed -nE 's/^\s*versionName\s*=\s*"([^"]+)".*/\1/p' android/app/build.gradle.kts | head -1)
+          code=$(sed -nE 's/^\s*versionCode\s*=\s*([0-9]+).*/\1/p' android/app/build.gradle.kts | head -1)
+          if [ -z "$name" ] || [ -z "$code" ]; then echo "::error::versionName and versionCode were not found in android/app/build.gradle.kts"; exit 1; fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "tag=v$name" >> "$GITHUB_OUTPUT"
+          echo "This is EasyPay till $name (build $code)."
+
+      - name: the tag says the same version
+        if: github.ref_type == 'tag'
+        run: |
+          if [ "${{ github.ref_name }}" != "${{ steps.version.outputs.tag }}" ]; then
+            echo "::error::The tag is ${{ github.ref_name }} but android/app/build.gradle.kts says ${{ steps.version.outputs.name }}. Raise versionName and versionCode, commit, and tag that commit ${{ steps.version.outputs.tag }}."
+            exit 1
+          fi
+
+      - name: this version was not released before
+        run: |
+          exists=$(gh release view "${{ steps.version.outputs.tag }}" --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)
+          if [ -n "$exists" ]; then
+            echo "::error::${{ steps.version.outputs.tag }} is already released. A release is never replaced (tablets may have it): raise versionCode and versionName for a new one."
+            exit 1
+          fi
+
+      - name: everything it needs is there
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          FUNCTION_URL: ${{ vars.TILL_FUNCTION_URL }}
+          AUTH_URL: ${{ vars.TILL_AUTH_URL }}
+        run: |
+          missing=""
+          [ -n "$KEYSTORE_B64" ] || missing="$missing secret:ANDROID_KEYSTORE_B64"
+          [ -n "$KEYSTORE_PASSWORD" ] || missing="$missing secret:ANDROID_KEYSTORE_PASSWORD"
+          [ -n "$KEY_ALIAS" ] || missing="$missing secret:ANDROID_KEY_ALIAS"
+          [ -n "$KEY_PASSWORD" ] || missing="$missing secret:ANDROID_KEY_PASSWORD"
+          case "$FUNCTION_URL" in https://*) ;; *) missing="$missing variable:TILL_FUNCTION_URL(https)";; esac
+          case "$AUTH_URL" in https://*) ;; *) missing="$missing variable:TILL_AUTH_URL(https)";; esac
+          if [ -n "$missing" ]; then echo "::error::Not set in this repository:$missing. Nothing was built or published."; exit 1; fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+
+      # The key and the addresses go where the build reads them
+      # (android/local.properties, which is never committed), for this run only.
+      - name: the signing key and production's addresses
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          FUNCTION_URL: ${{ vars.TILL_FUNCTION_URL }}
+          AUTH_URL: ${{ vars.TILL_AUTH_URL }}
+          BACK_OFFICE_URL: ${{ vars.BACK_OFFICE_URL }}
+        run: |
+          umask 077
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/easypay.jks"
+          {
+            printf 'functionUrl=%s\n' "$FUNCTION_URL"
+            printf 'authUrl=%s\n' "$AUTH_URL"
+            printf 'backOfficeUrl=%s\n' "${BACK_OFFICE_URL:-https://easypaypos.pages.dev}"
+            printf 'keystoreFile=%s\n' "$RUNNER_TEMP/easypay.jks"
+            printf 'keystorePassword=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > android/local.properties
+
+      - name: build the release
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleRelease
+
+      - name: it is signed, and by which key
+        id: signed
+        run: |
+          apk=android/app/build/outputs/apk/release/app-release.apk
+          if [ ! -f "$apk" ]; then echo "::error::The build made no signed APK (an unsigned one is never published)."; ls android/app/build/outputs/apk/release || true; exit 1; fi
+          signer=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner
+          "$signer" verify --print-certs "$apk" | tee certs.txt
+          # the key's fingerprint: the same line in every release, or tablets will refuse the update
+          echo "fingerprint=$(sed -nE 's/^Signer #1 certificate SHA-256 digest: (.*)$/\1/p' certs.txt)" >> "$GITHUB_OUTPUT"
+          mkdir -p out
+          cp "$apk" "out/easypay-${{ steps.version.outputs.name }}.apk"
+          cp "$apk" out/easypay.apk
+          (cd out && sha256sum easypay-${{ steps.version.outputs.name }}.apk | tee sha256.txt)
+
+      - name: the key and the settings are gone from the runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP/easypay.jks" android/local.properties
+
+      - name: publish
+        run: |
+          name="${{ steps.version.outputs.name }}"; tag="${{ steps.version.outputs.tag }}"
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/easypay-$name.apk"
+          {
+            echo "The EasyPay till for Android tablets, version $name (build ${{ steps.version.outputs.code }})."
+            echo
+            echo "**Install or update:** open this on the tablet and allow the install:"
+            echo "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/easypay.apk"
+            echo
+            echo "A till that is already installed offers the update by itself once the till API names this build."
+            echo
+            echo "Signing key fingerprint (SHA-256): \`${{ steps.signed.outputs.fingerprint }}\`"
+          } > notes.md
+          gh release create "$tag" "out/easypay-$name.apk" out/easypay.apk out/sha256.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "EasyPay till $name" --notes-file notes.md
+          {
+            echo "## EasyPay till $name is published"
+            echo
+            echo "Download: $url"
+            echo
+            echo "For tills already installed to be offered this build, set these repository variables and run **release to production** with the till API ticked:"
+            echo
+            echo "| Variable | Value |"
+            echo "| --- | --- |"
+            echo "| \`LATEST_TILL_VERSION\` | \`${{ steps.version.outputs.code }}\` |"
+            echo "| \`LATEST_TILL_NAME\` | \`$name\` |"
+            echo "| \`TILL_APK_URL\` | \`$url\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
