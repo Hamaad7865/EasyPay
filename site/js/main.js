@@ -606,7 +606,9 @@
 
     for (const k of $$(".switch button", stage)) {
       k.addEventListener("click", () => {
-        at = FILMS[whose()].indexOf(k.dataset.chapter);
+        const i = FILMS[whose()].indexOf(k.dataset.chapter);
+        if (i < 0) return; // a key of the other till's film
+        at = i;
         setPaused(false);
         play();
       });
