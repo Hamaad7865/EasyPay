@@ -195,6 +195,10 @@ const id = () => crypto.randomUUID();
     const one1 = await see(shop, '/backoffice/purchase-orders/' + po.id, {}, { params: { id: po.id }, file: 'backoffice/purchase-orders/[id]' });
     const one2 = await see(shop, '/backoffice/stock-counts/' + countId, {}, { params: { id: countId }, file: 'backoffice/stock-counts/[id]' });
     check('M2 a purchase order and a count open', !one1.error && !one2.error && one1.says.includes('Shirt') && one2.html.length > 500, [one1.error, one2.error].filter(Boolean).join(' || '));
+    // barcode labels: every product is listed with its price and what is on hand, and one with no barcode says so
+    const labels = await see(shop, '/backoffice/items/labels', {});
+    const labelRows = rowsOf(labels.html).filter((r) => r.includes('Belt') || r.includes('Shirt'));
+    check('M5 Barcode labels opens, and lists the products with their prices', !labels.error && labelRows.length >= 2 && labelRows.every((r) => r.includes('Rs 115.00')) && labels.says.includes('40 x 30 mm') && labels.says.includes('A4 sheets'), labels.error || labelRows.join(' // '));
     const stock = await see(shop, '/backoffice/stock', {});
     // ten of each came in; two belts sold and one came back, a scarf sold and one written off
     const beltStock = rowsOf(stock.html).find((r) => r.includes('| Belt |')), scarfStock = rowsOf(stock.html).find((r) => r.includes('| Scarf |'));
