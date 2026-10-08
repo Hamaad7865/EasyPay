@@ -268,8 +268,9 @@ class OrderViewModel @Inject constructor(
         val out = orderOps.save()
         out.fold(
             onSuccess = { r ->
+                val trouble = r.trouble()
                 when {
-                    r.errors.isNotEmpty() -> Toaster.say(r.errors.first() + " The order is on the kitchen display. Print it again from More once the printer answers.")
+                    trouble != null -> Toaster.say(trouble)
                     r.sent == 0 -> Toaster.say("This order type is set never to go to the kitchen (back office, Settings).")
                     else -> Toaster.say("${s.unsent} item${if (s.unsent == 1) "" else "s"} sent to kitchen" + (s.tableName?.let { " · $it" } ?: ""))
                 }

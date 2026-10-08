@@ -118,7 +118,7 @@ class BoardViewModel @Inject constructor(
                     onSuccess = { r ->
                         // nothing left to send still means the kitchen has it all
                         if (db.tickets().ticket(o.id)?.stage == "new") tickets.setStage(o.id, "kitchen")
-                        Toaster.say(if (r.errors.isNotEmpty()) r.errors.first() + " ${o.label} is on the kitchen display." else "${o.label} · sent to kitchen")
+                        Toaster.say(r.trouble(o.label, again = false) ?: "${o.label} · sent to kitchen")
                     },
                     onFailure = { Toaster.say(it.message) },
                 )

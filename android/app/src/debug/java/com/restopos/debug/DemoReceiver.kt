@@ -97,8 +97,11 @@ class DemoReceiver : BroadcastReceiver() {
                 } else {
                     // --es type restaurant: the same catalog as a restaurant's, with tables and order types
                     val restaurant = intent.getStringExtra("type") == "restaurant"
-                    seed(context, deps.db(), deps.session(), restaurant)
-                    Log.i(TAG, "seeded a " + (if (restaurant) "restaurant" else "shop") + ": close the app and open it again")
+                    // --es plan premium: the plan the settings carry (server 0085). Left out, they
+                    // carry none, and a restaurant has no Kitchen and no Bookings screen.
+                    val plan = intent.getStringExtra("plan")?.trim()?.takeIf { it.isNotEmpty() }
+                    seed(context, deps.db(), deps.session(), restaurant, plan)
+                    Log.i(TAG, "seeded a " + (if (restaurant) "restaurant" else "shop") + (plan?.let { " on the $it plan" } ?: "") + ": close the app and open it again")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "failed", e)
@@ -122,7 +125,7 @@ class DemoReceiver : BroadcastReceiver() {
         return listOf("pbkdf2-sha256", iterations.toString(), b64.encodeToString(salt), b64.encodeToString(hash)).joinToString("$")
     }
 
-    private suspend fun seed(context: Context, db: TillDatabase, session: SessionStore, restaurant: Boolean) {
+    private suspend fun seed(context: Context, db: TillDatabase, session: SessionStore, restaurant: Boolean, plan: String?) {
         val shop = Json.parseToJsonElement(context.assets.open("demo-shop.json").bufferedReader().use { it.readText() })
         val tenant = shop.str("tenant")!!
         val store = shop.obj("store")
@@ -136,7 +139,8 @@ class DemoReceiver : BroadcastReceiver() {
             catalog.upsertDevices(listOf(DeviceEntity(device.str("id")!!, tenant, storeId, device.str("name")!!, device.str("code")!!)))
             // a restaurant's settings say nothing about the kind of business, as before there were shops
             val settings = shop.obj("settings")
-            db.ops().upsertSettings(SettingsEntity(tenant, (if (restaurant) JsonObject(settings.filterKeys { it != "businessType" }) else settings).toString()))
+            val kept = if (restaurant) settings.filterKeys { it != "businessType" } else settings
+            db.ops().upsertSettings(SettingsEntity(tenant, JsonObject(if (plan == null) kept else kept + ("plan" to kotlinx.serialization.json.JsonPrimitive(plan))).toString()))
             catalog.upsertTaxes(listOf(TaxEntity(tax.str("id")!!, tenant, tax.str("name")!!, tax.jsonObject["rate_bp"]!!.jsonPrimitive.intOrNull ?: 0, tax.str("type")!!, true)))
             if (restaurant) {
                 val r = shop.obj("restaurant")

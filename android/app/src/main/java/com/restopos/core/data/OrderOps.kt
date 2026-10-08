@@ -28,8 +28,24 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 // What Save did: how many lines went to the kitchen, and what a printer said
-// if it could not print.
-data class SaveResult(val sent: Int, val errors: List<String>)
+// if it could not print. `nowhere` says which lines no printer took, for a
+// restaurant with no kitchen display to have them on; `onDisplay` is whether
+// it has one (the display is the premium tier's).
+data class SaveResult(val sent: Int, val errors: List<String>, val nowhere: String? = null, val onDisplay: Boolean = true) {
+    // What the till says when a send did not go wholly as it should; null
+    // when it did. `where` is how the order is named; `again` adds where the
+    // paper can be printed again.
+    fun trouble(where: String = "The order", again: Boolean = true): String? {
+        if (errors.isEmpty() && nowhere == null) return null
+        val failed = errors.isNotEmpty()
+        return listOfNotNull(
+            errors.firstOrNull(),
+            if (failed && onDisplay) "$where is on the kitchen display." else null,
+            if (failed && again) "Print it again from More once the printer answers." else null,
+            nowhere,
+        ).joinToString(" ")
+    }
+}
 
 // A line of a receipt, for the refund sheet: how many it sold and how many of
 // them have been given back already. Quantities in thousandths.
@@ -67,21 +83,22 @@ class OrderOps @Inject constructor(
         // a shop has no kitchen: nothing is ever sent to one
         val settings = PosSettings.parse(db.ops().settings())
         if (settings.retail) return@runCatching SaveResult(0, emptyList())
+        val display = settings.premium
         // an order type set to never go to the kitchen is only put away
         val mode = (t.dining_option_id?.let { db.ops().dining(it) } ?: db.catalog().diningOptions().firstOrNull { it.is_default })?.kitchen ?: "save"
-        if (mode == "off") return@runCatching SaveResult(0, emptyList())
+        if (mode == "off") return@runCatching SaveResult(0, emptyList(), onDisplay = display)
         val fresh = db.tickets().lines(t.id).first().filter { it.sent_to_kitchen_at == null && !it.paid }
-        if (fresh.isEmpty()) return@runCatching SaveResult(0, emptyList())
+        if (fresh.isEmpty()) return@runCatching SaveResult(0, emptyList(), onDisplay = display)
         val out = docs.kitchen(t, fresh, "ORDER")
         markSent(t.id, out.printed)
-        SaveResult(out.printed.size, out.errors + unseen(out, settings))
+        SaveResult(out.printed.size, out.errors, unseen(out, settings), display)
     }
 
     // A line no printer took is still on the kitchen display, for a
     // restaurant that has one. The display is the premium tier's: without it
     // that line reached nobody, and the till says which.
-    private fun unseen(out: KitchenOutcome, settings: PosSettings): List<String> =
-        if (settings.premium) emptyList() else listOfNotNull(Routing.nowhereText(out.nowhere))
+    private fun unseen(out: KitchenOutcome, settings: PosSettings): String? =
+        if (settings.premium) null else Routing.nowhereText(out.nowhere)
 
     private suspend fun markSent(ticketId: String, ids: List<String>) {
         if (ids.isEmpty()) return
@@ -114,7 +131,7 @@ class OrderOps @Inject constructor(
         if (fresh.isEmpty()) return
         val out = docs.kitchen(t, fresh, "ORDER")
         markSent(ticketId, out.printed)
-        (out.errors + unseen(out, settings)).forEach { printing.report(it) }
+        (out.errors + listOfNotNull(unseen(out, settings))).forEach { printing.report(it) }
     }
 
     // After a payment: the receipt prints, the drawer opens if the payment
