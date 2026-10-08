@@ -60,6 +60,12 @@ It is not store credit: nothing is kept on it from one visit to the next, and a 
 - **On paper.** No printer: the slips' wording was read from what the till keeps to print ("Returned goods, Ref: DM-T1-R000002"; "Exchange, to the new sale").
 - **A till signed in.** As for piece 4: the till's operations against the server's functions, not the network sync from a device.
 - **A refund the server refuses under a real till.** The server's side is in the suite (the sale is flagged). What a till shows for an operation the server refused is as it was before this work.
+- **An exchange of a receipt another till made.** Refunding a pulled receipt was run for piece 4, and an exchange uses the same refund; the two were not run together.
+
+## Checked about the order of things
+
+- **A refund the server asks to be sent again cannot leave its sale flagged by mistake.** `sync_push` stops a batch at the first operation that has to be retried: that one and every later one are sent again, in order. The sale never reaches the server ahead of its refund.
+- **What the migrations carry.** The functions that 0077, 0078 and 0079 copy from the dev database were compared with the migrations that defined them before: the only differences are this work's own lines. The other session's migration 0064 (not committed when this was written) defines a table and a function of its own; none of these needs it.
 
 ## Left as found
 
