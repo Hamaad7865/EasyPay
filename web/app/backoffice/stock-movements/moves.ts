@@ -1,4 +1,5 @@
 import { UUID } from "@/lib/action";
+import { isDay } from "@/lib/day";
 import { MOVE_LABEL } from "@/lib/stock";
 
 // The movements of a shop's stock, as the Movements page and its CSV both
@@ -8,12 +9,10 @@ import { MOVE_LABEL } from "@/lib/stock";
 
 export type MoveFilters = { item: string | null; variant: string | null; reason: string | null; who: string | null; from: string | null; to: string | null };
 
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
-
 // What the address asks for, with anything that is not what it should be left out.
 export function moveFilters(get: (k: string) => string): MoveFilters {
   const id = (k: string) => (UUID.test(get(k)) ? get(k) : null);
-  const day = (k: string) => (DAY.test(get(k)) ? get(k) : null);
+  const day = (k: string) => (isDay(get(k)) ? get(k) : null);
   const reason = get("reason");
   return { item: id("item"), variant: id("variant"), reason: Object.hasOwn(MOVE_LABEL, reason) ? reason : null, who: id("who"), from: day("from"), to: day("to") };
 }

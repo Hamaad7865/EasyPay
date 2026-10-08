@@ -216,6 +216,25 @@ const id = () => crypto.randomUUID();
       const got = await see(shop, href, {});
       check('M4 a shop has no ' + href.split('/').pop(), got.error === 'not found', got.error || 'it opened');
     }
+    // An address typed by hand, or kept from somewhere, can ask for a day no
+    // calendar has. The page then opens on today, as for a day that is not a
+    // day at all; the database would refuse the day and the page with it.
+    {
+      const never = { from: '2026-99-99', to: '2026-02-30', day: '2026-13-45' };
+      const dated = [
+        '/backoffice', '/backoffice/reports/sales', '/backoffice/reports/day-close', '/backoffice/reports/items', '/backoffice/reports/orders',
+        '/backoffice/reports/tax', '/backoffice/reports/timecards', '/backoffice/insights/sales', '/backoffice/insights/menu', '/backoffice/insights/staff',
+        '/backoffice/stock-movements', '/backoffice/pos/activity', '/backoffice/pos/cash', '/backoffice/pos/tills',
+      ];
+      const stopped = [];
+      for (const href of dated) {
+        const got = await see(shop, href, never);
+        if (got.error || got.html.length < 200) stopped.push(href + ': ' + (got.error || 'drew nothing'));
+      }
+      check(`D1 the ${dated.length} pages that take a day open when the address asks for a day no calendar has`, stopped.length === 0, stopped.join(' || '));
+      const losses = await see(shop, '/backoffice/reports/stock', { view: 'losses', ...never });
+      check('D1 and so does the stock report\'s Losses', !losses.error && losses.html.length > 200, losses.error);
+    }
 
     // ---- an exchange: the hat comes back and pays for part of a shirt and a scarf (migration 0079) ----
     {

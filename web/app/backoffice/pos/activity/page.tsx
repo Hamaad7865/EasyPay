@@ -2,6 +2,7 @@ import { Activity as ActivityIcon } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { UUID } from "@/lib/action";
+import { isDay } from "@/lib/day";
 import { money, withDefaults } from "@/lib/settings";
 import { basics, fmtDay, today } from "@/lib/report";
 import { ACTIVITY, type Event, LATE_SECONDS, isLate, span } from "@/lib/pos";
@@ -9,7 +10,6 @@ import { Empty, PageHead, type Search, one } from "../../ui";
 import { Stat } from "../../reports/parts";
 
 const MOST = 1000;
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 // What each kind of event is called, and the colour of its tag.
 const KIND: Record<string, [string, string]> = {
@@ -34,7 +34,7 @@ export default async function TillActivity({ searchParams }: { searchParams: Sea
   const ctx = await tenantContext();
   const d = await readTenant(ctx.tenantId, async (c) => {
     const b = await basics(c, ctx.tenantId, ctx.employeeId);
-    const day = DAY.test(one(sp.day)) ? one(sp.day) : today(b.tz);
+    const day = isDay(one(sp.day)) ? one(sp.day) : today(b.tz);
     const till = UUID.test(one(sp.till)) ? one(sp.till) : null;
     if (!b.ok) return { ok: false as const };
     const [tills, events] = await Promise.all([

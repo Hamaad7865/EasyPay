@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { UUID } from "@/lib/action";
+import { isDay } from "@/lib/day";
 import { type PosSettings, withDefaults } from "@/lib/settings";
 
 // What every report starts from: the receipts that count as a sale or a
@@ -30,7 +31,6 @@ export type Filters = { from: string; to: string; employee: string | null; dinin
 export type ItemGroup = "item" | "category" | "supplier" | "brand";
 const GROUPS: ItemGroup[] = ["item", "category", "supplier", "brand"];
 
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
 
 // Today in the restaurant's timezone, so "today" is the restaurant's day and
@@ -41,9 +41,10 @@ export function today(tz: string): string {
 
 export function filters(sp: Record<string, string | string[] | undefined>, tz: string): Filters {
   const t = today(tz);
-  let from = DAY.test(first(sp.from)) ? first(sp.from) : t;
-  let to = DAY.test(first(sp.to)) ? first(sp.to) : from > t ? from : t;
-  if (!DAY.test(first(sp.to)) && DAY.test(first(sp.from))) to = first(sp.from) > t ? first(sp.from) : t;
+  // a day that no calendar has (2026-99-99) is left out, like one that is not a day at all
+  let from = isDay(first(sp.from)) ? first(sp.from) : t;
+  let to = isDay(first(sp.to)) ? first(sp.to) : from > t ? from : t;
+  if (!isDay(first(sp.to)) && isDay(first(sp.from))) to = first(sp.from) > t ? first(sp.from) : t;
   if (to < from) [from, to] = [to, from];
   const id = (k: string) => (UUID.test(first(sp[k])) ? first(sp[k]) : null);
   const kind = first(sp.kind);

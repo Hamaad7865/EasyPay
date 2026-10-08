@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import { ArrowRight, ArrowUpRight, Boxes, CalendarClock, Check, ClipboardList, type LucideIcon, Percent, Plus, ReceiptText, Sparkles, Timer, UtensilsCrossed } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
+import { isDay } from "@/lib/day";
 import { fmtRs } from "@/lib/money";
 import { clock, fmtQty, RECEIPTS, today } from "@/lib/report";
 import { lineOffSql } from "@/lib/stock-reports";
@@ -18,8 +19,6 @@ const addDays = (s: string, n: number) => {
   d.setUTCDate(d.getUTCDate() + n);
   return iso(d);
 };
-const isDay = (s: unknown): s is string =>
-  typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(parse(s).getTime());
 const span = (from: string, to: string) => Math.round((parse(to).getTime() - parse(from).getTime()) / 86400000) + 1;
 const long = (s: string) =>
   parse(s).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric", timeZone: "UTC" }).replace(",", "");
