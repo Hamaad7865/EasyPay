@@ -1,8 +1,15 @@
 // migrate-production.cjs — applies the migrations production does not have
 // yet. Run by a person, on purpose:
 //
-//   node db/migrate-production.cjs            shows what would be applied, changes nothing
-//   node db/migrate-production.cjs --apply    applies it
+//   node db/migrate-production.cjs                        shows what would be applied, changes nothing
+//   node db/migrate-production.cjs --apply                applies it
+//   node db/migrate-production.cjs --until 0084           the same list, stopping after 0084
+//   node db/migrate-production.cjs --until 0084 --apply   applies up to 0084 and no further
+//
+// --until is for a migration that switches something on for every client and
+// so has a day of its own. 0085 is one: from the moment it is applied, every
+// restaurant whose plan is not Premium or Trial has no Bookings and no
+// Kitchen screen, and a booking from a till older than 0.6.0 is refused.
 //
 // It asks the Neon CLI (already signed in on this PC) for production's
 // connection, checks that what it got really is the production branch of the
@@ -25,6 +32,9 @@ const HOST = 'ep-soft-poetry';
 
 (async () => {
   const apply = process.argv.includes('--apply');
+  const at = process.argv.indexOf('--until');
+  const until = at < 0 ? '' : String(process.argv[at + 1] || '');
+  if (at >= 0 && !/^\d{4}$/.test(until)) throw new Error('--until takes a migration number of four digits, like --until 0084: nothing was done');
   const url = execSync(`neon connection-string ${BRANCH} --project-id ${PROJECT} --role-name neondb_owner`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   const host = new URL(url).hostname;
   if (!host.startsWith(HOST)) throw new Error(`this is not the production host (${host.split('.')[0]}): nothing was done`);
@@ -36,18 +46,22 @@ const HOST = 'ep-soft-poetry';
   const done = new Set((await c.query('select filename from schema_migrations')).rows.map((r) => r.filename));
   await c.query('ROLLBACK');
   await c.end();
-  const pending = files.filter((f) => !done.has(f));
+  const missing = files.filter((f) => !done.has(f));
+  const pending = until ? missing.filter((f) => f.slice(0, 4) <= until) : missing;
+  const held = missing.filter((f) => !pending.includes(f));
   const strange = [...done].filter((f) => !files.includes(f));
 
   console.log(`production (${host.split('.')[0].replace(/-[a-z0-9]{8}$/, '-…')}) has ${done.size} of ${files.length} migrations.`);
   if (strange.length) console.log(`It has ${strange.length} that this folder does not: ${strange.join(', ')}`);
+  // each one by name: what is about to be applied is read before it is
+  if (held.length) console.log(`${held.length} left for later (above ${until}):\n${held.map((f) => '  ' + f).join('\n')}`);
   if (!pending.length) { console.log('Nothing to apply.'); return; }
-  console.log(`${pending.length} to apply: ${pending[0]} … ${pending[pending.length - 1]}`);
+  console.log(`${pending.length} to apply:\n${pending.map((f) => '  ' + f).join('\n')}`);
   if (!apply) { console.log('Nothing was changed. Run again with --apply to apply them.'); return; }
 
   const run = spawnSync(process.execPath, [path.join(__dirname, 'migrate.cjs')], {
     cwd: path.join(__dirname, '..'), stdio: 'inherit',
-    env: { ...process.env, DATABASE_URL_UNPOOLED: url, DATABASE_URL: url },
+    env: { ...process.env, DATABASE_URL_UNPOOLED: url, DATABASE_URL: url, MIGRATE_UNTIL: until },
   });
   process.exit(run.status === null ? 1 : run.status);
 })().catch((e) => { console.error('STOPPED: ' + String(e.message).replace(/postgres(ql)?:\/\/\S+/g, '***')); process.exit(1); });

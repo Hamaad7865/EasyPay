@@ -21,7 +21,15 @@ async function main() {
     || fileEnv.DATABASE_URL_UNPOOLED || fileEnv.DATABASE_URL;
   if (!cs) throw new Error('missing DATABASE_URL (env or .env.local)');
   const dir = path.join(__dirname, 'migrations');
-  const files = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
+  // MIGRATE_UNTIL=0084 stops after that file: the ones numbered above it are
+  // left for another day. A migration can switch something on for every
+  // client (0085 puts the premium tier in force), and the day that happens
+  // is someone's decision, not a side effect of applying an earlier one.
+  const until = (process.env.MIGRATE_UNTIL || '').trim();
+  if (until && !/^\d{4}$/.test(until)) throw new Error('MIGRATE_UNTIL must be a migration number of four digits, like 0084');
+  const all = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
+  const files = until ? all.filter(f => f.slice(0, 4) <= until) : all;
+  if (until) console.log(`stopping after ${until}: ${all.length - files.length} later file(s) are not looked at`);
   const c = new Client({ connectionString: cs, ssl: { require: true } });
   await c.connect();
   await c.query(`create table if not exists schema_migrations (filename text primary key, applied_at timestamptz not null default now())`);
