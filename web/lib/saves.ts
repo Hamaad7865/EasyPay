@@ -77,19 +77,32 @@ async function tableOf(c: PoolClient, tenantId: string, store: string, table: st
   return r.rowCount === 1;
 }
 
-export type PrinterForm = { name: string; kind: "network" | "usb"; address: string | null; paper: number; feed: number; cut: boolean };
+// A printer, or a kitchen screen (0086): a tablet in the kitchen that shows
+// the orders, reached at its address like a printer. A screen has the pairing
+// code its tablet shows (`pair`) and may show every item (`all`); otherwise
+// it shows the categories ticked for it. A printer has neither.
+export type PrinterForm = {
+  name: string; kind: "network" | "usb" | "screen"; address: string | null; paper: number; feed: number; cut: boolean;
+  pair?: string | null; all?: boolean;
+};
 
 // A printer added to one of the restaurant's stores. The first printer of a
-// store is where its receipts come out, until the owner says otherwise. Null
-// when the store is not one of the restaurant's: no printer is added.
+// store is where its receipts come out, until the owner says otherwise. A
+// kitchen screen prints nothing: it is never that printer, and a restaurant
+// that enters its screen before its printer still has its first printer made
+// the receipt printer. Null when the store is not one of the restaurant's:
+// nothing is added.
 export async function addPrinter(c: PoolClient, tenantId: string, store: string, v: PrinterForm): Promise<{ first: boolean } | null> {
   const st = await c.query(`select id from stores where tenant_id = $1 and id = $2 and deleted_at is null`, [tenantId, store]);
   if (st.rowCount !== 1) return null;
-  const first = (await c.query(`select 1 from printers where tenant_id = $1 and store_id = $2 and deleted_at is null limit 1`, [tenantId, store])).rowCount === 0;
+  const screen = v.kind === "screen";
+  const first =
+    !screen &&
+    (await c.query(`select 1 from printers where tenant_id = $1 and store_id = $2 and deleted_at is null and kind <> 'screen' limit 1`, [tenantId, store])).rowCount === 0;
   await c.query(
-    `insert into printers (tenant_id, store_id, name, kind, address, paper_mm, is_receipt, feed_lines, cut, sort_order)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, (select coalesce(max(sort_order), -1) + 1 from printers where tenant_id = $1))`,
-    [tenantId, store, v.name, v.kind, v.address, v.paper, first, v.feed, v.cut],
+    `insert into printers (tenant_id, store_id, name, kind, address, paper_mm, is_receipt, feed_lines, cut, pair_code, all_items, sort_order)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, (select coalesce(max(sort_order), -1) + 1 from printers where tenant_id = $1))`,
+    [tenantId, store, v.name, v.kind, v.address, v.paper, first, v.feed, v.cut, screen ? (v.pair ?? null) : null, screen && v.all === true],
   );
   return { first };
 }
@@ -97,14 +110,18 @@ export async function addPrinter(c: PoolClient, tenantId: string, store: string,
 // Which printer a store's receipts and bills come out on: one per store, or
 // none. The printer has to be one of that store's own: "no-printer" when it is
 // not (it was removed meanwhile, or stands in another store), "no-store" when
-// the store is not the restaurant's. Either way nothing changes, and no other
-// store is touched.
-export async function setReceiptPrinter(c: PoolClient, tenantId: string, store: string, receipt: string | null): Promise<"ok" | "no-store" | "no-printer"> {
+// the store is not the restaurant's, "screen" when it is a kitchen screen,
+// which prints nothing. Either way nothing changes, and no other store is
+// touched.
+export async function setReceiptPrinter(
+  c: PoolClient, tenantId: string, store: string, receipt: string | null,
+): Promise<"ok" | "no-store" | "no-printer" | "screen"> {
   const st = await c.query(`select 1 from stores where tenant_id = $1 and id = $2 and deleted_at is null`, [tenantId, store]);
   if (st.rowCount !== 1) return "no-store";
   if (receipt) {
-    const own = await c.query(`select 1 from printers where tenant_id = $1 and store_id = $2 and id = $3 and deleted_at is null`, [tenantId, store, receipt]);
+    const own = await c.query(`select kind from printers where tenant_id = $1 and store_id = $2 and id = $3 and deleted_at is null`, [tenantId, store, receipt]);
     if (own.rowCount !== 1) return "no-printer";
+    if (own.rows[0].kind === "screen") return "screen";
   }
   await c.query(
     `update printers set is_receipt = coalesce(id = $2::uuid, false)
@@ -130,12 +147,21 @@ export async function saveChoice(c: PoolClient, tenantId: string, id: string, na
   return r.rowCount === 1;
 }
 
-// A printer: how the tablet reaches it, and whether it is switched on.
-export async function savePrinter(c: PoolClient, tenantId: string, id: string, v: PrinterForm, active: boolean): Promise<boolean> {
+// A printer or a kitchen screen: how the tablet reaches it, and whether it is
+// switched on. "receipt" when the row is the store's receipt printer and was
+// asked to become a kitchen screen: receipts would have nowhere to come out,
+// so nothing is changed. A screen switched on for a restaurant whose plan
+// does not carry screens is refused by the database (not-premium, 0086).
+export async function savePrinter(c: PoolClient, tenantId: string, id: string, v: PrinterForm, active: boolean): Promise<boolean | "receipt"> {
+  const screen = v.kind === "screen";
+  if (screen) {
+    const now = await c.query(`select is_receipt from printers where tenant_id = $1 and id = $2 and deleted_at is null`, [tenantId, id]);
+    if (now.rows[0]?.is_receipt) return "receipt";
+  }
   const r = await c.query(
-    `update printers set name = $3, kind = $4, address = $5, paper_mm = $6, feed_lines = $7, cut = $8, is_active = $9
+    `update printers set name = $3, kind = $4, address = $5, paper_mm = $6, feed_lines = $7, cut = $8, is_active = $9, pair_code = $10, all_items = $11
       where tenant_id = $1 and id = $2 and deleted_at is null`,
-    [tenantId, id, v.name, v.kind, v.address, v.paper, v.feed, v.cut, active],
+    [tenantId, id, v.name, v.kind, v.address, v.paper, v.feed, v.cut, active, screen ? (v.pair ?? null) : null, screen && v.all === true],
   );
   return r.rowCount === 1;
 }

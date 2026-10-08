@@ -47,5 +47,24 @@ check('N4 the search finds Bookings for a premium restaurant only', found('resta
 check('N5 the Bookings address lights no group for a restaurant that does not have it',
   nav.groupOf(BOOKINGS, 'restaurant', true) === 'restaurant' && nav.groupOf(BOOKINGS, 'restaurant', false) === null);
 
+// What the Printers page says of a category that prints nowhere. With the
+// kitchen display its orders are on the display; a plan without the display
+// must not be told so.
+{
+  const { printerWarnings } = load('lib/printers.ts');
+  const p = (name, id, o = {}) => ({ id, store_id: 's', name, kind: 'network', address: '10.0.0.' + id.length, paper_mm: 80, is_receipt: false, feed_lines: 3, cut: true, is_active: true, ...o });
+  const rows = [p('Cashier', 'c', { is_receipt: true }), p('Kitchen', 'kk')];
+  const cats = [{ id: '1', name: 'Mains', printer_ids: ['kk'] }, { id: '2', name: 'Drinks', printer_ids: [] }];
+  const store = [{ id: 's', name: 'Main' }];
+  const withDisplay = printerWarnings(rows, cats, false, store).join(' | ');
+  const without = printerWarnings(rows, cats, false, store, false).join(' | ');
+  check('N6 with the kitchen display, a category that prints nowhere is said to be on it',
+    withDisplay === 'Orders for Drinks print nowhere: they show on the kitchen display only.', withDisplay);
+  check('N6 on a plan without it, the page says the orders reach no display and the till will name them',
+    without.startsWith('Orders for Drinks print nowhere, and this plan has no kitchen display') && !without.includes('display only'), without);
+  const none = printerWarnings(rows, [{ id: '2', name: 'Drinks', printer_ids: [] }], false, store, false).join(' | ');
+  check('N6 and the same when no category is ticked at all', none.startsWith('No category is ticked, so kitchen orders do not print, and this plan has no kitchen display'), none);
+}
+
 console.log(failures === 0 ? 'BACKOFFICE PLAN PASS' : `BACKOFFICE PLAN FAIL (${failures})`);
 process.exit(failures ? 1 : 0);

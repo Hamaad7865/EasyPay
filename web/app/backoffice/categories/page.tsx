@@ -79,7 +79,13 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
       )
     ).rows as Row[],
     printers: (
-      await c.query(`select id, name from printers where tenant_id = $1 and deleted_at is null order by sort_order, name`, [ctx.tenantId])
+      // a kitchen screen is ticked like a printer and named as what it is; one
+      // that shows everything goes by no ticks, so it is not offered
+      await c.query(
+        `select id, case when kind = 'screen' then name || ' (screen)' else name end as name
+           from printers where tenant_id = $1 and deleted_at is null and not (kind = 'screen' and all_items) order by sort_order, name`,
+        [ctx.tenantId],
+      )
     ).rows as { id: string; name: string }[],
     onePrinter: (await loadSettings(c, ctx.tenantId)).onePrinter,
   }));

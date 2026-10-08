@@ -10,24 +10,36 @@ export type PrinterRow = {
   id: string;
   store_id: string;
   name: string;
-  kind: "network" | "usb";
+  // "screen": a kitchen screen (0086), a tablet that shows the orders. It
+  // prints nothing, so the page hands this file its printers only.
+  kind: "network" | "usb" | "screen";
   address: string | null;
   paper_mm: number;
   is_receipt: boolean;
   feed_lines: number;
   cut: boolean;
   is_active: boolean;
+  // a kitchen screen's: the code its tablet shows, and whether it shows every item
+  pair_code?: string | null;
+  all_items?: boolean;
 };
 export type PrinterCat = { id: string; name: string; printer_ids: string[] };
 
-export function printerWarnings(rows: PrinterRow[], cats: PrinterCat[], one: boolean, stores: { id: string; name: string }[]): string[] {
+// What an order that prints nowhere still does. With the kitchen display (the
+// premium tier's) it is on the display; without it, it reaches nobody, and
+// the till says so when the order is sent.
+const SEEN = "they show on the kitchen display only";
+const UNSEEN = "and this plan has no kitchen display for them to show on. The till names them when the order is sent";
+
+// `display`: the restaurant's plan has the kitchen display.
+export function printerWarnings(rows: PrinterRow[], cats: PrinterCat[], one: boolean, stores: { id: string; name: string }[], display = true): string[] {
   const many = stores.length > 1;
   return stores.flatMap((s) =>
-    storeWarnings(rows.filter((p) => p.store_id === s.id), cats, one).map((line) => (many ? `${s.name}: ${line}` : line)),
+    storeWarnings(rows.filter((p) => p.store_id === s.id), cats, one, display).map((line) => (many ? `${s.name}: ${line}` : line)),
   );
 }
 
-function storeWarnings(rows: PrinterRow[], cats: PrinterCat[], one: boolean): string[] {
+function storeWarnings(rows: PrinterRow[], cats: PrinterCat[], one: boolean, display: boolean): string[] {
   const out: string[] = [];
   if (rows.length === 0) return out;
   const live = rows.filter((p) => p.is_active);
@@ -41,13 +53,11 @@ function storeWarnings(rows: PrinterRow[], cats: PrinterCat[], one: boolean): st
   if (!one) {
     const nowhere = cats.filter((k) => !k.printer_ids.some((id) => byId.get(id)?.is_active));
     if (nowhere.length === cats.length && cats.length > 0) {
-      out.push(
-        live.length === 1
-          ? "No category is ticked, so kitchen orders do not print: they show on the kitchen display only. With a single printer, switch on One printer for everything."
-          : "No category is ticked, so kitchen orders do not print: they show on the kitchen display only.",
-      );
+      const what = display ? `No category is ticked, so kitchen orders do not print: ${SEEN}.` : `No category is ticked, so kitchen orders do not print, ${UNSEEN}.`;
+      out.push(live.length === 1 ? `${what} With a single printer, switch on One printer for everything.` : what);
     } else if (nowhere.length > 0) {
-      out.push(`Orders for ${nowhere.map((k) => k.name).join(", ")} print nowhere: they show on the kitchen display only.`);
+      const names = nowhere.map((k) => k.name).join(", ");
+      out.push(display ? `Orders for ${names} print nowhere: ${SEEN}.` : `Orders for ${names} print nowhere, ${UNSEEN}.`);
     }
     for (const p of rows.filter((x) => !x.is_active)) {
       const sent = cats.filter((k) => k.printer_ids.includes(p.id));
