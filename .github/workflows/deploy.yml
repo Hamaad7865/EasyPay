@@ -7,10 +7,18 @@ name: release to production
 #   3. the back office             (Cloudflare Worker easypay-backoffice)
 #   4. the public site and the front door (Cloudflare Pages, easypaypos.com)
 #
-# Started by a person, from the Actions tab (Run workflow). It is not started
-# by a push: more than one hand writes to this branch, and a migration is not
-# something to apply because someone pushed. Each step can be left out, to
-# release only the site, say.
+# Three things start it, and nothing else does:
+#
+#   - a release of the till: release-apk.yml (a tag "v0.5.2") runs this first,
+#     all four steps, and builds the APK only once they have passed, so a
+#     tablet is never offered a build production is not ready for;
+#   - a tag whose name begins "live-" (say live-2026-10-09), for a change with
+#     no new till in it: git tag live-… && git push github live-…
+#   - a person, from the Actions tab (Run workflow), who can leave a step out.
+#
+# An ordinary push starts nothing: more than one hand writes to this branch,
+# and a migration is not something to apply because someone pushed. What goes
+# live is the commit the tag is on, with every migration up to it.
 #
 # It runs in the environment "production". In the repository's settings
 # (Environments, production) a required reviewer can be set, and then every
@@ -18,6 +26,7 @@ name: release to production
 #
 # What it needs, as repository secrets (Settings, Secrets and variables,
 # Actions). A step whose secret is missing stops with a sentence saying which.
+# cloudflare/release-keys.cjs sets all three, and checks each one works:
 #   NEON_API_KEY            for the migrations and the till API
 #   CLOUDFLARE_API_TOKEN    for the back office and the site
 #   CLOUDFLARE_ACCOUNT_ID
@@ -32,6 +41,27 @@ name: release to production
 # its cookie secret) are not here: they are kept on the Worker itself and a
 # release does not touch them (web/wrangler.toml says how they are set).
 on:
+  push:
+    tags: ["live-*"]
+  # from release-apk.yml, which hands on the repository's secrets
+  workflow_call:
+    inputs:
+      database:
+        description: Apply the migrations production does not have yet
+        type: boolean
+        default: true
+      api:
+        description: Deploy the till API
+        type: boolean
+        default: true
+      backoffice:
+        description: Deploy the back office
+        type: boolean
+        default: true
+      site:
+        description: Deploy the public site and the front door
+        type: boolean
+        default: true
   workflow_dispatch:
     inputs:
       database:
@@ -69,7 +99,8 @@ jobs:
 
   database:
     name: 1 · database migrations
-    if: ${{ inputs.database }}
+    # a tag asks for all four steps; a person, or release-apk.yml, says which
+    if: ${{ (github.event_name == 'push' || inputs.database) }}
     needs: checks
     runs-on: ubuntu-latest
     environment: production
@@ -88,16 +119,37 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm i -g neon@latest --no-audit --no-fund
       - name: what would be applied
+        id: pending
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-        run: node db/migrate-production.cjs
-      # A restore point first: a branch of production as it is now, with no
-      # compute of its own (it costs storage only). Named after this run.
+        run: |
+          node db/migrate-production.cjs | tee pending.txt
+          if grep -q "Nothing to apply." pending.txt; then echo "any=no" >> "$GITHUB_OUTPUT"; else echo "any=yes" >> "$GITHUB_OUTPUT"; fi
+      # A restore point first, when there is something to apply: a branch of
+      # production as it is now, with no compute of its own (it costs storage
+      # only). Named after this run. The plan allows ten branches in all, so
+      # of the restore points this workflow made only the two newest are
+      # kept; a branch made by hand, whatever its name, is never touched.
       - name: restore point
+        if: steps.pending.outputs.any == 'yes'
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-        run: neon branches create --project-id "$NEON_PROJECT_ID" --name "production-before-run-${{ github.run_id }}" --parent production --compute false
+        run: |
+          neon branches create --project-id "$NEON_PROJECT_ID" --name "production-before-run-${{ github.run_id }}" --parent production --compute false
+          neon branches list --project-id "$NEON_PROJECT_ID" --output json > branches.json
+          node -e '
+            const all = JSON.parse(require("fs").readFileSync("branches.json", "utf8"));
+            const mine = all.filter((b) => /^production-before-run-\d+$/.test(b.name) && !b.default && !b.protected)
+              .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+            for (const b of mine.slice(2)) console.log(b.name);
+          ' > old.txt
+          while read -r old; do
+            [ -n "$old" ] || continue
+            echo "Removing the restore point $old (two newer ones are kept)."
+            neon branches delete "$old" --project-id "$NEON_PROJECT_ID"
+          done < old.txt
       - name: apply
+        if: steps.pending.outputs.any == 'yes'
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
         run: node db/migrate-production.cjs --apply
@@ -108,7 +160,7 @@ jobs:
 
   api:
     name: 2 · till API
-    if: ${{ always() && inputs.api && needs.checks.result == 'success' && (needs.database.result == 'success' || needs.database.result == 'skipped') }}
+    if: ${{ always() && (github.event_name == 'push' || inputs.api) && needs.checks.result == 'success' && (needs.database.result == 'success' || needs.database.result == 'skipped') }}
     needs: [checks, database]
     runs-on: ubuntu-latest
     environment: production
@@ -138,7 +190,7 @@ jobs:
 
   backoffice:
     name: 3 · back office
-    if: ${{ always() && inputs.backoffice && needs.checks.result == 'success' && (needs.database.result == 'success' || needs.database.result == 'skipped') && (needs.api.result == 'success' || needs.api.result == 'skipped') }}
+    if: ${{ always() && (github.event_name == 'push' || inputs.backoffice) && needs.checks.result == 'success' && (needs.database.result == 'success' || needs.database.result == 'skipped') && (needs.api.result == 'success' || needs.api.result == 'skipped') }}
     needs: [checks, database, api]
     runs-on: ubuntu-latest
     environment: production
@@ -175,8 +227,12 @@ jobs:
 
   site:
     name: 4 · public site and front door
-    if: ${{ always() && inputs.site && needs.checks.result == 'success' && (needs.backoffice.result == 'success' || needs.backoffice.result == 'skipped') }}
-    needs: [checks, backoffice]
+    # Each step before it has passed, or was left out. A step is also "skipped"
+    # when the one before it failed, so the back office alone does not say:
+    # with the migrations failed, the back office is skipped and the site
+    # would have gone live by itself.
+    if: ${{ always() && (github.event_name == 'push' || inputs.site) && needs.checks.result == 'success' && (needs.database.result == 'success' || needs.database.result == 'skipped') && (needs.api.result == 'success' || needs.api.result == 'skipped') && (needs.backoffice.result == 'success' || needs.backoffice.result == 'skipped') }}
+    needs: [checks, database, api, backoffice]
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 10

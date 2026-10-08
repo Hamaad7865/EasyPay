@@ -6,9 +6,14 @@ name: db-tests
 #
 # Needs the repository secret NEON_API_KEY. Without it the job says so and
 # passes: the checks that need no database are in ci.yml, and a missing key
-# is not a broken build. It runs on pushes and by hand, not on pull requests:
-# this repository is public, and a pull request from anyone must not be handed
-# a key to the database.
+# is not a broken build.
+#
+# It runs when started by hand (Actions, db-tests, Run workflow). On a push it
+# runs only if the repository variable DB_TESTS_ON_PUSH is "yes": every run
+# starts a database of its own for as long as the suites take, out of the
+# same monthly hours production runs on, and this branch is pushed to many
+# times a day. Never on pull requests: this repository is public, and a pull
+# request from anyone must not be handed a key to the database.
 on:
   push:
   workflow_dispatch:
@@ -22,6 +27,7 @@ permissions:
 
 jobs:
   db:
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.DB_TESTS_ON_PUSH == 'yes' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:

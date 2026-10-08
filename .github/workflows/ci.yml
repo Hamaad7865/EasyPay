@@ -77,9 +77,12 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: type-check
         run: npx -y -p typescript@5.7.2 tsc --noEmit --module esnext --target es2022 --moduleResolution bundler --esModuleInterop --skipLibCheck --strict hello.ts neon.ts
-      # which build of the till the API names to tablets (says ok per check, stops on the first that fails)
+      # which build of the till the API names to tablets, and what the script that hands GitHub
+      # a release's keys reads and refuses (each says ok per check, and stops on the first that fails)
       - name: unit tests
-        run: node till-release.test.cjs
+        run: |
+          node till-release.test.cjs
+          node cloudflare/release-keys.test.cjs
 
   till:
     name: till (Android)

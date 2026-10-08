@@ -16,11 +16,18 @@ name: release the till (APK)
 # have to be ready for it.
 #
 # Started by pushing a tag named after the version in
-# android/app/build.gradle.kts ("v0.4.0" for versionName 0.4.0), or by hand
+# android/app/build.gradle.kts ("v0.5.2" for versionName 0.5.2), or by hand
 # from the Actions tab. To release a new build: raise versionCode and
 # versionName there, commit, then
 #
-#   git tag v0.4.0 && git push github v0.4.0
+#   git tag v0.5.2 && git push github v0.5.2
+#
+# That one tag releases everything, in the order that is safe. Production is
+# put up to date first (deploy.yml: the database's migrations, the till API,
+# the back office, the site), and the APK is built and published only when
+# all of that has passed: a release is offered to tablets by itself (till.json,
+# below), so the server has to be ready before there is anything to offer.
+# A change with no new till in it is released by a "live-" tag (deploy.yml).
 #
 # What it needs. It publishes nothing unless all of it is there: a build with
 # no key cannot be installed over the one before it, and a build with no
@@ -34,6 +41,8 @@ name: release the till (APK)
 #     TILL_FUNCTION_URL           the till API (https://…-api.….neon.tech)
 #     TILL_AUTH_URL               the sign-in service (https://…neonauth…/neondb/auth)
 #     BACK_OFFICE_URL             optional; https://easypaypos.com when not set
+#   and what deploy.yml needs to put production up to date (its head says):
+#     NEON_API_KEY, CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
 #
 # EVERY release must be signed with the SAME key: Android refuses an update
 # signed with another, and the only way past that is to uninstall the till,
@@ -51,15 +60,71 @@ permissions:
   contents: write # to publish the release
 
 jobs:
-  # the same checks as on every push, on exactly what is about to be released
-  checks:
-    uses: ./.github/workflows/ci.yml
+  # Before anything goes live: is this a version that can be released at all?
+  # A tag that does not say the version, a version already out, or a signing
+  # key that is not there would stop the APK after production had moved on.
+  # (The apk job asks the same again: by then a while has passed.)
+  preflight:
+    name: can this version be released
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: the version, its tag, and that it is new
+        run: |
+          name=$(sed -nE 's/^\s*versionName\s*=\s*"([^"]+)".*/\1/p' android/app/build.gradle.kts | head -1)
+          code=$(sed -nE 's/^\s*versionCode\s*=\s*([0-9]+).*/\1/p' android/app/build.gradle.kts | head -1)
+          if [ -z "$name" ] || [ -z "$code" ]; then echo "::error::versionName and versionCode were not found in android/app/build.gradle.kts. Nothing went live."; exit 1; fi
+          echo "This is EasyPay till $name (build $code)."
+          if [ "${{ github.ref_type }}" = "tag" ] && [ "${{ github.ref_name }}" != "v$name" ]; then
+            echo "::error::The tag is ${{ github.ref_name }} but android/app/build.gradle.kts says $name. Raise versionName and versionCode, commit, and tag that commit v$name. Nothing went live."
+            exit 1
+          fi
+          exists=$(gh release view "v$name" --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)
+          if [ -n "$exists" ]; then
+            echo "::error::v$name is already released. A release is never replaced (tablets may have it): raise versionCode and versionName for a new one. Nothing went live."
+            exit 1
+          fi
+      - name: everything the APK needs is there
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          FUNCTION_URL: ${{ vars.TILL_FUNCTION_URL }}
+          AUTH_URL: ${{ vars.TILL_AUTH_URL }}
+        run: |
+          missing=""
+          [ -n "$KEYSTORE_B64" ] || missing="$missing secret:ANDROID_KEYSTORE_B64"
+          [ -n "$KEYSTORE_PASSWORD" ] || missing="$missing secret:ANDROID_KEYSTORE_PASSWORD"
+          [ -n "$KEY_ALIAS" ] || missing="$missing secret:ANDROID_KEY_ALIAS"
+          [ -n "$KEY_PASSWORD" ] || missing="$missing secret:ANDROID_KEY_PASSWORD"
+          case "$FUNCTION_URL" in https://*) ;; *) missing="$missing variable:TILL_FUNCTION_URL(https)";; esac
+          case "$AUTH_URL" in https://*) ;; *) missing="$missing variable:TILL_AUTH_URL(https)";; esac
+          if [ -n "$missing" ]; then echo "::error::Not set in this repository:$missing. Nothing went live and nothing was built."; exit 1; fi
+
+  # Production first: the checks, then the database, the till API, the back
+  # office and the site (deploy.yml). The APK waits for all of it.
+  production:
+    name: production first
+    needs: preflight
+    uses: ./.github/workflows/deploy.yml
+    with:
+      database: true
+      api: true
+      backoffice: true
+      site: true
+    secrets: inherit
     permissions:
       contents: read
 
   apk:
     name: build, sign and publish
-    needs: checks
+    needs: production
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
