@@ -31,7 +31,7 @@ The behaviour reference is Lightspeed K-Series, Kitchen Display System 2.0 (read
 
 **How it reaches the back office.** `tenantContext()` already joins `tenants` for the business type; it carries the plan the same way.
 
-**How it reaches the till.** As the business type does: `platform.set_tenant_plan` and `platform.create_tenant` write `pos_settings.data.plan` in the same transaction, and a migration fills it in for every existing tenant. The till reads it loosely (`PosSettings.premium`). A missing key means not premium. `tenants.plan` stays the one source of truth; the back office's settings save merges keys and never sends this one.
+**How it reaches the till.** As the business type does: `platform.set_tenant_plan` and `platform.create_tenant` write `pos_settings.data.plan` in the same transaction, and a migration fills it in for every existing tenant. The till reads it loosely (`PosSettings.premium`). A missing key means "as before", like every other key: the till shows the screens it always showed. Once the migration has run, every tenant's settings carry the key and the gate applies to all of them; before it has, a new till build installed early takes nothing away. `tenants.plan` stays the one source of truth; the back office's settings save merges keys and never sends this one.
 
 **What changes for a restaurant that is not premium.**
 

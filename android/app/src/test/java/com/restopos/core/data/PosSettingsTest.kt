@@ -5,8 +5,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 // Which restaurants have the premium screens: the kitchen display and
-// bookings. A till that cannot tell must not show them: the server would
-// refuse what they send.
+// bookings. Once the server knows about plans (0085) every restaurant's
+// settings name one, and the till goes by it. Settings that name none are
+// from a server that does not know yet: the till shows what it always showed.
 class PosSettingsTest {
     @Test
     fun premiumAndTrialHaveThem() {
@@ -15,12 +16,22 @@ class PosSettingsTest {
     }
 
     @Test
-    fun standardAndUnknownDoNot() {
+    fun anyOtherPlanDoesNot() {
         assertFalse(PosSettings.parse("""{"plan":"standard"}""").premium)
         assertFalse(PosSettings.parse("""{"plan":"free"}""").premium)
-        assertFalse(PosSettings.parse("{}").premium)
-        assertFalse(PosSettings.parse(null).premium)
-        assertFalse(PosSettings.parse("not json").premium)
+        assertFalse(PosSettings.parse("""{"plan":"gold"}""").premium)
+        assertFalse(PosSettings.parse("""{"plan":""}""").premium)
+    }
+
+    // A new build installed before the server was told about plans must not
+    // take the two screens away from every restaurant on the day it arrives.
+    @Test
+    fun settingsThatNameNoPlanAreAsBefore() {
+        assertTrue(PosSettings.parse("{}").premium)
+        assertTrue(PosSettings.parse("""{"servicePct":10}""").premium)
+        assertTrue(PosSettings.parse(null).premium)
+        assertTrue(PosSettings.parse("not json").premium)
+        assertTrue(PosSettings().premium)
     }
 
     // the plan sits beside what the settings already held, and takes nothing from it

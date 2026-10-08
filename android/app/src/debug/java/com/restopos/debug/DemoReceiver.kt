@@ -97,8 +97,9 @@ class DemoReceiver : BroadcastReceiver() {
                 } else {
                     // --es type restaurant: the same catalog as a restaurant's, with tables and order types
                     val restaurant = intent.getStringExtra("type") == "restaurant"
-                    // --es plan premium: the plan the settings carry (server 0085). Left out, they
-                    // carry none, and a restaurant has no Kitchen and no Bookings screen.
+                    // --es plan standard (or premium): the plan the settings carry (server 0085).
+                    // Standard has no Kitchen and no Bookings screen. Left out, the settings carry
+                    // none, as before there were plans, and the till shows everything.
                     val plan = intent.getStringExtra("plan")?.trim()?.takeIf { it.isNotEmpty() }
                     seed(context, deps.db(), deps.session(), restaurant, plan)
                     Log.i(TAG, "seeded a " + (if (restaurant) "restaurant" else "shop") + (plan?.let { " on the $it plan" } ?: "") + ": close the app and open it again")

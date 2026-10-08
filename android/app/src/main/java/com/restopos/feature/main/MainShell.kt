@@ -202,9 +202,11 @@ class ShellViewModel @Inject constructor(
     // plan first; a till that has never synced is taken for a restaurant.
     val retail: StateFlow<Boolean?> = db.ops().settingsFlow().map<String?, Boolean?> { com.restopos.core.data.PosSettings.parse(it).retail }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
-    // The restaurant's plan carries the kitchen display and bookings. Until
-    // the settings are read, and on a till that was never told, it does not:
-    // the server refuses what those screens send for another plan.
+    // The restaurant's plan carries the kitchen display and bookings. For the
+    // moment it takes to read the settings it does not, so another plan's
+    // till never shows the two keys first: the server refuses what those
+    // screens send for it. Settings that name no plan are as before
+    // (PosSettings.premium).
     val premium: StateFlow<Boolean> = db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).premium }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
     init {

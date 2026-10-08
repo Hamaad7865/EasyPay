@@ -198,6 +198,8 @@ The pages themselves need a login to be seen. Use the preview route described in
 
 ### Task 5: the till knows the plan
 
+> **Changed after it was built.** As first written, settings that name no plan meant "not premium". The release pipeline that came in while this was being built takes a till build to production by a tag, and such a build, installed before the server was told about plans, would have taken Kitchen and Bookings from every restaurant. So a missing `plan` now means "as before": the till shows everything, as every other missing key means. After migration 0085 every tenant's settings name a plan, and the gate applies. The test below became `anyOtherPlanDoesNot` and `settingsThatNameNoPlanAreAsBefore` (`PosSettingsTest.kt`); the made-up restaurant is Standard with `--es plan standard`.
+
 **Files:** Create `android/app/src/test/java/com/restopos/core/data/PosSettingsTest.kt`. Modify `PosSettings.kt`.
 
 - [ ] **Step 1: the failing test.**
