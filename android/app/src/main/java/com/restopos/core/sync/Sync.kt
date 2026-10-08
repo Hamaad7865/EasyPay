@@ -105,11 +105,9 @@ class PullWorker @AssistedInject constructor(
         if (!api.hasTillKey()) session.deviceId()?.let { device -> runCatching { api.fetchTillKey(device) } }
         return try {
             val saved = db.sync().cursor(store)
-            var cursor = saved?.cursor ?: 0
             var epochs = saved?.epochs ?: ""
-            var pages = 0
-            while (pages < MAX_PAGES) {
-                pages++
+            // page after page until the server has no more (PullPaging)
+            PullPaging.read(saved?.cursor ?: 0) { cursor ->
                 val page = api.pull(store, cursor)
                 val pageEpochs = page.epochs.toSortedMap().entries.joinToString(",") { "${it.key}=${it.value}" }
                 if (epochs.isNotEmpty() && pageEpochs.isNotEmpty() && pageEpochs != epochs) {
@@ -126,14 +124,13 @@ class PullWorker @AssistedInject constructor(
                         db.customers().clear()
                         db.sync().saveCursor(SyncStateEntity(store, 0, pageEpochs))
                     }
-                    cursor = 0
                     epochs = pageEpochs
-                    continue
+                    PullPaging.Page(0, more = true, restart = true)
+                } else {
+                    if (pageEpochs.isNotEmpty()) epochs = pageEpochs
+                    applier.apply(store, page.changes, page.nextCursor, epochs)
+                    PullPaging.Page(page.nextCursor, page.hasMore)
                 }
-                if (pageEpochs.isNotEmpty()) epochs = pageEpochs
-                applier.apply(store, page.changes, page.nextCursor, epochs)
-                cursor = page.nextCursor
-                if (!page.hasMore) break
             }
             session.setLastPull(System.currentTimeMillis())
             // the server took this till: whatever asked for a sign-in before is over
@@ -152,10 +149,6 @@ class PullWorker @AssistedInject constructor(
             if (e.status == 403) session.setNeedsSignIn(true)
             if (e.status >= 500) Result.retry() else Result.failure()
         }
-    }
-
-    private companion object {
-        const val MAX_PAGES = 50
     }
 }
 
