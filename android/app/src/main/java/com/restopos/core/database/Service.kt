@@ -159,6 +159,10 @@ interface ServiceDao {
     @Query("UPDATE kds_parts SET delivered = 0 WHERE screen_id = :screen AND bumped_at IS NULL")
     suspend fun undeliver(screen: String)
 
+    // the screen confirmed these once and no longer holds them
+    @Query("UPDATE kds_parts SET delivered = 0 WHERE screen_id = :screen AND kds_id IN (:kds)")
+    suspend fun setUndelivered(screen: String, kds: List<String>)
+
     @Query("UPDATE kds_parts SET bumped_at = :at WHERE kds_id = :kds AND screen_id = :screen")
     suspend fun setPartBumped(kds: String, screen: String, at: Long?)
 

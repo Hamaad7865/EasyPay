@@ -50,8 +50,7 @@ class DocBuilder @Inject constructor(
     }
     // what the kitchen and the receipt are told besides the items: the remark,
     // and for a takeaway or delivery who to ring and where it goes
-    private fun remark(t: TicketEntity): String? =
-        listOfNotNull(t.note, t.phone?.let { "Tel $it" }, t.address).joinToString(" · ").ifEmpty { null }
+    private fun remark(t: TicketEntity): String? = kitchenRemark(t)
 
     private suspend fun employee(id: String?): String? = id?.let { db.staff().employee(it)?.name }
     private suspend fun dining(t: TicketEntity): String? = t.dining_option_id?.let { db.ops().dining(it)?.name }

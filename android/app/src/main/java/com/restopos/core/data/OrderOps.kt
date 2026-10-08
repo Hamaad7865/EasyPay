@@ -69,6 +69,7 @@ class OrderOps @Inject constructor(
     private val printing: Printing,
     private val kitchen: Kitchen,
     private val service: ServiceRepository,
+    private val screens: com.restopos.core.kitchen.ScreenLink,
     @ApplicationContext private val context: Context,
 ) {
     private fun op(type: String, payload: JsonObject) = OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
@@ -108,11 +109,15 @@ class OrderOps @Inject constructor(
         db.withTransaction {
             db.tickets().markSent(ids, now)
             kitchen.put(onScreen, ids)
+            // and each kitchen screen's part of them, written down with the
+            // send itself: the till then keeps at it until each screen has it
+            screens.write(onScreen, ids)
             db.outbox().enqueue(op("ticket.send", buildJsonObject {
                 put("ticket_id", ticketId); put("sent_at", now)
                 put("line_ids", buildJsonArray { ids.forEach { add(it) } })
             }))
         }
+        screens.kick()
         kitchen.afterSend(ticketId)
         pushNow(context)
     }
@@ -221,6 +226,8 @@ class OrderOps @Inject constructor(
         staff.allow(permission, if (sent) "void an item the kitchen already has" else "take an item off an order", approver)
         tickets.voidLine(lineId, if (sent) "void" else "deleted", staff.approvedBy(permission, approver)).getOrThrow()
         if (sent) {
+            // a kitchen screen that has the line shows it struck through
+            kitchen.voided(line)
             db.tickets().ticket(line.ticket_id)?.let { t -> docs.kitchen(t, listOf(line), "VOID").errors.forEach { printing.report(it) } }
         }
     }

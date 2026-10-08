@@ -193,6 +193,7 @@ class ShellViewModel @Inject constructor(
     private val api: com.restopos.core.network.ApiClient,
     private val updater: AppUpdater,
     private val kitchen: com.restopos.core.data.Kitchen,
+    private val screens: com.restopos.core.kitchen.ScreenLink,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     val screen = MutableStateFlow(Screen.Floor)
@@ -225,6 +226,10 @@ class ShellViewModel @Inject constructor(
         // not only when the Kitchen screen is opened: a restaurant that does
         // not have that screen would keep them for good.
         viewModelScope.launch { kitchen.prune() }
+        // The kitchen screens are asked from the moment the till is up, and
+        // for as long as it runs: an order waiting for a screen that was off
+        // goes to it when it is back, whichever screen of the till is open.
+        screens.start()
     }
     val clockAhead: StateFlow<Long?> = api.clockAhead
     val updateRequired: StateFlow<Boolean> = api.updateRequired
