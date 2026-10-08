@@ -251,14 +251,23 @@ database (`adb run-as`). Tablets in a restaurant get the release build.
 - **Pull:** pages until `has_more` is false, each page and its cursor in one
   Room transaction. Network errors retry with backoff; a rewritten table on
   the server (the `epochs` map changes) clears the mirror and pulls from 0.
+- **When a till syncs:** when it opens, after each sale it sends, at the key
+  by the clock, and every 15 minutes while someone is at it (a touch, a key
+  or a scan in the last half hour) or while something is waiting to go up.
+  Left alone it stops asking, and the first touch after that syncs at once.
+  The reason is cost: the database is paid for by the hour it is awake and
+  sleeps five minutes after the last thing said to it, so a tablet asking for
+  news all night kept it awake for nothing (`core/sync/Quiet.kt`). The back
+  office's Tills page therefore says when a till last synced and does not
+  call a silent one a fault.
 - **Session:** the auth cookies are stored on the device, and the API token is
   refreshed from them shortly before it expires or when a call returns 401.
   If the session itself is gone, the worker stops and the next sign-in resumes.
 - **Push:** outbox rows go up in order, 50 at a time. `applied` removes the
   row, `rejected` moves it to the dead-letter state with the server's code,
   `retry` leaves it queued. A push that ends on a server error is tried again
-  with a growing pause, and every sync (at least every 15 minutes) sends what
-  is still waiting. A line carries the price and modifier prices this
+  with a growing pause, and every sync sends what is still waiting: while
+  anything is, the till goes on syncing every 15 minutes, in use or not. A line carries the price and modifier prices this
   till charged, and a discount carries the amount it took off, so the server
   stores the receipt as printed.
 - **Set-up:** a till is set up with a login that may set up tills (the

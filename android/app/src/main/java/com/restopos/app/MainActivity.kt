@@ -18,8 +18,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.lifecycleScope
 import com.restopos.core.data.PosSettings
 import com.restopos.core.network.AuthClient
+import com.restopos.core.sync.Quiet
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.SyncScheduler
 import com.restopos.core.ui.Pos
@@ -74,6 +76,7 @@ class MainActivity : ComponentActivity() {
     // are taken too: a key that has the focus would take a scanner's Enter
     // coming up as a press of itself.
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) used()
         val scanner = com.restopos.core.common.Scanner
         if (scanner.capturing && event.device?.isVirtual == false) {
             val ends = event.keyCode == android.view.KeyEvent.KEYCODE_ENTER || event.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER || event.keyCode == android.view.KeyEvent.KEYCODE_TAB
@@ -97,6 +100,35 @@ class MainActivity : ComponentActivity() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    // Someone is at the till: a finger, a key, a scan, or the till coming to
+    // the front. The sync every 15 minutes asks the server for news only
+    // while that is so, because the database it wakes is paid for by the hour
+    // (core/sync/Quiet). The first sign of someone after the till was left
+    // alone syncs at once, so what changed in the back office meanwhile is
+    // there. It is written to the tablet's storage once a minute at most: a
+    // busy service is hundreds of touches a minute.
+    private var seen: Long? = null
+    private var noted: Long? = null
+    private fun used() {
+        val now = System.currentTimeMillis()
+        if (Quiet.back(now, seen)) SyncScheduler.pullNow(this)
+        seen = now
+        if (Quiet.notes(now, noted)) {
+            noted = now
+            lifecycleScope.launch { session.setLastUse(now) }
+        }
+    }
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) used()
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        used()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

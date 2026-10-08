@@ -19,6 +19,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.restopos.core.database.CashMoveEntity
 import com.restopos.core.database.BookingEntity
 import com.restopos.core.database.CategoryEntity
@@ -67,8 +68,10 @@ import java.time.OffsetDateTime
 import java.util.concurrent.TimeUnit
 
 // Pull (spec 5.5): page -> one Room txn incl. next_cursor -> repeat while
-// has_more. Triggers: app start, after each push, 15 min, manual, Realtime
-// nudge (Phase 6). Realtime never carries trusted data.
+// has_more. Triggers: app start, after each push, manual, the first touch
+// after the till was left alone, and every 15 minutes while someone is at
+// the till or something is waiting to go up (Quiet). Realtime nudge (Phase
+// 6). Realtime never carries trusted data.
 @HiltWorker
 class PullWorker @AssistedInject constructor(
     @Assisted context: Context,
@@ -82,9 +85,16 @@ class PullWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         // Nothing to pull until a store is chosen; not a failure.
         val store = session.storeId() ?: return Result.success()
+        // The sync every 15 minutes says nothing to the server while no one
+        // is at the till and nothing is waiting: the database it would wake
+        // is paid for by the hour (Quiet). Nothing below is reached then, the
+        // crash reports and the till's key included: they go with the next
+        // sync that does.
+        val waiting = db.outbox().pendingCount() > 0
+        if (!Quiet.syncs(inputData.getBoolean(SyncScheduler.ASKED, false), waiting, System.currentTimeMillis(), session.lastUse())) return Result.success()
         // Anything still waiting to go up goes with every sync: a push that
         // ended on an error is not left until the next sale to try again.
-        if (db.outbox().pendingCount() > 0) pushNow(applicationContext)
+        if (waiting) pushNow(applicationContext)
         // What the till wrote down if it stopped unexpectedly goes up too. A
         // server that does not take it yet, or no network, leaves the files
         // for the next sync; it never holds the sync itself up.
@@ -157,8 +167,15 @@ object SyncScheduler {
     private const val NOW = "pull-now"
     private val online = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
+    // Marks a sync that someone or something asked for: it always goes. The
+    // one every 15 minutes carries no such mark (nor does the one a tablet
+    // has had queued since before this rule), and goes only while the till
+    // is in use.
+    internal const val ASKED = "asked"
+
     fun pullNow(context: Context) {
         val req = OneTimeWorkRequestBuilder<PullWorker>()
+            .setInputData(workDataOf(ASKED to true))
             .setConstraints(online)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
@@ -197,6 +214,7 @@ private val KEEP_AWAKE = booleanPreferencesKey("keep_awake")
 private val SCAN_MODE = booleanPreferencesKey("scan_mode")
 private val LIGHT = booleanPreferencesKey("light_mode_v2")
 private val LAST_PULL = longPreferencesKey("last_pull")
+private val LAST_USE = longPreferencesKey("last_use")
 private val LANG = stringPreferencesKey("lang")
 private val SEQ_DAY = stringPreferencesKey("seq_day")
 private val Context.sessionPrefs by preferencesDataStore("device")
@@ -274,6 +292,11 @@ class SessionStore(private val context: Context) {
     // When this tablet last heard from the server.
     val lastPull: Flow<Long?> = store.data.map { it[LAST_PULL] }
     suspend fun setLastPull(at: Long) { store.edit { it[LAST_PULL] = at } }
+    // When someone was last at this till (a touch, a key, a scan), written
+    // once a minute at most. The sync every 15 minutes reads it: left alone,
+    // a till stops asking the server for news (Quiet).
+    suspend fun lastUse(): Long? = store.data.map { it[LAST_USE] }.first()
+    suspend fun setLastUse(at: Long) { store.edit { it[LAST_USE] = at } }
     // The language of the till's own words: "en" or "fr".
     val lang: Flow<String> = store.data.map { it[LANG] ?: "en" }
     suspend fun setLang(code: String) { store.edit { it[LANG] = code } }
