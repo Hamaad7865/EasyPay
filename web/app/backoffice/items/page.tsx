@@ -16,6 +16,7 @@ type ItemRow = {
   id: string;
   name: string;
   price: string;
+  open_price: boolean;
   is_available: boolean;
   category_id: string | null;
   cat_name: string | null;
@@ -41,13 +42,13 @@ async function quickSave(f: FormData) {
   await act("items.edit", backTo(f, PATH), async (c, ctx) => {
     const id = uuid(f, "id");
     const price = parseRs(String(f.get("price") ?? ""));
-    if (price === null) throw new Refused("The price is not a number.");
-    await c.query(`update items set price = $3, is_available = $4 where tenant_id = $1 and id = $2 and deleted_at is null`, [
-      ctx.tenantId,
-      id,
-      price,
-      on(f, "available"),
-    ]);
+    // an item whose price is typed at the till has no price in the list to change: only whether it is on sale
+    const done = await c.query(
+      `update items set price = case when open_price then price else $3::bigint end, is_available = $4
+        where tenant_id = $1 and id = $2 and deleted_at is null and (open_price or $3::bigint is not null)`,
+      [ctx.tenantId, id, price, on(f, "available")],
+    );
+    if (done.rowCount === 0) throw new Refused("The price is not a number.");
     return "Item saved.";
   });
 }
@@ -92,8 +93,10 @@ async function saveItem(f: FormData) {
       const price = parseRs(String(f.get("price") ?? ""));
       const category = String(f.get("category") ?? "");
       const tax = String(f.get("tax") ?? "");
+      // its price is typed at the till each time it is sold (migration 0083): it has none of its own
+      const open = on(f, "open_price");
       if (!name) throw new Refused("Give the item a name.");
-      if (price === null) throw new Refused("The price is not a number.");
+      if (!open && price === null) throw new Refused("The price is not a number.");
       if (!UUID.test(tax)) throw new Refused("Pick the tax this item carries.");
       const groups = f.getAll("group").map(String).filter((g) => UUID.test(g));
       // what a scanner reads off the packet; two items with the same one would leave the till guessing
@@ -109,14 +112,14 @@ async function saveItem(f: FormData) {
       let item = id;
       if (editing) {
         await c.query(
-          `update items set name = $3, price = $4, category_id = $5, is_available = $6, track_stock = $7, barcode = $8
+          `update items set name = $3, price = $4, category_id = $5, is_available = $6, track_stock = $7, barcode = $8, open_price = $9
             where tenant_id = $1 and id = $2 and deleted_at is null`,
-          [ctx.tenantId, id, name, price, UUID.test(category) ? category : null, on(f, "available"), on(f, "track_stock"), barcode],
+          [ctx.tenantId, id, name, open ? 0 : price, UUID.test(category) ? category : null, on(f, "available"), on(f, "track_stock"), barcode, open],
         );
       } else {
         const r = await c.query(
-          `insert into items (tenant_id, category_id, name, price, is_available, track_stock, barcode) values ($1, $2, $3, $4, $5, $6, $7) returning id`,
-          [ctx.tenantId, UUID.test(category) ? category : null, name, price, on(f, "available"), on(f, "track_stock"), barcode],
+          `insert into items (tenant_id, category_id, name, price, is_available, track_stock, barcode, open_price) values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
+          [ctx.tenantId, UUID.test(category) ? category : null, name, open ? 0 : price, on(f, "available"), on(f, "track_stock"), barcode, open],
         );
         item = r.rows[0].id as string;
       }
@@ -159,7 +162,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
     ).rows[0] as { settings: unknown; cats: { id: string; name: string }[]; taxes: Tax[]; groups: AddonGroup[] },
     items: (
       await c.query(
-        `select i.id, i.name, i.price, i.is_available, i.category_id, i.sku, i.barcode, i.track_stock, i.cost,
+        `select i.id, i.name, i.price, i.open_price, i.is_available, i.category_id, i.sku, i.barcode, i.track_stock, i.cost,
                 (select count(*)::int from item_variants v where v.tenant_id = i.tenant_id and v.item_id = i.id and v.deleted_at is null) as variants,
                 (select string_agg(concat_ws(' ', v.sku, v.barcode), ' ') from item_variants v
                   where v.tenant_id = i.tenant_id and v.item_id = i.id and v.deleted_at is null) as variant_codes,
@@ -190,7 +193,9 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
     id: r.id,
     name: r.name,
     price: Number(r.price),
-    shown: money(Number(r.price), decimals),
+    // one whose price is typed at the till has none to show
+    shown: r.open_price ? "At the till" : money(Number(r.price), decimals),
+    open_price: r.open_price,
     is_available: r.is_available,
     cat_id: r.category_id,
     cat: r.cat_name,

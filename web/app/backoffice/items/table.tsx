@@ -14,6 +14,8 @@ export type Item = {
   // cents, and the same amount as the till shows it
   price: number;
   shown: string;
+  // its price is typed at the till each time it is sold: it has none here
+  open_price: boolean;
   is_available: boolean;
   cat_id: string | null;
   cat: string | null;
@@ -144,11 +146,11 @@ export function ItemsTable({
     shop
       ? downloadCsv("products", [
           ["Product", "Category", "Price", ...(costs ? ["Cost", "Margin"] : ["Tax"]), "Variants", "SKU", "Barcode", "On sale", "In stock"],
-          ...shown.map((i) => [i.name, i.cat ?? "", (i.price / 100).toFixed(2), ...(costs ? [i.cost_shown ?? "", i.margin_shown ?? ""] : [i.tax ?? ""]), i.variants, i.sku ?? "", i.barcode ?? "", i.is_available ? "Yes" : "Off sale", i.stock === null ? "" : i.stock / 1000]),
+          ...shown.map((i) => [i.name, i.cat ?? "", (i.open_price ? "At the till" : (i.price / 100).toFixed(2)), ...(costs ? [i.cost_shown ?? "", i.margin_shown ?? ""] : [i.tax ?? ""]), i.variants, i.sku ?? "", i.barcode ?? "", i.is_available ? "Yes" : "Off sale", i.stock === null ? "" : i.stock / 1000]),
         ])
       : downloadCsv("items", [
           ["Item", "Category", "Price", "Tax", "Add-on groups", "SKU", "Barcode", "On sale", "In stock"],
-          ...shown.map((i) => [i.name, i.cat ?? "", (i.price / 100).toFixed(2), i.tax ?? "", i.addons, i.sku ?? "", i.barcode ?? "", i.is_available ? "Yes" : "Sold out", i.stock === null ? "" : i.stock / 1000]),
+          ...shown.map((i) => [i.name, i.cat ?? "", (i.open_price ? "At the till" : (i.price / 100).toFixed(2)), i.tax ?? "", i.addons, i.sku ?? "", i.barcode ?? "", i.is_available ? "Yes" : "Sold out", i.stock === null ? "" : i.stock / 1000]),
         ]);
 
   return (
@@ -311,10 +313,14 @@ export function ItemsTable({
                         <form action={quickSave} className="bo-toolbar" style={{ margin: 0 }}>
                           <input type="hidden" name="id" value={it.id} />
                           <input type="hidden" name="back" value={t.back(it.id, ["edit"])} />
-                          <label className="inline muted">
-                            Price (Rs)
-                            <input name="price" defaultValue={(it.price / 100).toString()} className="narrow" inputMode="decimal" aria-label={`Price of ${it.name}`} />
-                          </label>
+                          {it.open_price ? (
+                            <span className="muted">Its price is typed at the till.</span>
+                          ) : (
+                            <label className="inline muted">
+                              Price (Rs)
+                              <input name="price" defaultValue={(it.price / 100).toString()} className="narrow" inputMode="decimal" aria-label={`Price of ${it.name}`} />
+                            </label>
+                          )}
                           <label className="check" style={{ margin: 0 }}>
                             <input type="checkbox" name="available" defaultChecked={it.is_available} />
                             On sale

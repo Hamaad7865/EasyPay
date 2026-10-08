@@ -34,6 +34,9 @@ export function ItemEditor({
 }) {
   const [prices, setPrices] = useState<PriceChange[] | null>(null);
   const id = item?.id ?? "";
+  // typed at the till each time: the price field has nothing to hold then
+  const [atTill, setAtTill] = useState(item?.open_price ?? false);
+  useEffect(() => setAtTill(item?.open_price ?? false), [id, item?.open_price]);
   useEffect(() => {
     setPrices(null);
     if (!open || !id) return;
@@ -96,7 +99,7 @@ export function ItemEditor({
             <div className="form-row">
               <label className="field">
                 Price (Rs)
-                <input name="price" defaultValue={item ? (item.price / 100).toString() : ""} required inputMode="decimal" />
+                <input name="price" defaultValue={item && !item.open_price ? (item.price / 100).toString() : ""} required={!atTill} disabled={atTill} placeholder={atTill ? "Typed at the till" : undefined} inputMode="decimal" />
               </label>
               <label className="field">
                 Category
@@ -114,6 +117,13 @@ export function ItemEditor({
               Barcode
               <input name="barcode" defaultValue={item?.barcode ?? ""} maxLength={64} placeholder="Scan it here, or leave empty" autoComplete="off" />
               <span className="help">For bottled drinks and packets. With a scanner plugged into the tablet, scanning it on the till adds the item to the order.</span>
+            </label>
+            <label className="check">
+              <input type="checkbox" name="open_price" checked={atTill} onChange={(e) => setAtTill(e.target.checked)} />
+              <span>
+                Price typed at the till
+                <small>For a service, or anything charged differently each time: tapping it on the till opens the keypad for its price. Tills need EasyPay 0.5.0 or later; an older one sells it at Rs 0.</small>
+              </span>
             </label>
             <label className="check">
               <input type="checkbox" name="available" defaultChecked={item?.is_available ?? true} />
