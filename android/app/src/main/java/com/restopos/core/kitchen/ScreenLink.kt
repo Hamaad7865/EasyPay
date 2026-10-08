@@ -15,12 +15,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -34,11 +31,15 @@ import javax.inject.Singleton
 // "There is something new for the kitchen screens": said by whoever wrote it
 // down (a send, a void, a tick on the till's own Kitchen screen), heard by
 // ScreenLink, which then asks every screen at once in place of waiting its turn.
+//
+// It is kept until it is heard: said while the screens are being asked (when
+// nobody is listening), it is still there when the asking is done, and they
+// are asked again at once. Said several times, it is heard once.
 @Singleton
 class ScreenKick @Inject constructor() {
-    private val _asked = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    val asked: SharedFlow<Unit> = _asked
-    fun now() { _asked.tryEmit(Unit) }
+    private val asked = Channel<Unit>(Channel.CONFLATED)
+    fun now() { asked.trySend(Unit) }
+    suspend fun await() { asked.receive() }
 }
 
 // How a kitchen screen stands, for Settings, Printers: whether it answered
@@ -122,7 +123,7 @@ class ScreenLink @Inject constructor(
                 }
             }
             // until the soonest screen is due, or something new is written down
-            asked = withTimeoutOrNull(wait.coerceIn(250, LOOK_AGAIN)) { kick.asked.first() } != null
+            asked = withTimeoutOrNull(wait.coerceIn(250, LOOK_AGAIN)) { kick.await() } != null
         }
     }
 
