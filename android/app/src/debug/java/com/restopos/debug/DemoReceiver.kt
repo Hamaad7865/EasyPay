@@ -58,6 +58,7 @@ class DemoReceiver : BroadcastReceiver() {
     interface Deps {
         fun db(): TillDatabase
         fun session(): SessionStore
+        fun applier(): com.restopos.core.sync.PullApplier
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -65,8 +66,28 @@ class DemoReceiver : BroadcastReceiver() {
         val deps = EntryPointAccessors.fromApplication(context.applicationContext, Deps::class.java)
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                if (deps.session().isSetUp()) Log.w(TAG, "refused: this tablet is set up for a business")
-                else {
+                if (intent.action == PULL) {
+                    // A page of the pull, as the server sent it (files/demo-page.json), goes through the
+                    // till's own reader: the way a real till gets its catalog, stock and receipts.
+                    //   adb shell am broadcast -n com.restopos.app/com.restopos.debug.DemoReceiver -a com.restopos.app.DEMO_PULL
+                    // Only on the made-up business: never onto a tablet set up for a real one.
+                    val shop = Json.parseToJsonElement(context.assets.open("demo-shop.json").bufferedReader().use { it.readText() })
+                    val store = deps.session().storeId()
+                    if (store == null || deps.session().tenantId() != shop.str("tenant")) Log.w(TAG, "refused: this tablet is not the made-up business")
+                    else {
+                        val page = Json.parseToJsonElement(java.io.File(context.filesDir, "demo-page.json").readText())
+                        val changes = page.obj("changes").mapValues { it.value.jsonArray.toList() }
+                        deps.applier().apply(store, changes, page.lng("next_cursor"), "")
+                        Log.i(TAG, "pulled: " + changes.filter { it.value.isNotEmpty() }.map { it.key + " " + it.value.size }.joinToString(", "))
+                    }
+                } else if (deps.session().isSetUp()) Log.w(TAG, "refused: this tablet is set up for a business")
+                else if (intent.getBooleanExtra("session_only", false)) {
+                    // --ez session_only true: only which business, store and till this tablet is; everything else is to come by the pull
+                    val shop = Json.parseToJsonElement(context.assets.open("demo-shop.json").bufferedReader().use { it.readText() })
+                    deps.session().save(shop.str("tenant")!!, shop.obj("store").str("id")!!, shop.obj("device").str("id")!!)
+                    deps.session().setBusinessName(shop.obj("store").str("name")!!)
+                    Log.i(TAG, "set up as the made-up business, with nothing in it yet")
+                } else {
                     // --es type restaurant: the same catalog as a restaurant's, with tables and order types
                     val restaurant = intent.getStringExtra("type") == "restaurant"
                     seed(context, deps.db(), deps.session(), restaurant)
@@ -153,5 +174,6 @@ class DemoReceiver : BroadcastReceiver() {
 
     private companion object {
         const val TAG = "DemoShop"
+        const val PULL = "com.restopos.app.DEMO_PULL"
     }
 }

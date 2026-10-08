@@ -10,6 +10,7 @@
         <receiver android:name="com.restopos.debug.DemoReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="com.restopos.app.DEMO_SHOP" />
+                <action android:name="com.restopos.app.DEMO_PULL" />
             </intent-filter>
         </receiver>
     </application>

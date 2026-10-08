@@ -96,6 +96,8 @@ data class ShiftDoc(
     val refunded: Long,
     val discounts: Long,
     val counts: List<DrawerCountDoc> = emptyList(), // the drawer counted during the shift
+    // what prices typed for one sale came to against the listed ones (a shop); nothing prints while it is nothing
+    val priceChanges: Long = 0,
 )
 
 // The drawer counted during a shift: what was in it and what it should have held.
@@ -130,6 +132,8 @@ data class ZDoc(
     val float: Long? = null,
     val cashTaken: Long? = null,
     val expected: Long? = null,
+    // what prices typed for one sale came to against the listed ones (a shop); nothing prints while it is nothing
+    val priceChanges: Long = 0,
     val counted: Long? = null,
 )
 
@@ -342,6 +346,7 @@ object Docs {
         p.row("Sales", n(d.gross))
         p.row("Refunds (${d.refunds})", off(d.refunded, decimals))
         p.row("Discounts given", n(d.discounts))
+        if (d.priceChanges != 0L) p.row("Price changes", off(d.priceChanges, decimals))
         p.rule()
         p.bold(true).line("TAKEN BY PAYMENT METHOD").bold(false)
         d.payments.forEach { p.row("${it.name} (${it.count})", n(it.amount)) }
@@ -396,6 +401,7 @@ object Docs {
         p.bold(true).tall(true).row("TOTAL", "Rs " + n(d.gross - d.refunded)).tall(false).bold(false)
         p.row("Of which tax", n(d.tax))
         p.row("Discounts given", n(d.discounts))
+        if (d.priceChanges != 0L) p.row("Price changes", off(d.priceChanges, decimals))
         p.rule()
         p.bold(true).line("BY PAYMENT METHOD").bold(false)
         d.payments.forEach { p.row("${it.name} (${it.count})", n(it.amount)) }

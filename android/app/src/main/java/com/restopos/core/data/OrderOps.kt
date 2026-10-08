@@ -231,10 +231,20 @@ class OrderOps @Inject constructor(
 
     // A receipt issued before this version has no stored print: it is put
     // together from what the tablet kept (no add-ons, no tax lines).
+    // Also a receipt that came from the server (another till's): what it
+    // charged is all there, line by line; what it took off the bill is one
+    // figure, and its tax one figure.
+    suspend fun docOf(r: ReceiptEntity): ReceiptDoc = docFor(r)
+
     private suspend fun docFor(r: ReceiptEntity): ReceiptDoc {
         docs.decode(r.doc)?.let { return it }
         val types = db.ops().allPaymentTypes().associateBy { it.id }
+        // tax that went on top of the prices is in the total; tax inside them is not
+        val onTop = r.total - (r.subtotal - r.discount_total + r.service_charge + r.rounding)
         return ReceiptDoc(
+            discounts = if (r.discount_total != 0L) listOf(com.restopos.core.print.DocAmount("Discount", r.discount_total)) else emptyList(),
+            taxes = if (r.tax_total != 0L) listOf(com.restopos.core.print.DocTax("Tax", 0, r.tax_total, onTop == 0L)) else emptyList(),
+            service = r.service_charge,
             kind = if (r.type == "refund") "refund" else "receipt", number = r.number, time = r.device_time,
             lines = db.receipts().lines(r.id).map {
                 com.restopos.core.print.DocLine(it.qty, it.name_snapshot, Calc.lineAmount(it.unit_price, it.qty), was = it.list_price?.let { p -> Calc.lineAmount(p, it.qty) }, priceNote = it.price_label)
@@ -252,13 +262,20 @@ class OrderOps @Inject constructor(
         if (rows.isEmpty() || rows.any { it.ticket_line_id == null }) return null
         val lines = rows.map { l ->
             val id = l.ticket_line_id!!
-            RefundCalc.Line(
-                id, Calc.lineAmount(l.unit_price, l.qty) + db.tickets().modSum(id), l.qty,
-                db.catalog().lineTaxes(id).map { Calc.TaxRate(it.rate_bp, it.type) },
-            )
+            // A receipt made here has its order's lines on this tablet, with
+            // their add-ons and taxes. One that came from the server (another
+            // till's) has only its own lines, and the same two things for each.
+            if (orig.pulled) RefundCalc.Line(id, Calc.lineAmount(l.unit_price, l.qty) + db.receipts().modsOf(l.id), l.qty, db.receipts().taxesOf(l.id).map { Calc.TaxRate(it.rate_bp, it.type) })
+            else RefundCalc.Line(id, Calc.lineAmount(l.unit_price, l.qty) + db.tickets().modSum(id), l.qty, db.catalog().lineTaxes(id).map { Calc.TaxRate(it.rate_bp, it.type) })
         }
         return RefundCalc.shares(lines, RefundCalc.Receipt(orig.subtotal, orig.discount_total, orig.service_charge, orig.rounding, orig.tax_total, orig.total))
     }
+
+    // The taxes on one line of a receipt, wherever this tablet has them.
+    private class TaxRow(val tax_id: String, val rate_bp: Int, val type: String)
+    private suspend fun taxRows(orig: ReceiptEntity, ticketLine: String): List<TaxRow> =
+        if (orig.pulled) db.receipts().lines(orig.id).firstOrNull { it.ticket_line_id == ticketLine }?.let { rl -> db.receipts().taxesOf(rl.id).map { TaxRow(it.tax_id, it.rate_bp, it.type) } }.orEmpty()
+        else db.catalog().lineTaxes(ticketLine).map { TaxRow(it.tax_id, it.rate_bp, it.type) }
 
     // The lines of a receipt that can still be given back, or null when the
     // receipt can only be refunded whole.
@@ -336,7 +353,7 @@ class OrderOps @Inject constructor(
             val out = LinkedHashMap<String, com.restopos.core.print.DocTax>()
             back!!.forEach { (s, q) ->
                 val p = RefundCalc.parts(s, done[s.line.id] ?: 0, q)
-                val rows = db.catalog().lineTaxes(s.line.id)
+                val rows = taxRows(orig, s.line.id)
                 val one = rows.singleOrNull()
                 val key = one?.tax_id ?: "tax"
                 val cur = out[key]

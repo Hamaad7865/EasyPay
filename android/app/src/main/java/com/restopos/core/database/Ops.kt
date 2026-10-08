@@ -90,6 +90,10 @@ data class PaidRow(val receipt_id: String, val type: String, val payment_type_id
 // A payment as the Payments list shows it: with its receipt's number and time.
 data class PaymentRow(val id: String, val receipt_id: String, val number: String, val type: String, val device_time: Long, val payment_type_id: String, val amount: Long)
 
+// What changed prices on lines came to in a period: by kind of change
+// (discount | override) and kind of receipt (sale | refund).
+data class LineChange(val type: String, val kind: String, val total: Long)
+
 // What was sold of each category in a period.
 data class CategorySale(val name: String?, val qty: Long, val amount: Long)
 
@@ -144,6 +148,17 @@ interface OpsDao {
 
     @Query("SELECT * FROM receipts WHERE id = :id")
     suspend fun receipt(id: String): ReceiptEntity?
+
+    // each line at its listed price less the line as charged, with the till's rounding
+    @Query(
+        """SELECT r.type AS type, rl.price_kind AS kind,
+                  SUM((rl.list_price * rl.qty + 500) / 1000 - (rl.unit_price * rl.qty + 500) / 1000) AS total
+           FROM receipt_lines rl JOIN receipts r ON r.id = rl.receipt_id
+           WHERE r.device_id = :device AND r.deleted_at IS NULL AND r.device_time > :from AND r.device_time <= :to
+             AND rl.price_kind IS NOT NULL AND rl.list_price IS NOT NULL
+           GROUP BY r.type, rl.price_kind""",
+    )
+    suspend fun lineChanges(device: String, from: Long, to: Long): List<LineChange>
 
     @Query("SELECT COALESCE(SUM(total), 0) FROM receipts WHERE refund_of = :id AND deleted_at IS NULL")
     suspend fun refundedOf(id: String): Long

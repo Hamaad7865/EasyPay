@@ -10,7 +10,13 @@
 // It is made here with the same ids, in ONE transaction that is rolled back:
 // nothing is left on dev.
 //
-// Usage: node db/scripts/replay-demo-outbox.cjs <till-state.json> [restaurant]
+// Usage: node db/scripts/replay-demo-outbox.cjs <till-state.json> [restaurant] [--page <file>] [--no-compare]
+//   --page <file>: after the push, pull the shop from the start as a till
+//     would and keep the page: the debug build can then be given it
+//     (DEMO_PULL), which runs the till's own reader on what the server sends.
+//   --no-compare: the outbox is from more than one tablet's life (a till that
+//     was emptied and filled again from a page), so only what the server
+//     says of each operation is checked, not the till's own copy.
 //   restaurant: the emulator was filled with the same catalog as a restaurant
 //   (--es type restaurant), to check a restaurant's till still sends what the
 //   server takes.
@@ -30,7 +36,15 @@ function check(name, cond, extra) {
 
 (async () => {
   const till = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-  const restaurant = process.argv[3] === 'restaurant';
+  const restaurant = process.argv.includes('restaurant');
+  const pageAt = process.argv.indexOf('--page');
+  const pageFile = pageAt > 0 ? process.argv[pageAt + 1] : null;
+  const compare = !process.argv.includes('--no-compare');
+  // the hash the till checks a PIN against, as the back office stores one
+  const pinHash = (pin, n) => {
+    const salt = Buffer.alloc(16, n + 1);
+    return ['pbkdf2-sha256', '2000', salt.toString('base64'), crypto.pbkdf2Sync(pin, salt, 2000, 32, 'sha256').toString('base64')].join('$');
+  };
   const shop = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'android', 'app', 'src', 'debug', 'assets', 'demo-shop.json'), 'utf8'));
   const c = new Client({ connectionString: devguard.envMap().DATABASE_URL_UNPOOLED, ssl: { require: true } });
   await c.connect();
@@ -44,7 +58,7 @@ function check(name, cond, extra) {
     const { businessType, ...plain } = shop.settings;
     await c.query(`insert into pos_settings (tenant_id, data) values ($1,$2::jsonb)`, [tid, JSON.stringify(restaurant ? plain : shop.settings)]);
     for (const r of shop.roles) await c.query(`insert into roles (id, tenant_id, name, permissions) values ($1,$2,$3,$4::jsonb)`, [r.id, tid, r.name, JSON.stringify(r.permissions)]);
-    for (const e of shop.staff) await c.query(`insert into employees (id, tenant_id, name, role_id) values ($1,$2,$3,$4)`, [e.id, tid, e.name, e.role]);
+    for (const [i, e] of shop.staff.entries()) await c.query(`insert into employees (id, tenant_id, name, role_id, pin_hash) values ($1,$2,$3,$4,$5)`, [e.id, tid, e.name, e.role, pinHash(e.pin, i)]);
     await c.query(`insert into taxes (id, tenant_id, name, rate_bp, type, is_default) values ($1,$2,$3,$4,$5,true)`, [shop.tax.id, tid, shop.tax.name, shop.tax.rate_bp, shop.tax.type]);
     if (restaurant) {
       for (const [i, d] of shop.restaurant.dining.entries()) {
@@ -84,8 +98,16 @@ function check(name, cond, extra) {
     const said = out.map((o, i) => ops[i].type + ':' + o.status + (o.code ? ':' + o.code : ''));
     check(`the server takes every one of the till's ${ops.length} operations`, out.length === ops.length && out.every((o) => o.status === 'applied'), '\n     ' + said.join('\n     '));
 
+    if (pageFile) {
+      await c.query('SET LOCAL ROLE app_user');
+      await c.query(`select set_config('app.tenant_id', $1, true)`, [tid]);
+      const page = (await c.query('select sync_pull($1, 0, 1000) as r', [store])).rows[0].r;
+      await c.query('RESET ROLE');
+      fs.writeFileSync(pageFile, JSON.stringify(page));
+      check('the pull of the shop from the start is one page', page.has_more === false, Object.entries(page.changes).filter(([, v]) => v.length).map(([k, v]) => k + ' ' + v.length).join(', '));
+    }
     // every receipt the till holds is on the server with the same figures, and none is flagged
-    for (const r of till.receipts) {
+    for (const r of compare ? till.receipts : []) {
       const s = await one(`select type, subtotal, discount_total, tax_total, total, needs_review from receipts where id = $1`, [r.id]);
       const same = s && s.type === r.type && Number(s.subtotal) === r.subtotal && Number(s.discount_total) === r.discount_total && Number(s.tax_total) === r.tax_total && Number(s.total) === r.total;
       check(`${r.type} ${r.number}: the server's figures are the till's, to the cent`, Boolean(same), JSON.stringify(s) + ' till ' + JSON.stringify([r.subtotal, r.discount_total, r.tax_total, r.total]));
@@ -96,9 +118,9 @@ function check(name, cond, extra) {
     const sl = (await c.query(`select rl.receipt_id, rl.ticket_line_id, rl.name_snapshot, rl.unit_price, rl.qty, rl.list_price, rl.price_kind, rl.price_label
                                  from receipt_lines rl join receipts r on r.id = rl.receipt_id where r.tenant_id = $1`, [tid])).rows;
     const key = (l) => [l.receipt_id, l.ticket_line_id, l.name_snapshot, Number(l.unit_price), l.qty, l.list_price == null ? null : Number(l.list_price), l.price_kind, l.price_label].join('|');
-    check(`the ${till.receipt_lines.length} receipt lines are the same on both`, sl.map(key).sort().join('\n') === till.receipt_lines.map(key).sort().join('\n'), '\n     server: ' + sl.map(key).sort().join('\n             ') + '\n     till:   ' + till.receipt_lines.map(key).sort().join('\n             '));
+    if (compare) check(`the ${till.receipt_lines.length} receipt lines are the same on both`, sl.map(key).sort().join('\n') === till.receipt_lines.map(key).sort().join('\n'), '\n     server: ' + sl.map(key).sort().join('\n             ') + '\n     till:   ' + till.receipt_lines.map(key).sort().join('\n             '));
     // who allowed each changed price is on the server's line
-    for (const l of till.lines.filter((x) => x.price_kind)) {
+    for (const l of compare ? till.lines.filter((x) => x.price_kind) : []) {
       const s = await one(`select unit_price, list_price, price_kind, price_by from ticket_lines where id = $1`, [l.id]);
       check(`${l.name_snapshot} (${l.price_label}): the server names who allowed it`, s && Number(s.unit_price) === l.unit_price && s.price_kind === l.price_kind && s.price_by === l.price_by, JSON.stringify(s) + ' till ' + l.price_by);
     }
@@ -106,7 +128,7 @@ function check(name, cond, extra) {
     const levels = (await c.query(`select item_id, variant_id, qty from stock_levels where tenant_id = $1 and store_id = $2`, [tid, store])).rows;
     const held = new Map(levels.map((l) => [l.item_id + '|' + (l.variant_id ?? ''), l.qty]));
     const off = till.levels.filter((l) => (held.get(l.item_id + '|' + (l.variant_id ?? '')) ?? 0) !== l.qty);
-    check(`stock: the till's ${till.levels.length} figures are the server's`, off.length === 0, JSON.stringify(off.map((l) => ({ ...l, server: held.get(l.item_id + '|' + (l.variant_id ?? '')) ?? 0 }))));
+    if (compare) check(`stock: the till's ${till.levels.length} figures are the server's`, off.length === 0, JSON.stringify(off.map((l) => ({ ...l, server: held.get(l.item_id + '|' + (l.variant_id ?? '')) ?? 0 }))));
     // a return not put back: it came back and left again as damaged
     for (const r of till.receipts.filter((x) => x.type === 'refund')) {
       const moves = (await c.query(`select reason, qty, ref_type from stock_movements where ref_id = $1 order by created_at, reason desc`, [r.id])).rows.map((m) => `${m.reason}:${m.qty}:${m.ref_type}`).join(' ');

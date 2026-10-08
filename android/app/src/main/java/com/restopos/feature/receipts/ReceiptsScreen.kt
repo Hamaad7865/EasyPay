@@ -1,5 +1,6 @@
 package com.restopos.feature.receipts
 
+import kotlinx.coroutines.flow.flatMapLatest
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -80,6 +81,7 @@ data class ReceiptDetail(
     val canRefund: Boolean get() = receipt.type == "sale" && (lines?.any { it.left > 0 } ?: (refunded == 0L))
 }
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ReceiptsViewModel @Inject constructor(
     private val tickets: TicketRepository,
@@ -106,6 +108,9 @@ class ReceiptsViewModel @Inject constructor(
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy
 
+    // what is typed to find a receipt: its number, or part of it
+    val query = MutableStateFlow("")
+
     // a shop: a return asks whether the goods go back on the shelf
     private val _retail = MutableStateFlow(false)
     val retail: StateFlow<Boolean> = _retail
@@ -113,7 +118,13 @@ class ReceiptsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val store = session.storeId() ?: return@launch
-            tickets.receipts(store).collect { _rows.value = it }
+            val device = session.deviceId()
+            // A shop's till lists the shop's receipts of the last 30 days, from
+            // every till: a sale is found and refunded wherever it was rung up.
+            // A restaurant's tablet lists its own, as before.
+            kotlinx.coroutines.flow.combine(_retail, query) { shop, q -> (if (shop) null else device) to q.trim() }
+                .flatMapLatest { (only, q) -> db.receipts().find(store, only, q) }
+                .collect { _rows.value = it }
         }
         viewModelScope.launch { _types.value = db.ops().allPaymentTypes().filter { it.is_active }.sortedBy { it.sort_order } }
         viewModelScope.launch { db.ops().settingsFlow().collect { _retail.value = com.restopos.core.data.PosSettings.parse(it).retail } }
@@ -125,7 +136,7 @@ class ReceiptsViewModel @Inject constructor(
         _open.value = r?.let {
             val row = db.ops().receipt(it.id) ?: it
             ReceiptDetail(
-                row, docs.decode(row.doc), db.receipts().payments(row.id),
+                row, docs.decode(row.doc) ?: orders.docOf(row), db.receipts().payments(row.id),
                 if (row.type == "sale") db.ops().refundedOf(row.id) else 0,
                 if (row.type == "sale") orders.refundable(row.id) else null,
             )
@@ -168,8 +179,14 @@ fun ReceiptsScreen(vm: ReceiptsViewModel = hiltViewModel()) {
     val time = remember { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
     message?.let { m -> LaunchedEffect(m) { delay(4000); vm.messageShown() } }
 
+    val q by vm.query.collectAsState()
+    val shop by vm.retail.collectAsState()
     Box(Modifier.fillMaxSize().background(Pos.Bg)) {
         Column(Modifier.fillMaxSize().padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedTextField(
+                q, { vm.query.value = it.take(40) }, Modifier.fillMaxWidth(), singleLine = true,
+                placeholder = { Text("Find a receipt by its number, for example " + (rows.firstOrNull()?.number ?: "S1-T1-000123")) },
+            )
             Column(Modifier.weight(1f, fill = false).fillMaxWidth().card()) {
                 Row(Modifier.fillMaxWidth().background(Pos.PanelDeep).padding(horizontal = 12.dp)) {
                     HeadCell("Number", 1.6f)
@@ -181,8 +198,8 @@ fun ReceiptsScreen(vm: ReceiptsViewModel = hiltViewModel()) {
                 Hairline()
                 if (rows.isEmpty()) {
                     Column(Modifier.fillMaxWidth().padding(vertical = 44.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("No receipts yet", color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                        Text("A receipt shows here as soon as an order is paid.", Modifier.padding(top = 2.dp), color = Pos.Text3, fontSize = 13.sp)
+                        Text(if (q.isBlank()) "No receipts yet" else "No receipt has “${q.trim()}” in its number", color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text(if (q.isBlank()) "A receipt shows here as soon as ${if (shop) "a sale" else "an order"} is paid." else "A receipt older than 30 days is in the back office, under Receipts.", Modifier.padding(top = 2.dp), color = Pos.Text3, fontSize = 13.sp)
                     }
                 }
                 LazyColumn {
@@ -206,7 +223,7 @@ fun ReceiptsScreen(vm: ReceiptsViewModel = hiltViewModel()) {
                     }
                 }
             }
-            Text("Receipts issued on this tablet, newest first. Tap one to print it again, refund it or correct how it was paid.", Modifier.padding(horizontal = 6.dp), color = Pos.Text3, fontSize = 12.sp)
+            Text(if (shop) "This shop's receipts of the last 30 days, from every till, newest first. Tap one to print it again, refund it or correct how it was paid." else "Receipts issued on this tablet, newest first. Tap one to print it again, refund it or correct how it was paid.", Modifier.padding(horizontal = 6.dp), color = Pos.Text3, fontSize = 12.sp)
         }
         message?.let {
             Text(
@@ -328,11 +345,10 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                                 }
                             }
                         }
-                        Text("Pick how the money goes back.", Modifier.padding(top = 8.dp, bottom = 8.dp), color = Pos.Text2, fontSize = 13.sp)
                     }
                     if (retail) {
                         // above the money and the reason: the keyboard that opens for the reason would hide it
-                        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp).clickable { restock = !restock }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(top = 10.dp).clickable { restock = !restock }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Column(Modifier.weight(1f)) {
                                 Text("Put back into stock", color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                                 Text(
@@ -343,6 +359,7 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                             com.restopos.core.ui.Toggle(restock)
                         }
                     }
+                    if (lines != null) Text("Pick how the money goes back.", Modifier.padding(top = 10.dp, bottom = 8.dp), color = Pos.Text2, fontSize = 13.sp)
                     TypeGrid(types, type) { type = it }
                     OutlinedTextField(reason, { reason = it.take(120) }, Modifier.fillMaxWidth().padding(top = 10.dp), label = { Text("Reason") }, singleLine = true)
                 }

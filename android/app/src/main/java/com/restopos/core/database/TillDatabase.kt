@@ -19,7 +19,9 @@ import androidx.room.RoomDatabase
 // Version 8 adds an item's barcode and which order line a receipt line paid.
 // Version 9 adds what a shop sells with: a product's variants and what the
 // shop holds of each, a product's SKU and how it is sold, and on a line of a
-// sale the price it was listed at when it is charged something else.
+// sale the price it was listed at when it is charged something else; and the
+// shop's receipts of the last 30 days as the server sends them, so a sale
+// rung up on another till can be found and refunded here.
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -34,7 +36,7 @@ import androidx.room.RoomDatabase
         ShiftEntity::class, PunchEntity::class, TableEntity::class,
         PrinterEntity::class, SettingsEntity::class, CashMoveEntity::class, DayCloseEntity::class, DrawerCountEntity::class,
         CustomerEntity::class, KdsTicketEntity::class, BookingEntity::class,
-        ItemVariantEntity::class, StockLevelEntity::class,
+        ItemVariantEntity::class, StockLevelEntity::class, ReceiptLineTaxEntity::class, ReceiptLineModEntity::class,
     ],
     version = 9,
     exportSchema = true,

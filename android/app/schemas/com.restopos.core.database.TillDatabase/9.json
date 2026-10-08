@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 9,
-    "identityHash": "7cb9bc4bc621a51dbae76211add72093",
+    "identityHash": "517966340ce2a79a2723f7490ab99880",
     "entities": [
       {
         "tableName": "stores",
@@ -1046,7 +1046,7 @@
       },
       {
         "tableName": "receipts",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `device_id` TEXT NOT NULL, `ticket_id` TEXT NOT NULL, `number` TEXT NOT NULL, `type` TEXT NOT NULL, `refund_of` TEXT, `subtotal` INTEGER NOT NULL, `discount_total` INTEGER NOT NULL, `tax_total` INTEGER NOT NULL, `service_charge` INTEGER NOT NULL, `rounding` INTEGER NOT NULL, `total` INTEGER NOT NULL, `needs_review` INTEGER NOT NULL, `device_time` INTEGER NOT NULL, `deleted_at` TEXT, `server_seq` INTEGER, `doc` TEXT, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `device_id` TEXT NOT NULL, `ticket_id` TEXT NOT NULL, `number` TEXT NOT NULL, `type` TEXT NOT NULL, `refund_of` TEXT, `subtotal` INTEGER NOT NULL, `discount_total` INTEGER NOT NULL, `tax_total` INTEGER NOT NULL, `service_charge` INTEGER NOT NULL, `rounding` INTEGER NOT NULL, `total` INTEGER NOT NULL, `needs_review` INTEGER NOT NULL, `device_time` INTEGER NOT NULL, `deleted_at` TEXT, `server_seq` INTEGER, `doc` TEXT, `pulled` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -1157,6 +1157,12 @@
             "fieldPath": "doc",
             "columnName": "doc",
             "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "pulled",
+            "columnName": "pulled",
+            "affinity": "INTEGER",
+            "notNull": true
           }
         ],
         "primaryKey": {
@@ -2610,11 +2616,111 @@
             "createSql": "CREATE INDEX IF NOT EXISTS `index_stock_levels_item_id` ON `${TABLE_NAME}` (`item_id`)"
           }
         ]
+      },
+      {
+        "tableName": "receipt_line_taxes",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `receipt_line_id` TEXT NOT NULL, `tax_id` TEXT NOT NULL, `name` TEXT NOT NULL, `rate_bp` INTEGER NOT NULL, `type` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "receipt_line_id",
+            "columnName": "receipt_line_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tax_id",
+            "columnName": "tax_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rate_bp",
+            "columnName": "rate_bp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_receipt_line_taxes_receipt_line_id",
+            "unique": false,
+            "columnNames": [
+              "receipt_line_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_receipt_line_taxes_receipt_line_id` ON `${TABLE_NAME}` (`receipt_line_id`)"
+          }
+        ]
+      },
+      {
+        "tableName": "receipt_line_mods",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `receipt_line_id` TEXT NOT NULL, `price` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "receipt_line_id",
+            "columnName": "receipt_line_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "price",
+            "columnName": "price",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_receipt_line_mods_receipt_line_id",
+            "unique": false,
+            "columnNames": [
+              "receipt_line_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_receipt_line_mods_receipt_line_id` ON `${TABLE_NAME}` (`receipt_line_id`)"
+          }
+        ]
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '7cb9bc4bc621a51dbae76211add72093')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '517966340ce2a79a2723f7490ab99880')"
     ]
   }
 }

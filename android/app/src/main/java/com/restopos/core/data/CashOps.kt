@@ -132,8 +132,11 @@ class CashOps @Inject constructor(
 
     // ---- the figures of a period on this till ----
 
+    // discounts: what was taken off, on a bill or on one line. priceChanges:
+    // what prices typed for one sale came to against the listed ones (below
+    // them is positive), kept apart: it is not a discount anyone gave a name.
     private class Period(
-        val sales: Int, val gross: Long, val refunds: Int, val refunded: Long, val discounts: Long, val tax: Long,
+        val sales: Int, val gross: Long, val refunds: Int, val refunded: Long, val discounts: Long, val tax: Long, val priceChanges: Long,
         val payments: List<DocAmount>, val cashTaken: Long, val cashIn: Long, val cashOut: Long, val moves: List<CashSlipDoc>,
         val categories: List<DocAmount>, val taxes: List<DocTax>, val first: String?, val last: String?,
     )
@@ -172,9 +175,12 @@ class CashOps @Inject constructor(
                 taxes[key] = DocTax(t.name, t.rateBp, (cur?.amount ?: 0) + sign * t.amount, t.included)
             }
         }
+        // what changed prices on lines came to: a refund gives its share back
+        val changes = db.ops().lineChanges(device, from, to)
+        fun changed(kind: String) = changes.filter { it.kind == kind }.sumOf { if (it.type == "refund") -it.total else it.total }
         return Period(
             sales.size, sales.sumOf { it.total }, refunds.size, refunds.sumOf { it.total },
-            sales.sumOf { it.discount_total } - refunds.sumOf { it.discount_total }, sales.sumOf { it.tax_total } - refunds.sumOf { it.tax_total },
+            sales.sumOf { it.discount_total } - refunds.sumOf { it.discount_total } + changed("discount"), sales.sumOf { it.tax_total } - refunds.sumOf { it.tax_total }, changed("override"),
             pay.values.sortedByDescending { it.amount }, cash, moves.filter { it.type == "in" }.sumOf { it.amount },
             moves.filter { it.type == "out" }.sumOf { it.amount }, moves, cats.values.sortedByDescending { it.amount }, taxes.values.toList(),
             sales.firstOrNull()?.number, sales.lastOrNull()?.number,
@@ -197,6 +203,7 @@ class CashOps @Inject constructor(
             p.payments, p.cashTaken, p.cashIn, p.cashOut, p.moves, shift.expected_cash ?: expected, shift.counted_cash,
             p.sales, p.gross, p.refunds, p.refunded, p.discounts,
             db.ops().drawerCounts(shift.id).map { DrawerCountDoc(it.device_time, name(it.employee_id), it.counted, it.expected, till) },
+            priceChanges = p.priceChanges,
         )
     }
 
@@ -219,7 +226,7 @@ class CashOps @Inject constructor(
         return ZDoc(
             number ?: ((last?.number ?: 0) + 1), till(), last?.closed_at, closedAt, staff.current.value?.employee?.name,
             p.sales, p.gross, p.refunds, p.refunded, p.discounts, p.tax, p.payments, p.categories, p.taxes,
-            p.cashIn, p.cashOut, p.moves, p.first, p.last,
+            p.cashIn, p.cashOut, p.moves, p.first, p.last, priceChanges = p.priceChanges,
         )
     }
 
@@ -231,7 +238,7 @@ class CashOps @Inject constructor(
         return ZDoc(
             row.number, till(), row.from_time, row.closed_at, name(row.closed_by),
             p.sales, p.gross, p.refunds, p.refunded, p.discounts, p.tax, p.payments, p.categories, p.taxes,
-            p.cashIn, p.cashOut, p.moves, p.first, p.last,
+            p.cashIn, p.cashOut, p.moves, p.first, p.last, priceChanges = p.priceChanges,
         ).withDrawer(shift)
     }
 

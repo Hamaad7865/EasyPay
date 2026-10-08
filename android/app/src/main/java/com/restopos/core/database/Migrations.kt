@@ -142,6 +142,12 @@ object Migrations {
             db.execSQL("ALTER TABLE `receipt_lines` ADD COLUMN `list_price` INTEGER")
             db.execSQL("ALTER TABLE `receipt_lines` ADD COLUMN `price_kind` TEXT")
             db.execSQL("ALTER TABLE `receipt_lines` ADD COLUMN `price_label` TEXT")
+            // the shop's receipts as the server sends them: found and refunded on any till
+            db.execSQL("ALTER TABLE `receipts` ADD COLUMN `pulled` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `receipt_line_taxes` (`id` TEXT NOT NULL, `receipt_line_id` TEXT NOT NULL, `tax_id` TEXT NOT NULL, `name` TEXT NOT NULL, `rate_bp` INTEGER NOT NULL, `type` TEXT NOT NULL, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_receipt_line_taxes_receipt_line_id` ON `receipt_line_taxes` (`receipt_line_id`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `receipt_line_mods` (`id` TEXT NOT NULL, `receipt_line_id` TEXT NOT NULL, `price` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_receipt_line_mods_receipt_line_id` ON `receipt_line_mods` (`receipt_line_id`)")
             // The server has been sending variants all along and this till
             // read past them; stock levels and the products' new columns are
             // there too. Pull again from the start so they arrive.

@@ -9,6 +9,7 @@
 //   the restaurant (the same build, the same catalog): a table seated, a
 //     quantity changed the restaurant's way, sent to the kitchen and paid; a
 //     quick sale paid by card; a refund.
+//   the second till: see below.
 // The server must take every operation and end up with the till's figures.
 // It keeps the server honest about that build: a change to a push function
 // that would refuse or re-price what build 3 sends fails here.
@@ -17,7 +18,14 @@
 const path = require('path');
 const { spawnSync } = require('child_process');
 let failed = 0;
-for (const [what, file, extra] of [['shop', 'demo-till-build3.json', []], ['restaurant', 'demo-till-build3-restaurant.json', ['restaurant']]]) {
+for (const [what, file, extra] of [
+  ['shop', 'demo-till-build3.json', []],
+  ['restaurant', 'demo-till-build3-restaurant.json', ['restaurant']],
+  // the shop's operations again, then those of a second till life: a tablet emptied and filled only from the
+  // server's pull page, which refunded a receipt it had not made (worked out from the pulled lines and taxes;
+  // the server refuses a refund that is a cent off) and sold a variant from the pulled catalog
+  ['second till', 'demo-till-build3-two-tills.json', ['--no-compare']],
+]) {
   const out = spawnSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'replay-demo-outbox.cjs'), path.join(__dirname, 'fixtures', file), ...extra], { encoding: 'utf8' });
   process.stdout.write(out.stdout.split('\n').filter((l) => /^(PASS|FAIL|REPLAY)/.test(l)).map((l) => (/^REPLAY/.test(l) ? l : l.replace(/^(PASS|FAIL) /, `$1 ${what}: `)).slice(0, 170)).join('\n') + '\n');
   if (out.status !== 0) { failed++; process.stderr.write(out.stderr.split('\n').filter((l) => /REPLAY_FAILED|Error/.test(l)).join('\n') + '\n'); }

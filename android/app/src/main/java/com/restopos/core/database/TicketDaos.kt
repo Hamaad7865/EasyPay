@@ -119,6 +119,32 @@ interface ReceiptDao {
     @Query("SELECT * FROM receipts WHERE store_id = :store AND deleted_at IS NULL ORDER BY device_time DESC LIMIT :limit")
     fun receipts(store: String, limit: Int = 100): Flow<List<ReceiptEntity>>
 
+    // The receipts list: newest first, found by number. device: only that
+    // till's (a restaurant's tablet lists its own); null: every till's.
+    @Query(
+        """SELECT * FROM receipts WHERE store_id = :store AND deleted_at IS NULL
+           AND (:device IS NULL OR device_id = :device)
+           AND (:q = '' OR number LIKE '%' || :q || '%')
+           ORDER BY device_time DESC LIMIT :limit""",
+    )
+    fun find(store: String, device: String?, q: String, limit: Int = 200): Flow<List<ReceiptEntity>>
+
+    // ---- receipts that came from the server ----
+    @Upsert suspend fun upsertPulled(r: ReceiptEntity)
+    @Upsert suspend fun upsertPulledLines(rows: List<ReceiptLineEntity>)
+    @Upsert suspend fun upsertPulledPayments(rows: List<ReceiptPaymentEntity>)
+    @Upsert suspend fun upsertLineTaxes(rows: List<ReceiptLineTaxEntity>)
+    @Upsert suspend fun upsertLineMods(rows: List<ReceiptLineModEntity>)
+
+    @Query("SELECT * FROM receipt_lines WHERE id = :id")
+    suspend fun line(id: String): ReceiptLineEntity?
+
+    @Query("SELECT * FROM receipt_line_taxes WHERE receipt_line_id = :line")
+    suspend fun taxesOf(line: String): List<ReceiptLineTaxEntity>
+
+    @Query("SELECT COALESCE(SUM(price), 0) FROM receipt_line_mods WHERE receipt_line_id = :line")
+    suspend fun modsOf(line: String): Long
+
     @Query("SELECT * FROM receipt_payments WHERE receipt_id = :receipt")
     suspend fun payments(receipt: String): List<ReceiptPaymentEntity>
 

@@ -154,6 +154,31 @@ data class ReceiptEntity(
     val server_seq: Long? = null,
     // what was printed, as JSON (ReceiptDoc): a reprint prints this again
     val doc: String? = null,
+    // The receipt was not made on this tablet: it came from the server with
+    // the shop's last 30 days (another till's, or this till's own after a
+    // reinstall). It can be found, reprinted and refunded here; what was
+    // printed for it is put together from its lines.
+    val pulled: Boolean = false,
+)
+
+// The taxes and the add-ons of a line of a pulled receipt, as the server
+// keeps them. A receipt made on this tablet does not need them: its order's
+// lines are here. A refund of a pulled receipt is worked out from these.
+@Entity(tableName = "receipt_line_taxes", indices = [Index("receipt_line_id")])
+data class ReceiptLineTaxEntity(
+    @PrimaryKey val id: String,
+    val receipt_line_id: String,
+    val tax_id: String,
+    val name: String,
+    val rate_bp: Int,
+    val type: String,
+)
+
+@Entity(tableName = "receipt_line_mods", indices = [Index("receipt_line_id")])
+data class ReceiptLineModEntity(
+    @PrimaryKey val id: String,
+    val receipt_line_id: String,
+    val price: Long,
 )
 
 @Entity(tableName = "receipt_payments")
