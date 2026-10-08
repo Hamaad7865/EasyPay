@@ -87,7 +87,7 @@ Stored in `printers`: `kind` may be `'screen'`; two new columns, `pair_code` and
 
 A kitchen screen is never the receipt printer. Today a store's first printer is made its receipt printer, and any printer can be chosen as one (`web/lib/saves.ts`); both rules leave screens out, so a restaurant that enters its kitchen screen before its printer does not end up with receipts sent to the kitchen.
 
-**Old tills.** A till up to 0.5.0 keeps a printer's kind as whatever text it was sent and treats anything that is not USB as a network printer. Handed a kitchen screen, it would list it as a station and send printer bytes to the tablet on every send, with a "not answering" each time. So: the new build keeps screens out of everything that prints (`Printing.printers()` is paper only); and in production the first kitchen screen is entered only once `MIN_TILL_VERSION` has been raised to that build, the same step as the premium gate. The Printers page says so beside the option. On dev, a till still on 0.5.0 (the owner's emulator) shows exactly this until it is updated.
+**Old tills.** A till up to 0.5.1 keeps a printer's kind as whatever text it was sent and treats anything that is not USB as a network printer. Handed a kitchen screen, it would list it as a station and send printer bytes to the tablet on every send, with a "not answering" each time. So: the new build keeps screens out of everything that prints (`Printing.printers()` is paper only); and in production the first kitchen screen is entered only once `MIN_TILL_VERSION` has been raised to that build, the same step as the premium gate. The Printers page says so beside the option. On dev, a till still on 0.5.1 (the owner's emulator) shows exactly this until it is updated.
 
 ### 4.4 Which lines go to which screen
 
@@ -167,6 +167,8 @@ The till's own Kitchen tab gets the same late minutes and "a ticket shows" setti
 
 Its own small database (`kitchen.db`, apart from the till's): the tickets and lines it was sent, and a numbered list of what the cooks did. A kitchen tablet that is switched off and on shows what it showed. Tickets from days gone by are cleared as the till's are (three days). The header shows the screen's name as the back office has it, how many tickets are open and late, and whether a till has been heard from lately ("Terminal 01 · 2 s ago" or "No till for 2 min").
 
+A ticket's age on the kitchen tablet is counted from when that tablet received it, on its own clock: two tablets' clocks drift apart, and a ticket must not arrive already late.
+
 Two tills may send to one screen. Each takes back only the marks for its own tickets. Their K numbers count separately, so with two tills a ticket's number is shown with its till's code in front.
 
 ## 5. Where the code goes
@@ -223,7 +225,7 @@ Not something Claude can test: two real tablets on a real restaurant Wi-Fi. That
 1. **Premium gate.** Migration 0085, the back office, the till. Small, and useful on its own.
 2. **Kitchen screen.** Migration 0086 and the back office form; `core/kitchen` with its tests; the kitchen tablet's mode; the till side; Help; the till's version raised.
 
-Each is its own plan. Production needs the migrations, then the back office, then the API with `MIN_TILL_VERSION`, then the APK, each on the owner's word.
+Each is its own plan (`docs/superpowers/plans/2026-10-09-premium-gate.md`, `2026-10-09-kitchen-screen.md`). On dev the gate lands first. Production gets both together, in this order, each on the owner's word: the restaurants that keep Bookings and the Kitchen tab set to Premium in `/admin`; the migrations; the back office; the till release; the till API with `MIN_TILL_VERSION` raised. The gate alone would refuse the bookings of tills on 0.5.1.
 
 ## 9. Decisions this design took, for the owner to confirm or overrule
 
