@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +37,7 @@ import com.restopos.core.data.NeedsApproval
 import com.restopos.core.data.RetailSales
 import com.restopos.core.data.ServiceRepository
 import com.restopos.core.data.StaffMember
+import com.restopos.core.data.StockForm
 import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.ItemEntity
 import com.restopos.core.database.ItemLeft
@@ -58,7 +61,13 @@ import com.restopos.core.ui.V
 import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.VI
 import com.restopos.core.ui.VIcon
+import com.restopos.core.ui.catColor
 import com.restopos.core.ui.press
+import com.restopos.feature.menu.CategoryEditor
+import com.restopos.feature.menu.CategorySheets
+import com.restopos.feature.menu.StockEdit
+import com.restopos.feature.menu.StockEditor
+import com.restopos.feature.menu.StockSheet
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,10 +88,11 @@ import javax.inject.Inject
 class ProductOpen(val item: ItemEntity, val category: String?, val variants: List<ItemVariantEntity>, val levels: Map<String, Int>, val counted: Boolean)
 
 // Behind Products & stock: every product with what is left of it, found by
-// name, SKU or barcode (typed or scanned), and the two things a till may
-// change about one: its price, and whether it is on sale. Stock itself is
-// changed in the back office (a delivery, an adjustment, a count), where each
-// change keeps its reason.
+// name, SKU or barcode (typed or scanned), and what a till may change: a
+// product's price, whether it is on sale, the product itself (ItemSheet), its
+// stock (StockSheet: added or taken out, with a reason that need not be
+// given) and the categories (CategorySheets). A delivery with its costs, a
+// count and a transfer are the back office's.
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ProductsViewModel @Inject constructor(
@@ -111,6 +121,24 @@ class ProductsViewModel @Inject constructor(
 
     // A product being added, changed or removed from this till.
     val items = com.restopos.feature.menu.ItemEditor(service, approvals, viewModelScope, shop = true)
+
+    // The categories, made, changed and removed from this till; a list that
+    // was showing one that is gone shows everything.
+    val categories = CategoryEditor(service, approvals, viewModelScope, shop = true) { gone -> if (cat.value == gone) cat.value = null }
+    val counts: StateFlow<Map<String, Int>> = db.catalog().itemsPerCategory().map { rows -> rows.associate { it.id to it.n } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    // The stock of one line being added to or taken from. Once it has
+    // changed and the sync has brought the new level, the product is shown again.
+    val stock = StockEditor(service, approvals, viewModelScope, shop = true) { itemId ->
+        viewModelScope.launch { kotlinx.coroutines.delay(1500); if (open.value == null) show(itemId) }
+    }
+
+    // From the product's sheet to the stock of one of its lines: the one closes, the other opens.
+    fun stockOf(p: ProductOpen, variant: ItemVariantEntity?, way: StockForm.Way) {
+        close()
+        stock.open(StockEdit(p.item.id, variant?.id, sales.nameOf(p.item, variant), (p.levels[variant?.id ?: ""] ?: 0).toLong(), p.item.sold_by == "weight", way))
+    }
 
     // scan mode: the tablet's switch, the same one as on the sell screen
     val scanMode: StateFlow<Boolean> = session.scanMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
@@ -187,6 +215,8 @@ fun ProductsScreen(vm: ProductsViewModel) {
     val open by vm.open.collectAsState()
     val asking by vm.asking.collectAsState()
     val editing by vm.items.editing.collectAsState()
+    val counts by vm.counts.collectAsState()
+    val stocking by vm.stock.editing.collectAsState()
     val byId = cats.associateBy { it.id }
     val searching = q.isNotBlank()
     val scan by vm.scanMode.collectAsState()
@@ -195,6 +225,7 @@ fun ProductsScreen(vm: ProductsViewModel) {
     Column(Modifier.fillMaxSize().padding(start = 20.dp, end = 20.dp, top = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             ScreenHead("${items.size} ${if (items.size == 1) "product" else "products"}" + if (searching) " found" else "", L.productsStock, Modifier.weight(1f))
+            VBtn("Categories", height = 52.dp, radius = 14.dp) { vm.categories.list() }
             VBtn("New product", bg = V.Blue, fg = androidx.compose.ui.graphics.Color.White, height = 52.dp, radius = 14.dp, weight = 800) { vm.items.new(cat) }
             ScanKey(scan, size = 52.dp) { vm.setScanMode(it) }
             // scan mode: nothing to type into, so nothing brings the keyboard up
@@ -205,8 +236,8 @@ fun ProductsScreen(vm: ProductsViewModel) {
             }
         }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Cat("All", !searching && cat == null) { vm.pickCat(null) }
-            cats.forEach { c -> Cat(c.name, !searching && cat == c.id) { vm.pickCat(c.id) } }
+            Cat("All", !searching && cat == null, null) { vm.pickCat(null) }
+            cats.forEachIndexed { n, c -> Cat(c.name, !searching && cat == c.id, catColor(c.color, n)) { vm.pickCat(c.id) } }
         }
         Column(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)).background(V.Panel)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -246,11 +277,18 @@ fun ProductsScreen(vm: ProductsViewModel) {
     open?.let { ProductSheet(it, vm) }
     asking?.let { a -> NumSheet(a) { vm.closeAsk() } }
     editing?.let { com.restopos.feature.menu.ItemSheet(vm.items, it, cats, shop = true) }
+    CategorySheets(vm.categories, cats, counts, shop = true)
+    stocking?.let { StockSheet(vm.stock, it) }
 }
 
+// dot: the category's colour, as its button on the sell screen wears it
 @Composable
-private fun Cat(label: String, on: Boolean, onClick: () -> Unit) {
-    Box(Modifier.height(44.dp).press(onClick = onClick).clip(RoundedCornerShape(22.dp)).background(if (on) V.On else V.Panel).padding(horizontal = 18.dp), contentAlignment = Alignment.Center) {
+private fun Cat(label: String, on: Boolean, dot: androidx.compose.ui.graphics.Color?, onClick: () -> Unit) {
+    Row(
+        Modifier.height(44.dp).press(onClick = onClick).clip(RoundedCornerShape(22.dp)).background(if (on) V.On else V.Panel).padding(horizontal = 18.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (dot != null) Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
         T(label, 14.sp, 700, if (on) V.OnText else V.Text2)
     }
 }
@@ -272,6 +310,10 @@ private fun ProductSheet(p: ProductOpen, vm: ProductsViewModel) {
                 }
                 if (!i.open_price) VBtn("Change price", height = 48.dp, radius = 14.dp) { vm.askPrice(i, null) }
             }
+            if (p.counted) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                VBtn("Add stock", Modifier.weight(1f), height = 52.dp, radius = 14.dp) { vm.stockOf(p, null, StockForm.Way.In) }
+                VBtn("Remove stock", Modifier.weight(1f), height = 52.dp, radius = 14.dp) { vm.stockOf(p, null, StockForm.Way.Out) }
+            }
         } else {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(V.Well)) {
                 p.variants.forEachIndexed { n, v ->
@@ -285,6 +327,8 @@ private fun ProductSheet(p: ProductOpen, vm: ProductsViewModel) {
                         if (p.counted) T(LinePrice.left(qty, weighed), 14.sp, 700, tone(qty), Modifier.width(96.dp))
                         T(Money.format(v.price), 15.sp, 800, modifier = Modifier.width(110.dp))
                         VBtn("Price", height = 42.dp, radius = 12.dp, size = 14.sp, pad = 14.dp) { vm.askPrice(i, v) }
+                        // its sheet adds or takes out
+                        if (p.counted) VBtn("Stock", height = 42.dp, radius = 12.dp, size = 14.sp, pad = 14.dp) { vm.stockOf(p, v, StockForm.Way.In) }
                     }
                 }
             }
@@ -296,7 +340,11 @@ private fun ProductSheet(p: ProductOpen, vm: ProductsViewModel) {
             }
             Toggle(i.is_available)
         }
-        T("Stock is changed in the back office: a delivery, an adjustment or a count, each with its reason.", 13.sp, 500, V.Text3, lines = 2)
+        T(
+            if (p.counted) "A delivery with its costs, a count and a transfer are done in the back office."
+            else "Its stock is not counted. Edit product has the switch for that.",
+            13.sp, 500, V.Text3, lines = 2,
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             // its name, category, barcode, and removing it: the product's own sheet
             VBtn("Edit product", height = 52.dp, radius = 14.dp) { vm.close(); vm.items.open(i, fixedPrice = p.variants.isNotEmpty() || weighed) }

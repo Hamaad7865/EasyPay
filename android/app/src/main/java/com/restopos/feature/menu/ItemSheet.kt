@@ -29,6 +29,7 @@ import com.restopos.core.data.ItemForm
 import com.restopos.core.data.NeedsApproval
 import com.restopos.core.data.ServiceRepository
 import com.restopos.core.data.StaffMember
+import com.restopos.core.data.StockForm
 import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.ItemEntity
 import com.restopos.core.ui.Caps
@@ -65,19 +66,20 @@ class ItemEditor(private val service: ServiceRepository, private val approvals: 
     fun open(item: ItemEntity, fixedPrice: Boolean = false) { editing.value = ItemEdit(item, item.category_id, fixedPrice) }
     fun close() { if (!busy.value) editing.value = null }
 
-    fun save(name: String, price: String, open: Boolean, category: String?, barcode: String, available: Boolean, by: StaffMember? = null, done: () -> Unit = {}) {
+    // count: whether its stock is counted, as the sheet's switch stands
+    fun save(name: String, price: String, open: Boolean, category: String?, barcode: String, available: Boolean, count: Boolean, by: StaffMember? = null, done: () -> Unit = {}) {
         val edit = editing.value
         val id = edit?.item?.id
         val read = ItemForm.read(name, price, open, barcode).getOrElse { Toaster.say(it.message ?: "That is not an $thing yet"); return }
         if (busy.value) return
         scope.launch {
             busy.value = true
-            val out = service.saveItem(id, read, category, available, shop, by)
+            val out = service.saveItem(id, read, category, available, shop, by, count && !read.open)
             busy.value = false
             val need = out.exceptionOrNull() as? NeedsApproval
             if (need != null && by == null) {
                 editing.value = null
-                approvals.ask(need.permission, need.what) { approver -> editing.value = edit; save(name, price, open, category, barcode, available, approver, done) }
+                approvals.ask(need.permission, need.what) { approver -> editing.value = edit; save(name, price, open, category, barcode, available, count, approver, done) }
             } else out.fold(
                 {
                     editing.value = null
@@ -113,10 +115,12 @@ private fun rupees(cents: Long): String = if (cents % 100 == 0L) (cents / 100).t
 
 // What the till can make or change of an item: its name, its price or that
 // its price is typed at the sale, its category, its barcode, whether it is on
-// sale; and it can remove it. Its add-ons, variants, tax, cost and stock are
-// the back office's.
+// sale and whether its stock is counted; and it can remove it. Its add-ons,
+// variants, tax and cost are the back office's.
+// stock: given for an item whose stock can be changed from here (the
+// restaurant's menu); it closes this sheet and opens the stock's.
 @Composable
-internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEntity>, shop: Boolean, done: () -> Unit = {}) {
+internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEntity>, shop: Boolean, stock: ((StockForm.Way) -> Unit)? = null, done: () -> Unit = {}) {
     val was = edit.item
     val thing = if (shop) "product" else "item"
     val busy by editor.busy.collectAsState()
@@ -126,6 +130,10 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
     var cat by remember(edit) { mutableStateOf(was?.category_id ?: edit.category) }
     var barcode by remember(edit) { mutableStateOf(was?.barcode ?: "") }
     var onSale by remember(edit) { mutableStateOf(was?.is_available ?: true) }
+    // a shop's new product is counted unless told otherwise, a restaurant's new item is not (migration 0084)
+    var count by remember(edit) { mutableStateOf(was?.track_stock ?: shop) }
+    // a category that counts its stock counts every item in it, whatever the item says
+    val byCategory = cats.firstOrNull { it.id == cat }?.is_stock == true
     var removing by remember(edit) { mutableStateOf(false) }
 
     // top: the keyboard takes the lower half of the screen
@@ -168,6 +176,25 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
         }
         if (open) T("Tapping it on the till opens the keypad: for a service, or anything charged differently each time.", 13.sp, 500, V.Text2, lines = 2)
 
+        // One whose price is typed at the sale is a service: it has no stock to count.
+        if (!open) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Switch("Count its stock", count || byCategory, Modifier.weight(1f)) {
+                    if (byCategory) Toaster.say("Its category counts stock, so this ${thing}'s is counted too. That is set in the back office.") else count = !count
+                }
+                // stock can be changed once the server counts it: after a save, not before
+                if (stock != null && was != null && !was.open_price && (was.track_stock || byCategory)) {
+                    VBtn("Add stock", height = 56.dp, radius = 14.dp, enabled = !busy) { stock(StockForm.Way.In) }
+                    VBtn("Remove stock", height = 56.dp, radius = 14.dp, enabled = !busy) { stock(StockForm.Way.Out) }
+                }
+            }
+            if (count && !byCategory && was?.track_stock != true) T(
+                if (was == null) "It will say Out on every till until stock is added: save it, then open it again to add some."
+                else "It will say Out on every till until stock is added. Save, then open it again to add some.",
+                13.sp, 500, V.AmberText, lines = 2,
+            )
+        }
+
         Caps("Category", V.Text2)
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             (listOf<CategoryEntity?>(null) + cats).forEach { c ->
@@ -180,13 +207,13 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             }
         }
 
-        T("Its ${if (shop) "variants, cost, tax and stock" else "add-ons, tax and stock"} are set in the back office.", 13.sp, 500, V.Text3, lines = 2)
+        T("Its ${if (shop) "variants, cost and tax" else "add-ons and tax"} are set in the back office.", 13.sp, 500, V.Text3, lines = 2)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (was != null) VBtn("Remove", height = 56.dp, fg = V.RedText, enabled = !busy) { removing = true }
             Box(Modifier.weight(1f))
             VBtn("Cancel", height = 56.dp, enabled = !busy) { editor.close() }
             VBtn(if (busy) "Saving…" else if (was == null) "Add $thing" else "Save", bg = V.Blue, fg = Color.White, height = 56.dp, weight = 800, enabled = !busy) {
-                editor.save(name, price, open, cat, barcode, onSale, done = done)
+                editor.save(name, price, open, cat, barcode, onSale, count, done = done)
             }
         }
     }

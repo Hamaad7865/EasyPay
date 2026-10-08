@@ -91,8 +91,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 // the colours a category gets when the back office gave it none
-private val CAT_COLORS = listOf(0xFFB9521C, 0xFF2459C9, 0xFFB83A3A, 0xFF8F6A0E, 0xFFA8366F, 0xFF117785, 0xFF6243C8, 0xFF74513A).map { Color(it) }
-private fun colorOf(c: CategoryEntity?, index: Int): Color = Pos.css(c?.color, CAT_COLORS[Math.floorMod(index, CAT_COLORS.size)])
+private fun colorOf(c: CategoryEntity?, index: Int): Color = com.restopos.core.ui.catColor(c?.color, index)
 private val HM = SimpleDateFormat("HH:mm", Locale.US)
 
 // The order screen: the order down the left with what the kitchen has and

@@ -195,12 +195,14 @@ class ServiceRepository @Inject constructor(
     // named it down with it. Once the server has it, a sync brings it onto
     // this till, and the others have it at their next.
     // Returns the item's id.
-    suspend fun saveItem(id: String?, item: ItemForm.Item, categoryId: String?, available: Boolean, shop: Boolean, approver: StaffMember? = null): Result<String> = runCatching {
+    // countStock: whether its stock is counted, when the sheet says; null leaves it as it is.
+    suspend fun saveItem(id: String?, item: ItemForm.Item, categoryId: String?, available: Boolean, shop: Boolean, approver: StaffMember? = null, countStock: Boolean? = null): Result<String> = runCatching {
         staff.allow("items.edit", if (shop) "change the products" else "change the menu", approver)
         val itemId = id ?: Uuid7.next()
-        ask("item.save", shop, buildJsonObject {
+        ask("item.save", { ItemForm.refused(it, shop) }, buildJsonObject {
             put("id", itemId); put("name", item.name); put("price", item.price); put("open_price", item.open)
             put("category_id", categoryId ?: ""); put("barcode", item.barcode ?: ""); put("available", available)
+            countStock?.let { put("track_stock", it) }
             staff.approvedBy("items.edit", approver)?.let { put("approved_by", it) }
         })
         itemId
@@ -209,14 +211,53 @@ class ServiceRepository @Inject constructor(
     // Removed from the menu, the same way. Receipts that sold it keep its name.
     suspend fun removeItem(itemId: String, shop: Boolean, approver: StaffMember? = null): Result<Unit> = runCatching {
         staff.allow("items.edit", if (shop) "change the products" else "change the menu", approver)
-        ask("item.remove", shop, buildJsonObject {
+        ask("item.remove", { ItemForm.refused(it, shop) }, buildJsonObject {
             put("item_id", itemId)
             staff.approvedBy("items.edit", approver)?.let { put("approved_by", it) }
         })
     }
 
+    // A category made or changed from the till: its name and its colour. Its
+    // printers, its place and whether its stock is counted are the back
+    // office's, and the server leaves them as they are. Asked now and waited
+    // for, as an item is. Returns the category's id.
+    suspend fun saveCategory(id: String?, category: CategoryForm.Category, shop: Boolean, approver: StaffMember? = null): Result<String> = runCatching {
+        staff.allow("items.edit", if (shop) "change the products" else "change the menu", approver)
+        val categoryId = id ?: Uuid7.next()
+        ask("category.save", CategoryForm::refused, buildJsonObject {
+            put("id", categoryId); put("name", category.name); put("color", category.color ?: "")
+            staff.approvedBy("items.edit", approver)?.let { put("approved_by", it) }
+        })
+        categoryId
+    }
+
+    // Removed, the same way. The server refuses while items are in it.
+    suspend fun removeCategory(categoryId: String, shop: Boolean, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("items.edit", if (shop) "change the products" else "change the menu", approver)
+        ask("category.remove", CategoryForm::refused, buildJsonObject {
+            put("category_id", categoryId)
+            staff.approvedBy("items.edit", approver)?.let { put("approved_by", it) }
+        })
+    }
+
+    // Stock put in or taken out in this till's store, by someone allowed to
+    // adjust stock or with their approval; the reason need not be given.
+    // Asked now and waited for: the server holds the floor (no more out than
+    // there is) and only it knows what the other tills have sold.
+    // left: what this till believes is there, for the words of a refusal.
+    suspend fun adjustStock(itemId: String, variantId: String?, units: Int, way: StockForm.Way, reason: String?, shop: Boolean, left: String, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("stock.adjust", "change stock", approver)
+        val store = session.storeId() ?: error("This till is not set up for a store yet.")
+        ask("stock.adjust", { StockForm.refused(it, shop, left) }, buildJsonObject {
+            put("store_id", store); put("item_id", itemId); put("variant_id", variantId ?: "")
+            put("units", units); put("direction", way.code); put("reason", reason ?: "")
+            staff.approvedBy("stock.adjust", approver)?.let { put("approved_by", it) }
+        })
+    }
+
     // One op sent now, outside the outbox, and its answer waited for.
-    private suspend fun ask(type: String, shop: Boolean, payload: JsonObject) {
+    // refused: the server's code for why not, in the words of whoever asked.
+    private suspend fun ask(type: String, refused: (String?) -> String, payload: JsonObject) {
         val answer = try {
             api.push(listOf(OutboxOp(Uuid7.next(), type, payload, staff.id()))).firstOrNull()
         } catch (e: java.io.IOException) {
@@ -228,7 +269,7 @@ class ServiceRepository @Inject constructor(
         }
         when (answer?.status) {
             "applied" -> SyncScheduler.pullNow(context)
-            "rejected" -> error(ItemForm.refused(answer.code, shop))
+            "rejected" -> error(refused(answer.code))
             else -> error("The server is busy. Try again in a moment.")
         }
     }

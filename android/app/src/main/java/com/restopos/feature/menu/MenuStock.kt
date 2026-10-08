@@ -36,6 +36,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Money
 import com.restopos.core.data.Approvals
+import com.restopos.core.data.LinePrice
+import com.restopos.core.data.StockForm
 import com.restopos.core.data.NeedsApproval
 import com.restopos.core.data.ServiceRepository
 import com.restopos.core.data.StaffMember
@@ -57,6 +59,7 @@ import com.restopos.core.ui.V
 import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.VI
 import com.restopos.core.ui.VIcon
+import com.restopos.core.ui.catColor
 import com.restopos.core.ui.panel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -64,6 +67,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -76,10 +81,12 @@ import javax.inject.Inject
 data class MenuRow(val item: ItemEntity, val category: CategoryEntity?, val index: Int, val station: String, val options: String)
 
 // The menu as the floor needs it during service: what there is, where it is
-// made, whether it can still be sold, and what it costs. Someone allowed to
-// edit the menu can change a price here, and add an item, change its name,
-// price, category and barcode, or remove it (ItemSheet). An item's add-ons,
-// tax and stock are the back office's.
+// made, whether it can still be sold, what it costs and, for an item whose
+// stock is counted, what is left. Someone allowed to edit the menu can change
+// a price here, add an item, change its name, price, category and barcode,
+// or remove it (ItemSheet), and make, recolour or remove a category
+// (CategorySheets); someone allowed to adjust stock can add to it or take
+// from it (StockSheet). An item's add-ons and tax are the back office's.
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class MenuViewModel @Inject constructor(
@@ -113,6 +120,26 @@ class MenuViewModel @Inject constructor(
     // An item being added, changed or removed from this till.
     val items = ItemEditor(service, approvals, viewModelScope, shop = false)
 
+    // The categories, made, changed and removed from this till; a list that
+    // was showing one that is gone shows everything.
+    val categories = CategoryEditor(service, approvals, viewModelScope, shop = false) { gone -> if (cat.value == gone) cat.value = null }
+    val counts: StateFlow<Map<String, Int>> = db.catalog().itemsPerCategory().map { rows -> rows.associate { it.id to it.n } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    // What this store holds of each counted item, in thousandths, and the
+    // stock of one being added to or taken from.
+    val left: StateFlow<Map<String, Long>> = flow { emit(session.storeId()) }
+        .flatMapLatest { s -> if (s == null) emptyFlow() else db.retail().leftByItem(s) }
+        .map { rows -> rows.associate { it.item_id to it.qty } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+    val stock = StockEditor(service, approvals, viewModelScope, shop = false)
+
+    // From the item's sheet to its stock: the one closes, the other opens.
+    fun stockOf(item: ItemEntity, way: StockForm.Way) {
+        items.close()
+        stock.open(StockEdit(item.id, null, item.name, left.value[item.id] ?: 0L, item.sold_by == "weight", way))
+    }
+
     // A new price for an item, as typed ("120", "99.50"). Someone who may not
     // change prices asks someone who may; the sheet closes while they do.
     fun setPrice(item: ItemEntity, typed: String, by: StaffMember? = null) {
@@ -143,8 +170,7 @@ class MenuViewModel @Inject constructor(
     }
 }
 
-private val CAT_COLORS = listOf(0xFFB9521C, 0xFF2459C9, 0xFFB83A3A, 0xFF8F6A0E, 0xFFA8366F, 0xFF117785, 0xFF6243C8, 0xFF74513A).map { Color(it) }
-private fun colorOf(c: CategoryEntity?, index: Int): Color = Pos.css(c?.color, CAT_COLORS[Math.floorMod(index, CAT_COLORS.size)])
+private fun colorOf(c: CategoryEntity?, index: Int): Color = catColor(c?.color, index)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -157,11 +183,15 @@ fun MenuStockScreen(vm: MenuViewModel) {
     val soldOut by vm.soldOut.collectAsState()
     val pricing by vm.pricing.collectAsState()
     val editing by vm.items.editing.collectAsState()
+    val counts by vm.counts.collectAsState()
+    val left by vm.left.collectAsState()
+    val stocking by vm.stock.editing.collectAsState()
 
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             ScreenHead("$total items · $soldOut sold out", L.menu, Modifier.weight(1f))
             Field(q, { vm.query.value = it.take(40) }, "Find an item", Modifier.width(340.dp), height = 52.dp, bg = V.Panel, size = 16.sp, leading = { VIcon(VI.Search, 20.dp, V.Text2) })
+            VBtn("Categories", height = 52.dp) { vm.categories.list() }
             VBtn("New item", bg = V.Blue, fg = Color.White, height = 52.dp, weight = 800) { vm.items.new(cat) }
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -194,7 +224,14 @@ fun MenuStockScreen(vm: MenuViewModel) {
                     Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         // the name is a key: tapping it opens the item, to change or remove it
                         Box(Modifier.weight(1.6f).heightIn(min = 48.dp).clip(RoundedCornerShape(10.dp)).clickable { vm.items.open(r.item) }, contentAlignment = Alignment.CenterStart) {
-                            T(r.item.name, 15.sp, 700, lines = 2)
+                            // an item whose stock is counted says what this store holds of it
+                            val counted = !r.item.open_price && (r.item.track_stock || r.category?.is_stock == true)
+                            if (!counted) T(r.item.name, 15.sp, 700, lines = 2)
+                            else Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                val qty = left[r.item.id] ?: 0L
+                                T(r.item.name, 15.sp, 700)
+                                T(LinePrice.left(qty, r.item.sold_by == "weight"), 12.sp, 700, when (LinePrice.stock(qty)) { LinePrice.Stock.Plenty -> V.Text2; LinePrice.Stock.Few -> V.AmberText; LinePrice.Stock.None -> V.RedText })
+                            }
                         }
                         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Box(Modifier.size(8.dp).clip(CircleShape).background(colorOf(r.category, r.index)))
@@ -223,7 +260,9 @@ fun MenuStockScreen(vm: MenuViewModel) {
         }
     }
 
-    editing?.let { ItemSheet(vm.items, it, cats, shop = false) }
+    editing?.let { e -> ItemSheet(vm.items, e, cats, shop = false, stock = e.item?.let { item -> { way -> vm.stockOf(item, way) } }) }
+    CategorySheets(vm.categories, cats, counts, shop = false)
+    stocking?.let { StockSheet(vm.stock, it) }
 
     pricing?.let { item ->
         // what it costs now, as a number to type over: "120" or "99.50"

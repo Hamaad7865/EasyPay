@@ -8,6 +8,8 @@ import androidx.room.Upsert
 
 // Pulled rows are written with @Upsert (insert, or update in place). REPLACE
 // deletes the old row first, which loses whatever hangs off it.
+data class CategoryCount(val id: String, val n: Int)
+
 @Dao
 interface CatalogDao {
     // Sale grid + search read from Room with paging (spec 7.3, 2,000 items).
@@ -21,6 +23,10 @@ interface CatalogDao {
 
     @Query("SELECT * FROM categories WHERE deleted_at IS NULL ORDER BY sort_order, name")
     fun categories(): kotlinx.coroutines.flow.Flow<List<CategoryEntity>>
+
+    // how many items each category holds: a category with any is not removed
+    @Query("SELECT category_id AS id, COUNT(*) AS n FROM items WHERE deleted_at IS NULL AND category_id IS NOT NULL GROUP BY category_id")
+    fun itemsPerCategory(): kotlinx.coroutines.flow.Flow<List<CategoryCount>>
 
     @Upsert
     suspend fun upsertCategories(rows: List<CategoryEntity>)
