@@ -128,6 +128,46 @@ const near = (a, b) => Math.abs(Number(a) - b) < 0.01;
     const bag = await one(`select count(*)::int as n from items where tenant_id = $1 and name in ('Bag','Hat','Coat') and deleted_at is null`, [tid]);
     check('I5 only the clean product goes in', r.products === 1 && umb.n === 1 && bag.n === 0, JSON.stringify(r));
 
+    // I10 what a file would add besides products (migration 0081): the check says it before anything is saved
+    {
+      const live = async (table) => (await c.query(`select name from ${table} where tenant_id = $1 and deleted_at is null order by lower(name)`, [tid])).rows.map((x) => x.name);
+      // Home was removed since: a file that names it brings it back
+      await c.query(`update categories set deleted_at = now() where tenant_id = $1 and name = 'Home'`, [tid]);
+      const catsBefore = await live('categories'), supsBefore = await live('suppliers');
+      const file = [
+        { name: 'Sun hat', category: 'Summer', supplier: 'Chapeaux Ltd', price: 45000 },
+        { name: 'Sun hat, wide', category: 'summer', supplier: 'chapeaux ltd', price: 52000 },
+        { name: 'Tea towel', category: 'Home', supplier: 'TEXTILES OCEAN', price: 12000 },
+        { name: 'Sock', category: 'Clothing', price: 9000 },
+        // a row with a problem adds nothing, whatever it names
+        { name: 'Broken', category: 'Nowhere', supplier: 'Nobody Ltd' },
+        // a product takes its category from its first row
+        { name: 'Wool scarf', category: 'Winter', o1: 'Colour', v1: 'Red', price: 59000 },
+        { name: 'Wool scarf', category: 'Autumn', o1: 'Colour', v1: 'Blue', price: 59000 },
+      ].map((x, i) => ({ n: i + 2, ...x }));
+      const dry = await run(file, true);
+      check('I10 the check names the categories and suppliers the file would add, once each, and the category it would bring back',
+        JSON.stringify(dry.new_categories) === '["Summer","Winter"]' && JSON.stringify(dry.revived_categories) === '["Home"]' && JSON.stringify(dry.new_suppliers) === '["Chapeaux Ltd"]',
+        JSON.stringify([dry.new_categories, dry.revived_categories, dry.new_suppliers]));
+      check('I10 and has added none of them', JSON.stringify(await live('categories')) === JSON.stringify(catsBefore) && JSON.stringify(await live('suppliers')) === JSON.stringify(supsBefore));
+      const real = await run(file, false);
+      const added = (now, was) => now.filter((x) => !was.includes(x));
+      const catsNow = await live('categories'), supsNow = await live('suppliers');
+      check('I10 the import then adds exactly those, and says the same',
+        JSON.stringify(added(catsNow, catsBefore)) === JSON.stringify([...dry.new_categories, ...dry.revived_categories].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())))
+        && JSON.stringify(added(supsNow, supsBefore)) === JSON.stringify(dry.new_suppliers)
+        && JSON.stringify([real.new_categories, real.revived_categories, real.new_suppliers]) === JSON.stringify([dry.new_categories, dry.revived_categories, dry.new_suppliers]),
+        JSON.stringify({ cats: added(catsNow, catsBefore), sups: added(supsNow, supsBefore), real: [real.new_categories, real.revived_categories, real.new_suppliers] }));
+      const again = await run(file, true);
+      check('I10 the same file again would add nothing more', again.new_categories.length === 0 && again.revived_categories.length === 0 && again.new_suppliers.length === 0, JSON.stringify(again));
+
+      // every row with a problem is told, not the first 300: the report to fix the file from is made of them
+      const many = Array.from({ length: 340 }, (_, i) => ({ n: i + 2, name: 'No price ' + i }));
+      const told = await run(many, true);
+      check('I10 a file with 340 bad rows is told of all 340', told.rows === 340 && told.good === 0 && told.problems.length === 340 && told.problems[339].n === 341 && told.problems.every((x) => x.why === 'price-missing'),
+        `${told.problems.length} ${JSON.stringify(told.problems[339])}`);
+    }
+
     // I6 too much at once
     const e = await failsWith(`select catalog_import($1,$2,$3,$4::jsonb,true)`, [tid, store, emp, JSON.stringify(Array.from({ length: 5001 }, (_, i) => ({ n: i, name: 'x' + i, price: 1 })))]);
     check('I6 more than 5000 rows are refused', e && e.message === 'too-many-rows', e ? e.message : 'no error');
