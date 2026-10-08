@@ -20,10 +20,23 @@ const BACK_OFFICE_FILES = ["/icon.png", "/logo-full.png", "/logo-mark.png"]; // 
 
 const isBackOffice = (path) => BACK_OFFICE_FILES.includes(path) || BACK_OFFICE.some((p) => path === p || path.startsWith(p + "/"));
 
+// The back office has one address. A sign-in is kept for the address it was
+// made at, and the sign-in service refuses one made from an address it does
+// not know ("invalid origin"): at www.easypaypos.com the sign-in page opened
+// and then refused everyone. So the back office asked for at www is sent to
+// the same page without it. The public site itself answers at both.
+const HOME = "easypaypos.com";
+
 export default {
   async fetch(request, env) {
-    const { pathname } = new URL(request.url);
+    const url = new URL(request.url);
+    const { pathname } = url;
     if (!isBackOffice(pathname)) return env.ASSETS.fetch(request);
+    if (url.hostname === "www." + HOME) {
+      url.hostname = HOME;
+      // 308: the same request, method and all, at the other address
+      return Response.redirect(url.toString(), 308);
+    }
     if (!env.BACKOFFICE) {
       return new Response("EasyPay's back office is not switched on yet.", {
         status: 503,
