@@ -190,7 +190,18 @@ class MainActivity : ComponentActivity() {
                             session.clear()
                             // clearAllTables() blocks; Room refuses it on the main thread.
                             withContext(Dispatchers.IO) { db.clearAllTables() }
-                            recreate()
+                            // Nobody is at a till that belongs to no business any more.
+                            staff.signOut()
+                            // Start again from nothing, on the sign-in screen. recreate()
+                            // did not: Android hands a recreated screen what it was
+                            // showing, so the till came back on the page it was signed
+                            // out from, with nothing behind it, and the sign-out looked
+                            // as if it had done nothing.
+                            startActivity(
+                                android.content.Intent(this@MainActivity, MainActivity::class.java)
+                                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK),
+                            )
+                            finish()
                         }
                     }
                     // someone else's PIN, over whatever screen asked for it
