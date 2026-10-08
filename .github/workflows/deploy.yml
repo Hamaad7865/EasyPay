@@ -21,8 +21,11 @@ name: release to production
 #   NEON_API_KEY            for the migrations and the till API
 #   CLOUDFLARE_API_TOKEN    for the back office and the site
 #   CLOUDFLARE_ACCOUNT_ID
-# and, as repository variables (same page, Variables), what the till API says
-# about the newest till build; left unset, no till is offered an update:
+# and, as repository variables (same page, Variables), what the till API is
+# told about till builds. None is needed for tills to be offered a release:
+# on production the API reads the newest release's till.json by itself
+# (release-apk.yml). MIN_TILL_VERSION is the oldest build still let in; the
+# other three name a build as well, for when that file cannot be read:
 #   MIN_TILL_VERSION, LATEST_TILL_VERSION, LATEST_TILL_NAME, TILL_APK_URL
 #
 # The back office's own three settings (its database, the sign-in service,

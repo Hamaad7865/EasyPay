@@ -8,6 +8,13 @@ name: release the till (APK)
 # (GitHub Packages is not used: it asks for a token to download, even from a
 # public repository, and a tablet has none.)
 #
+# Beside the APK it publishes till.json: the build's versionCode, its name and
+# where its APK is. The till API on production reads the newest release's
+# copy (hello.ts, till-release.ts), so a till that is already installed is
+# offered this build within about ten minutes of the release, with nothing
+# else to run. Release the till last: by then production's database and API
+# have to be ready for it.
+#
 # Started by pushing a tag named after the version in
 # android/app/build.gradle.kts ("v0.4.0" for versionName 0.4.0), or by hand
 # from the Actions tab. To release a new build: raise versionCode and
@@ -155,6 +162,24 @@ jobs:
           cp "$apk" out/easypay.apk
           (cd out && sha256sum easypay-${{ steps.version.outputs.name }}.apk | tee sha256.txt)
 
+      # what the till API reads to name this build to tablets (till-release.ts
+      # says what it accepts: a whole versionCode, an APK of this repository's releases)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: till.json, which build this is
+        run: |
+          name="${{ steps.version.outputs.name }}"; tag="${{ steps.version.outputs.tag }}"
+          printf '{"version":%s,"name":"%s","url":"https://github.com/%s/releases/download/%s/easypay-%s.apk"}\n' \
+            "${{ steps.version.outputs.code }}" "$name" "$GITHUB_REPOSITORY" "$tag" "$name" | tee out/till.json
+          node -e '
+            const { published, releasesOf } = require("./till-release.ts");
+            const file = "https://github.com/" + process.env.GITHUB_REPOSITORY + "/releases/latest/download/till.json";
+            const till = published(require("fs").readFileSync("out/till.json", "utf8"), releasesOf(file));
+            if (!till) { console.log("::error::till.json is not a build the till API would name: no tablet would be offered this release."); process.exit(1); }
+            console.log("The till API will name build " + till.version + " (" + till.name + ").");
+          '
+
       - name: the key and the settings are gone from the runner
         if: always()
         run: rm -f "$RUNNER_TEMP/easypay.jks" android/local.properties
@@ -169,19 +194,21 @@ jobs:
             echo "**Install or update:** open this on the tablet and allow the install:"
             echo "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/easypay.apk"
             echo
-            echo "A till that is already installed offers the update by itself once the till API names this build."
+            echo "A till that is already installed offers the update by itself, within about ten minutes: the till API reads which build is newest from this release."
             echo
             echo "Signing key fingerprint (SHA-256): \`${{ steps.signed.outputs.fingerprint }}\`"
           } > notes.md
-          gh release create "$tag" "out/easypay-$name.apk" out/easypay.apk out/sha256.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "EasyPay till $name" --notes-file notes.md
+          gh release create "$tag" "out/easypay-$name.apk" out/easypay.apk out/sha256.txt out/till.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "EasyPay till $name" --notes-file notes.md
           {
             echo "## EasyPay till $name is published"
             echo
             echo "Download: $url"
             echo
-            echo "For tills already installed to be offered this build, set these repository variables and run **release to production** with the till API ticked:"
+            echo "Tills already installed are offered this build by themselves, within about ten minutes: the till API reads till.json from the newest release. Nothing else has to be run."
             echo
-            echo "| Variable | Value |"
+            echo "What the API names can be seen at its /health address, under \`till\`. Should it not name build ${{ steps.version.outputs.code }}, a deploy of the API can be told it (see neon.ts):"
+            echo
+            echo "| Setting | Value |"
             echo "| --- | --- |"
             echo "| \`LATEST_TILL_VERSION\` | \`${{ steps.version.outputs.code }}\` |"
             echo "| \`LATEST_TILL_NAME\` | \`$name\` |"

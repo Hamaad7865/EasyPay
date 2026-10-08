@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { Pool } from "pg";
 import { attachDatabasePool } from "@neon/functions";
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { deployed, newest, published, releasesOf, stale, type Till } from "./till-release";
 
 // Till API (Neon Functions). Contract enforced:
 // - JWT comes from Neon Auth (Better Auth). No custom claims.
@@ -205,22 +206,50 @@ app.use("*", async (c, next) => {
 });
 
 // The newest build of the till there is to install: its versionCode, the name
-// people know it by ("0.4.0"), and where its APK is. The three are given at
-// deploy (LATEST_TILL_VERSION, LATEST_TILL_NAME, TILL_APK_URL, see neon.ts).
-// Without a version or an https address there is no update to offer, and a
-// till is told nothing. The file itself is hosted wherever the address says:
-// the API only passes the address on.
-function latestTill(): { version: number; name: string; url: string } | null {
-  const version = Math.trunc(Number(process.env.LATEST_TILL_VERSION ?? "0")) || 0;
-  const url = (process.env.TILL_APK_URL ?? "").trim();
-  if (version <= 0 || !/^https:\/\/\S+$/i.test(url)) return null;
-  return { version, name: (process.env.LATEST_TILL_NAME ?? "").trim() || `build ${version}`, url };
+// people know it by ("0.5.1"), and where its APK is. A release of the till
+// publishes the three as till.json beside its APK, and the API reads the
+// newest release's copy: a release is offered to tablets without a deploy.
+// What a deploy was told (LATEST_TILL_VERSION, LATEST_TILL_NAME,
+// TILL_APK_URL, see neon.ts) is named while that file cannot be read, and the
+// newer of the two wins (till-release.ts, where each decision is tested).
+// With neither there is no update to offer, and a till is told nothing. The
+// APK is hosted wherever the address says: the API only passes it on.
+//
+// The file is read on the production branch only, unless TILL_RELEASE_URL
+// says where it is ("off" for nowhere): a dev branch's tills are debug
+// builds, which a release cannot be installed over. What was read is kept for
+// ten minutes; a read that fails keeps what the last one found and is tried
+// again after a minute. GitHub is given 2.5 seconds, so that a till asking
+// here is never kept waiting on it.
+const RELEASE_FILE = "https://github.com/Hamaad7865/EasyPay/releases/latest/download/till.json";
+function releaseFile(): string {
+  const set = (process.env.TILL_RELEASE_URL ?? "").trim();
+  if (set) return set === "off" ? "" : set;
+  return process.env.NEON_BRANCH === "production" ? RELEASE_FILE : "";
+}
+let release: { at: number; ok: boolean; till: Till | null } | null = null;
+async function latestTill(): Promise<Till | null> {
+  const file = releaseFile();
+  if (!file) return deployed(process.env);
+  const now = Date.now();
+  if (stale(now, release)) {
+    const kept = release?.till ?? null;
+    // said first, so that the calls that arrive meanwhile do not all go and ask too
+    release = { at: now, ok: false, till: kept };
+    try {
+      const res = await fetch(file, { signal: AbortSignal.timeout(2500) });
+      if (res.ok) release = { at: now, ok: true, till: published(await res.text(), releasesOf(file)) };
+    } catch {
+      // not reached, or too slow: what was kept stands
+    }
+  }
+  return newest(deployed(process.env), release?.till ?? null);
 }
 
 // minTill: the oldest till build still accepted (0: every build is).
 // till: the newest build there is to install, or null (the till's update key asks here).
-app.get("/health", (c) =>
-  c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0082", minTill: Number(process.env.MIN_TILL_VERSION ?? "0") || 0, till: latestTill() }),
+app.get("/health", async (c) =>
+  c.json({ ok: true, branch: process.env.NEON_BRANCH ?? "unknown", build: "v2-0082", minTill: Number(process.env.MIN_TILL_VERSION ?? "0") || 0, till: await latestTill() }),
 );
 
 // Tenant-scoped self check: only ever returns the caller's own rows.

@@ -151,10 +151,14 @@ handoff (`feature/main/MainShell.kt` holds every screen):
   something to see to, green for an update, amber for sales still to be sent.
   A newer build is offered, downloaded while the till goes on selling, and
   handed to Android's installer when the person at the till says so; nothing
-  installs by itself. For a build to be offered, three values are given when
-  the API is deployed (see `neon.ts`): `LATEST_TILL_VERSION` (its
-  `versionCode`, which must go up with every release), `LATEST_TILL_NAME`
-  ("0.4.0") and `TILL_APK_URL` (an https address the tablets can reach).
+  installs by itself. A build is offered once it is released: the release
+  workflow publishes `till.json` beside the APK (its `versionCode`, which
+  must go up with every release, its name and the APK's address), and the
+  till API on production reads the newest release's copy, within about ten
+  minutes and with nothing to run (`till-release.ts`). A deploy of the API
+  can name a build as well (`LATEST_TILL_VERSION`, `LATEST_TILL_NAME`,
+  `TILL_APK_URL`, see `neon.ts`), which is what tablets are told while
+  GitHub cannot be reached; the newer of the two is the one named.
   Android installs it over the till only if it is signed with the same key
   as the build on the tablet, and asks once to let EasyPay install updates.
 - **Splitting equally** keeps the shares already taken on the tablet between
