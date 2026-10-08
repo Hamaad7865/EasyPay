@@ -359,6 +359,11 @@ fun SettingsScreen(
     val jobs by vm.jobs.collectAsState()
     val notices by vm.notices.collectAsState()
     val retail by vm.retail.collectAsState()
+    // A shop has sales and products, no orders, kitchen or menu. Where a line
+    // only has two wordings, the moment before the business is read is taken
+    // for a restaurant, as the shell does; what only a restaurant has waits
+    // until it is known to be one.
+    val shop = retail == true
     val context = LocalContext.current
     val network by produceState(initialValue = network(context)) {
         while (true) { delay(5000); value = network(context) }
@@ -384,9 +389,9 @@ fun SettingsScreen(
         if (pending > 0 && !needsSignIn) add(Standing("$pending changes are waiting to be sent", "They go as soon as there is a connection.", "Sync now", soft = true) { vm.sync() })
         val list = printers
         if (list != null && list.isEmpty()) {
-            add(Standing("No printer is set up", "Nothing can print: no receipts, no kitchen tickets. Printers are added in the back office.", "Printers") { page = Page.Printers })
+            add(Standing("No printer is set up", "Nothing can print: no receipts, no ${if (shop) "reports" else "kitchen tickets"}. Printers are added in the back office.", "Printers") { page = Page.Printers })
         } else if (list != null && list.none { it.is_receipt }) {
-            add(Standing("No receipt printer", "Receipts, bills and reports have nowhere to print, and the drawer cannot open.", "Printers") { page = Page.Printers })
+            add(Standing("No receipt printer", "${if (shop) "Receipts and reports" else "Receipts, bills and reports"} have nowhere to print, and the drawer cannot open.", "Printers") { page = Page.Printers })
         }
         if (failed > 0) add(Standing("$failed print ${if (failed == 1) "job" else "jobs"} failed", "See what did not print and send it again.", "Printers") { page = Page.Printers })
     }
@@ -417,11 +422,11 @@ fun SettingsScreen(
                             Page.Till -> TillPage(vm, keys, network, standing, onSignIn, onRejected) { page = it }
                             Page.Notices -> NoticesPage(vm, standing)
                             Page.Cash -> CashPage(vm, more, keys)
-                            Page.Reports -> ReportsPage(vm, more, keys.close) { sheet = "day" }
+                            Page.Reports -> ReportsPage(vm, more, shop, keys.close) { sheet = "day" }
                             Page.Payments -> PaymentsPage(vm) { receipts.showId(it) }
-                            Page.Printers -> PrintersPage(vm, more)
-                            Page.Display -> DisplayPage(vm)
-                            Page.Support -> SupportPage(vm, network, onSignIn, onRejected, onSignOut)
+                            Page.Printers -> PrintersPage(vm, more, retail)
+                            Page.Display -> DisplayPage(vm, retail)
+                            Page.Support -> SupportPage(vm, shop, network, onSignIn, onRejected, onSignOut)
                             // which business this is, is read in a moment: no help is shown for the wrong one meanwhile
                             Page.Help -> retail?.let { HelpPage(it) }
                         }
@@ -617,7 +622,7 @@ private fun CashPage(vm: SettingsViewModel, more: MoreViewModel, keys: CashKeys)
 }
 
 @Composable
-private fun ReportsPage(vm: SettingsViewModel, more: MoreViewModel, onCloseShift: () -> Unit, onCloseDay: () -> Unit) {
+private fun ReportsPage(vm: SettingsViewModel, more: MoreViewModel, shop: Boolean, onCloseShift: () -> Unit, onCloseDay: () -> Unit) {
     var shown by remember { mutableStateOf(false) }
     if (!vm.can("shift.view_report") && !shown) {
         Locked("Reports are for people allowed to see them.") { vm.guard("shift.view_report", "see the reports") { shown = true } }
@@ -705,7 +710,7 @@ private fun ReportsPage(vm: SettingsViewModel, more: MoreViewModel, onCloseShift
                 // with the day open it is closed by counting the drawer; with none open, these figures are closed on their own
                 val dayOpen = last?.first?.closed_at == null && last != null
                 Row(Modifier.fillMaxWidth()) { Action(if (dayOpen) "Close the day" else "Close and print", primary = true, onClick = if (dayOpen) onCloseShift else onCloseDay) }
-                Note("Closing the day counts the drawer, fixes these figures, prints the Z report and starts a new day. Every order has to be paid first.")
+                Note("Closing the day counts the drawer, fixes these figures, prints the Z report and starts a new day. " + if (shop) "Every sale has to be paid first, parked ones included." else "Every order has to be paid first.")
             }
         }
         else -> {
@@ -796,8 +801,10 @@ private fun PaymentsPage(vm: SettingsViewModel, onOpen: (String) -> Unit) {
     )
 }
 
+// `retail` is null for the moment the business is being read.
 @Composable
-private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel) {
+private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boolean?) {
+    val shop = retail == true
     val printers by vm.printers.collectAsState()
     val routes by vm.routes.collectAsState()
     val one by vm.onePrinter.collectAsState()
@@ -833,7 +840,9 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel) {
                     }
                     Text("${if (usb) "USB" else p.address ?: "no address"} · ${p.paper_mm} mm paper", Modifier.padding(top = 2.dp), color = Pos.Text3, fontSize = 13.sp)
                     Text(
-                        if (one) (if (p.is_receipt) "Everything prints here: receipts, bills, reports, the cash drawer and every kitchen order" else "Nothing is sent here while one printer does everything")
+                        // a shop sends nothing to a kitchen, whatever is ticked in the back office: all it prints is the receipt printer's
+                        if (shop) (if (p.is_receipt) "Everything prints here: receipts, reports and the cash drawer." else "Nothing is sent here: a shop's till prints everything on its receipt printer.")
+                        else if (one) (if (p.is_receipt) "Everything prints here: receipts, bills, reports, the cash drawer and every kitchen order" else "Nothing is sent here while one printer does everything")
                         else listOfNotNull(
                             "Receipts, bills, reports and the cash drawer".takeIf { p.is_receipt },
                             cats.takeIf { it.isNotEmpty() }?.let { "Kitchen tickets for ${it.joinToString(", ")}" },
@@ -845,7 +854,8 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel) {
             }
         }
     }
-    if (orderTypes.isNotEmpty()) {
+    // only a restaurant sends orders to a kitchen
+    if (retail == false && orderTypes.isNotEmpty()) {
         Heading("When an order goes to the kitchen")
         Panel {
             orderTypes.forEach {
@@ -881,19 +891,20 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel) {
 }
 
 @Composable
-private fun DisplayPage(vm: SettingsViewModel) {
+private fun DisplayPage(vm: SettingsViewModel, retail: Boolean?) {
     val leftHanded by vm.leftHanded.collectAsState()
     val keepAwake by vm.keepAwake.collectAsState()
     val lightMode by vm.lightMode.collectAsState()
     val change = "change how this till is set up"
     Toggle("Light mode", "A pale screen with dark text, for a bright room or a terrace. Off is the dark screen.", lightMode) { vm.guard("settings.device", change) { vm.setLightMode(it) } }
-    Toggle("Left-handed order screen", "The order moves to the right, the menu to the left.", leftHanded) { vm.guard("settings.device", change) { vm.setLeftHanded(it) } }
+    // only the restaurant's order screen can be turned round: a shop's sell screen has one layout, so a shop is not offered the switch
+    if (retail == false) Toggle("Left-handed order screen", "The order moves to the right, the menu to the left.", leftHanded) { vm.guard("settings.device", change) { vm.setLeftHanded(it) } }
     Toggle("Keep the screen on", "The tablet does not go to sleep while EasyPay is open.", keepAwake) { vm.guard("settings.device", change) { vm.setKeepAwake(it) } }
     Note("These are for this tablet only.")
 }
 
 @Composable
-private fun SupportPage(vm: SettingsViewModel, network: String, onSignIn: () -> Unit, onRejected: () -> Unit, onSignOut: () -> Unit) {
+private fun SupportPage(vm: SettingsViewModel, shop: Boolean, network: String, onSignIn: () -> Unit, onRejected: () -> Unit, onSignOut: () -> Unit) {
     val facts by vm.facts.collectAsState()
     val needsSignIn by vm.needsSignIn.collectAsState()
     val pending by vm.pending.collectAsState()
@@ -920,7 +931,9 @@ private fun SupportPage(vm: SettingsViewModel, network: String, onSignIn: () -> 
     Panel {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Note(
-                "Unlinks the tablet from the restaurant and clears the menu and the receipt list from it. Sales already sent stay in the back office. " +
+                if (shop) "Unlinks the tablet from the shop and clears the products and the receipt list from it. Sales already sent stay in the back office. " +
+                    "It is refused while a sale is waiting to be sent or is unpaid, parked ones included."
+                else "Unlinks the tablet from the restaurant and clears the menu and the receipt list from it. Sales already sent stay in the back office. " +
                     "It is refused while a sale is waiting to be sent or an order is unpaid.",
                 Modifier.weight(1f).padding(end = 12.dp),
             )

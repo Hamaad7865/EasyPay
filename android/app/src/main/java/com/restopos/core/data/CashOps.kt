@@ -275,7 +275,8 @@ class CashOps @Inject constructor(
 
     suspend fun unpaidOrders(): Long = db.tickets().unpaidOrderCount()
 
-    fun unpaid(n: Long) = "$n ${if (n == 1L) "order is" else "orders are"} still unpaid. Take payment for ${if (n == 1L) "it" else "them"}, or void ${if (n == 1L) "it" else "them"}, before closing the day."
+    // What holds the day open, said in the words of this business.
+    suspend fun unpaid(n: Long) = unpaidText(n, PosSettings.parse(db.ops().settings()).retail)
 
     private fun dayCloseOp(row: DayCloseEntity, z: ZDoc, approvedBy: String?) = op("day.close", buildJsonObject {
         put("id", row.id); put("store_id", row.store_id); put("device_id", row.device_id)
@@ -351,4 +352,13 @@ class CashOps @Inject constructor(
         val s = printing.settings()
         printing.send(p, Docs.z(z, printing.shop(), printing.paper(p), s.decimals, s.dayCloseDetailed), "Day closing no. ${z.number}").getOrThrow()
     }
+}
+
+// Why the day cannot be closed yet. A restaurant has orders, and one that
+// will not be paid is voided. A shop has sales, the one on the screen and
+// those under Parked, and one that will not be paid is cleared.
+internal fun unpaidText(n: Long, shop: Boolean): String {
+    val them = if (n == 1L) "it" else "them"
+    return if (shop) "$n ${if (n == 1L) "sale is" else "sales are"} still unpaid, on the screen or under Parked. Take payment for $them, or clear $them, before closing the day."
+    else "$n ${if (n == 1L) "order is" else "orders are"} still unpaid. Take payment for $them, or void $them, before closing the day."
 }

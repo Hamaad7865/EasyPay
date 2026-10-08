@@ -590,7 +590,11 @@ fun MainShell(
 
     if (confirmSignOut) {
         Sheet(onDismiss = { confirmSignOut = false }, width = 560.dp) {
-            SheetHead("Sign this tablet out?", "This clears the menu and the receipt list from this tablet. Sales already synced stay in the back office. It is refused while a sale is still waiting to sync or an order is still unpaid.") { confirmSignOut = false }
+            SheetHead(
+                "Sign this tablet out?",
+                if (retail) "This clears the products and the receipt list from this tablet. Sales already synced stay in the back office. It is refused while a sale is still waiting to sync or is still unpaid, parked ones included."
+                else "This clears the menu and the receipt list from this tablet. Sales already synced stay in the back office. It is refused while a sale is still waiting to sync or an order is still unpaid.",
+            ) { confirmSignOut = false }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 VBtn("Cancel", Modifier.weight(1f), height = 60.dp) { confirmSignOut = false }
                 VBtn("Sign out", Modifier.weight(1f), V.Red, Color.White, 60.dp, weight = 800) { confirmSignOut = false; onSignOut() }
