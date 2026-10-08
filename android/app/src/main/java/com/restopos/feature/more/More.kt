@@ -110,7 +110,8 @@ class MoreViewModel @Inject constructor(
 
     fun load() = viewModelScope.launch {
         _types.value = db.catalog().diningOptions()
-        _printers.value = session.storeId()?.let { db.ops().printers(it) } ?: emptyList()
+        // the printers only: a kitchen screen has nothing to test-print
+        _printers.value = com.restopos.core.data.Routing.paper(session.storeId()?.let { db.ops().printers(it) } ?: emptyList())
         _shift.value = cash.lastShift()?.let { it to cash.shiftDoc(it) }
         _day.value = runCatching { cash.dayDoc() }.getOrNull()
     }

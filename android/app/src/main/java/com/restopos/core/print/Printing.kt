@@ -68,7 +68,14 @@ class Printing @Inject constructor(
     suspend fun settings(): PosSettings = PosSettings.parse(db.ops().settings()).also { Money.decimals = it.decimals }
 
     // this store's, not removed, switched on (Routing.usable says which, and is tested)
-    suspend fun printers(): List<PrinterEntity> = session.storeId()?.let { store -> Routing.usable(db.ops().printers(store), store) } ?: emptyList()
+    private suspend fun usable(): List<PrinterEntity> = session.storeId()?.let { store -> Routing.usable(db.ops().printers(store), store) } ?: emptyList()
+
+    // The printers: what paper comes out of. A kitchen screen is kept in the
+    // same table and is never among them, so nothing here can print to one.
+    suspend fun printers(): List<PrinterEntity> = Routing.paper(usable())
+
+    // The kitchen screens: tablets that show the orders (core/kitchen).
+    suspend fun screens(): List<PrinterEntity> = Routing.screens(usable())
 
     suspend fun receiptPrinter(): PrinterEntity? = printers().firstOrNull { it.is_receipt }
 

@@ -21,11 +21,18 @@ object Routing {
     fun usable(all: List<PrinterEntity>, store: String?): List<PrinterEntity> =
         all.filter { it.store_id == store && it.deleted_at == null && it.is_active }
 
+    // A kitchen screen (server 0086) is kept with the printers and ticked like
+    // one, and is not one: a tablet that shows the orders. Everything below
+    // that prints works on the paper alone, whatever list it is handed, so a
+    // screen can never be sent a printer's bytes.
+    fun paper(all: List<PrinterEntity>): List<PrinterEntity> = all.filter { it.kind != SCREEN }
+    fun screens(all: List<PrinterEntity>): List<PrinterEntity> = all.filter { it.kind == SCREEN }
+
     // The one printer that does everything, when the restaurant is set up that
     // way and has a receipt printer. Set that way without one, the categories'
     // own printers are used: an order must not print nowhere because of a switch.
     fun single(printers: List<PrinterEntity>, onePrinter: Boolean): PrinterEntity? =
-        if (onePrinter) printers.firstOrNull { it.is_receipt } else null
+        if (onePrinter) paper(printers).firstOrNull { it.is_receipt } else null
 
     // The printers a category's items print on, in the order the printers are
     // listed. `ticked` is the category's own list (null for an item with no
@@ -33,7 +40,7 @@ object Routing {
     fun printersFor(ticked: List<String>?, printers: List<PrinterEntity>, onePrinter: Boolean): List<String> {
         single(printers, onePrinter)?.let { return listOf(it.id) }
         val wanted = ticked.orEmpty().toSet()
-        return printers.filter { wanted.contains(it.id) }.map { it.id }
+        return paper(printers).filter { wanted.contains(it.id) }.map { it.id }
     }
 
     // An order's lines, as the tickets they make: printer to its lines, each
@@ -41,8 +48,25 @@ object Routing {
     // nowhere to print is on no ticket (it is still on the kitchen display).
     fun <L> tickets(lines: List<Pair<L, List<String>?>>, printers: List<PrinterEntity>, onePrinter: Boolean): Map<String, List<L>> {
         val out = LinkedHashMap<String, MutableList<L>>()
-        printers.forEach { out[it.id] = ArrayList() }
+        paper(printers).forEach { out[it.id] = ArrayList() }
         lines.forEach { (line, ticked) -> printersFor(ticked, printers, onePrinter).forEach { out.getValue(it).add(line) } }
+        return out.filterValues { it.isNotEmpty() }
+    }
+
+    // An order's lines, as each kitchen screen's part of them: screen to its
+    // lines, in the order they were rung up. A screen set to show everything
+    // takes every line, the ones with no category included; another takes
+    // the lines of the categories that tick it. A screen with nothing of this
+    // send is sent nothing. "One printer for everything" speaks for the paper
+    // only: a screen goes by its own setting.
+    fun <L> screenLines(lines: List<Pair<L, List<String>?>>, screens: List<PrinterEntity>): Map<String, List<L>> {
+        val only = screens(screens)
+        val out = LinkedHashMap<String, MutableList<L>>()
+        only.forEach { out[it.id] = ArrayList() }
+        lines.forEach { (line, ticked) ->
+            val wanted = ticked.orEmpty().toSet()
+            only.forEach { s -> if (s.all_items || wanted.contains(s.id)) out.getValue(s.id).add(line) }
+        }
         return out.filterValues { it.isNotEmpty() }
     }
 
@@ -62,18 +86,20 @@ object Routing {
     }
 
     // The kitchen display's stations: the printers where something is made,
-    // which is every printer that has a category and is not the cashier's.
-    // With one printer for everything there is one place, so no stations.
+    // which is every printer that has a category and is not the cashier's
+    // (with one printer for everything the paper is one place, so none), and
+    // after them every kitchen screen, whatever it is set to show.
     fun stations(categories: Collection<List<String>>, printers: List<PrinterEntity>, onePrinter: Boolean): List<PrinterEntity> {
-        if (single(printers, onePrinter) != null) return emptyList()
         val used = categories.flatten().toSet()
-        return printers.filter { !it.is_receipt && used.contains(it.id) }
+        val made = if (single(printers, onePrinter) != null) emptyList() else paper(printers).filter { !it.is_receipt && used.contains(it.id) }
+        return made + screens(printers)
     }
 
-    // The stations a category's items show under on the kitchen display.
+    // The stations a category's items show under on the kitchen display. A
+    // screen that shows everything has every line under it.
     fun stationsFor(ticked: List<String>?, stations: List<PrinterEntity>): Set<String> {
         val wanted = ticked.orEmpty().toSet()
-        return stations.filter { wanted.contains(it.id) }.map { it.id }.toSet()
+        return stations.filter { wanted.contains(it.id) || (it.kind == SCREEN && it.all_items) }.map { it.id }.toSet()
     }
 
     // What the top of a kitchen ticket says: where it is for, or, when it
@@ -87,10 +113,14 @@ object Routing {
 
     // One printer as the wire sees it, however many times it was entered in
     // the back office ("Receipt" and "Kitchen" at the same address): prints
-    // to it are sent one after the other, never two at once.
+    // to it are sent one after the other, never two at once. A kitchen screen
+    // is at its own address and port, and has one exchange at a time too.
     fun line(p: PrinterEntity): String =
         if (p.kind == "usb") "usb" else {
+            val port = if (p.kind == SCREEN) 9310 else 9100
             val address = p.address?.trim().orEmpty().lowercase()
-            address.substringBefore(':') + ":" + (address.substringAfter(':', "9100").toIntOrNull() ?: 9100)
+            address.substringBefore(':') + ":" + (address.substringAfter(':', port.toString()).toIntOrNull() ?: port)
         }
+
+    const val SCREEN = "screen"
 }

@@ -168,6 +168,99 @@ class RoutingTest {
         assertEquals(listOf("curry", "beer", "platter", "gift card"), Routing.nowhere(order, emptyList(), onePrinter = true))
     }
 
+    // ---- kitchen screens (server 0086): a tablet that shows the orders ----
+
+    private fun screen(id: String, all: Boolean = false, on: Boolean = true) = PrinterEntity(
+        id = id, tenant_id = "t", store_id = "main", name = id.replaceFirstChar { it.uppercase() }, kind = "screen", address = "192.168.1.60",
+        is_active = on, pair_code = "KTCHN234", all_items = all,
+    )
+
+    // A screen sits among the printers and is ticked like one. Nothing is
+    // ever printed on it: printer bytes sent to a tablet are an order lost.
+    @Test
+    fun aScreenNeverPrints() {
+        val grill = screen("grill")
+        val all = listOf(grill, cashier, kitchen)
+        val sent = listOf("steak" to listOf("grill", "kitchen"), "salad" to listOf("grill"))
+        val t = Routing.tickets(sent, all, onePrinter = false)
+        assertEquals(setOf("kitchen"), t.keys)
+        assertEquals(listOf("steak"), t["kitchen"])
+        assertEquals(listOf("kitchen"), Routing.printersFor(listOf("grill", "kitchen"), all, false))
+        // a line whose only tick is a screen prints nowhere
+        assertEquals(listOf("salad"), Routing.nowhere(sent, all, false))
+        // nor is a screen the one printer for everything, even marked as the receipt printer by mistake
+        assertNull(Routing.single(listOf(grill.copy(is_receipt = true)), true))
+        assertEquals("cashier", Routing.single(all, true)?.id)
+        assertEquals(listOf("steak", "salad"), Routing.tickets(sent, all, onePrinter = true)["cashier"])
+        assertEquals(listOf(cashier, kitchen), Routing.paper(all))
+        assertEquals(listOf(grill), Routing.screens(all))
+    }
+
+    @Test
+    fun aScreenSetToEverythingGetsEveryLine() {
+        // the line with no category included: on a screen that shows everything, everything shows
+        assertEquals(listOf("curry", "beer", "platter", "gift card"), Routing.screenLines(order, listOf(screen("pass", all = true)))["pass"])
+    }
+
+    @Test
+    fun aScreenWithTicksGetsItsCategories() {
+        val sent = listOf("steak" to listOf("grill"), "beer" to listOf("drinks", "bar"), "platter" to listOf("grill", "drinks"), "gift card" to null)
+        val s = Routing.screenLines(sent, listOf(screen("grill"), screen("drinks")))
+        assertEquals(listOf("steak", "platter"), s["grill"])
+        assertEquals(listOf("beer", "platter"), s["drinks"])
+    }
+
+    @Test
+    fun aSendWithNothingForAScreenSendsItNothing() {
+        val s = Routing.screenLines(listOf("beer" to listOf("bar")), listOf(screen("grill"), screen("pass", all = true)))
+        assertEquals(setOf("pass"), s.keys)
+        // printers handed in by mistake are not screens
+        assertTrue(Routing.screenLines(order, three).isEmpty())
+    }
+
+    @Test
+    fun paperAndAScreenForTheSameCategory() {
+        val all = three + screen("grill")
+        val sent = listOf("steak" to listOf("kitchen", "grill"))
+        assertEquals(listOf("steak"), Routing.tickets(sent, all, false)["kitchen"])
+        assertEquals(listOf("steak"), Routing.screenLines(sent, Routing.screens(all))["grill"])
+        // one printer for everything speaks for the paper only: the screen still goes by its ticks
+        assertEquals(listOf("steak"), Routing.tickets(sent, all, true)["cashier"])
+    }
+
+    @Test
+    fun aSwitchedOffScreenGetsNothing() {
+        val all = listOf(cashier, screen("grill", on = false), screen("pass", all = true))
+        assertEquals(listOf("pass"), Routing.screens(Routing.usable(all, "main")).map { it.id })
+    }
+
+    // On the till's own Kitchen screen a kitchen screen is a station, as a kitchen printer is.
+    @Test
+    fun everyScreenIsAStation() {
+        val all = three + screen("grill") + screen("pass", all = true)
+        assertEquals(listOf("kitchen", "bar", "grill", "pass"), Routing.stations(listOf(listOf("kitchen"), listOf("bar")), all, false).map { it.id })
+        // with one printer for everything the screens are the only stations
+        assertEquals(listOf("grill", "pass"), Routing.stations(listOf(listOf("kitchen")), all, true).map { it.id })
+        // and with no screen there are none, as before
+        assertEquals(emptyList<String>(), Routing.stations(listOf(listOf("kitchen")), three, true).map { it.id })
+    }
+
+    @Test
+    fun aLineShowsUnderAnEverythingScreensStation() {
+        val stations = listOf(kitchen, screen("grill"), screen("pass", all = true))
+        assertEquals(setOf("kitchen", "pass"), Routing.stationsFor(listOf("kitchen"), stations))
+        assertEquals(setOf("grill", "pass"), Routing.stationsFor(listOf("grill"), stations))
+        assertEquals(setOf("pass"), Routing.stationsFor(null, stations))
+    }
+
+    // the till keeps one exchange at a time with each screen, by its address
+    @Test
+    fun aScreensLineIsItsAddressWithItsOwnPort() {
+        assertEquals("192.168.1.60:9310", Routing.line(screen("grill")))
+        assertEquals("192.168.1.60:9400", Routing.line(screen("grill").copy(address = "192.168.1.60:9400")))
+        assertNotEquals(Routing.line(screen("grill")), Routing.line(printer("p", address = "192.168.1.60")))
+    }
+
     @Test
     fun theSentenceForThem() {
         assertNull(Routing.nowhereText(emptyList()))
