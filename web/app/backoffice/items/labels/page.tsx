@@ -71,6 +71,7 @@ export default async function LabelsPage({ searchParams }: { searchParams: Searc
         title="Barcode labels"
         lede="Labels to stick on the goods: the name, the price and a barcode the till reads. Type how many of each, choose a label roll or A4 sheets, and print. In the print window, set the scale to 100% and the margins to none."
       >
+        <Link href="/backoffice/settings?tab=barcodes" className="btn btn-quiet">Barcode settings</Link>
         <Link href="/backoffice/items" className="btn btn-quiet">Back to products</Link>
       </PageHead>
       <Flash sp={sp} />

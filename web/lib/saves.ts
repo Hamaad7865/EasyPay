@@ -169,7 +169,28 @@ export async function saveProductRow(c: PoolClient, editing: boolean, p: Product
              (select s.id from suppliers s where s.tenant_id = $1 and s.id = $8 and s.deleted_at is null), $9, $10, $11)`,
     row,
   );
+  // a shop that has its barcodes made automatically: the new product gets one now (migration 0080; nothing otherwise)
+  await c.query(`select barcodes_auto($1, $2)`, [p.tenantId, p.id]);
   return true;
+}
+
+// After a file has been imported, in the same transaction: a shop that has
+// its barcodes made automatically (migration 0080) gets one for every line
+// the file added with none. Those are the products made in this transaction,
+// and the products it added a variant to (now() is the transaction's own
+// start, and a row's created_at is taken from it). A product that was there
+// before and was not added to is left as it is. Returns how many were made;
+// none when the shop makes its barcodes by hand.
+export async function barcodesForNewLines(c: PoolClient, tenantId: string): Promise<number> {
+  const r = await c.query(
+    `select coalesce(sum(barcodes_auto($1, i.id)), 0)::int as n
+       from items i
+      where i.tenant_id = $1 and i.deleted_at is null
+        and (i.created_at = now()
+          or exists (select 1 from item_variants v where v.tenant_id = $1 and v.item_id = i.id and v.deleted_at is null and v.created_at = now()))`,
+    [tenantId],
+  );
+  return r.rows[0].n as number;
 }
 
 export type VariantLine = { id: string; barcode: string | null; sku: string | null; price: number; cost: number | null };

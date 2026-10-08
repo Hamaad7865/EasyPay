@@ -166,6 +166,41 @@ function lib(name) {
         && (await saveP(true, { id: cap, name: 'Cap', cost: null }, true)) === true && (await row(cap)).cost === null);
       check('K3 a product removed meanwhile is not said to be saved', (await saveP(true, { id: crypto.randomUUID(), name: 'Gone' }, true)) === false);
 
+      // a business that has its barcodes made automatically (migration 0080): a product it adds has one at once
+      const code = async (id) => (await q1(`select barcode from items where id = $1`, [id])).barcode;
+      check('K5 a product added is left with no barcode unless the business asked for them', (await code(cap)) === null, String(await code(cap)));
+      await asApp(tid, () => c.query(`select barcode_settings_save($1, '21', true)`, [tid]));
+      const pen = crypto.randomUUID();
+      await saveP(false, { id: pen, name: 'Pen' }, true);
+      check('K5 with barcodes made automatically, a product added has one of the business\'s own', /^21\d{11}$/.test(String(await code(pen))), String(await code(pen)));
+      const was = await code(pen);
+      await saveP(true, { id: pen, name: 'Blue pen' }, true);
+      check('K5 saving it again leaves that barcode as it is', (await code(pen)) === was);
+
+      // After an import, in its own transaction as the back office runs it: the lines the file added get theirs,
+      // and what was there before is left alone.
+      const old = (await q1(`insert into items (tenant_id, name, price) values ($1, 'Old stock', 5000) returning id`, [tid])).id;
+      const grown = (await q1(`insert into items (tenant_id, name, price) values ($1, 'Old with a new size', 5000) returning id`, [tid])).id;
+      let fresh, withCode, xl;
+      const madeNow = await asApp(tid, async () => {
+        fresh = (await q1(`insert into items (tenant_id, name, price) values ($1, 'From the file', 5000) returning id`, [tid])).id;
+        withCode = (await q1(`insert into items (tenant_id, name, price, barcode) values ($1, 'From the file, with a barcode', 5000, '5449000000996') returning id`, [tid])).id;
+        xl = (await q1(`insert into item_variants (tenant_id, item_id, name, price) values ($1, $2, 'XL', 5000) returning id`, [tid, grown])).id;
+        return saves.barcodesForNewLines(c, tid);
+      });
+      const xlCode = (await q1(`select barcode from item_variants where id = $1`, [xl])).barcode;
+      check('K6 after an import, the product and the variant it added with no barcode are given one each',
+        madeNow === 2 && /^21\d{11}$/.test(String(await code(fresh))) && /^21\d{11}$/.test(String(xlCode)), `${madeNow} ${await code(fresh)} ${xlCode}`);
+      check('K6 a product that was there before keeps none, and one that came with a barcode keeps its own',
+        (await code(old)) === null && (await code(grown)) === null && (await code(withCode)) === '5449000000996', [await code(old), await code(grown), await code(withCode)].join());
+      await asApp(tid, () => c.query(`select barcode_settings_save($1, '21', false)`, [tid]));
+      let fresh2;
+      const madeOff = await asApp(tid, async () => {
+        fresh2 = (await q1(`insert into items (tenant_id, name, price) values ($1, 'From a later file', 5000) returning id`, [tid])).id;
+        return saves.barcodesForNewLines(c, tid);
+      });
+      check('K6 a business that makes its barcodes by hand gets none from an import', madeOff === 0 && (await code(fresh2)) === null);
+
       const m = (await q1(`insert into item_variants (tenant_id, item_id, name, price, cost) values ($1, $2, 'M', 13000, 6400) returning id`, [tid, shirt])).id;
       const l = (await q1(`insert into item_variants (tenant_id, item_id, name, price, cost) values ($1, $2, 'L', 13000, 6400) returning id`, [tid, shirt])).id;
       const lines = async () => (await c.query(`select name, sku, price::int as price, cost::int as cost from item_variants where item_id = $1 order by name`, [shirt])).rows.map((r) => [r.name, r.sku, r.price, r.cost].join(':')).join(' ');

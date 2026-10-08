@@ -154,6 +154,7 @@ export function Importer() {
               <p>
                 {count(stage.result.products, "product", "products")} ({stage.result.new_products} new), {count(stage.result.lines, "line", "lines")} ({stage.result.new_lines} new).
                 {(stage.result.stock_set ?? 0) > 0 && ` Opening stock set on ${count(stage.result.stock_set ?? 0, "line", "lines")}.`}
+                {(stage.result.barcodes ?? 0) > 0 && ` ${count(stage.result.barcodes ?? 0, "barcode", "barcodes")} made for the lines that came with none.`}
                 {(stage.result.stock_skipped ?? 0) > 0 && ` ${count(stage.result.stock_skipped ?? 0, "line", "lines")} already had stock history: their quantity was left alone.`}
                 {stage.result.rows - stage.result.good > 0 && ` ${count(stage.result.rows - stage.result.good, "row", "rows")} left out.`}
               </p>

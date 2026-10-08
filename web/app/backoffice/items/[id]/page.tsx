@@ -124,7 +124,11 @@ async function addOptions(f: FormData) {
     const r = await ruled(() => c.query(`select variants_generate($1, $2, $3, $4::jsonb) as r`, [ctx.tenantId, id, names, JSON.stringify(values)]));
     const { created, existing } = r.rows[0].r as { created: number; existing: number };
     if (created === 0) return "Every line is already there.";
-    return `${created} ${created === 1 ? "line" : "lines"} made${existing ? `, ${existing} already there` : ""}. Give them barcodes below, or type the makers' own.`;
+    // a shop that has its barcodes made automatically: the new lines get theirs now (migration 0080; nothing otherwise)
+    const coded = (await c.query(`select barcodes_auto($1, $2) as n`, [ctx.tenantId, id])).rows[0].n as number;
+    return `${created} ${created === 1 ? "line" : "lines"} made${existing ? `, ${existing} already there` : ""}. ${
+      coded > 0 ? "Each has a barcode of yours: type the maker's own over it if the goods carry one." : "Give them barcodes below, or type the makers' own."
+    }`;
   });
 }
 

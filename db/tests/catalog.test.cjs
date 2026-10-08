@@ -190,6 +190,82 @@ const validEan13 = (code) => /^\d{13}$/.test(code)
     check('C13 the tenant role can do all of it for its own tenant', r.created === 2 && n === 2);
     await c.query('SET LOCAL ROLE none');
     await c.query(`select set_config('app.tenant_id', '', true)`);
+
+    // ---- C14 a shop's barcode settings (migration 0080) ----
+    {
+      const settings = async (t = tid) => (await one(`select barcode_settings($1) as r`, [t])).r;
+      const save = (prefix, auto, t = tid) => one(`select barcode_settings_save($1,$2,$3) as r`, [t, prefix, auto]).then((x) => x.r);
+      const saveFails = (prefix, auto) => failsWith(`select barcode_settings_save($1,$2,$3)`, [tid, prefix, auto]).then((e) => (e ? e.message : 'saved'));
+      const fresh = await settings(uid);
+      check('C14 a business that never made a barcode reads the defaults: 200, not automatic, the first number',
+        fresh.prefix === '200' && fresh.auto === false && fresh.next_serial === 1 && fresh.next === '2000000000015' && fresh.made === 0, JSON.stringify(fresh));
+      const before = await settings();
+      check('C14 the next barcode shown is the one the next product gets', before.next_serial > 1 && before.next.startsWith('200') && before.next.length === 13 && before.made === before.next_serial - 1, JSON.stringify(before));
+      const N1 = await item(tid, 'Notebook');
+      await c.query(`select assign_barcodes($1,$2)`, [tid, N1]);
+      const got = (await one(`select barcode from items where id = $1`, [N1])).barcode;
+      check('C14 and it was', got === before.next, got + ' ' + before.next);
+
+      for (const bad of ['', '2', '2a', '20000000', ' 2 0 ', null]) {
+        const said = await saveFails(bad, false);
+        if (said !== 'bad-prefix') check(`C14 a prefix of "${bad}" is refused`, false, said);
+      }
+      check('C14 a prefix is 2 to 7 digits', true);
+      let s = await save(' 29 ', false);
+      const N2 = await item(tid, 'Pencil');
+      await c.query(`select assign_barcodes($1,$2)`, [tid, N2]);
+      const second = (await one(`select barcode from items where id = $1`, [N2])).barcode;
+      check('C14 a new prefix is on the next barcode, the numbers go on, and the barcodes made before keep theirs',
+        s.prefix === '29' && second === s.next && second.startsWith('29') && (await one(`select barcode from items where id = $1`, [N1])).barcode === got, JSON.stringify(s) + ' ' + second);
+      // seven digits leave five for the number: a shop that is past 99,999 cannot take one
+      await c.query(`update barcode_counters set next_serial = 100000 where tenant_id = $1`, [tid]);
+      const tooLong = await saveFails('2912345', false);
+      s = await save('291234', false);
+      check('C14 a prefix that leaves no room for the numbers already given is refused; one that does is taken', tooLong === 'prefix-too-long' && s.prefix === '291234' && s.left === 900000, tooLong + ' ' + JSON.stringify(s));
+      await c.query(`update barcode_counters set next_serial = 999999 where tenant_id = $1`, [tid]);
+      s = await settings();
+      check('C14 the last number is shown, and after it there is no next one to show', s.next !== null && s.left === 1);
+      await c.query(`update barcode_counters set next_serial = 1000000 where tenant_id = $1`, [tid]);
+      s = await settings();
+      check('C14 with the numbers used up, the page is told there is none left instead of failing', s.next === null && s.left === 0, JSON.stringify(s));
+      await c.query(`update barcode_counters set next_serial = 500 where tenant_id = $1`, [tid]);
+
+      // automatic: off does nothing, on gives every line with none its barcode
+      await save('20', false);
+      const A1 = await item(tid, 'Eraser');
+      let made = (await one(`select barcodes_auto($1,$2) as n`, [tid, A1])).n;
+      check('C14 with the switch off, a new product is left without a barcode', made === 0 && (await one(`select barcode from items where id = $1`, [A1])).barcode === null);
+      const lacking = (await settings()).without;
+      s = await save('20', true);
+      made = (await one(`select barcodes_auto($1,$2) as n`, [tid, A1])).n;
+      const a1 = (await one(`select barcode from items where id = $1`, [A1])).barcode;
+      check('C14 with it on, the product is given one, and one line fewer has none', s.auto === true && made === 1 && /^20\d{11}$/.test(a1) && (await settings()).without === lacking - 1, `${made} ${a1}`);
+      const A2 = await item(tid, 'Ruler', { barcode: '5012345678900' });
+      made = (await one(`select barcodes_auto($1,$2) as n`, [tid, A2])).n;
+      check('C14 a product that came with its maker\'s barcode keeps it', made === 0 && (await one(`select barcode from items where id = $1`, [A2])).barcode === '5012345678900');
+      const A3 = await item(tid, 'Cap');
+      await gen(A3, ['Size'], [['S', 'M', 'L']]);
+      made = (await one(`select barcodes_auto($1,$2) as n`, [tid, A3])).n;
+      const caps = (await all(`select barcode from item_variants where item_id = $1 and deleted_at is null`, [A3])).map((x) => x.barcode);
+      check('C14 variants made from options each get one, and the product itself does not',
+        made === 3 && caps.every((b) => /^20\d{11}$/.test(b)) && new Set(caps).size === 3 && (await one(`select barcode from items where id = $1`, [A3])).barcode === null, `${made} ${caps.join()}`);
+
+      // the tenant's own role: its own settings, and nobody else's
+      await c.query('SET LOCAL ROLE app_user');
+      await c.query(`select set_config('app.tenant_id', $1, true)`, [uid]);
+      const theirs = await settings(tid);
+      await c.query('SAVEPOINT other');
+      let said = 'saved';
+      try { await c.query(`select barcode_settings_save($1,'25',true)`, [tid]); await c.query('RELEASE SAVEPOINT other'); }
+      catch (e) { await c.query('ROLLBACK TO SAVEPOINT other'); said = 'refused'; }
+      await c.query(`select set_config('app.tenant_id', $1, true)`, [tid]);
+      const mine = await settings();
+      const own = await save('20', true);
+      await c.query('SET LOCAL ROLE none');
+      await c.query(`select set_config('app.tenant_id', '', true)`);
+      check('C14 another business reads the defaults in place of ours and cannot change ours; the tenant\'s own role can',
+        theirs.prefix === '200' && theirs.auto === false && said === 'refused' && mine.prefix === '20' && mine.auto === true && own.prefix === '20', JSON.stringify(theirs) + ' ' + said);
+    }
   } finally {
     await c.query('ROLLBACK');
     await c.end();

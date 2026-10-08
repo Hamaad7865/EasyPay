@@ -199,6 +199,12 @@ const id = () => crypto.randomUUID();
     const labels = await see(shop, '/backoffice/items/labels', {});
     const labelRows = rowsOf(labels.html).filter((r) => r.includes('Belt') || r.includes('Shirt'));
     check('M5 Barcode labels opens, and lists the products with their prices', !labels.error && labelRows.length >= 2 && labelRows.every((r) => r.includes('Rs 115.00')) && labels.says.includes('40 x 30 mm') && labels.says.includes('A4 sheets'), labels.error || labelRows.join(' // '));
+    // a shop's barcode settings: the digits, the switch, the next barcode, and how many lines have none
+    const bc = await see(shop, '/backoffice/settings', { tab: 'barcodes' });
+    check('M6 a shop\'s POS settings have a Barcodes tab: its digits, the next barcode and the lines that have none',
+      !bc.error && bc.says.includes('Your own barcodes') && bc.html.includes('name="prefix"') && bc.html.includes('value="200"') && bc.says.includes('2000000000015')
+      && bc.says.includes('5 lines have no barcode yet') && bc.html.includes('href="/backoffice/items/labels"'), bc.error || (bc.says.match(/The next barcode.{0,200}/) || [bc.says.slice(0, 200)])[0]);
+    check('M6 and Barcode labels points back at them', labels.html.includes('href="/backoffice/settings?tab=barcodes"'));
     const stock = await see(shop, '/backoffice/stock', {});
     // ten of each came in; two belts sold and one came back, a scarf sold and one written off
     const beltStock = rowsOf(stock.html).find((r) => r.includes('| Belt |')), scarfStock = rowsOf(stock.html).find((r) => r.includes('| Scarf |'));
@@ -259,6 +265,8 @@ const id = () => crypto.randomUUID();
       const got = await see(rest, href, {});
       check('R6 a restaurant has no ' + href.split('/').pop(), got.error === 'not found', got.error || 'it opened');
     }
+    p = await see(rest, '/backoffice/settings', { tab: 'barcodes' });
+    check('R7 a restaurant\'s POS settings have no Barcodes tab, and its address shows General', !p.error && !p.says.includes('Your own barcodes') && !p.html.includes('tab=barcodes') && p.says.includes('Decimals'), p.error);
     // what one business's owner is shown is its own
     p = await see(rest, '/backoffice/reports/orders', rrange);
     check('T1 a restaurant\'s owner sees nothing of the shop', !p.says.includes('Belt') && !p.says.includes('SP1-'));

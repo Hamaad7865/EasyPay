@@ -4,6 +4,7 @@ import {
   BadgePercent,
   Banknote,
   BarChart3,
+  Barcode,
   Boxes,
   Building2,
   CalendarCheck,
@@ -96,6 +97,7 @@ export const GROUPS: NavGroup[] = [
     links: [
       { href: "/backoffice/categories", label: "Categories", icon: Tags, words: "groups colours kitchen bar printer" },
       { href: "/backoffice/items", label: "Items", retail: "Products", icon: UtensilsCrossed, words: "products dishes prices barcode" },
+      { href: "/backoffice/items/labels", label: "Barcode labels", only: "retail", icon: Barcode, words: "print stickers price tags ean scan label roll a4 sheet" },
       { href: "/backoffice/addons", label: "Add-ons", only: "restaurant", icon: SlidersHorizontal, words: "options modifiers extras" },
       { href: "/backoffice/taxes", label: "Taxes", icon: FileText, words: "vat zero rated exempt" },
       { href: "/backoffice/discounts", label: "Discounts", icon: BadgePercent, words: "promotions percent off" },
@@ -144,7 +146,14 @@ export const GROUPS: NavGroup[] = [
 ];
 
 // A page is "on" for its own address and anything under it; the dashboard only for itself.
-export const isOn = (href: string, path: string) => (href === HOME.href ? path === href : path === href || path.startsWith(href + "/"));
+// A line of the menu is lit when the address is its page or a page under it,
+// unless another line's page is nearer: Barcode labels sits under Products,
+// and on it only Barcode labels is lit.
+const under = (href: string, path: string) => path === href || path.startsWith(href + "/");
+export const isOn = (href: string, path: string) =>
+  href === HOME.href
+    ? path === href
+    : under(href, path) && !GROUPS.some((g) => g.links.some((l) => l.href.length > href.length && under(l.href, path)));
 // The group a page sits in, for this kind of business: one address can be in
 // two groups (Stock), one for each kind.
 export const groupOf = (path: string, mode: Mode) => groupsFor(mode).find((g) => g.links.some((l) => isOn(l.href, path)))?.id ?? null;

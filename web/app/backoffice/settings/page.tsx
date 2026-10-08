@@ -51,6 +51,26 @@ async function saveGeneral(f: FormData) {
   });
 }
 
+// A shop's own barcodes (migration 0080): the digits they begin with, and
+// whether a product added with none is given one by itself.
+async function saveBarcodes(f: FormData) {
+  "use server";
+  await act("settings.device", PATH + "?tab=barcodes", async (c, ctx) => {
+    if (ctx.mode !== "retail") throw new Refused("Barcodes are a shop's setting.");
+    const prefix = text(f, "prefix", 12).replace(/\s+/g, "");
+    if (!/^[0-9]{2,7}$/.test(prefix)) throw new Refused("The digits your barcodes begin with are 2 to 7 digits, for example 200.");
+    try {
+      await c.query(`select barcode_settings_save($1, $2, $3)`, [ctx.tenantId, prefix, on(f, "auto")]);
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("prefix-too-long")) {
+        throw new Refused("That is too many digits: the barcodes already made would no longer fit behind them. Use a shorter one.");
+      }
+      throw e;
+    }
+    return "Barcode settings saved. Barcodes already made keep the digits they were made with.";
+  });
+}
+
 async function addPayment(f: FormData) {
   "use server";
   await act("settings.device", PATH + "?tab=payments", async (c, ctx) => {
@@ -141,7 +161,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
   const ctx = await tenantContext();
   const shop = ctx.mode === "retail";
   // a shop has no order types: its address for that tab shows General
-  const tab = one(sp.tab) === "payments" ? "payments" : one(sp.tab) === "orders" && !shop ? "orders" : "general";
+  // nor a restaurant barcodes of its own
+  const tab = one(sp.tab) === "payments" ? "payments" : one(sp.tab) === "orders" && !shop ? "orders" : one(sp.tab) === "barcodes" && shop ? "barcodes" : "general";
   const data = await readTenant(ctx.tenantId, async (c) => ({
     settings: await loadSettings(c, ctx.tenantId),
     payments: (
@@ -158,7 +179,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
         [ctx.tenantId],
       )
     ).rows as { id: string; name: string; kind: string; needs_table: boolean; kitchen: string; is_default: boolean }[],
+    barcodes: shop
+      ? ((await c.query(`select barcode_settings($1) as r`, [ctx.tenantId])).rows[0].r as {
+          prefix: string; auto: boolean; next: string | null; left: number; made: number; without: number;
+        })
+      : null,
   }));
+  const bc = data.barcodes;
   const s = data.settings;
   return (
     <div>
@@ -168,7 +195,58 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
         <Link href={PATH} className={tab === "general" ? "on" : undefined}>General<Wait /></Link>
         <Link href={PATH + "?tab=payments"} className={tab === "payments" ? "on" : undefined}>Payment options<Wait /></Link>
         {!shop && <Link href={PATH + "?tab=orders"} className={tab === "orders" ? "on" : undefined}>Order types and kitchen<Wait /></Link>}
+        {shop && <Link href={PATH + "?tab=barcodes"} className={tab === "barcodes" ? "on" : undefined}>Barcodes<Wait /></Link>}
       </div>
+
+      {tab === "barcodes" && bc && (
+        <form action={saveBarcodes}>
+          <Card title="Your own barcodes">
+            <div className="setting">
+              <div>
+                <strong>The digits they begin with</strong>
+                <small>
+                  A barcode EasyPay makes is 13 digits (EAN-13): these digits, then a number that counts up. Barcodes beginning with 20 to 29
+                  are kept for a shop&apos;s own labels, so they never clash with a maker&apos;s. If your scale prints labels that hold a weight or a price,
+                  use digits the scale does not. Changing them changes the barcodes made from now on, not the ones already on your goods.
+                </small>
+              </div>
+              <input name="prefix" defaultValue={bc.prefix} inputMode="numeric" pattern="[0-9]{2,7}" maxLength={7} required aria-label="The digits they begin with" style={{ width: 120 }} />
+            </div>
+            <div className="setting">
+              <div>
+                <strong>Make one when a product is added</strong>
+                <small>
+                  On: a product or a variant added with no barcode is given one of yours at once, here and from an imported file. A product that
+                  comes with its maker&apos;s barcode keeps it. Off: you make them when you want, on the product&apos;s page or on Barcode labels.
+                </small>
+              </div>
+              <label className="check" style={{ margin: 0 }}>
+                <input type="checkbox" name="auto" defaultChecked={bc.auto} />
+                Automatically
+              </label>
+            </div>
+            <div className="setting">
+              <div>
+                <strong>The next barcode</strong>
+                <small>
+                  {bc.made === 0 ? "None made yet." : `${bc.made.toLocaleString("en-US")} made so far.`}{" "}
+                  {bc.next ? `Room for ${bc.left.toLocaleString("en-US")} more behind these digits.` : "There is no room left behind these digits: use fewer digits to make more."}
+                  {bc.without > 0 && (
+                    <>
+                      {" "}{bc.without === 1 ? "One line has" : `${bc.without.toLocaleString("en-US")} lines have`} no barcode yet: give them one on{" "}
+                      <Link href="/backoffice/items/labels">Barcode labels</Link>.
+                    </>
+                  )}
+                </small>
+              </div>
+              <code style={{ fontSize: 16, letterSpacing: "0.04em" }}>{bc.next ?? "None left"}</code>
+            </div>
+          </Card>
+          <div className="bo-toolbar" style={{ justifyContent: "flex-end" }}>
+            <Submit>Save</Submit>
+          </div>
+        </form>
+      )}
 
       {tab === "general" && (
         <form action={saveGeneral}>
