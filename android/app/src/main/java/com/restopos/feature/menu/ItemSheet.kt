@@ -2,11 +2,11 @@ package com.restopos.feature.menu
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -115,7 +115,6 @@ private fun rupees(cents: Long): String = if (cents % 100 == 0L) (cents / 100).t
 // its price is typed at the sale, its category, its barcode, whether it is on
 // sale; and it can remove it. Its add-ons, variants, tax, cost and stock are
 // the back office's.
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEntity>, shop: Boolean, done: () -> Unit = {}) {
     val was = edit.item
@@ -139,7 +138,7 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             }
             return@Sheet
         }
-        SheetHead(if (was == null) "New $thing" else was.name, "It needs a connection: the server answers, and every till has it at its next sync.") { editor.close() }
+        SheetHead(if (was == null) "New $thing" else was.name, "Needs a connection. Every till has it at its next sync.") { editor.close() }
 
         Caps("Name", V.Text2)
         Field(name, { name = it.take(80) }, if (shop) "What the product is called" else "What the item is called", Modifier.fillMaxWidth(), height = 56.dp, size = 17.sp)
@@ -159,13 +158,18 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             }
         }
 
-        // A service, or anything charged differently each time: tapping it on
-        // the till opens the keypad for its price.
-        if (!edit.fixedPrice) Switch("Price typed at the sale", "For a service, or anything charged differently each time: tapping it opens the keypad.", open) { open = !open }
-        Switch("On sale", if (shop) "Off, it cannot be rung up on any till." else "Off, the till greys it and will not sell it.", onSale) { onSale = !onSale }
+        // The two switches side by side, and the categories on one row that
+        // slides: the sheet has to fit the screen with its keys in view,
+        // however many categories a menu has.
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            // a service, or anything charged differently each time: tapping it on the till opens the keypad for its price
+            if (!edit.fixedPrice) Switch("Price typed at the sale", open, Modifier.weight(1f)) { open = !open }
+            Switch("On sale", onSale, Modifier.weight(1f)) { onSale = !onSale }
+        }
+        if (open) T("Tapping it on the till opens the keypad: for a service, or anything charged differently each time.", 13.sp, 500, V.Text2, lines = 2)
 
         Caps("Category", V.Text2)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             (listOf<CategoryEntity?>(null) + cats).forEach { c ->
                 val on = c?.id == cat
                 Box(
@@ -189,12 +193,9 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
 }
 
 @Composable
-private fun Switch(title: String, sub: String, on: Boolean, flip: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(V.Key).press(0.99f, flip).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            T(title, 15.sp, 700)
-            T(sub, 13.sp, 500, V.Text2, lines = 2)
-        }
+private fun Switch(title: String, on: Boolean, modifier: Modifier = Modifier, flip: () -> Unit) {
+    Row(modifier.height(56.dp).clip(RoundedCornerShape(14.dp)).background(V.Key).press(0.99f, flip).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        T(title, 15.sp, 700, modifier = Modifier.weight(1f))
         Toggle(on)
     }
 }
