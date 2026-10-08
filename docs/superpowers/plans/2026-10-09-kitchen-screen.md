@@ -475,8 +475,8 @@ fun KdsBoard(ui: KdsUi, prefs: KitchenPrefs, onTap: (String) -> Unit, onBump: (S
 
 The owner's emulator is never used. Say before installing anything.
 
-- [ ] **Step 1:** a second test AVD for the kitchen (`easypay_claude_kitchen`, the same system image as `easypay_claude_test`). Two emulators and a build are heavy for this PC: build first, then start them.
-- [ ] **Step 2:** join them through the PC: `adb -s <kitchen serial> forward tcp:9310 tcp:9310`. From the till's emulator the PC is `10.0.2.2`, so the debug build's made-up restaurant (`demo-restaurant.json`, made in the gate's plan, task 7) is given a kitchen screen at `10.0.2.2:9310` with the code `KTCHN234`, set to everything, and `"plan":"premium"`. The address the kitchen emulator shows (`10.0.2.15`) is its own inside the emulator and is not the one to type; say so in the notes.
+- [ ] **Step 1:** the till runs on `easypay_claude_till` (made for the gate; `-no-window -port 5586`). A second AVD of the same kind for the kitchen, `easypay_claude_kitchen` (`-port 5588`): copy the first one's `config.ini` into a new `.avd` folder and write its `.ini` beside it. `easypay_claude_test` (5584) and 5554 are the owner's and are not touched. Two emulators and a build are heavy for this PC: build first, then start them.
+- [ ] **Step 2:** join them through the PC: `adb -s <kitchen serial> forward tcp:9310 tcp:9310`. From the till's emulator the PC is `10.0.2.2`, so the debug build's made-up restaurant (`DemoReceiver`, `--es type restaurant --es plan premium`) is given, by a further extra, a kitchen screen at `10.0.2.2:9310` with the code `KTCHN234`, set to everything. The address the kitchen emulator shows (`10.0.2.15`) is its own inside the emulator and is not the one to type; say so in the notes.
 - [ ] **Step 3: the path, each seen on both screens:**
   1. The kitchen tablet: fresh install, "Set up as a kitchen screen", the waiting page with a code.
   2. A table's order sent: on the kitchen screen within a second or two, with its number, table, covers and items.
