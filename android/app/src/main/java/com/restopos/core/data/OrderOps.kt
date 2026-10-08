@@ -65,7 +65,8 @@ class OrderOps @Inject constructor(
     suspend fun save(): Result<SaveResult> = runCatching {
         val t = tickets.activeTicket() ?: return@runCatching SaveResult(0, emptyList())
         // a shop has no kitchen: nothing is ever sent to one
-        if (PosSettings.parse(db.ops().settings()).retail) return@runCatching SaveResult(0, emptyList())
+        val settings = PosSettings.parse(db.ops().settings())
+        if (settings.retail) return@runCatching SaveResult(0, emptyList())
         // an order type set to never go to the kitchen is only put away
         val mode = (t.dining_option_id?.let { db.ops().dining(it) } ?: db.catalog().diningOptions().firstOrNull { it.is_default })?.kitchen ?: "save"
         if (mode == "off") return@runCatching SaveResult(0, emptyList())
@@ -73,8 +74,14 @@ class OrderOps @Inject constructor(
         if (fresh.isEmpty()) return@runCatching SaveResult(0, emptyList())
         val out = docs.kitchen(t, fresh, "ORDER")
         markSent(t.id, out.printed)
-        SaveResult(out.printed.size, out.errors)
+        SaveResult(out.printed.size, out.errors + unseen(out, settings))
     }
+
+    // A line no printer took is still on the kitchen display, for a
+    // restaurant that has one. The display is the premium tier's: without it
+    // that line reached nobody, and the till says which.
+    private fun unseen(out: KitchenOutcome, settings: PosSettings): List<String> =
+        if (settings.premium) emptyList() else listOfNotNull(Routing.nowhereText(out.nowhere))
 
     private suspend fun markSent(ticketId: String, ids: List<String>) {
         if (ids.isEmpty()) return
@@ -98,7 +105,8 @@ class OrderOps @Inject constructor(
     suspend fun sendOnPay(ticketId: String, lineIds: List<String>) {
         val t = db.tickets().ticket(ticketId) ?: return
         // a shop has no kitchen: a sale that is paid is finished
-        if (PosSettings.parse(db.ops().settings()).retail) return
+        val settings = PosSettings.parse(db.ops().settings())
+        if (settings.retail) return
         val mode = (t.dining_option_id?.let { db.ops().dining(it) } ?: db.catalog().diningOptions().firstOrNull { it.is_default })?.kitchen ?: "save"
         if (mode == "off") return
         // "save" too: a bill paid without ever pressing Save must still reach the kitchen
@@ -106,7 +114,7 @@ class OrderOps @Inject constructor(
         if (fresh.isEmpty()) return
         val out = docs.kitchen(t, fresh, "ORDER")
         markSent(ticketId, out.printed)
-        out.errors.forEach { printing.report(it) }
+        (out.errors + unseen(out, settings)).forEach { printing.report(it) }
     }
 
     // After a payment: the receipt prints, the drawer opens if the payment

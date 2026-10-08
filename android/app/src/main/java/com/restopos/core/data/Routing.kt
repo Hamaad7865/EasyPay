@@ -46,6 +46,21 @@ object Routing {
         return out.filterValues { it.isNotEmpty() }
     }
 
+    // The lines that print nowhere: no printer ticked for their category, or
+    // none of the ticked ones usable. With a kitchen display they are still
+    // on it. A restaurant without one (the display is the premium tier's) has
+    // only its paper, so the till names them: nobody else would.
+    fun <L> nowhere(lines: List<Pair<L, List<String>?>>, printers: List<PrinterEntity>, onePrinter: Boolean): List<L> =
+        lines.filter { (_, ticked) -> printersFor(ticked, printers, onePrinter).isEmpty() }.map { it.first }
+
+    // What the till says about them: how many lines, and each name once.
+    fun nowhereText(names: List<String>): String? {
+        if (names.isEmpty()) return null
+        val n = names.size
+        return "$n ${if (n == 1) "item" else "items"} went to no printer: ${names.distinct().joinToString(", ")}. " +
+            "Tick a printer for ${if (n == 1) "its" else "their"} category in the back office."
+    }
+
     // The kitchen display's stations: the printers where something is made,
     // which is every printer that has a category and is not the cashier's.
     // With one printer for everything there is one place, so no stations.

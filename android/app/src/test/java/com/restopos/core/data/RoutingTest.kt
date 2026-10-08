@@ -152,4 +152,33 @@ class RoutingTest {
         assertEquals(true, PosSettings.parse("""{"onePrinter":true}""").onePrinter)
         assertEquals(false, PosSettings.parse("""{"onePrinter":"yes"}""").onePrinter)
     }
+
+    // A restaurant with no kitchen display (the premium tier's) has only its
+    // paper: a line that prints nowhere reaches nobody, and the till must say
+    // which, not mark it sent in silence.
+    @Test
+    fun aLineWithNoPrinterIsNamed() {
+        assertEquals(listOf("gift card"), Routing.nowhere(order, three, onePrinter = false))
+        // a category whose only printer is switched off prints nowhere either
+        val barOff = listOf(cashier, kitchen, printer("bar", on = false))
+        assertEquals(listOf("beer", "gift card"), Routing.nowhere(order, Routing.usable(barOff, "main"), onePrinter = false))
+        // one printer for everything prints everything
+        assertEquals(emptyList<String>(), Routing.nowhere(order, three, onePrinter = true))
+        // and with no printer at all, nothing prints
+        assertEquals(listOf("curry", "beer", "platter", "gift card"), Routing.nowhere(order, emptyList(), onePrinter = true))
+    }
+
+    @Test
+    fun theSentenceForThem() {
+        assertNull(Routing.nowhereText(emptyList()))
+        assertEquals(
+            "1 item went to no printer: Water. Tick a printer for its category in the back office.",
+            Routing.nowhereText(listOf("Water")),
+        )
+        // each line counts, each name is said once
+        assertEquals(
+            "3 items went to no printer: Water, Cola. Tick a printer for their category in the back office.",
+            Routing.nowhereText(listOf("Water", "Cola", "Water")),
+        )
+    }
 }

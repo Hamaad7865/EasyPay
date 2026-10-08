@@ -26,7 +26,8 @@ import javax.inject.Singleton
 // did not come out. Before the display existed this was only the lines that
 // printed everywhere they should
 // (or have nowhere to print), and what went wrong with the rest.
-data class KitchenOutcome(val printed: List<String>, val errors: List<String>)
+// nowhere: the names of the lines that no printer took (Routing.nowhere)
+data class KitchenOutcome(val printed: List<String>, val errors: List<String>, val nowhere: List<String> = emptyList())
 
 // Turns an order into the papers it prints: the receipt, the bill, and the
 // kitchen and bar tickets, each sent to the printer it belongs on.
@@ -136,7 +137,8 @@ class DocBuilder @Inject constructor(
         val printers = printing.printers()
         val one = printing.settings().onePrinter
         val byId = printers.associateBy { it.id }
-        val perPrinter = Routing.tickets(rows.map { l -> l to l.item_id?.let { db.ops().categoryOfItem(it) }?.let { Routing.ids(it.printer_ids) } }, printers, one)
+        val routed = rows.map { l -> l to l.item_id?.let { db.ops().categoryOfItem(it) }?.let { Routing.ids(it.printer_ids) } }
+        val perPrinter = Routing.tickets(routed, printers, one)
         val errors = ArrayList<String>()
         val order = orderName(t)
         val waiter = employee(t.opened_by) ?: staff.current.value?.employee?.name
@@ -146,7 +148,7 @@ class DocBuilder @Inject constructor(
             // a ticket that did not print can be sent again from Settings, Printers
             printing.send(p, Docs.kitchen(doc, printing.paper(p)), "Kitchen ticket, $order").onFailure { errors.add(it.message ?: "${p.name} did not print") }
         }
-        return KitchenOutcome(rows.map { it.id }, errors)
+        return KitchenOutcome(rows.map { it.id }, errors, Routing.nowhere(routed, printers, one).map { it.name_snapshot })
     }
 
     fun money(cents: Long) = Money.format(cents)

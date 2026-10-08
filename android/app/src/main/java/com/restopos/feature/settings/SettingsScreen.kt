@@ -166,6 +166,8 @@ class SettingsViewModel @Inject constructor(
     // takes to read the settings this tablet holds, so a shop is never shown
     // a restaurant's help first.
     val retail: StateFlow<Boolean?> = db.ops().settingsFlow().map<String?, Boolean?> { PosSettings.parse(it).retail }.held(null)
+    // the restaurant's plan carries the kitchen display and bookings (server 0085)
+    val premium: StateFlow<Boolean> = db.ops().settingsFlow().map { PosSettings.parse(it).premium }.held(false)
 
     // Does it at once when the person signed in may; otherwise asks for
     // someone who may, and does it with their go-ahead.
@@ -428,7 +430,7 @@ fun SettingsScreen(
                             Page.Display -> DisplayPage(vm, retail)
                             Page.Support -> SupportPage(vm, shop, network, onSignIn, onRejected, onSignOut)
                             // which business this is, is read in a moment: no help is shown for the wrong one meanwhile
-                            Page.Help -> retail?.let { HelpPage(it) }
+                            Page.Help -> retail?.let { shop -> val premium by vm.premium.collectAsState(); HelpPage(shop, premium) }
                         }
                     }
                 }
@@ -805,6 +807,7 @@ private fun PaymentsPage(vm: SettingsViewModel, onOpen: (String) -> Unit) {
 @Composable
 private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boolean?) {
     val shop = retail == true
+    val premium by vm.premium.collectAsState()
     val printers by vm.printers.collectAsState()
     val routes by vm.routes.collectAsState()
     val one by vm.onePrinter.collectAsState()
@@ -877,7 +880,8 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
                     Text("${clock.format(Date(j.time))} · ${j.printer.name}", color = Pos.Text3, fontSize = 13.sp)
                     j.error?.let { Text(it, color = Pos.Pink, fontSize = 13.sp) }
                     if (j.error != null && j.what.startsWith("Kitchen ticket")) {
-                        Text("The order is on the kitchen display. Try again prints the paper once the printer answers.", color = Pos.Text2, fontSize = 13.sp)
+                        // only a restaurant on the premium tier has a kitchen display for the order to be on
+                        Text((if (premium) "The order is on the kitchen display. " else "") + "Try again prints the paper once the printer answers.", color = Pos.Text2, fontSize = 13.sp)
                     }
                 }
                 when {
@@ -966,6 +970,17 @@ private val HELP = listOf(
     "No internet" to "Keep selling. Everything is saved on the tablet and sent by itself when the connection is back. Printing does not need the internet, only the local network.",
 )
 
+// The kitchen display and bookings are the premium tier's (server 0085): a
+// restaurant on another plan is not told how to use screens it does not have,
+// nor that an order is on a display it has not got.
+private val PREMIUM_HELP = setOf("The kitchen display", "Bookings")
+private const val ON_THE_DISPLAY = " An order still reaches the kitchen display when a kitchen printer does not answer."
+internal fun helpFor(shop: Boolean, premium: Boolean): List<Pair<String, String>> = when {
+    shop -> SHOP_HELP
+    premium -> HELP
+    else -> HELP.filter { it.first !in PREMIUM_HELP }.map { (title, text) -> title to text.replace(ON_THE_DISPLAY, "") }
+}
+
 // A shop's help: its till has no tables, no kitchen and no bookings. Two keys
 // are called More there, the one on the top bar (which opens this screen) and
 // the one under the sale, so an entry says which it means. The cash drawer is
@@ -1003,10 +1018,10 @@ private val SHOP_HELP = listOf(
 // One card of questions: a shop's, or a restaurant's. A tap opens the answer
 // under it, and closes the one that was open.
 @Composable
-private fun HelpPage(shop: Boolean) {
+private fun HelpPage(shop: Boolean, premium: Boolean) {
     var open by rememberSaveable { mutableStateOf(0) }
     Group {
-        (if (shop) SHOP_HELP else HELP).forEachIndexed { i, (title, text) ->
+        helpFor(shop, premium).forEachIndexed { i, (title, text) ->
             if (i > 0) Line()
             val on = open == i
             val turn = animateFloatAsState(if (on) 90f else 0f, spring(dampingRatio = 0.9f, stiffness = 500f), label = "chevron")

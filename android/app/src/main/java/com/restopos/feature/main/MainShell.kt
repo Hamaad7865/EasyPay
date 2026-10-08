@@ -163,6 +163,9 @@ enum class Screen { Floor, Order, Pay, Split, Takeaway, Kitchen, Bookings, Order
 // what only a restaurant has, and what only a shop has
 private val RESTAURANT_ONLY = setOf(Screen.Floor, Screen.Order, Screen.Takeaway, Screen.Kitchen, Screen.Bookings, Screen.Orders, Screen.Menu)
 private val SHOP_ONLY = setOf(Screen.Sell, Screen.Products, Screen.StockCheck)
+// what only a restaurant on the premium tier has (server 0085): the kitchen
+// display and bookings. Another plan keeps Send to kitchen and its printers.
+private val PREMIUM_ONLY = setOf(Screen.Kitchen, Screen.Bookings)
 
 data class Badges(val takeaway: Int = 0, val kitchen: Int = 0, val bookings: Int = 0)
 
@@ -189,6 +192,7 @@ class ShellViewModel @Inject constructor(
     private val service: ServiceRepository,
     private val api: com.restopos.core.network.ApiClient,
     private val updater: AppUpdater,
+    private val kitchen: com.restopos.core.data.Kitchen,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     val screen = MutableStateFlow(Screen.Floor)
@@ -198,6 +202,11 @@ class ShellViewModel @Inject constructor(
     // plan first; a till that has never synced is taken for a restaurant.
     val retail: StateFlow<Boolean?> = db.ops().settingsFlow().map<String?, Boolean?> { com.restopos.core.data.PosSettings.parse(it).retail }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    // The restaurant's plan carries the kitchen display and bookings. Until
+    // the settings are read, and on a till that was never told, it does not:
+    // the server refuses what those screens send for another plan.
+    val premium: StateFlow<Boolean> = db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).premium }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
     init {
         // a screen the other kind of business has gives way to this one's own
         viewModelScope.launch {
@@ -206,6 +215,14 @@ class ShellViewModel @Inject constructor(
                 if (shop == false && screen.value in SHOP_ONLY) screen.value = Screen.Floor
             }
         }
+        // and a premium screen gives way when the plan no longer carries it
+        viewModelScope.launch {
+            premium.collect { has -> if (!has && screen.value in PREMIUM_ONLY) screen.value = Screen.Floor }
+        }
+        // Kitchen tickets from days gone by are cleared when the till starts,
+        // not only when the Kitchen screen is opened: a restaurant that does
+        // not have that screen would keep them for good.
+        viewModelScope.launch { kitchen.prune() }
     }
     val clockAhead: StateFlow<Long?> = api.clockAhead
     val updateRequired: StateFlow<Boolean> = api.updateRequired
@@ -236,6 +253,7 @@ class ShellViewModel @Inject constructor(
     val scanMode: StateFlow<Boolean> = session.scanMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     fun go(to: Screen) {
+        if (to in PREMIUM_ONLY && !premium.value) return
         if (to != Screen.Floor) assigning.value = null
         screen.value = to
     }
@@ -355,6 +373,8 @@ private val SERVICE = listOf(
     Nav(Screen.Floor, VI.Floor) { L.tables }, Nav(Screen.Order, VI.Bolt) { L.quick }, Nav(Screen.Takeaway, VI.Bag) { L.takeaway },
     Nav(Screen.Kitchen, VI.Screen) { L.kitchen }, Nav(Screen.Bookings, VI.Calendar) { L.bookings }, Nav(Screen.Orders, VI.Orders) { L.orders },
 )
+// the service screens a restaurant's plan gives it
+private fun service(premium: Boolean) = if (premium) SERVICE else SERVICE.filter { it.screen !in PREMIUM_ONLY }
 private val BACK = listOf(
     Nav(Screen.Today, VI.Bars) { L.today }, Nav(Screen.Menu, VI.List) { L.menuStock }, Nav(Screen.Cash, VI.Cash) { L.cashDrawer },
     Nav(Screen.Receipts, VI.Receipt) { L.receipts }, Nav(Screen.Customers, VI.People) { L.customers }, Nav(Screen.Settings, VI.Gear) { L.settings },
@@ -445,7 +465,8 @@ fun MainShell(
     var quickAt by remember { mutableIntStateOf(-1) }
     val go: (Screen) -> Unit = { s -> drawer = false; if (s == Screen.Order) { quickAt = orderUi.session; shell.quick { order.open() } } else shell.go(s) }
     // the keys along the top: a shop's, or a restaurant's
-    val bar = if (retail) SHOP else SERVICE
+    val premium by shell.premium.collectAsState()
+    val bar = remember(retail, premium) { if (retail) SHOP else service(premium) }
     // The key that is lit: the place, or for an order where that order lives.
     // An order screen that has only just opened still holds the order before
     // it until the new one is read, so the key that was lit stays lit until
@@ -582,7 +603,7 @@ fun MainShell(
                 }
             }
         }
-        SideMenu(drawer, shell, lit, badges, user, lang, retail, onGo = go, onLock = { drawer = false; onLock() }, onClose = { drawer = false })
+        SideMenu(drawer, shell, lit, badges, user, lang, retail, premium, onGo = go, onLock = { drawer = false; onLock() }, onClose = { drawer = false })
         ToastHost()
     }
 
@@ -641,7 +662,7 @@ private fun UpdateSheet(u: Update, onDismiss: () -> Unit, onFetch: () -> Unit, o
 // flicked shut, it closes; otherwise it comes back out.
 @Composable
 private fun SideMenu(
-    open: Boolean, shell: ShellViewModel, lit: Screen, badges: Badges, user: StaffMember?, lang: String, retail: Boolean,
+    open: Boolean, shell: ShellViewModel, lit: Screen, badges: Badges, user: StaffMember?, lang: String, retail: Boolean, premium: Boolean,
     onGo: (Screen) -> Unit, onLock: () -> Unit, onClose: () -> Unit,
 ) {
     val wide = with(LocalDensity.current) { 340.dp.toPx() }
@@ -688,7 +709,7 @@ private fun SideMenu(
                 (SHOP + SHOP_BACK).forEach { n -> Entry(n, lit == n.screen, 0, V.Red) { onGo(n.screen) } }
             } else {
                 Caps(L.service, modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 6.dp))
-                SERVICE.forEach { n ->
+                service(premium).forEach { n ->
                     val count = when (n.screen) { Screen.Takeaway -> badges.takeaway; Screen.Kitchen -> badges.kitchen; Screen.Bookings -> badges.bookings; else -> 0 }
                     Entry(n, lit == n.screen, count, when (n.screen) { Screen.Takeaway -> V.Red; Screen.Kitchen -> V.Blue; else -> Color(0xFF6243C8) }) { onGo(n.screen) }
                 }

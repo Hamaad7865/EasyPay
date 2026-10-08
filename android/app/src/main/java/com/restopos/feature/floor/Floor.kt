@@ -143,8 +143,12 @@ class FloorViewModel @Inject constructor(
 
     val ui: StateFlow<FloorUi> = flow { emit(session.storeId()) }.flatMapLatest { store ->
         if (store == null) flowOf(FloorUi(ready = true))
-        else combine(db.tables().tables(store), service.orders(store), service.bookingsToday(store)) { tables, orders, bookings ->
-            val waiting = bookings.filter { it.status == "confirmed" || it.status == "pending" }
+        else combine(db.tables().tables(store), service.orders(store), service.bookingsToday(store), db.ops().settingsFlow()) { tables, orders, bookings, settings ->
+            // Bookings are the premium tier's (server 0085). On another plan no
+            // table is held for one and none is marked as arrived when a table
+            // is seated: the server would refuse that change.
+            val premium = com.restopos.core.data.PosSettings.parse(settings).premium
+            val waiting = if (premium) bookings.filter { it.status == "confirmed" || it.status == "pending" } else emptyList()
             val rows = tables.map { t ->
                 val order = orders.firstOrNull { it.open && it.ticket.table_id == t.id }
                 val booking = waiting.firstOrNull { it.table_id == t.id }

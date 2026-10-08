@@ -38,6 +38,8 @@ data class PosSettings(
     val drawerByNotes: Boolean = false,
     // the business is a shop: the till shows the sell screen, not tables and a kitchen
     val retail: Boolean = false,
+    // the restaurant's plan carries the premium screens: the kitchen display and bookings (server 0085)
+    val premium: Boolean = false,
 ) {
     fun shop(fallbackName: String): Shop =
         Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer, bars = retail)
@@ -78,6 +80,8 @@ data class PosSettings(
                 onePrinter = d.bool("onePrinter") ?: false,
                 drawerByNotes = d.bool("drawerByNotes") ?: false,
                 retail = d.str("businessType") == "retail",
+                // as the server reads it (has_premium): premium, and trial so that a restaurant trying EasyPay sees all of it
+                premium = d.str("plan")?.trim()?.lowercase().let { it == "premium" || it == "trial" },
             )
         }
     }
