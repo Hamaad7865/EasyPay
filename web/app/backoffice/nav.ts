@@ -1,6 +1,8 @@
 import {
+  Activity,
   ArrowLeftRight,
   BadgePercent,
+  Banknote,
   BarChart3,
   Boxes,
   Building2,
@@ -27,6 +29,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Store,
+  TabletSmartphone,
   Tags,
   TrendingUp,
   Truck,
@@ -73,6 +76,16 @@ export const GROUPS: NavGroup[] = [
       { href: "/backoffice/reports/day-close", label: "Day closing", icon: CalendarCheck, words: "z report end of day open day close day cash drawer count float shifts x report sales period" },
       { href: "/backoffice/reports/timecards", label: "Time cards", icon: Clock, words: "clock in out hours worked" },
       { href: "/backoffice/receipts", label: "Receipts", icon: Receipt, words: "refund reprint payment correction bills" },
+    ],
+  },
+  {
+    id: "pos",
+    title: "Point of sale",
+    icon: TabletSmartphone,
+    links: [
+      { href: "/backoffice/pos/tills", label: "Tills", icon: TabletSmartphone, words: "point of sale pos devices tablets terminals connected online offline last sync version" },
+      { href: "/backoffice/pos/activity", label: "Till activity", icon: Activity, words: "log history events what happened late offline crash devices" },
+      { href: "/backoffice/pos/cash", label: "Cash flow", icon: Banknote, words: "drawer cash in out float ledger balance movements money" },
     ],
   },
   {

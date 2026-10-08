@@ -45,7 +45,7 @@ function check(name, cond, extra) {
 
   try {
     const health = await call('GET', '/health');
-    check('the dev API that is deployed knows about till keys', health.status === 200 && health.json && health.json.build === 'v2-0063' && health.json.branch !== 'production', JSON.stringify(health.json));
+    check('the dev API that is deployed knows about till keys', health.status === 200 && health.json && /^v2-\d{4}$/.test(health.json.build) && health.json.build >= 'v2-0063' && health.json.branch !== 'production', JSON.stringify(health.json));
 
     // T1 the key opens the sync routes, as the login that set the till up
     const pull = await call('GET', `/sync/pull?storeId=${store}&cursor=0&limit=50`, mine);

@@ -91,6 +91,23 @@ async function requireTill(req: Request): Promise<Authed> {
   return { authUserId: "", tenantId: r.tenant_id, employeeId: r.employee_id, status: r.status ?? "active", deviceId: m[1].toLowerCase(), storeId: r.store_id };
 }
 
+// When a till was last heard from, for the back office's Point of sale page
+// (migration 0064: a table no till pulls). `what` is "push" when it sent what
+// it had, "pull" when it fetched, "seen" otherwise. Written only for a till
+// that is known: one syncing with its own key, or one being set up. It is
+// never in the way of the sync: a failure here is logged and the answer goes
+// out as it was. It is awaited, because the function may be stopped as soon
+// as it has answered.
+async function heard(req: Request, deviceId: string | undefined, what: "push" | "pull" | "seen"): Promise<void> {
+  if (!deviceId) return;
+  const v = Number(req.headers.get("x-till-version") ?? "");
+  try {
+    await pool.query(`select device_heard($1::uuid, $2, $3::int)`, [deviceId, what, Number.isInteger(v) && v > 0 && v < 1_000_000_000 ? v : null]);
+  } catch (err) {
+    console.error("till activity not written:", (err as Error).message);
+  }
+}
+
 // A shop's till must be build 3 or later: the first with a shop's screens. An
 // older build would ring a shop's sales up as a restaurant's orders and send
 // them to a kitchen that is not there. It is answered 426, as a build below
@@ -257,6 +274,7 @@ app.post("/devices/register", async (c) => {
     } catch (err) {
       console.error("key for a new till failed:", (err as Error).message);
     }
+    await heard(c.req.raw, rows[0].id, "seen");
     return c.json({ deviceId: rows[0].id, lastReceiptSeq: Number(rows[0].last_receipt_seq), ...(syncKey ? { syncKey } : {}) });
   } catch (err) {
     const msg = (err as Error).message;
@@ -283,6 +301,7 @@ app.post("/devices/key", async (c) => {
   if (!/^[0-9a-f-]{36}$/i.test(deviceId)) return c.json({ error: "deviceId required" }, 400);
   try {
     const k = await pool.query(`select issue_device_key($1::uuid, $2::uuid) as k`, [auth.employeeId, deviceId]);
+    await heard(c.req.raw, deviceId, "seen");
     return c.json({ deviceId, syncKey: k.rows[0].k });
   } catch (err) {
     const msg = (err as Error).message;
@@ -337,6 +356,7 @@ app.post("/sync/push", async (c) => {
     const out = await asTenant<{ r: unknown }>(auth.tenantId, (q) =>
       q(`select sync_push($1::uuid, $2::jsonb) as r`, [auth.employeeId, JSON.stringify(body.ops)]).then((r) => r.rows),
     );
+    await heard(c.req.raw, auth.deviceId, "push");
     return c.json(out[0].r);
   } catch (err) {
     return c.json({ error: "push failed" }, syncFailure("push", err));
@@ -363,6 +383,7 @@ app.get("/sync/pull", async (c) => {
     const out = await asTenant<{ r: unknown }>(auth.tenantId, (q) =>
       q(`select sync_pull($1::uuid, $2::bigint, $3::int) as r`, [storeId, cursor, limit]).then((r) => r.rows),
     );
+    await heard(c.req.raw, auth.deviceId, "pull");
     return c.json(out[0].r);
   } catch (err) {
     return c.json({ error: "pull failed" }, syncFailure("pull", err));
@@ -386,6 +407,7 @@ app.post("/crash", async (c) => {
     const out = await asTenant<{ n: number }>(auth.tenantId, (q) =>
       q(`select report_crashes($1::uuid, $2::jsonb) as n`, [auth.employeeId, JSON.stringify(reports)]).then((r) => r.rows),
     );
+    await heard(c.req.raw, auth.deviceId, "seen");
     return c.json({ kept: out[0].n });
   } catch (err) {
     return c.json({ error: "the reports could not be kept" }, syncFailure("crash", err));
