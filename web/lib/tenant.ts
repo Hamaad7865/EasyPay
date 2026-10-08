@@ -23,8 +23,8 @@ export const isSuspended = (ctx: TenantContext) => ctx.status !== "active";
 // Session -> employees.auth_user_id -> tenant. A login with no restaurant goes
 // to /onboarding, which explains that restaurants are set up by EasyPay (and
 // sends a platform admin to the admin area). So does a login whose role does
-// not hold "Sign in to the back office" (backoffice.access): it is a login
-// for the tills, and the page says so.
+// not hold "Sign in to the back office" (backoffice.access), and the page
+// says which of the two it is.
 //
 // A page and the shell around it both ask who is signed in. While a page is
 // being drawn the answer is worked out once and shared (cache), and it carries

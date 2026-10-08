@@ -6,8 +6,7 @@ import { loginStanding } from "@/lib/tenant";
 // There is no self-serve sign-up: restaurants and their logins are created by
 // the platform admin. A login that reaches this page is signed in but is not
 // let into a back office: it is not linked to a restaurant (or its login was
-// switched off), or it is a login for the tills, whose role does not hold
-// "Sign in to the back office".
+// switched off), or its role does not hold "Sign in to the back office".
 export default async function NotLinkedPage() {
   const { data } = await auth.getSession();
   if (!data?.user) redirect("/login");
@@ -29,11 +28,10 @@ export default async function NotLinkedPage() {
         </div>
         {standing === "no-access" ? (
           <>
-            <h1>This login is for the tills</h1>
+            <h1>No back office on this login</h1>
             <p className="auth-lede">
               {data.user.email} is signed in, but its role does not include the back office. The owner can allow it in
               the back office, under Roles and permissions: tick &quot;Sign in to the back office&quot; for this role.
-              On a till it works as before.
             </p>
           </>
         ) : (
