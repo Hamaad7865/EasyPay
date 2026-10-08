@@ -100,6 +100,12 @@ object Wire {
 
     fun decodeReply(line: String): WireReply? = runCatching { json.decodeFromString(WireReply.serializer(), line) }.getOrNull()
 
+    // A ticket and a mark as text, for the till to keep until a screen has them.
+    fun encodeTicket(ticket: WireTicket): String = json.encodeToString(WireTicket.serializer(), ticket)
+    fun decodeTicket(text: String): WireTicket? = runCatching { json.decodeFromString(WireTicket.serializer(), text) }.getOrNull()
+    fun encodeMark(mark: WireMark): String = json.encodeToString(WireMark.serializer(), mark)
+    fun decodeMark(text: String): WireMark? = runCatching { json.decodeFromString(WireMark.serializer(), text) }.getOrNull()
+
     // A screen's address as the back office keeps it: an IP, or IP:port.
     fun address(text: String?): Pair<String, Int>? {
         val t = text?.trim().orEmpty()
