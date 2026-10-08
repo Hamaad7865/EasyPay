@@ -76,9 +76,10 @@ import javax.inject.Inject
 data class MenuRow(val item: ItemEntity, val category: CategoryEntity?, val index: Int, val station: String, val options: String)
 
 // The menu as the floor needs it during service: what there is, where it is
-// made, whether it can still be sold, and what it costs. A price can be
-// changed here by someone allowed to edit the menu; the rest of an item is
-// the back office's.
+// made, whether it can still be sold, and what it costs. Someone allowed to
+// edit the menu can change a price here, and add an item, change its name,
+// price, category and barcode, or remove it (ItemSheet). An item's add-ons,
+// tax and stock are the back office's.
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class MenuViewModel @Inject constructor(
@@ -108,6 +109,9 @@ class MenuViewModel @Inject constructor(
 
     // The item whose price is being changed, or none.
     val pricing = MutableStateFlow<ItemEntity?>(null)
+
+    // An item being added, changed or removed from this till.
+    val items = ItemEditor(service, approvals, viewModelScope, shop = false)
 
     // A new price for an item, as typed ("120", "99.50"). Someone who may not
     // change prices asks someone who may; the sheet closes while they do.
@@ -152,11 +156,13 @@ fun MenuStockScreen(vm: MenuViewModel) {
     val total by vm.total.collectAsState()
     val soldOut by vm.soldOut.collectAsState()
     val pricing by vm.pricing.collectAsState()
+    val editing by vm.items.editing.collectAsState()
 
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             ScreenHead("$total items · $soldOut sold out", L.menu, Modifier.weight(1f))
             Field(q, { vm.query.value = it.take(40) }, "Find an item", Modifier.width(340.dp), height = 52.dp, bg = V.Panel, size = 16.sp, leading = { VIcon(VI.Search, 20.dp, V.Text2) })
+            VBtn("New item", bg = V.Blue, fg = Color.White, height = 52.dp, weight = 800) { vm.items.new(cat) }
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             (listOf<CategoryEntity?>(null) + cats).forEachIndexed { i, c ->
@@ -173,7 +179,7 @@ fun MenuStockScreen(vm: MenuViewModel) {
         }
         Column(Modifier.weight(1f).fillMaxWidth().panel()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Caps("Item", V.Text2, Modifier.weight(1.6f))
+                Caps("Item · tap to change", V.Text2, Modifier.weight(1.6f))
                 Caps("Category", V.Text2, Modifier.weight(1f))
                 Caps("Station", V.Text2, Modifier.weight(0.8f))
                 Caps("Options", V.Text2, Modifier.weight(1f))
@@ -186,7 +192,10 @@ fun MenuStockScreen(vm: MenuViewModel) {
                 items(rows, key = { it.item.id }) { r ->
                     val on = r.item.is_available
                     Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        T(r.item.name, 15.sp, 700, modifier = Modifier.weight(1.6f), lines = 2)
+                        // the name is a key: tapping it opens the item, to change or remove it
+                        Box(Modifier.weight(1.6f).heightIn(min = 48.dp).clip(RoundedCornerShape(10.dp)).clickable { vm.items.open(r.item) }, contentAlignment = Alignment.CenterStart) {
+                            T(r.item.name, 15.sp, 700, lines = 2)
+                        }
                         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Box(Modifier.size(8.dp).clip(CircleShape).background(colorOf(r.category, r.index)))
                             T(r.category?.name ?: "—", 15.sp, 500, V.Dim)
@@ -196,9 +205,10 @@ fun MenuStockScreen(vm: MenuViewModel) {
                         // the price is a key: tapping it changes what the item costs
                         Box(
                             Modifier.width(130.dp).height(44.dp).clip(RoundedCornerShape(10.dp)).background(V.Key2).border(1.dp, V.Stroke, RoundedCornerShape(10.dp))
-                                .clickable { vm.pricing.value = r.item }.padding(horizontal = 12.dp),
+                                // one whose price is typed at the sale has none to change here: its key opens the item
+                                .clickable { if (r.item.open_price) vm.items.open(r.item) else vm.pricing.value = r.item }.padding(horizontal = 12.dp),
                             contentAlignment = Alignment.CenterEnd,
-                        ) { T(Money.format(r.item.price), 15.sp, 700) }
+                        ) { T(if (r.item.open_price) "At the sale" else Money.format(r.item.price), 15.sp, 700) }
                         Row(
                             Modifier.width(170.dp).height(48.dp).clip(RoundedCornerShape(12.dp)).clickable { vm.toggle(r.item) },
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -212,6 +222,8 @@ fun MenuStockScreen(vm: MenuViewModel) {
             }
         }
     }
+
+    editing?.let { ItemSheet(vm.items, it, cats, shop = false) }
 
     pricing?.let { item ->
         // what it costs now, as a number to type over: "120" or "99.50"

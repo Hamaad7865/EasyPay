@@ -9,7 +9,12 @@ import com.restopos.core.database.TableEntity
 import com.restopos.core.database.TicketEntity
 import com.restopos.core.database.TicketLineEntity
 import com.restopos.core.database.TillDatabase
+import com.restopos.core.network.ApiClient
+import com.restopos.core.network.ApiError
+import com.restopos.core.network.AuthRequired
+import com.restopos.core.network.dto.OutboxOp
 import com.restopos.core.sync.SessionStore
+import com.restopos.core.sync.SyncScheduler
 import com.restopos.core.sync.pushNow
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -64,6 +69,7 @@ class ServiceRepository @Inject constructor(
     private val db: TillDatabase,
     private val session: SessionStore,
     private val staff: StaffSession,
+    private val api: ApiClient,
     @ApplicationContext private val context: Context,
 ) {
     private fun op(type: String, payload: JsonObject) = OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
@@ -177,6 +183,54 @@ class ServiceRepository @Inject constructor(
             }))
         }
         pushNow(context)
+    }
+
+    // An item made or changed from the till (its name, its price or that its
+    // price is typed at the sale, its category, its barcode, whether it is on
+    // sale), by someone allowed to edit the menu or with their approval.
+    //
+    // Unlike a sale it is not queued: it goes to the server now and its answer
+    // is waited for, so it needs a connection. An item that was queued and
+    // then refused (its barcode is another item's) would take every sale that
+    // named it down with it. Once the server has it, a sync brings it onto
+    // this till, and the others have it at their next.
+    // Returns the item's id.
+    suspend fun saveItem(id: String?, item: ItemForm.Item, categoryId: String?, available: Boolean, shop: Boolean, approver: StaffMember? = null): Result<String> = runCatching {
+        staff.allow("items.edit", if (shop) "change the products" else "change the menu", approver)
+        val itemId = id ?: Uuid7.next()
+        ask("item.save", shop, buildJsonObject {
+            put("id", itemId); put("name", item.name); put("price", item.price); put("open_price", item.open)
+            put("category_id", categoryId ?: ""); put("barcode", item.barcode ?: ""); put("available", available)
+            staff.approvedBy("items.edit", approver)?.let { put("approved_by", it) }
+        })
+        itemId
+    }
+
+    // Removed from the menu, the same way. Receipts that sold it keep its name.
+    suspend fun removeItem(itemId: String, shop: Boolean, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("items.edit", if (shop) "change the products" else "change the menu", approver)
+        ask("item.remove", shop, buildJsonObject {
+            put("item_id", itemId)
+            staff.approvedBy("items.edit", approver)?.let { put("approved_by", it) }
+        })
+    }
+
+    // One op sent now, outside the outbox, and its answer waited for.
+    private suspend fun ask(type: String, shop: Boolean, payload: JsonObject) {
+        val answer = try {
+            api.push(listOf(OutboxOp(Uuid7.next(), type, payload, staff.id()))).firstOrNull()
+        } catch (e: java.io.IOException) {
+            error("This needs a connection: the server has to answer first. Try again when the tablet is online.")
+        } catch (e: AuthRequired) {
+            error("This tablet has to be signed in again before the menu can be changed from it.")
+        } catch (e: ApiError) {
+            error(if (e.status == ApiClient.UPDATE_REQUIRED) "This till has to be updated first." else "The server could not do that just now. Try again in a moment.")
+        }
+        when (answer?.status) {
+            "applied" -> SyncScheduler.pullNow(context)
+            "rejected" -> error(ItemForm.refused(answer.code, shop))
+            else -> error("The server is busy. Try again in a moment.")
+        }
     }
 
     // An item's price, changed from the till by someone allowed to edit the

@@ -109,6 +109,9 @@ class ProductsViewModel @Inject constructor(
     val open = MutableStateFlow<ProductOpen?>(null)
     val asking = MutableStateFlow<NumAsk?>(null)
 
+    // A product being added, changed or removed from this till.
+    val items = com.restopos.feature.menu.ItemEditor(service, approvals, viewModelScope, shop = true)
+
     // scan mode: the tablet's switch, the same one as on the sell screen
     val scanMode: StateFlow<Boolean> = session.scanMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     fun setScanMode(on: Boolean) = viewModelScope.launch { session.setScanMode(on); if (on) query.value = "" }
@@ -183,6 +186,7 @@ fun ProductsScreen(vm: ProductsViewModel) {
     val variants by vm.variantCounts.collectAsState()
     val open by vm.open.collectAsState()
     val asking by vm.asking.collectAsState()
+    val editing by vm.items.editing.collectAsState()
     val byId = cats.associateBy { it.id }
     val searching = q.isNotBlank()
     val scan by vm.scanMode.collectAsState()
@@ -191,6 +195,7 @@ fun ProductsScreen(vm: ProductsViewModel) {
     Column(Modifier.fillMaxSize().padding(start = 20.dp, end = 20.dp, top = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             ScreenHead("${items.size} ${if (items.size == 1) "product" else "products"}" + if (searching) " found" else "", L.productsStock, Modifier.weight(1f))
+            VBtn("New product", bg = V.Blue, fg = androidx.compose.ui.graphics.Color.White, height = 52.dp, radius = 14.dp, weight = 800) { vm.items.new(cat) }
             ScanKey(scan, size = 52.dp) { vm.setScanMode(it) }
             // scan mode: nothing to type into, so nothing brings the keyboard up
             if (scan) ScanPill(Modifier.width(440.dp), height = 52.dp, idle = "Scan a barcode")
@@ -211,7 +216,7 @@ fun ProductsScreen(vm: ProductsViewModel) {
                 T("LEFT", 12.sp, 800, V.Text3, Modifier.width(170.dp), spacing = 1.sp)
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
-            if (items.isEmpty()) T(if (searching) "Nothing matches “${q.trim()}”." else "No products here yet. They are added in the back office, under Products.", 15.sp, 500, V.Text2, Modifier.padding(28.dp), lines = 2)
+            if (items.isEmpty()) T(if (searching) "Nothing matches “${q.trim()}”." else "No products here yet. Tap New product, or add them in the back office, under Products.", 15.sp, 500, V.Text2, Modifier.padding(28.dp), lines = 2)
             LazyColumn(Modifier.fillMaxSize()) {
                 items(items, key = { it.id }) { i ->
                     val c = byId[i.category_id]
@@ -224,7 +229,7 @@ fun ProductsScreen(vm: ProductsViewModel) {
                             T(listOfNotNull(c?.name, if (n > 0) "$n variants" else null, if (!i.is_available) "not on sale" else null).joinToString(" · "), 12.sp, 500, V.Text3)
                         }
                         T(i.sku ?: "", 14.sp, 500, V.Text2, Modifier.width(150.dp))
-                        T(Money.format(i.price) + if (i.sold_by == "weight") " /kg" else "", 15.sp, 700, modifier = Modifier.width(130.dp))
+                        T(if (i.open_price) "At the sale" else Money.format(i.price) + if (i.sold_by == "weight") " /kg" else "", 15.sp, 700, modifier = Modifier.width(130.dp))
                         T(
                             if (!counted) "Not stocked" else LinePrice.left(qty, i.sold_by == "weight"), 14.sp, 700,
                             if (!counted) V.Text3 else when (LinePrice.stock(qty)) { LinePrice.Stock.Plenty -> V.Text2; LinePrice.Stock.Few -> V.AmberText; LinePrice.Stock.None -> V.RedText },
@@ -240,6 +245,7 @@ fun ProductsScreen(vm: ProductsViewModel) {
 
     open?.let { ProductSheet(it, vm) }
     asking?.let { a -> NumSheet(a) { vm.closeAsk() } }
+    editing?.let { com.restopos.feature.menu.ItemSheet(vm.items, it, cats, shop = true) }
 }
 
 @Composable
@@ -260,11 +266,11 @@ private fun ProductSheet(p: ProductOpen, vm: ProductsViewModel) {
         if (p.variants.isEmpty()) {
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(V.Well).padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    T(Money.format(i.price) + if (weighed) " a kilo" else "", 20.sp, 800)
+                    T(if (i.open_price) "Price typed at the sale" else Money.format(i.price) + if (weighed) " a kilo" else "", 20.sp, 800)
                     val qty = (p.levels[""] ?: 0).toLong()
                     T(if (!p.counted) "Its stock is not counted" else LinePrice.left(qty, weighed) + " in this shop", 14.sp, 600, if (p.counted) tone(qty) else V.Text3)
                 }
-                VBtn("Change price", height = 48.dp, radius = 14.dp) { vm.askPrice(i, null) }
+                if (!i.open_price) VBtn("Change price", height = 48.dp, radius = 14.dp) { vm.askPrice(i, null) }
             }
         } else {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(V.Well)) {
@@ -291,6 +297,11 @@ private fun ProductSheet(p: ProductOpen, vm: ProductsViewModel) {
             Toggle(i.is_available)
         }
         T("Stock is changed in the back office: a delivery, an adjustment or a count, each with its reason.", 13.sp, 500, V.Text3, lines = 2)
-        Row { Gap(); VBtn("Close", height = 52.dp, radius = 14.dp) { vm.close() } }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // its name, category, barcode, and removing it: the product's own sheet
+            VBtn("Edit product", height = 52.dp, radius = 14.dp) { vm.close(); vm.items.open(i, fixedPrice = p.variants.isNotEmpty() || weighed) }
+            Gap()
+            VBtn("Close", height = 52.dp, radius = 14.dp) { vm.close() }
+        }
     }
 }
