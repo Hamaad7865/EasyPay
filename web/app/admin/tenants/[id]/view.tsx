@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BUSINESS_TYPES, PLANS } from "@/lib/platform";
 import { Submit, Wait } from "../../../backoffice/busy";
 import { cap, day, dayTime, Notes, supportId } from "../../bits";
+import { ConfirmSubmit } from "../../confirm";
 import { Password } from "../../password";
 import { type Login, LoginsTable } from "./logins";
 
@@ -191,7 +192,18 @@ export function TenantView({
                               {which}
                               <input type="hidden" name="device" value={d.id} />
                               <input type="hidden" name="active" value={d.active ? "false" : "true"} />
-                              <Submit className={d.active ? "btn-danger btn-sm" : "btn-quiet btn-sm"}>{d.active ? "Deactivate" : "Reactivate"}</Submit>
+                              {d.active ? (
+                                <ConfirmSubmit
+                                  className="btn-danger btn-sm"
+                                  title={`Deactivate ${d.name}?`}
+                                  text="It cannot register again. A till that is still signed in keeps selling and syncing; switch its login off to stop that. You can reactivate it here."
+                                  yes="Deactivate"
+                                >
+                                  Deactivate
+                                </ConfirmSubmit>
+                              ) : (
+                                <Submit className="btn-quiet btn-sm">Reactivate</Submit>
+                              )}
                             </form>
                           </td>
                         </tr>
@@ -318,7 +330,14 @@ export function TenantView({
                   </label>
                 </div>
                 <div className="card-foot">
-                  <Submit className="btn-danger">Suspend this client</Submit>
+                  <ConfirmSubmit
+                    className="btn-danger"
+                    title={`Suspend ${tenant.name}?`}
+                    text="They can still sign in and see their data, and their tills still sync sales already made. They cannot change the menu or add tills. Nothing is deleted, and you can reactivate them here."
+                    yes="Suspend"
+                  >
+                    Suspend this client
+                  </ConfirmSubmit>
                 </div>
               </form>
             ) : (

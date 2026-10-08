@@ -1193,6 +1193,17 @@ button[aria-busy="true"]::after {
 .adm-log span { color: var(--ink2); }
 .adm-log b { color: var(--ink); font-weight: 600; }
 
+/* "Are you sure?" before suspending a client or deactivating a till (admin/confirm.tsx):
+   a small panel in the middle of the dimmed page, the way out first */
+.confirm { width: min(420px, calc(100vw - 32px)); margin: auto; padding: 0; border: 0; border-radius: 22px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); white-space: normal; text-align: left; }
+.confirm::backdrop { background: rgba(17, 24, 39, 0.38); backdrop-filter: blur(2px); }
+.confirm[open] { animation: search-in 0.22s var(--glide); }
+.confirm[open]::backdrop { animation: drawer-dim 0.2s ease; }
+.confirm-in { padding: 22px 22px 18px; }
+.bo-main .confirm h2 { margin: 14px 0 6px; font-size: 17px; font-weight: 650; letter-spacing: -0.015em; }
+.bo-main .confirm p { margin: 0; color: var(--ink2); font-size: 13.5px; font-weight: 400; line-height: 1.55; }
+.confirm-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
 /* a crash: the line says what stopped the till, and opens on where */
 .bo-main .adm-top td { vertical-align: top; }
 .adm-crash summary { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-weight: 600; word-break: break-word; }
@@ -1225,4 +1236,5 @@ button[aria-busy="true"]::after {
 @media (prefers-reduced-motion: reduce) {
   .adm-nav a { transition: none; }
   .adm-nav a:has(> .wait[data-on]) { animation: none; opacity: 0.6; }
+  .confirm[open], .confirm[open]::backdrop { animation: none; }
 }
