@@ -27,10 +27,19 @@ class HelpTest {
         assertFalse(all(shop = false, premium = false).contains("kitchen display"))
     }
 
+    // a kitchen screen on another tablet is the premium tier's too
+    @Test
+    fun theKitchenScreenIsExplainedToThoseWhoCanHaveOne() {
+        assertTrue(titles(shop = false, premium = true).contains("A kitchen screen on another tablet"))
+        assertFalse(titles(shop = false, premium = false).contains("A kitchen screen on another tablet"))
+        assertFalse(all(shop = false, premium = false).contains("kitchen screen"))
+        assertFalse(titles(shop = true, premium = true).contains("A kitchen screen on another tablet"))
+    }
+
     @Test
     fun andLosesNothingElse() {
         val premium = titles(shop = false, premium = true)
-        assertEquals(premium - setOf("The kitchen display", "Bookings"), titles(shop = false, premium = false))
+        assertEquals(premium - setOf("The kitchen display", "A kitchen screen on another tablet", "Bookings"), titles(shop = false, premium = false))
         // sending to the kitchen and its printers are everyone's
         assertTrue(titles(shop = false, premium = false).contains("A printer does not print"))
         assertTrue(all(shop = false, premium = false).contains("Send to kitchen"))

@@ -119,6 +119,19 @@ class PartsTest {
         assertTrue(Parts.of(ticket, listOf(WireLine("l-2", 1, "Beer") to listOf("bar")), listOf(screen("grill")), 900).isEmpty())
     }
 
+    // A part is sent as it was when the order was sent. Put again later, to a
+    // tablet set up afresh, it must not bring a voided item back as one to cook.
+    @Test
+    fun aPartPutAgainTakesHowItsLinesStandNow() {
+        val marks = Parts.standing(listOf(Triple("l-1", false, false), Triple("l-2", true, false), Triple("l-3", false, true), Triple("l-4", true, true)))
+        assertEquals(
+            listOf(WireMark(line = "l-2", done = true), WireMark(line = "l-3", voided = true), WireMark(line = "l-4", voided = true)),
+            marks,
+        )
+        // the first time, nothing has happened yet: nothing is said
+        assertTrue(Parts.standing(listOf(Triple("l-1", false, false))).isEmpty())
+    }
+
     @Test
     fun aMarkIsKeptAsTextAndReadBack() {
         val m = WireMark(line = "l-1", voided = true)

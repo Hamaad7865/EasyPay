@@ -38,6 +38,17 @@ object Parts {
     // cooks have bumped is never sent again.
     fun toPut(open: List<KdsPartEntity>): List<KdsPartEntity> = open.filter { !it.delivered && it.bumped_at == null }
 
+    // What goes with a part each time it is put: how its lines stand on the
+    // till now. A part is frozen as it was sent; a line voided or ticked
+    // since is not in it. Sent the first time this says nothing (nothing has
+    // happened yet); sent again, to a tablet that was set up afresh or lost
+    // the ticket, it stops a voided item coming back as one to cook.
+    // `lines` is each line's id with whether it is done and whether it is voided.
+    fun standing(lines: List<Triple<String, Boolean, Boolean>>): List<WireMark> =
+        lines.flatMap { (id, done, voided) ->
+            listOfNotNull(WireMark(line = id, voided = true).takeIf { voided }, WireMark(line = id, done = true).takeIf { done && !voided })
+        }
+
     // The parts a screen confirmed once and no longer holds (`have` is what
     // it says it holds): they are owed again.
     fun lost(open: List<KdsPartEntity>, have: Collection<String>): List<String> {

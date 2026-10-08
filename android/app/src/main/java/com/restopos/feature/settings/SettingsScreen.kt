@@ -155,9 +155,27 @@ class SettingsViewModel @Inject constructor(
     private val session: SessionStore,
     private val staff: StaffSession,
     private val approvals: Approvals,
+    private val screenLink: com.restopos.core.kitchen.ScreenLink,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     private fun <T> Flow<T>.held(initial: T): StateFlow<T> = stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), initial)
+
+    // The kitchen screens of this store (tablets in the kitchen that show the
+    // orders: back office, Printers), each with what it shows; and how each
+    // stands with this till: answering or not, and how many orders wait for it.
+    class KitchenScreen(val row: PrinterEntity, val shows: String)
+    private val _screens = MutableStateFlow<List<KitchenScreen>>(emptyList())
+    val screens: StateFlow<List<KitchenScreen>> = _screens
+    val screenStatus: StateFlow<Map<String, com.restopos.core.kitchen.ScreenStatus>> = screenLink.status().held(emptyMap())
+    private val _testing = MutableStateFlow<String?>(null)
+    val testing: StateFlow<String?> = _testing
+    // asks a screen now and says in words how it answered
+    fun testScreen(id: String) = viewModelScope.launch {
+        if (_testing.value != null) return@launch
+        _testing.value = id
+        com.restopos.core.ui.Toaster.say(runCatching { screenLink.test(id) }.getOrElse { "That did not work: ${it.message}" })
+        _testing.value = null
+    }
 
     val user: StateFlow<StaffMember?> = staff.current
     fun can(permission: String) = staff.can(permission)
@@ -257,6 +275,10 @@ class SettingsViewModel @Inject constructor(
         _onePrinter.value = Routing.single(printers, one) != null
         _routes.value = printers.associate { p -> p.id to categories.filter { c -> Routing.printersFor(Routing.ids(c.printer_ids), printers, one).contains(p.id) }.map { it.name } }
         _printers.value = printers
+        _screens.value = printing.screens().map { s ->
+            val ticked = categories.filter { c -> Routing.ids(c.printer_ids).contains(s.id) }.map { it.name }
+            KitchenScreen(s, if (s.all_items) "Every item of every order" else if (ticked.isEmpty()) "Nothing yet: tick its categories in the back office, under Printers" else "Items of ${ticked.joinToString(", ")}")
+        }
         _orderTypes.value = db.catalog().diningOptions()
     }
 
@@ -398,9 +420,11 @@ fun SettingsScreen(
         if (failed > 0) add(Standing("$failed print ${if (failed == 1) "job" else "jobs"} failed", "See what did not print and send it again.", "Printers") { page = Page.Printers })
     }
 
-    // a printer that wants looking at puts a dot on Printers
+    // a printer that wants looking at puts a dot on Printers, and so does a kitchen screen that does not answer
     val answers by vm.answers.collectAsState()
-    val printerTrouble = failed > 0 || printers?.let { list -> list.isEmpty() || list.any { answers[it.id] == false } } == true
+    val screenStatus by vm.screenStatus.collectAsState()
+    val printerTrouble = failed > 0 || printers?.let { list -> list.isEmpty() || list.any { answers[it.id] == false } } == true ||
+        screenStatus.values.any { it.trouble != null }
     // Another page comes up into place. The one that is there when Settings
     // opens is simply there.
     val seen = remember { arrayOfNulls<Page>(1) }
@@ -857,6 +881,39 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
             }
         }
     }
+    // The kitchen screens: tablets in the kitchen that show the orders. Each
+    // says whether it answered this till the last time it was asked, and how
+    // many orders it has not confirmed.
+    val screens by vm.screens.collectAsState()
+    val screenStatus by vm.screenStatus.collectAsState()
+    val testing by vm.testing.collectAsState()
+    if (retail == false && screens.isNotEmpty()) {
+        Heading("Kitchen screens")
+        if (!premium) Panel { Note("Kitchen screens are part of EasyPay Premium. On this restaurant's plan nothing is sent to them; kitchen orders print as before.") }
+        else screens.forEach { s ->
+            val st = screenStatus[s.row.id]
+            Panel {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(s.row.name, color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            when {
+                                st == null || (st.heardAt == null && st.trouble == null) -> Tag("Not asked yet", Pos.Text3, dot = true)
+                                st.trouble != null -> Tag("Not answering", Pos.Pink, dot = true)
+                                else -> Tag("Answering", Pos.Ok, dot = true)
+                            }
+                            if ((st?.waiting ?: 0) > 0) Tag("${st?.waiting} waiting", Pos.Pink)
+                        }
+                        Text("Kitchen screen · ${s.row.address ?: "no address"}", Modifier.padding(top = 2.dp), color = Pos.Text3, fontSize = 13.sp)
+                        Text("${s.shows}.", Modifier.padding(top = 2.dp), color = Pos.Text2, fontSize = 13.sp)
+                        st?.trouble?.let { Text(it, Modifier.padding(top = 4.dp), color = Pos.Pink, fontSize = 13.sp) }
+                    }
+                    Small(if (testing == s.row.id) "Asking…" else "Test", enabled = testing == null) { vm.testScreen(s.row.id) }
+                }
+            }
+        }
+        if (premium) Note("An order goes to its kitchen screens over the restaurant's own Wi-Fi the moment it is sent, with or without internet. One that a screen has not confirmed is sent again by itself until it has.")
+    }
     // only a restaurant sends orders to a kitchen
     if (retail == false && orderTypes.isNotEmpty()) {
         Heading("When an order goes to the kitchen")
@@ -953,7 +1010,8 @@ private val HELP = listOf(
     "A counter sale" to "Tap Quick sale, tap the items, tap Pay. What was not sent goes to the kitchen when it is paid. To serve someone else before it is paid, tap New sale: the order waits under Orders, and tapping it there brings it back.",
     "A takeaway or a delivery" to "On Takeaway, tap New takeaway or New delivery. Type who it is for, tap the items, and send or take payment. It then moves along the board: new, in the kitchen, ready, and off the board when it is collected. Tap its time to move it, or a delivery's address to pick the rider.",
     "Options and notes for the kitchen" to "An item marked Options asks its questions when you tap it. Press and hold any item to add a kitchen note or several at once. More, Order note says something about the whole order.",
-    "The kitchen display" to "Every send is a ticket on Kitchen. The cooks tap a line when it is done and Bump when the ticket is at the pass; Recall last brings the last one back. A takeaway turns ready when its last ticket is bumped.",
+    "The kitchen display" to "Every send is a ticket on Kitchen. The cooks tap a line when it is done and Bump when the ticket is at the pass; Recall last brings the last one back. A takeaway turns ready when its last ticket is bumped. The key with the cog sets after how many minutes a ticket turns amber and red, and what a ticket shows.",
+    "A kitchen screen on another tablet" to "A tablet in the kitchen can show the orders as they are sent. On that tablet, install EasyPay and tap Set up as a kitchen screen on its first screen: it needs no login, and shows its address and a pairing code. In the back office, under Printers, add a Kitchen screen with that address and code, and choose whether it shows everything or only the categories ticked for it. From this till's next sync, Send to kitchen puts the order on it at once, over the restaurant's own Wi-Fi, with or without internet. A tick or a Bump there shows on Kitchen here within a few seconds; with several screens, Bump clears that screen's part, and a takeaway is ready when every screen has bumped its part. If the till says a kitchen screen is not answering: check the kitchen tablet is on, has EasyPay open, and is on the same Wi-Fi; the orders wait and go to it by themselves when it is back. Settings, Printers shows each screen, how many orders wait for it, and has Test. Ask whoever set up the Wi-Fi to keep the kitchen tablet's address the same, as for a printer.",
     "Taking payment" to "Tap Pay and pick how it is paid. For cash, tap what the guest gave, or type it, to see the change. The receipt prints and the order closes; Print gives another copy, and Email or WhatsApp hands the receipt to that app on the tablet.",
     "Splitting the bill" to "To share a bill evenly, tap Pay, then Split equally, and set how many are paying: each share is paid its own way and each guest gets a printed copy. To let guests pay for their own items, tap Split: move items onto separate checks and pay each check on its own.",
     "Taking an item off" to "Tap the line on the order. Before it has gone to the kitchen it is simply removed. After that it is a void: the kitchen gets a void ticket, and it needs someone allowed to void.",
@@ -975,7 +1033,7 @@ private val HELP = listOf(
 // The kitchen display and bookings are the premium tier's (server 0085): a
 // restaurant on another plan is not told how to use screens it does not have,
 // nor that an order is on a display it has not got.
-private val PREMIUM_HELP = setOf("The kitchen display", "Bookings")
+private val PREMIUM_HELP = setOf("The kitchen display", "A kitchen screen on another tablet", "Bookings")
 private const val ON_THE_DISPLAY = " An order still reaches the kitchen display when a kitchen printer does not answer."
 internal fun helpFor(shop: Boolean, premium: Boolean): List<Pair<String, String>> = when {
     shop -> SHOP_HELP

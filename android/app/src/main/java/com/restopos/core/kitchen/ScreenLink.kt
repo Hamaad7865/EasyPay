@@ -138,7 +138,8 @@ class ScreenLink @Inject constructor(
             val till = device?.let { db.catalog().device(it) }
             val request = WireRequest(
                 till = device ?: "", tillName = till?.name ?: "Till", tillCode = till?.code ?: "", screen = s.name,
-                put = put.mapNotNull { Wire.decodeTicket(it.payload) }, marks = out.mapNotNull { Wire.decodeMark(it.mark) }, after = state.read_to,
+                // the marks owed, and after them how the lines of what is put stand now
+                put = put.mapNotNull { Wire.decodeTicket(it.payload) }, marks = out.mapNotNull { Wire.decodeMark(it.mark) } + standing(put), after = state.read_to,
                 now = System.currentTimeMillis(),
             )
             val payload = Wire.encode(request, s.pair_code.orEmpty())
@@ -190,7 +191,7 @@ class ScreenLink @Inject constructor(
         val till = device?.let { db.catalog().device(it) }
         val request = WireRequest(
             till = device ?: "", tillName = till?.name ?: "Till", tillCode = till?.code ?: "", screen = s.name,
-            put = put.mapNotNull { Wire.decodeTicket(it.payload) }, after = 0, now = System.currentTimeMillis(),
+            put = put.mapNotNull { Wire.decodeTicket(it.payload) }, marks = standing(put), after = 0, now = System.currentTimeMillis(),
         )
         val payload = Wire.encode(request, s.pair_code.orEmpty())
         val reply = withContext(Dispatchers.IO) { runCatching { ScreenClient.exchange(at.first, at.second, payload) }.getOrNull() }?.let { Wire.decodeReply(it) }
@@ -201,6 +202,14 @@ class ScreenLink @Inject constructor(
         dao.saveScreenState(state.copy(epoch = reply.epoch, read_to = reply.seq, heard_at = now, trouble = null))
         return reply
     }
+
+    // How the lines of the parts being put stand on the till now (Parts.standing).
+    private suspend fun standing(put: List<com.restopos.core.database.KdsPartEntity>): List<WireMark> =
+        Parts.standing(
+            put.flatMap { Parts.lineIds(it) }.distinct().mapNotNull { id ->
+                db.tickets().line(id)?.let { Triple(id, it.kitchen_done, it.voided_at != null || it.deleted_at != null) }
+            },
+        )
 
     private suspend fun apply(screen: String, m: WireMark, now: Long) {
         when {
