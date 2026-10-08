@@ -59,8 +59,10 @@ Everything to fill in is in `js/config.js`:
 
 - `email`: where "Book a demo" messages go. It says `hello@easypaypos.com`,
   which is a guess: the mailbox has to exist.
-- `whatsapp`: the number in international form, digits only. While it is
-  empty the WhatsApp button is hidden.
+- `whatsapp`: the number people reach EasyPay on, by WhatsApp or by calling
+  it, in international form, digits only. It is 230 5252 5270, given by the
+  owner. It puts "Send on WhatsApp" on the demo form, the number under the
+  form and the number in the foot; emptied, all three are hidden.
 - `signInUrl`: the back office's sign-in page. It is `/login`: the site and
   the back office share one address (see Hosting). Emptied, the "Sign in"
   links are hidden.

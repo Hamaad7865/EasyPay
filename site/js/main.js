@@ -16,13 +16,19 @@
   if (cfg.signInUrl) {
     for (const a of $$("[data-signin]")) { a.href = cfg.signInUrl; a.hidden = false; }
   }
+  // the number as it is said: +230 5252 5270 for a Mauritian mobile
+  const spoken = /^230\d{8}$/.test(digits) ? `+230 ${digits.slice(3, 7)} ${digits.slice(7)}` : "+" + digits;
   const direct = $("[data-direct]");
   if (direct && (cfg.email || digits)) {
     const bits = [];
-    if (digits) bits.push(`<a href="https://wa.me/${digits}">WhatsApp +${digits}</a>`);
+    if (digits) bits.push(`<a href="https://wa.me/${digits}">WhatsApp</a> or call <a href="tel:+${digits}">${spoken}</a>`);
     if (cfg.email) bits.push(`<a href="mailto:${cfg.email}">${cfg.email}</a>`);
-    direct.innerHTML = "Or write to us: " + bits.join(" · ");
+    direct.innerHTML = "Or reach us: " + bits.join(" · ");
     direct.hidden = false;
+  }
+  // the same number at the foot of the page
+  if (digits) {
+    for (const a of $$("[data-call]")) { a.href = "tel:+" + digits; a.textContent = spoken; a.hidden = false; }
   }
 
   // ---- the bar: loose at the top of the page, a glass pill once it moves ----
