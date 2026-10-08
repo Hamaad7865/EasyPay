@@ -423,7 +423,7 @@ fun MainShell(
                     Screen.Today -> { val vm: TodayViewModel = hiltViewModel(); TodayScreen(vm, if (retail) date else serviceLine) }
                     Screen.Menu -> { val vm: MenuViewModel = hiltViewModel(); MenuStockScreen(vm) }
                     Screen.Cash -> { val vm: CashViewModel = hiltViewModel(); CashScreen(vm, onOpenPeriod = onOpenPeriod, onClosed = onLock) }
-                    Screen.Receipts -> Box(Modifier.padding(top = 12.dp)) { ReceiptsScreen() }
+                    Screen.Receipts -> Box(Modifier.padding(top = 12.dp)) { ReceiptsScreen(onExchange = { shell.go(Screen.Sell) }) }
                     Screen.Customers -> Box(Modifier.padding(top = 12.dp)) { CustomersScreen() }
                     Screen.Settings -> Box {
                         SettingsScreen(

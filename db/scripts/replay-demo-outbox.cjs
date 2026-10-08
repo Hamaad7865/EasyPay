@@ -20,8 +20,9 @@
 //   restaurant: the emulator was filled with the same catalog as a restaurant
 //   (--es type restaurant), to check a restaurant's till still sends what the
 //   server takes.
-//   till-state.json: {"outbox": [...], "receipts": [...], "receipt_lines": [...], "levels": [...], "lines": [...]}
-//   as read off the emulator with sqlite3 -json (see the plan's record for the commands).
+//   till-state.json: {"outbox": [...], "receipts": [...], "receipt_lines": [...], "levels": [...], "lines": [...],
+//   "payments": [...]} as db/scripts/read-till-state.cjs reads it off the emulator. (The first fixtures were read
+//   by hand and have no payments: what is checked of payments is checked when they are there.)
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -70,7 +71,8 @@ function check(name, cond, extra) {
     } else {
       await c.query(`insert into dining_options (id, tenant_id, name, is_default, sort_order, needs_table, kitchen, kind) values ($1,$2,$3,true,0,false,'pay',$4)`, [shop.dining.id, tid, shop.dining.name, shop.dining.kind]);
     }
-    for (const [i, p] of shop.payments.entries()) await c.query(`insert into payment_types (id, tenant_id, name, kind, opens_drawer, sort_order) values ($1,$2,$3,$4,$5,$6)`, [p.id, tid, p.name, p.kind, p.opens_drawer, i]);
+    // a shop's Exchange payment type is not a restaurant's
+    for (const [i, p] of shop.payments.filter((x) => !restaurant || x.kind !== 'exchange').entries()) await c.query(`insert into payment_types (id, tenant_id, name, kind, opens_drawer, sort_order) values ($1,$2,$3,$4,$5,$6)`, [p.id, tid, p.name, p.kind, p.opens_drawer, i]);
     for (const k of shop.categories) await c.query(`insert into categories (id, tenant_id, name) values ($1,$2,$3)`, [k.id, tid, k.name]);
     for (const it of shop.items) {
       await c.query(
@@ -123,6 +125,31 @@ function check(name, cond, extra) {
     for (const l of compare ? till.lines.filter((x) => x.price_kind) : []) {
       const s = await one(`select unit_price, list_price, price_kind, price_by from ticket_lines where id = $1`, [l.id]);
       check(`${l.name_snapshot} (${l.price_label}): the server names who allowed it`, s && Number(s.unit_price) === l.unit_price && s.price_kind === l.price_kind && s.price_by === l.price_by, JSON.stringify(s) + ' till ' + l.price_by);
+    }
+    // how each receipt was settled, and what each kind of payment is left holding
+    if (compare && till.payments) {
+      const paid = (await c.query(
+        `select p.receipt_id, pt.kind, p.amount::int as amount, coalesce(p.reference, '') as reference, r.type
+           from receipt_payments p join receipts r on r.id = p.receipt_id join payment_types pt on pt.id = p.payment_type_id
+          where p.tenant_id = $1`, [tid])).rows;
+      const key = (p) => [p.receipt_id, p.kind, p.amount, p.reference ?? ''].join('|');
+      check(`the ${till.payments.length} payments are the same on both`, paid.map(key).sort().join('\n') === till.payments.map(key).sort().join('\n'),
+        '\n     server: ' + paid.map(key).sort().join('\n             ') + '\n     till:   ' + till.payments.map(key).sort().join('\n             '));
+      const net = {};
+      for (const p of paid) net[p.kind] = (net[p.kind] ?? 0) + (p.type === 'refund' ? -p.amount : p.amount);
+      console.log('     what each kind of payment holds, refunds taken off: ' + Object.entries(net).map(([k, v]) => k + ' ' + v).join(', '));
+      // an exchange puts the same amount into the exchange type and out of it
+      if (paid.some((p) => p.kind === 'exchange')) {
+        const sales = paid.filter((p) => p.kind === 'exchange' && p.type === 'sale');
+        check(`the ${sales.length} exchanges leave nothing in the exchange type`, (net.exchange ?? 0) === 0, String(net.exchange));
+        const named = (await c.query(`select number from receipts where tenant_id = $1 and type = 'refund'`, [tid])).rows.map((x) => x.number);
+        check('each sale paid with returned goods names the refund they came back on', sales.every((p) => named.includes(p.reference)), sales.map((p) => p.reference).join());
+      }
+      // the drawer: what the server works out it should hold is what the till counted against
+      for (const t of till.shifts ?? []) {
+        const sh = (await c.query(`select expected_cash::int as expected, counted_cash::int as counted from shifts where id = $1`, [t.id])).rows[0];
+        check('the drawer: what the server works out it should hold is what the till did', sh && sh.expected === t.expected_cash && sh.counted === t.counted_cash, JSON.stringify(sh) + ' till ' + JSON.stringify({ expected: t.expected_cash, counted: t.counted_cash }));
+      }
     }
     // the shelves: what the server holds is what the till shows, line by line
     const levels = (await c.query(`select item_id, variant_id, qty from stock_levels where tenant_id = $1 and store_id = $2`, [tid, store])).rows;

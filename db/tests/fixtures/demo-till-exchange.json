@@ -1,0 +1,825 @@
+{
+ "outbox": [
+  {
+   "op_id": "01a11915-166a-7f16-9941-d9bb33fc268d",
+   "type": "timeclock.punch",
+   "payload": "{\"id\":\"01a11915-1664-7abf-9aef-0ef7fe7f0eb8\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"device_id\":\"d0000000-0000-4000-8000-000000000003\",\"kind\":\"in\",\"device_time\":\"2026-10-08T01:16:14.820Z\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a11915-8671-768f-847c-3c9f9b1bf23e",
+   "type": "shift.open",
+   "payload": "{\"id\":\"01a11915-866e-75df-97ff-a10bef4730d6\",\"device_id\":\"d0000000-0000-4000-8000-000000000003\",\"opening_float\":100000,\"opened_at\":\"2026-10-08T01:16:43.502Z\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a11915-c670-717d-84cd-db8a9886126c",
+   "type": "ticket.create",
+   "payload": "{\"id\":\"01a11915-c64d-7d07-877d-681fb4cf5f69\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"dining_option_id\":\"d0000000-0000-4000-8000-000000000006\",\"order_no\":\"C-1\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a11915-c6a5-7c75-9aee-7a9dfb488135",
+   "type": "ticket.add_line",
+   "payload": "{\"id\":\"01a11915-c69a-7068-923b-aa02b0511abc\",\"ticket_id\":\"01a11915-c64d-7d07-877d-681fb4cf5f69\",\"item_id\":\"d0000000-0000-4000-8000-000000000106\",\"qty\":1000,\"unit_price\":32000,\"name_snapshot\":\"Ceramic mug, Blue\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a11916-1970-7620-8319-65fbb42b7823",
+   "type": "ticket.add_line",
+   "payload": "{\"id\":\"01a11916-196d-710a-864f-11d5d9c49a37\",\"ticket_id\":\"01a11915-c64d-7d07-877d-681fb4cf5f69\",\"item_id\":\"d0000000-0000-4000-8000-000000000103\",\"qty\":1000,\"unit_price\":59000,\"name_snapshot\":\"Cotton scarf, Red\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a11916-437f-7eed-9c1c-7825e3b44119",
+   "type": "receipt.create",
+   "payload": "{\"id\":\"01a11916-436f-7f43-9531-e1d4f363492a\",\"ticket_id\":\"01a11915-c64d-7d07-877d-681fb4cf5f69\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"device_id\":\"d0000000-0000-4000-8000-000000000003\",\"number\":\"DM-T1-000001\",\"device_seq\":1,\"device_time\":\"2026-10-08T01:17:31.887Z\",\"payments\":[{\"payment_type_id\":\"d0000000-0000-4000-8000-000000000007\",\"amount\":91000,\"tendered\":91000,\"change\":0}],\"discounts\":[],\"line_ids\":[\"01a11915-c69a-7068-923b-aa02b0511abc\",\"01a11916-196d-710a-864f-11d5d9c49a37\"]}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a11919-327e-7da9-89d4-c60793712076",
+   "type": "ticket.create",
+   "payload": "{\"id\":\"01a11919-3269-7b43-8dd3-d0a1613f35fa\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"dining_option_id\":\"d0000000-0000-4000-8000-000000000006\",\"order_no\":\"C-2\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a11919-68c8-772b-8366-d2d75ba69c67",
+   "type": "ticket.add_line",
+   "payload": "{\"id\":\"01a11919-68c6-7457-95d5-34326fb2f432\",\"ticket_id\":\"01a11919-3269-7b43-8dd3-d0a1613f35fa\",\"item_id\":\"d0000000-0000-4000-8000-000000000103\",\"qty\":1000,\"unit_price\":59000,\"name_snapshot\":\"Cotton scarf, Red\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a11919-ba55-75e6-8181-fdb07fa9552a",
+   "type": "refund.create",
+   "payload": "{\"id\":\"01a11919-ba47-7ed1-9745-636e1422d095\",\"refund_of\":\"01a11916-436f-7f43-9531-e1d4f363492a\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"device_id\":\"d0000000-0000-4000-8000-000000000003\",\"number\":\"DM-T1-R000002\",\"device_seq\":2,\"reason\":\"Exchange\",\"device_time\":\"2026-10-08T01:21:18.919Z\",\"lines\":[{\"ticket_line_id\":\"01a11915-c69a-7068-923b-aa02b0511abc\",\"qty\":1000}],\"payments\":[{\"payment_type_id\":\"d0000000-0000-4000-8000-000000000009\",\"amount\":32000}]}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a11919-ba66-754a-9a94-6b93af041143",
+   "type": "receipt.create",
+   "payload": "{\"id\":\"01a11919-ba61-7e0e-9e1c-432a950e7c17\",\"ticket_id\":\"01a11919-3269-7b43-8dd3-d0a1613f35fa\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"device_id\":\"d0000000-0000-4000-8000-000000000003\",\"number\":\"DM-T1-000003\",\"device_seq\":3,\"device_time\":\"2026-10-08T01:21:18.945Z\",\"payments\":[{\"payment_type_id\":\"d0000000-0000-4000-8000-000000000009\",\"amount\":32000,\"change\":0,\"reference\":\"DM-T1-R000002\"},{\"payment_type_id\":\"d0000000-0000-4000-8000-000000000008\",\"amount\":27000,\"tendered\":27000,\"change\":0}],\"discounts\":[],\"line_ids\":[\"01a11919-68c6-7457-95d5-34326fb2f432\"]}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191a-69e2-7c1d-9087-cc3ef3a234df",
+   "type": "ticket.create",
+   "payload": "{\"id\":\"01a1191a-69d3-739a-875d-ea254dad1302\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"dining_option_id\":\"d0000000-0000-4000-8000-000000000006\",\"order_no\":\"C-3\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191a-8480-75d8-8df2-f8f20624f49d",
+   "type": "ticket.add_line",
+   "payload": "{\"id\":\"01a1191a-847e-743a-8221-c3fbaa23e927\",\"ticket_id\":\"01a1191a-69d3-739a-875d-ea254dad1302\",\"item_id\":\"d0000000-0000-4000-8000-000000000106\",\"qty\":1000,\"unit_price\":32000,\"name_snapshot\":\"Ceramic mug, Blue\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191a-c139-766b-8785-2826f233a4a4",
+   "type": "refund.create",
+   "payload": "{\"id\":\"01a1191a-c137-7acc-87f7-d906d281a6be\",\"refund_of\":\"01a11916-436f-7f43-9531-e1d4f363492a\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"device_id\":\"d0000000-0000-4000-8000-000000000003\",\"number\":\"DM-T1-R000004\",\"device_seq\":4,\"reason\":\"Exchange\",\"device_time\":\"2026-10-08T01:22:26.231Z\",\"lines\":[{\"ticket_line_id\":\"01a11916-196d-710a-864f-11d5d9c49a37\",\"qty\":1000}],\"payments\":[{\"payment_type_id\":\"d0000000-0000-4000-8000-000000000009\",\"amount\":32000},{\"payment_type_id\":\"d0000000-0000-4000-8000-000000000007\",\"amount\":27000}],\"restock\":false}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191a-c149-7af3-9f02-68e377bc28cf",
+   "type": "receipt.create",
+   "payload": "{\"id\":\"01a1191a-c140-7cc4-903a-31b8e0d1bc9a\",\"ticket_id\":\"01a1191a-69d3-739a-875d-ea254dad1302\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"device_id\":\"d0000000-0000-4000-8000-000000000003\",\"number\":\"DM-T1-000005\",\"device_seq\":5,\"device_time\":\"2026-10-08T01:22:26.240Z\",\"payments\":[{\"payment_type_id\":\"d0000000-0000-4000-8000-000000000009\",\"amount\":32000,\"change\":0,\"reference\":\"DM-T1-R000004\"}],\"discounts\":[],\"line_ids\":[\"01a1191a-847e-743a-8221-c3fbaa23e927\"]}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191b-4480-77d6-83ae-d3e46d9706c7",
+   "type": "ticket.create",
+   "payload": "{\"id\":\"01a1191b-4473-7720-9799-739a6ca2eb69\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"dining_option_id\":\"d0000000-0000-4000-8000-000000000006\",\"order_no\":\"C-4\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191b-56bf-704e-99ef-10d35aafc9cc",
+   "type": "ticket.add_line",
+   "payload": "{\"id\":\"01a1191b-56bc-7c7b-84fd-75e554797499\",\"ticket_id\":\"01a1191b-4473-7720-9799-739a6ca2eb69\",\"item_id\":\"d0000000-0000-4000-8000-000000000103\",\"qty\":1000,\"unit_price\":59000,\"name_snapshot\":\"Cotton scarf, Red\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191b-f8ca-75da-8ea9-36956d1121f6",
+   "type": "refund.create",
+   "payload": "{\"id\":\"01a1191b-f8c6-783a-8718-3a6b5197175f\",\"refund_of\":\"01a11919-ba61-7e0e-9e1c-432a950e7c17\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"device_id\":\"d0000000-0000-4000-8000-000000000003\",\"number\":\"DM-T1-R000006\",\"device_seq\":6,\"reason\":\"Exchange\",\"device_time\":\"2026-10-08T01:23:45.990Z\",\"lines\":[{\"ticket_line_id\":\"01a11919-68c6-7457-95d5-34326fb2f432\",\"qty\":1000}],\"payments\":[{\"payment_type_id\":\"d0000000-0000-4000-8000-000000000009\",\"amount\":59000}]}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191b-f8d8-7d72-85a6-23e020cfef46",
+   "type": "receipt.create",
+   "payload": "{\"id\":\"01a1191b-f8d4-74f9-850d-b789d2e18510\",\"ticket_id\":\"01a1191b-4473-7720-9799-739a6ca2eb69\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"device_id\":\"d0000000-0000-4000-8000-000000000003\",\"number\":\"DM-T1-000007\",\"device_seq\":7,\"device_time\":\"2026-10-08T01:23:46.004Z\",\"payments\":[{\"payment_type_id\":\"d0000000-0000-4000-8000-000000000009\",\"amount\":59000,\"change\":0,\"reference\":\"DM-T1-R000006\"}],\"discounts\":[],\"line_ids\":[\"01a1191b-56bc-7c7b-84fd-75e554797499\"]}",
+   "employee_id": "d0000000-0000-4000-8000-000000000031",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191d-35c5-72d7-8143-bd9602126556",
+   "type": "timeclock.punch",
+   "payload": "{\"id\":\"01a1191d-35b5-70ca-9ac2-0862bfefc54d\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"device_id\":\"d0000000-0000-4000-8000-000000000003\",\"kind\":\"in\",\"device_time\":\"2026-10-08T01:25:07.125Z\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000032",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191d-7411-71da-95b5-6ee6c85c2097",
+   "type": "ticket.create",
+   "payload": "{\"id\":\"01a1191d-73f9-777e-96f7-3c70454b649b\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"dining_option_id\":\"d0000000-0000-4000-8000-000000000006\",\"order_no\":\"C-5\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000032",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191d-7457-73c4-9df2-850af56808f1",
+   "type": "ticket.add_line",
+   "payload": "{\"id\":\"01a1191d-7455-74d1-9c73-b754215ada4e\",\"ticket_id\":\"01a1191d-73f9-777e-96f7-3c70454b649b\",\"item_id\":\"d0000000-0000-4000-8000-000000000106\",\"qty\":1000,\"unit_price\":32000,\"name_snapshot\":\"Ceramic mug, Blue\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000032",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191d-9646-768c-8b90-26ec7d0e7ddb",
+   "type": "receipt.create",
+   "payload": "{\"id\":\"01a1191d-963b-7db0-8b8d-b192ea910957\",\"ticket_id\":\"01a1191d-73f9-777e-96f7-3c70454b649b\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"device_id\":\"d0000000-0000-4000-8000-000000000003\",\"number\":\"DM-T1-000008\",\"device_seq\":8,\"device_time\":\"2026-10-08T01:25:31.835Z\",\"payments\":[{\"payment_type_id\":\"d0000000-0000-4000-8000-000000000007\",\"amount\":32000,\"tendered\":32000,\"change\":0}],\"discounts\":[],\"line_ids\":[\"01a1191d-7455-74d1-9c73-b754215ada4e\"]}",
+   "employee_id": "d0000000-0000-4000-8000-000000000032",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191e-6d42-791b-93a5-33cb770ec0bf",
+   "type": "ticket.create",
+   "payload": "{\"id\":\"01a1191e-6d35-74c2-8a3c-09301b49632e\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"dining_option_id\":\"d0000000-0000-4000-8000-000000000006\",\"order_no\":\"C-6\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000032",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191e-8b03-731f-8b1e-476be6303aea",
+   "type": "ticket.add_line",
+   "payload": "{\"id\":\"01a1191e-8b01-7002-9852-3acc469d6af0\",\"ticket_id\":\"01a1191e-6d35-74c2-8a3c-09301b49632e\",\"item_id\":\"d0000000-0000-4000-8000-000000000105\",\"qty\":1000,\"unit_price\":39000,\"name_snapshot\":\"Canvas tote bag\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000032",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191e-db24-7640-8c05-16fdcd4047f3",
+   "type": "ticket.create",
+   "payload": "{\"id\":\"01a1191e-db0f-7abf-825f-3edd8973d80e\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"dining_option_id\":\"d0000000-0000-4000-8000-000000000006\",\"order_no\":\"C-7\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000032",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191e-db57-73ea-9542-31669d7c6b32",
+   "type": "ticket.add_line",
+   "payload": "{\"id\":\"01a1191e-db54-76ba-860d-aa17c2fbd944\",\"ticket_id\":\"01a1191e-db0f-7abf-825f-3edd8973d80e\",\"item_id\":\"d0000000-0000-4000-8000-000000000106\",\"qty\":1000,\"unit_price\":32000,\"name_snapshot\":\"Ceramic mug, Blue\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000032",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191f-17ad-7250-8a40-cb57f10a7efc",
+   "type": "receipt.create",
+   "payload": "{\"id\":\"01a1191f-17a6-7f95-9956-2516cc7f0cfa\",\"ticket_id\":\"01a1191e-db0f-7abf-825f-3edd8973d80e\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"device_id\":\"d0000000-0000-4000-8000-000000000003\",\"number\":\"DM-T1-000009\",\"device_seq\":9,\"device_time\":\"2026-10-08T01:27:10.502Z\",\"payments\":[{\"payment_type_id\":\"d0000000-0000-4000-8000-000000000008\",\"amount\":32000,\"tendered\":32000,\"change\":0}],\"discounts\":[],\"line_ids\":[\"01a1191e-db54-76ba-860d-aa17c2fbd944\"]}",
+   "employee_id": "d0000000-0000-4000-8000-000000000032",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191f-c4ff-7472-929f-8d7015566ae2",
+   "type": "refund.create",
+   "payload": "{\"id\":\"01a1191f-c4fd-7d12-8bbe-abfa455f020a\",\"refund_of\":\"01a1191d-963b-7db0-8b8d-b192ea910957\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"device_id\":\"d0000000-0000-4000-8000-000000000003\",\"number\":\"DM-T1-R000010\",\"device_seq\":10,\"reason\":\"Exchange\",\"device_time\":\"2026-10-08T01:27:54.877Z\",\"lines\":[{\"ticket_line_id\":\"01a1191d-7455-74d1-9c73-b754215ada4e\",\"qty\":1000}],\"payments\":[{\"payment_type_id\":\"d0000000-0000-4000-8000-000000000009\",\"amount\":32000}],\"approved_by\":\"d0000000-0000-4000-8000-000000000031\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000032",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a1191f-c50a-70c8-89aa-392c43010c88",
+   "type": "receipt.create",
+   "payload": "{\"id\":\"01a1191f-c507-75fa-93a8-56e29ed1016c\",\"ticket_id\":\"01a1191e-6d35-74c2-8a3c-09301b49632e\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"device_id\":\"d0000000-0000-4000-8000-000000000003\",\"number\":\"DM-T1-000011\",\"device_seq\":11,\"device_time\":\"2026-10-08T01:27:54.887Z\",\"payments\":[{\"payment_type_id\":\"d0000000-0000-4000-8000-000000000009\",\"amount\":32000,\"change\":0,\"reference\":\"DM-T1-R000010\"},{\"payment_type_id\":\"d0000000-0000-4000-8000-000000000007\",\"amount\":7000,\"tendered\":10000,\"change\":3000}],\"discounts\":[],\"line_ids\":[\"01a1191e-8b01-7002-9852-3acc469d6af0\"]}",
+   "employee_id": "d0000000-0000-4000-8000-000000000032",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a11920-85ea-7c6b-9fa1-cdccbcc99692",
+   "type": "ticket.create",
+   "payload": "{\"id\":\"01a11920-85dd-7aaf-904a-721fefaf211a\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"dining_option_id\":\"d0000000-0000-4000-8000-000000000006\",\"order_no\":\"C-8\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000032",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a11923-7f92-72c7-9f0b-cfa1d3cca900",
+   "type": "shift.close",
+   "payload": "{\"id\":\"01a11915-866e-75df-97ff-a10bef4730d6\",\"counted_cash\":203000,\"closed_at\":\"2026-10-08T01:31:59.218Z\"}",
+   "employee_id": "d0000000-0000-4000-8000-000000000032",
+   "state": "pending"
+  },
+  {
+   "op_id": "01a11923-7f93-7ab4-9820-1b1c806e32af",
+   "type": "day.close",
+   "payload": "{\"id\":\"01a11923-7f8e-7124-85c8-901de1ae6ef7\",\"store_id\":\"d0000000-0000-4000-8000-000000000002\",\"device_id\":\"d0000000-0000-4000-8000-000000000003\",\"closed_at\":\"2026-10-08T01:31:59.218Z\",\"totals\":{\"sales\":7,\"gross\":344000,\"refunds\":4,\"refunded\":182000,\"discounts\":0,\"tax\":21131,\"cash_in\":0,\"cash_out\":0,\"float\":100000,\"expected\":203000,\"counted\":203000}}",
+   "employee_id": "d0000000-0000-4000-8000-000000000032",
+   "state": "pending"
+  }
+ ],
+ "receipts": [
+  {
+   "id": "01a11916-436f-7f43-9531-e1d4f363492a",
+   "number": "DM-T1-000001",
+   "type": "sale",
+   "refund_of": null,
+   "subtotal": 91000,
+   "discount_total": 0,
+   "tax_total": 11870,
+   "total": 91000
+  },
+  {
+   "id": "01a11919-ba47-7ed1-9745-636e1422d095",
+   "number": "DM-T1-R000002",
+   "type": "refund",
+   "refund_of": "01a11916-436f-7f43-9531-e1d4f363492a",
+   "subtotal": 32000,
+   "discount_total": 0,
+   "tax_total": 4174,
+   "total": 32000
+  },
+  {
+   "id": "01a11919-ba61-7e0e-9e1c-432a950e7c17",
+   "number": "DM-T1-000003",
+   "type": "sale",
+   "refund_of": null,
+   "subtotal": 59000,
+   "discount_total": 0,
+   "tax_total": 7696,
+   "total": 59000
+  },
+  {
+   "id": "01a1191a-c137-7acc-87f7-d906d281a6be",
+   "number": "DM-T1-R000004",
+   "type": "refund",
+   "refund_of": "01a11916-436f-7f43-9531-e1d4f363492a",
+   "subtotal": 59000,
+   "discount_total": 0,
+   "tax_total": 7696,
+   "total": 59000
+  },
+  {
+   "id": "01a1191a-c140-7cc4-903a-31b8e0d1bc9a",
+   "number": "DM-T1-000005",
+   "type": "sale",
+   "refund_of": null,
+   "subtotal": 32000,
+   "discount_total": 0,
+   "tax_total": 4174,
+   "total": 32000
+  },
+  {
+   "id": "01a1191b-f8c6-783a-8718-3a6b5197175f",
+   "number": "DM-T1-R000006",
+   "type": "refund",
+   "refund_of": "01a11919-ba61-7e0e-9e1c-432a950e7c17",
+   "subtotal": 59000,
+   "discount_total": 0,
+   "tax_total": 7696,
+   "total": 59000
+  },
+  {
+   "id": "01a1191b-f8d4-74f9-850d-b789d2e18510",
+   "number": "DM-T1-000007",
+   "type": "sale",
+   "refund_of": null,
+   "subtotal": 59000,
+   "discount_total": 0,
+   "tax_total": 7696,
+   "total": 59000
+  },
+  {
+   "id": "01a1191d-963b-7db0-8b8d-b192ea910957",
+   "number": "DM-T1-000008",
+   "type": "sale",
+   "refund_of": null,
+   "subtotal": 32000,
+   "discount_total": 0,
+   "tax_total": 4174,
+   "total": 32000
+  },
+  {
+   "id": "01a1191f-17a6-7f95-9956-2516cc7f0cfa",
+   "number": "DM-T1-000009",
+   "type": "sale",
+   "refund_of": null,
+   "subtotal": 32000,
+   "discount_total": 0,
+   "tax_total": 4174,
+   "total": 32000
+  },
+  {
+   "id": "01a1191f-c4fd-7d12-8bbe-abfa455f020a",
+   "number": "DM-T1-R000010",
+   "type": "refund",
+   "refund_of": "01a1191d-963b-7db0-8b8d-b192ea910957",
+   "subtotal": 32000,
+   "discount_total": 0,
+   "tax_total": 4174,
+   "total": 32000
+  },
+  {
+   "id": "01a1191f-c507-75fa-93a8-56e29ed1016c",
+   "number": "DM-T1-000011",
+   "type": "sale",
+   "refund_of": null,
+   "subtotal": 39000,
+   "discount_total": 0,
+   "tax_total": 5087,
+   "total": 39000
+  }
+ ],
+ "receipt_lines": [
+  {
+   "receipt_id": "01a11916-436f-7f43-9531-e1d4f363492a",
+   "name_snapshot": "Ceramic mug, Blue",
+   "unit_price": 32000,
+   "qty": 1000,
+   "ticket_line_id": "01a11915-c69a-7068-923b-aa02b0511abc",
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null
+  },
+  {
+   "receipt_id": "01a11916-436f-7f43-9531-e1d4f363492a",
+   "name_snapshot": "Cotton scarf, Red",
+   "unit_price": 59000,
+   "qty": 1000,
+   "ticket_line_id": "01a11916-196d-710a-864f-11d5d9c49a37",
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null
+  },
+  {
+   "receipt_id": "01a11919-ba47-7ed1-9745-636e1422d095",
+   "name_snapshot": "Ceramic mug, Blue",
+   "unit_price": 32000,
+   "qty": 1000,
+   "ticket_line_id": "01a11915-c69a-7068-923b-aa02b0511abc",
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null
+  },
+  {
+   "receipt_id": "01a11919-ba61-7e0e-9e1c-432a950e7c17",
+   "name_snapshot": "Cotton scarf, Red",
+   "unit_price": 59000,
+   "qty": 1000,
+   "ticket_line_id": "01a11919-68c6-7457-95d5-34326fb2f432",
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null
+  },
+  {
+   "receipt_id": "01a1191a-c137-7acc-87f7-d906d281a6be",
+   "name_snapshot": "Cotton scarf, Red",
+   "unit_price": 59000,
+   "qty": 1000,
+   "ticket_line_id": "01a11916-196d-710a-864f-11d5d9c49a37",
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null
+  },
+  {
+   "receipt_id": "01a1191a-c140-7cc4-903a-31b8e0d1bc9a",
+   "name_snapshot": "Ceramic mug, Blue",
+   "unit_price": 32000,
+   "qty": 1000,
+   "ticket_line_id": "01a1191a-847e-743a-8221-c3fbaa23e927",
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null
+  },
+  {
+   "receipt_id": "01a1191b-f8c6-783a-8718-3a6b5197175f",
+   "name_snapshot": "Cotton scarf, Red",
+   "unit_price": 59000,
+   "qty": 1000,
+   "ticket_line_id": "01a11919-68c6-7457-95d5-34326fb2f432",
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null
+  },
+  {
+   "receipt_id": "01a1191b-f8d4-74f9-850d-b789d2e18510",
+   "name_snapshot": "Cotton scarf, Red",
+   "unit_price": 59000,
+   "qty": 1000,
+   "ticket_line_id": "01a1191b-56bc-7c7b-84fd-75e554797499",
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null
+  },
+  {
+   "receipt_id": "01a1191d-963b-7db0-8b8d-b192ea910957",
+   "name_snapshot": "Ceramic mug, Blue",
+   "unit_price": 32000,
+   "qty": 1000,
+   "ticket_line_id": "01a1191d-7455-74d1-9c73-b754215ada4e",
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null
+  },
+  {
+   "receipt_id": "01a1191f-17a6-7f95-9956-2516cc7f0cfa",
+   "name_snapshot": "Ceramic mug, Blue",
+   "unit_price": 32000,
+   "qty": 1000,
+   "ticket_line_id": "01a1191e-db54-76ba-860d-aa17c2fbd944",
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null
+  },
+  {
+   "receipt_id": "01a1191f-c4fd-7d12-8bbe-abfa455f020a",
+   "name_snapshot": "Ceramic mug, Blue",
+   "unit_price": 32000,
+   "qty": 1000,
+   "ticket_line_id": "01a1191d-7455-74d1-9c73-b754215ada4e",
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null
+  },
+  {
+   "receipt_id": "01a1191f-c507-75fa-93a8-56e29ed1016c",
+   "name_snapshot": "Canvas tote bag",
+   "unit_price": 39000,
+   "qty": 1000,
+   "ticket_line_id": "01a1191e-8b01-7002-9852-3acc469d6af0",
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null
+  }
+ ],
+ "payments": [
+  {
+   "receipt_id": "01a11916-436f-7f43-9531-e1d4f363492a",
+   "payment_type_id": "d0000000-0000-4000-8000-000000000007",
+   "kind": "cash",
+   "amount": 91000,
+   "tendered": 91000,
+   "change": 0,
+   "reference": null
+  },
+  {
+   "receipt_id": "01a11919-ba47-7ed1-9745-636e1422d095",
+   "payment_type_id": "d0000000-0000-4000-8000-000000000009",
+   "kind": "exchange",
+   "amount": 32000,
+   "tendered": null,
+   "change": 0,
+   "reference": null
+  },
+  {
+   "receipt_id": "01a11919-ba61-7e0e-9e1c-432a950e7c17",
+   "payment_type_id": "d0000000-0000-4000-8000-000000000009",
+   "kind": "exchange",
+   "amount": 32000,
+   "tendered": null,
+   "change": 0,
+   "reference": "DM-T1-R000002"
+  },
+  {
+   "receipt_id": "01a11919-ba61-7e0e-9e1c-432a950e7c17",
+   "payment_type_id": "d0000000-0000-4000-8000-000000000008",
+   "kind": "card",
+   "amount": 27000,
+   "tendered": 27000,
+   "change": 0,
+   "reference": null
+  },
+  {
+   "receipt_id": "01a1191a-c137-7acc-87f7-d906d281a6be",
+   "payment_type_id": "d0000000-0000-4000-8000-000000000009",
+   "kind": "exchange",
+   "amount": 32000,
+   "tendered": null,
+   "change": 0,
+   "reference": null
+  },
+  {
+   "receipt_id": "01a1191a-c137-7acc-87f7-d906d281a6be",
+   "payment_type_id": "d0000000-0000-4000-8000-000000000007",
+   "kind": "cash",
+   "amount": 27000,
+   "tendered": null,
+   "change": 0,
+   "reference": null
+  },
+  {
+   "receipt_id": "01a1191a-c140-7cc4-903a-31b8e0d1bc9a",
+   "payment_type_id": "d0000000-0000-4000-8000-000000000009",
+   "kind": "exchange",
+   "amount": 32000,
+   "tendered": null,
+   "change": 0,
+   "reference": "DM-T1-R000004"
+  },
+  {
+   "receipt_id": "01a1191b-f8c6-783a-8718-3a6b5197175f",
+   "payment_type_id": "d0000000-0000-4000-8000-000000000009",
+   "kind": "exchange",
+   "amount": 59000,
+   "tendered": null,
+   "change": 0,
+   "reference": null
+  },
+  {
+   "receipt_id": "01a1191b-f8d4-74f9-850d-b789d2e18510",
+   "payment_type_id": "d0000000-0000-4000-8000-000000000009",
+   "kind": "exchange",
+   "amount": 59000,
+   "tendered": null,
+   "change": 0,
+   "reference": "DM-T1-R000006"
+  },
+  {
+   "receipt_id": "01a1191d-963b-7db0-8b8d-b192ea910957",
+   "payment_type_id": "d0000000-0000-4000-8000-000000000007",
+   "kind": "cash",
+   "amount": 32000,
+   "tendered": 32000,
+   "change": 0,
+   "reference": null
+  },
+  {
+   "receipt_id": "01a1191f-17a6-7f95-9956-2516cc7f0cfa",
+   "payment_type_id": "d0000000-0000-4000-8000-000000000008",
+   "kind": "card",
+   "amount": 32000,
+   "tendered": 32000,
+   "change": 0,
+   "reference": null
+  },
+  {
+   "receipt_id": "01a1191f-c4fd-7d12-8bbe-abfa455f020a",
+   "payment_type_id": "d0000000-0000-4000-8000-000000000009",
+   "kind": "exchange",
+   "amount": 32000,
+   "tendered": null,
+   "change": 0,
+   "reference": null
+  },
+  {
+   "receipt_id": "01a1191f-c507-75fa-93a8-56e29ed1016c",
+   "payment_type_id": "d0000000-0000-4000-8000-000000000009",
+   "kind": "exchange",
+   "amount": 32000,
+   "tendered": null,
+   "change": 0,
+   "reference": "DM-T1-R000010"
+  },
+  {
+   "receipt_id": "01a1191f-c507-75fa-93a8-56e29ed1016c",
+   "payment_type_id": "d0000000-0000-4000-8000-000000000007",
+   "kind": "cash",
+   "amount": 7000,
+   "tendered": 10000,
+   "change": 3000,
+   "reference": null
+  }
+ ],
+ "shifts": [
+  {
+   "id": "01a11915-866e-75df-97ff-a10bef4730d6",
+   "opening_float": 100000,
+   "expected_cash": 203000,
+   "counted_cash": 203000
+  }
+ ],
+ "levels": [
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000101",
+   "variant_id": "d0000000-0000-4000-8000-000000000301",
+   "qty": 8000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000101",
+   "variant_id": "d0000000-0000-4000-8000-000000000302",
+   "qty": 14000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000101",
+   "variant_id": "d0000000-0000-4000-8000-000000000303",
+   "qty": 9000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000101",
+   "variant_id": "d0000000-0000-4000-8000-000000000304",
+   "qty": 4000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000101",
+   "variant_id": "d0000000-0000-4000-8000-000000000305",
+   "qty": 6000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000101",
+   "variant_id": "d0000000-0000-4000-8000-000000000306",
+   "qty": 11000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000101",
+   "variant_id": "d0000000-0000-4000-8000-000000000307",
+   "qty": 3000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000101",
+   "variant_id": "d0000000-0000-4000-8000-000000000308",
+   "qty": 0
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000102",
+   "variant_id": null,
+   "qty": 3000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000103",
+   "variant_id": null,
+   "qty": 4000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000104",
+   "variant_id": null,
+   "qty": 2000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000105",
+   "variant_id": null,
+   "qty": -1000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000106",
+   "variant_id": null,
+   "qty": 24000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000107",
+   "variant_id": null,
+   "qty": 31000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000108",
+   "variant_id": null,
+   "qty": 4000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000109",
+   "variant_id": null,
+   "qty": 0
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000110",
+   "variant_id": null,
+   "qty": 18000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000111",
+   "variant_id": null,
+   "qty": 25000
+  },
+  {
+   "item_id": "d0000000-0000-4000-8000-000000000112",
+   "variant_id": null,
+   "qty": 40000
+  }
+ ],
+ "lines": [
+  {
+   "id": "01a11915-c69a-7068-923b-aa02b0511abc",
+   "ticket_id": "01a11915-c64d-7d07-877d-681fb4cf5f69",
+   "item_id": "d0000000-0000-4000-8000-000000000106",
+   "variant_id": null,
+   "name_snapshot": "Ceramic mug, Blue",
+   "unit_price": 32000,
+   "qty": 1000,
+   "note": null,
+   "paid": 1,
+   "voided_at": null,
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null,
+   "price_by": null
+  },
+  {
+   "id": "01a11916-196d-710a-864f-11d5d9c49a37",
+   "ticket_id": "01a11915-c64d-7d07-877d-681fb4cf5f69",
+   "item_id": "d0000000-0000-4000-8000-000000000103",
+   "variant_id": null,
+   "name_snapshot": "Cotton scarf, Red",
+   "unit_price": 59000,
+   "qty": 1000,
+   "note": null,
+   "paid": 1,
+   "voided_at": null,
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null,
+   "price_by": null
+  },
+  {
+   "id": "01a11919-68c6-7457-95d5-34326fb2f432",
+   "ticket_id": "01a11919-3269-7b43-8dd3-d0a1613f35fa",
+   "item_id": "d0000000-0000-4000-8000-000000000103",
+   "variant_id": null,
+   "name_snapshot": "Cotton scarf, Red",
+   "unit_price": 59000,
+   "qty": 1000,
+   "note": null,
+   "paid": 1,
+   "voided_at": null,
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null,
+   "price_by": null
+  },
+  {
+   "id": "01a1191a-847e-743a-8221-c3fbaa23e927",
+   "ticket_id": "01a1191a-69d3-739a-875d-ea254dad1302",
+   "item_id": "d0000000-0000-4000-8000-000000000106",
+   "variant_id": null,
+   "name_snapshot": "Ceramic mug, Blue",
+   "unit_price": 32000,
+   "qty": 1000,
+   "note": null,
+   "paid": 1,
+   "voided_at": null,
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null,
+   "price_by": null
+  },
+  {
+   "id": "01a1191b-56bc-7c7b-84fd-75e554797499",
+   "ticket_id": "01a1191b-4473-7720-9799-739a6ca2eb69",
+   "item_id": "d0000000-0000-4000-8000-000000000103",
+   "variant_id": null,
+   "name_snapshot": "Cotton scarf, Red",
+   "unit_price": 59000,
+   "qty": 1000,
+   "note": null,
+   "paid": 1,
+   "voided_at": null,
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null,
+   "price_by": null
+  },
+  {
+   "id": "01a1191d-7455-74d1-9c73-b754215ada4e",
+   "ticket_id": "01a1191d-73f9-777e-96f7-3c70454b649b",
+   "item_id": "d0000000-0000-4000-8000-000000000106",
+   "variant_id": null,
+   "name_snapshot": "Ceramic mug, Blue",
+   "unit_price": 32000,
+   "qty": 1000,
+   "note": null,
+   "paid": 1,
+   "voided_at": null,
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null,
+   "price_by": null
+  },
+  {
+   "id": "01a1191e-8b01-7002-9852-3acc469d6af0",
+   "ticket_id": "01a1191e-6d35-74c2-8a3c-09301b49632e",
+   "item_id": "d0000000-0000-4000-8000-000000000105",
+   "variant_id": null,
+   "name_snapshot": "Canvas tote bag",
+   "unit_price": 39000,
+   "qty": 1000,
+   "note": null,
+   "paid": 1,
+   "voided_at": null,
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null,
+   "price_by": null
+  },
+  {
+   "id": "01a1191e-db54-76ba-860d-aa17c2fbd944",
+   "ticket_id": "01a1191e-db0f-7abf-825f-3edd8973d80e",
+   "item_id": "d0000000-0000-4000-8000-000000000106",
+   "variant_id": null,
+   "name_snapshot": "Ceramic mug, Blue",
+   "unit_price": 32000,
+   "qty": 1000,
+   "note": null,
+   "paid": 1,
+   "voided_at": null,
+   "list_price": null,
+   "price_kind": null,
+   "price_label": null,
+   "price_by": null
+  }
+ ]
+}

@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import com.restopos.core.common.Money
 import com.restopos.core.common.Scanner
 import com.restopos.core.data.DiscountPick
+import com.restopos.core.data.ExchangeDraft
 import com.restopos.core.data.LinePrice
 import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.DiscountEntity
@@ -81,6 +82,7 @@ fun RetailSellScreen(vm: RetailViewModel, onPay: () -> Unit) {
     val picking by vm.picking.collectAsState()
     val asking by vm.asking.collectAsState()
     val parked by vm.parked.collectAsState()
+    val exchange by vm.exchange.collectAsState()
     var sheet by remember { mutableStateOf<String?>(null) } // parked | discount | customer | clear
     var noting by remember { mutableStateOf<SaleLine?>(null) }
     LaunchedEffect(Unit) { vm.open() }
@@ -88,7 +90,7 @@ fun RetailSellScreen(vm: RetailViewModel, onPay: () -> Unit) {
     LaunchedEffect(Unit) { Scanner.codes.collect { vm.scanned(it) } }
 
     Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        Sale(ui, parked.size, vm, onParked = { sheet = "parked" }, onCustomer = { sheet = "customer" }, onDiscount = { sheet = "discount" }, onClear = { sheet = "clear" }, onNote = { noting = it }, onPay = onPay)
+        Sale(ui, parked.size, exchange, vm, onParked = { sheet = "parked" }, onCustomer = { sheet = "customer" }, onDiscount = { sheet = "discount" }, onClear = { sheet = "clear" }, onNote = { noting = it }, onPay = onPay)
         Products(vm, Modifier.weight(1f))
     }
 
@@ -113,7 +115,7 @@ fun RetailSellScreen(vm: RetailViewModel, onPay: () -> Unit) {
 
 @Composable
 private fun Sale(
-    ui: SaleUi, parked: Int, vm: RetailViewModel,
+    ui: SaleUi, parked: Int, exchange: ExchangeDraft?, vm: RetailViewModel,
     onParked: () -> Unit, onCustomer: () -> Unit, onDiscount: () -> Unit, onClear: () -> Unit, onNote: (SaleLine) -> Unit, onPay: () -> Unit,
 ) {
     Column(Modifier.width(440.dp).fillMaxHeight().clip(RoundedCornerShape(20.dp)).background(V.Panel)) {
@@ -131,9 +133,23 @@ private fun Sale(
             if (!ui.empty) IconKey(VI.Trash, bg = Color.Transparent, tint = V.Text3, onClick = onClear)
         }
 
+        // an exchange: what comes back, kept until this sale is paid
+        exchange?.let { ex ->
+            Row(
+                Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp).clip(RoundedCornerShape(14.dp)).background(V.BlueWash).padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    T("Exchange · ${ex.number}", 14.sp, 800, V.BlueSoft)
+                    T("${ex.lines} ${if (ex.lines == 1) "line comes" else "lines come"} back, worth ${Money.format(ex.credit)}. Nothing is refunded until this sale is paid.", 12.sp, 600, V.Text2, lines = 2)
+                }
+                IconKey(VI.Close, bg = Color.Transparent, tint = V.Text2) { vm.cancelExchange() }
+            }
+        }
+
         if (ui.empty) {
             Column(Modifier.weight(1f).fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
-                T("Scan a product to start", 16.sp, 700)
+                T(if (exchange != null) "Scan what the customer takes instead" else "Scan a product to start", 16.sp, 700)
                 T("or tap one on the right", 14.sp, 500, V.Text2)
             }
         } else {
@@ -157,9 +173,11 @@ private fun Sale(
                 Modifier.fillMaxWidth().height(64.dp).press { if (vm.mayPay()) onPay() }.clip(RoundedCornerShape(16.dp)).background(if (ui.empty) V.GreenOff else V.Green).padding(horizontal = 22.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                T(L.pay, 19.sp, 800, if (ui.empty) V.GreenOffText else V.GreenInk)
+                // an exchange: what is left once the goods that come back have paid their part
+                val due = if (exchange == null || ui.empty) ui.totals.total else ui.totals.total - exchange.credit
+                T(if (due < 0) "Give back" else if (exchange != null && !ui.empty && due == 0L) "Exchange" else L.pay, 19.sp, 800, if (ui.empty) V.GreenOffText else V.GreenInk)
                 Gap()
-                T(Money.format(ui.totals.total), 19.sp, 800, if (ui.empty) V.GreenOffText else V.GreenInk)
+                T(if (exchange != null && !ui.empty && due == 0L) "Nothing to pay" else Money.format(if (due < 0) -due else due), 19.sp, 800, if (ui.empty) V.GreenOffText else V.GreenInk)
             }
         }
     }

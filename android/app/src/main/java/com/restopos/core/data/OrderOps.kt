@@ -117,25 +117,42 @@ class OrderOps @Inject constructor(
     // gets a copy of the receipt that says their share and the tax in it. It
     // is still one receipt, with one number.
     fun afterPay(r: ReceiptEntity, perGuest: Boolean = false) {
+        printing.scope.launch { runCatching { paid(r, perGuest) } }
+    }
+
+    // An exchange is paid: the slip of what came back, then the receipt of what
+    // the customer takes. The drawer opens when money went back out of it.
+    fun afterExchange(refund: ReceiptEntity, sale: ReceiptEntity) {
         printing.scope.launch {
             runCatching {
                 val types = db.ops().allPaymentTypes().associateBy { it.id }
-                val drawer = db.receipts().payments(r.id).any { types[it.payment_type_id]?.opens_drawer == true }
-                val doc = docs.decode(r.doc ?: db.ops().receipt(r.id)?.doc)
-                if (doc != null && printing.receiptPrinter() != null) {
-                    if (perGuest && doc.payments.size >= 2) {
-                        doc.payments.forEachIndexed { i, pay ->
-                            docs.print(doc.copy(payments = listOf(pay), share = i + 1, shares = doc.payments.size), drawer && i == 0)
-                                .onFailure { printing.report(it.message ?: "The receipt did not print") }
-                        }
-                    } else {
-                        docs.print(doc, drawer).onFailure { printing.report(it.message ?: "The receipt did not print") }
-                    }
+                val drawer = db.receipts().payments(refund.id).any { types[it.payment_type_id]?.opens_drawer == true }
+                val slip = docs.decode(refund.doc)
+                if (slip != null && printing.receiptPrinter() != null) {
+                    docs.print(slip, drawer).onFailure { printing.report(it.message ?: "The refund slip did not print") }
                 }
-                val unsent = db.tickets().allLines(r.ticket_id).filter { it.paid && it.sent_to_kitchen_at == null && it.voided_at == null }.map { it.id }
-                if (unsent.isNotEmpty()) sendOnPay(r.ticket_id, unsent)
+                paid(sale, false)
             }
         }
+    }
+
+    // the receipt is printed (a copy for each guest of a bill split equally), and the drawer opens if it should
+    private suspend fun paid(r: ReceiptEntity, perGuest: Boolean) {
+        val types = db.ops().allPaymentTypes().associateBy { it.id }
+        val drawer = db.receipts().payments(r.id).any { types[it.payment_type_id]?.opens_drawer == true }
+        val doc = docs.decode(r.doc ?: db.ops().receipt(r.id)?.doc)
+        if (doc != null && printing.receiptPrinter() != null) {
+            if (perGuest && doc.payments.size >= 2) {
+                doc.payments.forEachIndexed { i, pay ->
+                    docs.print(doc.copy(payments = listOf(pay), share = i + 1, shares = doc.payments.size), drawer && i == 0)
+                        .onFailure { printing.report(it.message ?: "The receipt did not print") }
+                }
+            } else {
+                docs.print(doc, drawer).onFailure { printing.report(it.message ?: "The receipt did not print") }
+            }
+        }
+        val unsent = db.tickets().allLines(r.ticket_id).filter { it.paid && it.sent_to_kitchen_at == null && it.voided_at == null }.map { it.id }
+        if (unsent.isNotEmpty()) sendOnPay(r.ticket_id, unsent)
     }
 
     // The same kitchen tickets again, for an order whose paper was lost.
@@ -303,7 +320,14 @@ class OrderOps @Inject constructor(
     // restock: the goods go back on the shelf. Off (they are faulty), the
     // server takes them back and writes them off as damaged; this till's copy
     // of the shelf is then left as it is.
-    suspend fun refund(receiptId: String, reason: String, paymentTypeId: String, approver: StaffMember? = null, picks: Map<String, Int>? = null, restock: Boolean = true): Result<ReceiptEntity> = runCatching {
+    // toExchange: the part that pays for a new sale instead of going back to
+    // the customer (an exchange, core/data/Exchange.kt). It leaves through the
+    // shop's exchange payment type; only the rest goes back in the type chosen.
+    // quiet: nothing is printed or sent here; whoever asked does both.
+    suspend fun refund(
+        receiptId: String, reason: String, paymentTypeId: String, approver: StaffMember? = null, picks: Map<String, Int>? = null, restock: Boolean = true,
+        toExchange: Long = 0, quiet: Boolean = false,
+    ): Result<ReceiptEntity> = runCatching {
         require(reason.isNotBlank()) { "Say why it is refunded" }
         staff.allow("sale.refund", "refund", approver)
         val orig = db.ops().receipt(receiptId) ?: error("That receipt is not on this tablet")
@@ -329,6 +353,11 @@ class OrderOps @Inject constructor(
         val paid = db.receipts().payments(receiptId).sumOf { it.amount }
         require(paid >= orig.total && already + amount <= paid) { "This receipt was not paid in full. Check it in the back office first." }
         val type = db.ops().paymentType(paymentTypeId) ?: error("Pick how the money goes back")
+        require(toExchange in 0..amount) { "More than comes back cannot go to the new sale" }
+        val exchange = if (toExchange > 0) db.ops().exchangeType() ?: error("This till has no Exchange payment type") else null
+        // what goes back to the customer
+        val rest = amount - toExchange
+        require(rest == 0L || type.kind != "exchange") { "Pick how the money goes back" }
         val tenant = session.tenantId() ?: error("no tenant")
         val store = session.storeId() ?: error("no store")
         val deviceId = session.deviceId() ?: error("no device")
@@ -367,7 +396,10 @@ class OrderOps @Inject constructor(
             subtotal = parts?.sub ?: was.subtotal,
             discounts = if (!partial) was.discounts else listOfNotNull(parts!!.disc.takeIf { it != 0L }?.let { com.restopos.core.print.DocAmount("Discount", it) }),
             service = parts?.svc ?: was.service, rounding = parts?.rnd ?: was.rounding, total = amount,
-            payments = if (amount > 0) listOf(DocPayment(type.name, amount)) else emptyList(),
+            payments = listOfNotNull(
+                if (toExchange > 0) DocPayment("Exchange, to the new sale", toExchange) else null,
+                if (rest > 0) DocPayment(type.name, rest) else null,
+            ),
             refundOf = orig.number, reason = reason.trim(),
         )
         val refund = ReceiptEntity(
@@ -387,7 +419,10 @@ class OrderOps @Inject constructor(
                 else back.mapNotNull { (s, q) -> db.tickets().line(s.line.id)?.let { it to q } }
                 db.moveStock(store, returned)
             }
-            if (amount > 0) db.receipts().insertPayments(listOf(ReceiptPaymentEntity(Uuid7.next(), tenant, id, type.id, amount)))
+            db.receipts().insertPayments(listOfNotNull(
+                if (exchange != null) ReceiptPaymentEntity(Uuid7.next(), tenant, id, exchange.id, toExchange) else null,
+                if (rest > 0) ReceiptPaymentEntity(Uuid7.next(), tenant, id, type.id, rest) else null,
+            ))
             db.catalog().upsertDevices(listOf(device.copy(last_receipt_seq = seq)))
             db.outbox().enqueue(op("refund.create", buildJsonObject {
                 put("id", id); put("refund_of", orig.id); put("store_id", store); put("device_id", deviceId)
@@ -398,14 +433,17 @@ class OrderOps @Inject constructor(
                     back.forEach { (s, q) -> add(buildJsonObject { put("ticket_line_id", s.line.id); put("qty", q) }) }
                 })
                 put("payments", buildJsonArray {
-                    if (amount > 0) add(buildJsonObject { put("payment_type_id", type.id); put("amount", amount) })
+                    if (exchange != null) add(buildJsonObject { put("payment_type_id", exchange.id); put("amount", toExchange) })
+                    if (rest > 0) add(buildJsonObject { put("payment_type_id", type.id); put("amount", rest) })
                 })
                 staff.approvedBy("sale.refund", approver)?.let { put("approved_by", it) }
                 if (!restock) put("restock", false)
             }))
         }
-        pushNow(context)
-        docs.print(doc, openDrawer = type.opens_drawer).onFailure { printing.report(it.message ?: "The refund slip did not print") }
+        if (!quiet) {
+            pushNow(context)
+            docs.print(doc, openDrawer = type.opens_drawer).onFailure { printing.report(it.message ?: "The refund slip did not print") }
+        }
         refund
     }
 

@@ -145,7 +145,8 @@ class DemoReceiver : BroadcastReceiver() {
             } else {
                 catalog.upsertDining(listOf(DiningOptionEntity(dining.str("id")!!, tenant, dining.str("name")!!, true, 0, kitchen = "pay", kind = dining.str("kind")!!)))
             }
-            catalog.upsertPayments(shop.arr("payments").mapIndexed { i, p -> PaymentTypeEntity(p.str("id")!!, tenant, p.str("name")!!, p.str("kind")!!, sort_order = i, opens_drawer = p.bool("opens_drawer")) })
+            // a shop's Exchange payment type is not a restaurant's
+            catalog.upsertPayments(shop.arr("payments").filter { !restaurant || it.str("kind") != "exchange" }.mapIndexed { i, p -> PaymentTypeEntity(p.str("id")!!, tenant, p.str("name")!!, p.str("kind")!!, sort_order = i, opens_drawer = p.bool("opens_drawer")) })
             db.staff().upsertRoles(shop.arr("roles").map { RoleEntity(it.str("id")!!, tenant, it.str("name")!!, it.arr("permissions").toString()) })
             db.staff().upsertEmployees(shop.arr("staff").mapIndexed { i, e -> EmployeeEntity(e.str("id")!!, tenant, e.str("name")!!, pinHash(e.str("pin")!!, ByteArray(16) { b -> (b * 7 + i + 1).toByte() }), e.str("role")) })
             db.staff().upsertEmployeeStores(shop.arr("staff").map { EmployeeStoreEntity(it.str("id")!!, storeId, tenant) })

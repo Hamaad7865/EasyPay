@@ -41,6 +41,7 @@ import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Money
 import com.restopos.core.data.Approvals
 import com.restopos.core.data.DocBuilder
+import com.restopos.core.data.Exchanges
 import com.restopos.core.data.NeedsApproval
 import com.restopos.core.data.OrderOps
 import com.restopos.core.data.StaffMember
@@ -91,6 +92,7 @@ class ReceiptsViewModel @Inject constructor(
     private val db: TillDatabase,
     private val staff: StaffSession,
     private val approvals: Approvals,
+    private val exchanges: Exchanges,
 ) : ViewModel() {
     private val _rows = MutableStateFlow<List<ReceiptEntity>>(emptyList())
     val rows: StateFlow<List<ReceiptEntity>> = _rows
@@ -100,6 +102,10 @@ class ReceiptsViewModel @Inject constructor(
 
     private val _types = MutableStateFlow<List<PaymentTypeEntity>>(emptyList())
     val types: StateFlow<List<PaymentTypeEntity>> = _types
+
+    // every payment type a receipt may name, by id: also one switched off since, and a shop's exchange type
+    private val _names = MutableStateFlow<Map<String, PaymentTypeEntity>>(emptyMap())
+    val names: StateFlow<Map<String, PaymentTypeEntity>> = _names
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
@@ -126,7 +132,12 @@ class ReceiptsViewModel @Inject constructor(
                 .flatMapLatest { (only, q) -> db.receipts().find(store, only, q) }
                 .collect { _rows.value = it }
         }
-        viewModelScope.launch { _types.value = db.ops().allPaymentTypes().filter { it.is_active }.sortedBy { it.sort_order } }
+        // the ways money goes back, or a payment is corrected to: a shop's exchange type is neither
+        viewModelScope.launch {
+            val all = db.ops().allPaymentTypes()
+            _names.value = all.associateBy { it.id }
+            _types.value = all.filter { it.is_active && it.kind != "exchange" }.sortedBy { it.sort_order }
+        }
         viewModelScope.launch { db.ops().settingsFlow().collect { _retail.value = com.restopos.core.data.PosSettings.parse(it).retail } }
     }
 
@@ -164,13 +175,26 @@ class ReceiptsViewModel @Inject constructor(
     fun refund(id: String, reason: String, type: String, picks: Map<String, Int>? = null, restock: Boolean = true) =
         run(if (restock) "Refunded. The refund is in the list." else "Refunded. The goods were not put back into stock: they are written off as damaged.") { by -> orders.refund(id, reason, type, by, picks, restock) }
     suspend fun quote(id: String, picks: Map<String, Int>): Long = orders.refundQuote(id, picks)
+
+    // An exchange: what comes back is kept (nothing is refunded yet), and the
+    // cashier goes on to the Sell screen to ring up what the customer takes.
+    private val _exchanging = MutableStateFlow(false)
+    val exchanging: StateFlow<Boolean> = _exchanging
+    fun exchangeShown() { _exchanging.value = false }
+    fun exchange(id: String, reason: String, picks: Map<String, Int>?, restock: Boolean) =
+        run("Exchange started. Ring up what the customer takes instead.") { by ->
+            exchanges.start(id, reason, by, picks, restock).onSuccess { _open.value = null; _exchanging.value = true }
+        }
     fun correct(id: String, from: String, to: String) = run("Payment type corrected.") { by -> orders.correctPayment(id, from, to, by) }
 }
 
 // Receipts issued on this tablet. Tap one to see it, print it again, refund
 // it, or correct how it was paid.
+// onExchange: where an exchange started here goes on (the Sell screen); none, and no exchange is offered.
 @Composable
-fun ReceiptsScreen(vm: ReceiptsViewModel = hiltViewModel()) {
+fun ReceiptsScreen(vm: ReceiptsViewModel = hiltViewModel(), onExchange: (() -> Unit)? = null) {
+    val exchanging by vm.exchanging.collectAsState()
+    LaunchedEffect(exchanging) { if (exchanging) { vm.exchangeShown(); onExchange?.invoke() } }
     val rows by vm.rows.collectAsState()
     val open by vm.open.collectAsState()
     val types by vm.types.collectAsState()
@@ -233,7 +257,7 @@ fun ReceiptsScreen(vm: ReceiptsViewModel = hiltViewModel()) {
         }
     }
 
-    open?.let { d -> Detail(d, types, busy, vm, time) }
+    open?.let { d -> Detail(d, types, busy, vm, time, exchange = onExchange != null) }
 }
 
 // A receipt's details over whatever screen asked for them (Settings, Payments).
@@ -247,10 +271,10 @@ fun ReceiptDialog(vm: ReceiptsViewModel) {
 }
 
 @Composable
-private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boolean, vm: ReceiptsViewModel, time: DateFormat) {
+private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boolean, vm: ReceiptsViewModel, time: DateFormat, exchange: Boolean = false) {
     val r = d.receipt
     val retail by vm.retail.collectAsState()
-    val names = types.associateBy { it.id }
+    val names by vm.names.collectAsState()
     var refunding by remember { mutableStateOf(false) }
     var correcting by remember { mutableStateOf<String?>(null) } // the payment type being changed
     AlertDialog(
@@ -284,9 +308,15 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                 }
                 d.payments.groupBy { it.payment_type_id }.forEach { (type, list) ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Paid by ${names[type]?.name ?: "another type"}", Modifier.weight(1f), color = Pos.Text2, fontSize = 14.sp)
+                        // what an exchange settled is said as what it was: goods that came back, or went to a new sale
+                        val by = names[type]
+                        Text(
+                            if (by?.kind == "exchange") (if (r.type == "sale") "Paid with returned goods" else "Went to the new sale") else "Paid by ${by?.name ?: "another type"}",
+                            Modifier.weight(1f), color = Pos.Text2, fontSize = 14.sp,
+                        )
                         Text(Money.format(list.sumOf { it.amount }), color = Pos.Text2, fontSize = 14.sp)
-                        if (r.type == "sale") {
+                        // what an exchange settled with returned goods was never money: there is nothing to correct
+                        if (r.type == "sale" && names[type]?.kind != "exchange") {
                             Text("Change", Modifier.clickable { correcting = type }.padding(start = 12.dp, top = 6.dp, bottom = 6.dp), color = Pos.Link, fontSize = 14.sp)
                         }
                     }
@@ -313,7 +343,8 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
 
     if (refunding) {
         var reason by remember { mutableStateOf("") }
-        var type by remember { mutableStateOf(d.payments.firstOrNull()?.payment_type_id ?: types.firstOrNull()?.id) }
+        // back the way it was paid, when that is a way money can go back
+        var type by remember { mutableStateOf(d.payments.map { it.payment_type_id }.firstOrNull { id -> types.any { it.id == id } } ?: types.firstOrNull()?.id) }
         // what comes back of each line: everything that is left, until the cashier takes some off
         val lines = d.lines?.filter { it.left > 0 }
         var picks by remember { mutableStateOf<Map<String, Int>>(lines?.associate { it.id to it.left } ?: emptyMap()) }
@@ -362,13 +393,24 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                     if (lines != null) Text("Pick how the money goes back.", Modifier.padding(top = 10.dp, bottom = 8.dp), color = Pos.Text2, fontSize = 13.sp)
                     TypeGrid(types, type) { type = it }
                     OutlinedTextField(reason, { reason = it.take(120) }, Modifier.fillMaxWidth().padding(top = 10.dp), label = { Text("Reason") }, singleLine = true)
+                    if (retail && exchange) {
+                        Text("Exchange: what comes back pays for what the customer takes instead. You ring that up next, and only the difference changes hands.", Modifier.padding(top = 10.dp), color = Pos.Text3, fontSize = 12.sp)
+                    }
                 }
             },
             confirmButton = {
-                Button(
-                    enabled = !busy && reason.isNotBlank() && type != null && (lines == null || picks.values.any { it > 0 }),
-                    onClick = { refunding = false; vm.refund(r.id, reason, type!!, if (everything) null else picks.filterValues { it > 0 }, restock) },
-                ) { Text("Refund") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (retail && exchange) {
+                        OutlinedButton(
+                            enabled = !busy && (lines == null || picks.values.any { it > 0 }),
+                            onClick = { refunding = false; vm.exchange(r.id, reason, if (lines == null) null else picks.filterValues { it > 0 }, restock) },
+                        ) { Text("Exchange") }
+                    }
+                    Button(
+                        enabled = !busy && reason.isNotBlank() && type != null && (lines == null || picks.values.any { it > 0 }),
+                        onClick = { refunding = false; vm.refund(r.id, reason, type!!, if (everything) null else picks.filterValues { it > 0 }, restock) },
+                    ) { Text("Refund") }
+                }
             },
             dismissButton = { OutlinedButton(onClick = { refunding = false }) { Text("Cancel") } },
         )

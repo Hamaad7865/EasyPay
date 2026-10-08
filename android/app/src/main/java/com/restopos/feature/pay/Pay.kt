@@ -57,6 +57,7 @@ import com.restopos.core.common.Money
 import com.restopos.core.common.tableLabel
 import com.restopos.core.data.Calc
 import com.restopos.core.data.DiscountPick
+import com.restopos.core.data.Exchanges
 import com.restopos.core.data.LineInfo
 import com.restopos.core.data.OrderOps
 import com.restopos.core.data.PayInput
@@ -104,6 +105,8 @@ data class PaidRow(val label: String, val amount: Long)
 data class PayDone(
     val receiptId: String, val total: Long, val change: Long, val method: String,
     val kind: String, val table: String?, val phone: String?, val email: String?,
+    // an exchange: what the shop gives back when the goods that came back were worth more, and how
+    val exchange: Boolean = false, val back: Long = 0, val backBy: String? = null,
 )
 
 data class PayUi(
@@ -127,6 +130,12 @@ data class PayUi(
     val tend: String = "", // cash received, as typed, in whole rupees
     val reference: String = "",
     val pending: Long = 0, // taken in shares and not recorded yet
+    // An exchange: goods of this receipt come back and pay for the sale as far
+    // as they go. Then amount is what the customer still pays, and back what
+    // the shop gives back when they were worth more.
+    val exchangeOf: String? = null,
+    val credit: Long = 0,
+    val back: Long = 0,
     val busy: Boolean = false,
     val done: PayDone? = null,
 ) {
@@ -150,6 +159,7 @@ class PayViewModel @Inject constructor(
     private val tickets: TicketRepository,
     private val orderOps: OrderOps,
     private val service: ServiceRepository,
+    private val exchanges: Exchanges,
 ) : ViewModel() {
     private val _ui = MutableStateFlow(PayUi())
     val ui: StateFlow<PayUi> = _ui
@@ -249,6 +259,13 @@ class PayViewModel @Inject constructor(
         val kind = type?.kind ?: if (table != null) "dine" else "counter"
         val methods = db.catalog().paymentTypes().first()
         val cur = _ui.value
+        // An exchange is settled on the whole sale, in one go. A sale that
+        // already has payments taken on it cannot carry one.
+        if (shares.isNotEmpty() && exchanges.of(t.id) != null) {
+            exchanges.cancel(t.id)
+            Toaster.say("Payments were already taken on this sale, so the exchange was dropped. Nothing was refunded: start it again from the receipt.")
+        }
+        val ex = if (cur.check == null) exchanges.of(t.id) else null
         // One check of a split check: an amount off the bill comes off the
         // first check that has something on it, which is where the split
         // screen and the printed checks show it. Paying another check first
@@ -258,7 +275,8 @@ class PayViewModel @Inject constructor(
         else listOfNotNull(if (kind == "counter") (if (PosSettings.parse(db.ops().settings()).retail) "Sale" else L.quick) else type?.name, t.order_no, t.name).joinToString(" ")) + (cur.check?.let { " · Check $it" } ?: "")
         show(cur.copy(
             loaded = true, gone = unpaid.isEmpty(), title = title, kind = kind,
-            split = split ?: cur.split, n = if (cur.loaded) cur.n else maxOf(2, t.covers ?: 2),
+            split = if (ex != null) "full" else split ?: cur.split, n = if (cur.loaded) cur.n else maxOf(2, t.covers ?: 2),
+            exchangeOf = ex?.number, credit = ex?.credit ?: 0,
             // one check of a split check: its lines, and only they
             lines = all.filter { cur.check == null || (it.line.check_no == cur.check && !it.line.paid) }.map { PayLine(it, cur.check != null) },
             methods = methods, method = cur.method?.let { m -> methods.firstOrNull { it.id == m.id } } ?: methods.firstOrNull(),
@@ -277,8 +295,11 @@ class PayViewModel @Inject constructor(
             "items" -> totalsFor(s.lines.filter { it.picked && !it.info.line.paid }.map { it.info.line.id }).total
             else -> remaining
         }
+        val exchange = s.exchangeOf != null
         _ui.value = s.copy(
-            total = earlierTotal + all.total, remaining = remaining, amount = amount, tax = all.tax,
+            total = earlierTotal + all.total, remaining = remaining, tax = all.tax,
+            amount = if (exchange) (remaining - s.credit).coerceAtLeast(0) else amount,
+            back = if (exchange) (s.credit - remaining).coerceAtLeast(0) else 0,
             paid = earlier + shares.map { PaidRow(it.type, it.input.amount) },
             pending = taken, part = (shares.size + 1).coerceAtMost(s.n),
         )
@@ -286,7 +307,7 @@ class PayViewModel @Inject constructor(
 
     fun split(mode: String) {
         val s = _ui.value
-        if (s.check != null) return
+        if (s.check != null || s.exchangeOf != null) return
         show(s.copy(split = mode, tend = ""))
     }
 
@@ -320,6 +341,7 @@ class PayViewModel @Inject constructor(
         if (unpaid.isEmpty()) return
         val covered = if (s.split == "items") unpaid.filter { it.picked } else unpaid
         if (covered.isEmpty()) { Toaster.say("There is nothing on this check"); return }
+        if (s.exchangeOf != null) { exchange(s, unpaid.map { it.info.line.id }); return }
         val amount = s.amount
         // a bill that comes to nothing (fully discounted) is closed with no payment
         if (amount <= 0 && shares.isEmpty()) { record(s, covered.map { it.info.line.id }, emptyList()); return }
@@ -343,6 +365,40 @@ class PayViewModel @Inject constructor(
             return
         }
         record(s, covered.map { it.info.line.id }, all)
+    }
+
+    // An exchange: the goods that come back pay for the sale as far as they go.
+    // The payment type picked is for the difference, whichever way it goes.
+    private fun exchange(s: PayUi, covered: List<String>) {
+        val m = s.method
+        if ((s.amount > 0 || s.back > 0) && m == null) { Toaster.say(if (s.back > 0) "Pick how the difference is given back" else "Pick how it is paid"); return }
+        val difference = if (s.amount > 0 && m != null) {
+            if (m.kind == "cash") {
+                val got = if (s.tend.isEmpty()) s.amount else s.tendered
+                if (got < s.amount) { Toaster.say("Tendered amount is below ${Money.format(s.amount)}"); return }
+                PayInput(m.id, s.amount, got, got - s.amount, null)
+            } else {
+                PayInput(m.id, s.amount, s.amount, 0, s.reference.ifBlank { null })
+            }
+        } else null
+        viewModelScope.launch {
+            _ui.value = s.copy(busy = true)
+            val t = tickets.activeTicket()
+            exchanges.complete(s.remaining, difference, m?.id?.takeIf { s.back > 0 }, listOfNotNull(discount), servicePct, covered).fold(
+                onSuccess = { (refund, sale) ->
+                    orderOps.afterExchange(refund, sale)
+                    session.setPendingDiscount(null)
+                    val customer = t?.customer_id?.let { db.customers().customer(it) }
+                    _ui.value = _ui.value.copy(busy = false, done = PayDone(
+                        sale.id, sale.total, difference?.change ?: 0,
+                        listOfNotNull("returned goods", m?.name?.takeIf { s.amount > 0 }).joinToString(" and "),
+                        s.kind, null, t?.phone ?: customer?.phone, customer?.email,
+                        exchange = true, back = s.back, backBy = m?.name?.takeIf { s.back > 0 },
+                    ))
+                },
+                onFailure = { _ui.value = s.copy(busy = false); Toaster.say(it.message) },
+            )
+        }
     }
 
     private fun record(s: PayUi, covered: List<String>, with: List<Share>) = viewModelScope.launch {
@@ -436,7 +492,7 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                             T(ui.title, 19.sp, 800)
                         }
                     }
-                    if (ui.check == null) {
+                    if (ui.check == null && ui.exchangeOf == null) {
                         Seg(
                             listOf(
                                 SegOption("Full bill", ui.split == "full") { vm.split("full") },
@@ -456,6 +512,7 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                         }
                     }
                     if (ui.check != null) T("This check only. The rest of the order stays open.", 14.sp, 700, V.BlueText)
+                    ui.exchangeOf?.let { T("Exchange. What comes back from $it pays for this sale as far as it goes.", 14.sp, 700, V.BlueText, lines = 3) }
                 }
                 Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
                 LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(vertical = 4.dp)) {
@@ -478,14 +535,19 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                 Column(Modifier.fillMaxWidth().background(V.PanelFoot).padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Row { T(L.total, 15.sp, 600, V.Dim); Gap(); T(Money.format(ui.total), 15.sp, 800, V.Dim) }
                     ui.paid.forEach { p -> Row { T("Paid · ${p.label}", 14.sp, 700, V.GreenText); Gap(); T("− ${Money.format(p.amount)}", 14.sp, 700, V.GreenText) } }
-                    Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.Bottom) { T("Remaining", 16.sp, 700); Gap(); T(Money.format(ui.remaining), 26.sp, 800, spacing = (-0.5).sp) }
+                    ui.exchangeOf?.let { Row { T("Returned · $it", 14.sp, 700, V.GreenText); Gap(); T("− ${Money.format(ui.credit)}", 14.sp, 700, V.GreenText) } }
+                    Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.Bottom) {
+                        T(if (ui.exchangeOf == null) "Remaining" else if (ui.back > 0) "To give back" else "To pay", 16.sp, 700)
+                        Gap()
+                        T(Money.format(if (ui.exchangeOf == null) ui.remaining else if (ui.back > 0) ui.back else ui.amount), 26.sp, 800, spacing = (-0.5).sp)
+                    }
                     Row { T(L.t("of which tax", "dont taxes", "ladan tax"), 13.sp, 600, V.Text3); Gap(); T(Money.format(ui.tax), 13.sp, 600, V.Text3) }
                 }
             }
             Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = 24.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    T("AMOUNT TO CHARGE", 13.sp, 700, V.Text2, spacing = 1.sp)
-                    T(Money.format(ui.amount), 56.sp, 800, spacing = (-2).sp)
+                    T(if (ui.back > 0) "AMOUNT TO GIVE BACK" else "AMOUNT TO CHARGE", 13.sp, 700, V.Text2, spacing = 1.sp)
+                    T(Money.format(if (ui.back > 0) ui.back else ui.amount), 56.sp, 800, spacing = (-2).sp)
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     ui.methods.chunked(5).forEach { row ->
@@ -505,7 +567,9 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                         }
                     }
                 }
-                if (ui.cash) {
+                // an exchange with nothing for the customer to pay has nothing to count in
+                val settled = ui.exchangeOf != null && ui.amount == 0L
+                if (ui.cash && !settled) {
                     Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Column(Modifier.weight(1.1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("00", "0", "del")).forEach { row ->
@@ -550,13 +614,20 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
                     ) {
                         VIcon(if (ui.method?.kind == "card") VI.Cash else VI.Qr, 44.dp, V.Cyan, 1.6f)
-                        ui.method?.let { T(how(it, ui.amount), 17.sp, 700, V.Soft, Modifier.width(440.dp), lines = 4, align = TextAlign.Center, height = 25.sp) }
-                        Field(ui.reference, vm::reference, "Reference or last 4 digits (optional)", Modifier.width(360.dp))
+                        val say = when {
+                            settled && ui.back > 0 -> "The goods that come back are worth ${Money.format(ui.back)} more than this sale. Give that back by ${ui.method?.name ?: "the payment type you pick"}, then press Give back to record the exchange."
+                            settled -> "The goods that come back cover this sale exactly. Nothing changes hands: press Exchange to record it."
+                            else -> ui.method?.let { how(it, ui.amount) }
+                        }
+                        say?.let { T(it, 17.sp, 700, V.Soft, Modifier.width(440.dp), lines = 4, align = TextAlign.Center, height = 25.sp) }
+                        if (!settled) Field(ui.reference, vm::reference, "Reference or last 4 digits (optional)", Modifier.width(360.dp))
                     }
                 }
-                val ok = !ui.busy && !ui.short && (ui.amount > 0 || (ui.split != "items" && ui.remaining == 0L && ui.lines.any { !it.info.line.paid }))
+                val ok = !ui.busy && !ui.short && (ui.amount > 0 || (ui.split != "items" && ui.remaining == 0L && ui.lines.any { !it.info.line.paid }) || (settled && ui.remaining > 0))
                 VBtn(
                     when {
+                        settled && ui.back > 0 -> "Give back ${Money.format(ui.back)}"
+                        settled && ui.remaining > 0 -> "Exchange · nothing to pay"
                         ui.amount > 0 -> "${L.charge} ${Money.format(ui.amount)}"
                         ui.lines.any { !it.info.line.paid } -> "Close · nothing to pay"
                         else -> "Nothing left to pay"
@@ -594,13 +665,13 @@ private fun Done(d: PayDone, vm: PayViewModel, onFinish: () -> Unit) {
         ) {
             Box(Modifier.size(76.dp).clip(CircleShape).background(V.Green), contentAlignment = Alignment.Center) { VIcon(VI.Check, 40.dp, V.GreenInk, 2.8f) }
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                T("Payment complete", 26.sp, 800, spacing = (-0.5).sp)
+                T(if (d.exchange) "Exchange complete" else "Payment complete", 26.sp, 800, spacing = (-0.5).sp)
                 T("${Money.format(d.total)} · ${d.method}", 15.sp, 600, V.Text2)
             }
-            if (d.change > 0) {
+            if (d.change > 0 || d.back > 0) {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(V.GreenWash).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    T("Give change", 14.sp, 700, V.Dim)
-                    T(Money.format(d.change), 44.sp, 800, V.GreenText, spacing = (-1.5).sp)
+                    T(if (d.back > 0) "Give back" + (d.backBy?.let { " by $it" } ?: "") else "Give change", 14.sp, 700, V.Dim)
+                    T(Money.format(if (d.back > 0) d.back else d.change), 44.sp, 800, V.GreenText, spacing = (-1.5).sp)
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

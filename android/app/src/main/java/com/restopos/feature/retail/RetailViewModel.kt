@@ -6,6 +6,8 @@ import com.restopos.core.common.Money
 import com.restopos.core.data.Approvals
 import com.restopos.core.data.Calc
 import com.restopos.core.data.DiscountPick
+import com.restopos.core.data.ExchangeDraft
+import com.restopos.core.data.Exchanges
 import com.restopos.core.data.Found
 import com.restopos.core.data.LinePrice
 import com.restopos.core.data.NeedsApproval
@@ -100,9 +102,18 @@ class RetailViewModel @Inject constructor(
     private val service: ServiceRepository,
     private val staff: StaffSession,
     private val approvals: Approvals,
+    private val exchanges: Exchanges,
 ) : ViewModel() {
     private val _ui = MutableStateFlow(SaleUi())
     val ui: StateFlow<SaleUi> = _ui
+
+    // what comes back in an exchange that is being rung up on the sale on screen
+    val exchange: StateFlow<ExchangeDraft?> = combine(exchanges.drafts, _ui) { drafts, ui -> ui.ticket?.id?.let { drafts[it] } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    fun cancelExchange() {
+        exchanges.cancel(_ui.value.ticket?.id)
+        Toaster.say("Exchange cancelled. Nothing was refunded.")
+    }
 
     private val store = flow { emit(session.storeId()) }
     val cats: StateFlow<List<CategoryEntity>> = db.catalog().categories().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -370,6 +381,7 @@ class RetailViewModel @Inject constructor(
                 if (rows.isNotEmpty()) staff.allow("sale.void_line", "take a line off a sale", by)
                 rows.forEach { orderOps.remove(it.id, by).getOrThrow() }
                 tickets.cancelOrder(t.id).getOrThrow()
+                exchanges.cancel(t.id)
                 tickets.newTicket()
                 session.setPendingDiscount(null)
             }
@@ -377,7 +389,10 @@ class RetailViewModel @Inject constructor(
     }
 
     fun mayPay(): Boolean {
-        if (_ui.value.empty) { Toaster.say("Ring something up before taking payment"); return false }
+        if (_ui.value.empty) {
+            Toaster.say(if (exchanges.of(_ui.value.ticket?.id) != null) "Ring up what the customer takes instead. To give the money back, cancel the exchange and refund the receipt." else "Ring something up before taking payment")
+            return false
+        }
         return true
     }
 

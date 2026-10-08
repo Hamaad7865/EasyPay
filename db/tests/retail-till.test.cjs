@@ -286,6 +286,112 @@ const lineId = () => `00000000-0000-4000-8000-${String(++made).padStart(12, '0')
       const has = (await one(`select permissions ? 'sale.change_price' as has from roles where id = $1`, [old])).has;
       check('A12 a role that could give a restricted discount is given it, once', n === 1 && has === true && (await one(`select grant_price_perm($1) as n`, [tid])).n === 0, String(n));
     }
+    // ---- E an exchange: goods come back and pay for part of a new sale (migration 0079) ----
+    {
+      const types = (await c.query(`select id, opens_drawer, is_active from payment_types where tenant_id = $1 and kind = 'exchange' and deleted_at is null`, [tid])).rows;
+      check('E1 a shop has one Exchange payment type, which opens no drawer', types.length === 1 && types[0].opens_drawer === false && types[0].is_active === true, JSON.stringify(types));
+      const exch = types[0].id;
+      const card = (await one(`select id from payment_types where tenant_id = $1 and name = 'Card'`, [tid])).id;
+      const second = await asApp(tid, async () => {
+        await c.query('SAVEPOINT second');
+        try { await c.query(`insert into payment_types (tenant_id, name, kind) values ($1,'Another exchange','exchange')`, [tid]); await c.query('RELEASE SAVEPOINT second'); return 'made'; }
+        catch (e) { await c.query('ROLLBACK TO SAVEPOINT second'); return 'refused'; }
+      });
+      check('E1 and cannot be given a second', second === 'refused', second);
+
+      // what each kind of payment holds, refunds taken off
+      const nets = async () => {
+        const rows = (await c.query(`select pt.kind, sum(case when r.type = 'refund' then -p.amount else p.amount end)::int as net
+          from receipt_payments p join receipts r on r.id = p.receipt_id join payment_types pt on pt.id = p.payment_type_id where p.tenant_id = $1 group by pt.kind`, [tid])).rows;
+        const by = Object.fromEntries(rows.map((x) => [x.kind, x.net]));
+        return { cash: by.cash ?? 0, card: by.card ?? 0, exchange: by.exchange ?? 0 };
+      };
+      const moved = (a, b) => [b.cash - a.cash, b.card - a.card, b.exchange - a.exchange].join('/');
+      const sell = async (items, payments) => {
+        const tk = await ticket();
+        const adds = items.map((o) => add(tk, o));
+        const [rc, o] = receipt(tk, 0, { payments });
+        const out = await push([...adds.map((a) => a[1]), o]);
+        return { rc, lines: adds.map((a) => a[0]), said: tags(out), number: 'RT-' + seq };
+      };
+      const back = async (rc, line, payments, extra = {}) => {
+        const [rf, o] = refund(rc, [{ ticket_line_id: line, qty: 1000 }], 0, { payments, ...extra });
+        const out = await push([o]);
+        return { rf, said: tag(out[0]), number: 'RT-R' + seq };
+      };
+      // products of this section's own: nothing above has changed their prices
+      const cup = await item('Cup', { cost: 1400 }), tea = await item('Tea', { price: 8000, cost: 4500 }), vase = await item('Vase', { cost: 3000 });
+      for (const it of [cup, tea, vase]) await receive(store, it, null, 10000, 1000);
+      const mugLine = { item_id: cup, name_snapshot: 'Cup', unit_price: 11500 };
+      const riceLine = { item_id: tea, name_snapshot: 'Tea', unit_price: 8000 };
+
+      // two cups are sold for cash; each comes back in an exchange of its own
+      const a = await sell([mugLine, mugLine], [{ payment_type_id: cash, amount: 23000 }]);
+      let was = await nets();
+      const mugs = await level(cup), rices = await level(tea);
+      // worth more: a cup (Rs 115.00) for a cup and a tin of tea (Rs 195.00). The customer pays Rs 80.00 by card
+      const r1 = await back(a.rc, a.lines[0], [{ payment_type_id: exch, amount: 11500 }]);
+      const s1 = await sell([mugLine, riceLine], [{ payment_type_id: exch, amount: 11500, reference: r1.number }, { payment_type_id: card, amount: 8000 }]);
+      let now = await nets();
+      check('E2 an exchange for goods worth more: the refund and the sale are both taken, and neither is flagged',
+        r1.said === 'applied' && s1.said === 'applied applied applied' && (await reviews(s1.rc)) === '' && !(await rcRow(s1.rc)).needs_review, r1.said + ' | ' + s1.said + ' | ' + (await reviews(s1.rc)));
+      check('E2 only the difference changed hands: Rs 80.00 by card, nothing in cash, and the exchange holds nothing', moved(was, now) === '0/8000/0', moved(was, now));
+      check('E2 the cup that came back is on the shelf, and what left has left', (await level(cup)) === mugs && (await level(tea)) === rices - 1000, [await level(cup), await level(tea)].join());
+      // worth less: the other cup (Rs 115.00) for a tin of tea (Rs 80.00). The shop gives Rs 35.00 back in cash
+      was = now;
+      const r2 = await back(a.rc, a.lines[1], [{ payment_type_id: exch, amount: 8000 }, { payment_type_id: cash, amount: 3500 }]);
+      const s2 = await sell([riceLine], [{ payment_type_id: exch, amount: 8000, reference: r2.number }]);
+      now = await nets();
+      check('E3 an exchange for goods worth less: Rs 35.00 goes back in cash, and the exchange holds nothing',
+        r2.said === 'applied' && s2.said === 'applied applied' && (await reviews(s2.rc)) === '' && moved(was, now) === '-3500/0/0', r2.said + ' | ' + s2.said + ' | ' + moved(was, now));
+      // worth the same: a vase (Rs 115.00) for a cup (Rs 115.00), and the vase is faulty
+      const b = await sell([{ item_id: vase, name_snapshot: 'Vase', unit_price: 11500 }], [{ payment_type_id: cash, amount: 11500 }]);
+      was = await nets();
+      const shirts = await level(vase);
+      const r3 = await back(b.rc, b.lines[0], [{ payment_type_id: exch, amount: 11500 }], { restock: false });
+      const s3 = await sell([mugLine], [{ payment_type_id: exch, amount: 11500, reference: r3.number }]);
+      now = await nets();
+      check('E4 an even exchange: nothing changes hands', r3.said === 'applied' && s3.said === 'applied applied' && (await reviews(s3.rc)) === '' && moved(was, now) === '0/0/0', r3.said + ' | ' + s3.said + ' | ' + moved(was, now));
+      const wrote = (await c.query(`select reason, qty from stock_movements where ref_id = $1 order by created_at, reason desc`, [r3.rf])).rows.map((m) => m.reason + ':' + m.qty).join();
+      check('E4 and what came back faulty is written off, not put back', (await level(vase)) === shirts && wrote === 'refund:1000,damaged:-1000', (await level(vase)) + ' ' + wrote);
+      const paidBy = (await c.query(`select pt.name, p.amount::int, p.reference from receipt_payments p join payment_types pt on pt.id = p.payment_type_id where p.receipt_id = $1 order by p.amount desc`, [s1.rc])).rows;
+      check('E2 the sale says what paid for it: the returned goods, naming their refund, and the card',
+        paidBy.map((x) => [x.name, x.amount, x.reference ?? ''].join(':')).join() === `Exchange:11500:${r1.number},Card:8000:`, JSON.stringify(paidBy));
+
+      // the refund the sale names is not there: another till refunded that receipt first, and this till's refund was refused
+      const s4 = await sell([mugLine], [{ payment_type_id: exch, amount: 8000, reference: 'RT-R-NOWHERE' }, { payment_type_id: cash, amount: 3500 }]);
+      const why = (await one(`select detail from receipt_reviews where receipt_id = $1 and reason = 'exchange-unmatched'`, [s4.rc]))?.detail;
+      check('E5 a sale settled against a refund that is not there is stored, and flagged', s4.said === 'applied applied' && (await reviews(s4.rc)) === 'exchange-unmatched' && (await rcRow(s4.rc)).needs_review === true
+        && JSON.stringify(why) === JSON.stringify({ credits: [{ amount: 8000, refund: 'RT-R-NOWHERE' }] }), s4.said + ' | ' + (await reviews(s4.rc)) + ' | ' + JSON.stringify(why));
+      // a refund that gave Rs 80.00 to an exchange cannot pay for Rs 115.00 of a sale
+      const cRc = await sell([mugLine, mugLine], [{ payment_type_id: cash, amount: 23000 }]);
+      const r5 = await back(cRc.rc, cRc.lines[0], [{ payment_type_id: exch, amount: 8000 }, { payment_type_id: cash, amount: 3500 }]);
+      const s5 = await sell([mugLine], [{ payment_type_id: exch, amount: 11500, reference: r5.number }]);
+      check('E5 so is one settled for another amount than its refund gave', r5.said === 'applied' && (await reviews(s5.rc)) === 'exchange-unmatched', r5.said + ' | ' + (await reviews(s5.rc)));
+      // one refund pays for one sale
+      const s6 = await sell([mugLine], [{ payment_type_id: exch, amount: 11500, reference: r1.number }]);
+      check('E5 and one that names a refund another sale has used', (await reviews(s6.rc)) === 'exchange-unmatched', await reviews(s6.rc));
+      check('E5 the first sale that used it stays as it was', (await reviews(s1.rc)) === '');
+
+      // what was settled with goods is not corrected into money, nor money into it
+      const fix = (rc, from, to) => push([op('payment.correct', { id: id(), receipt_id: rc, from_payment_type_id: from, to_payment_type_id: to })]).then((out) => tag(out[0]));
+      const f1 = await fix(s1.rc, exch, cash), f2 = await fix(s1.rc, card, exch), f3 = await fix(s1.rc, card, cash);
+      check('E6 a payment is not corrected from or to the exchange; another correction still works', f1 === 'rejected:bad-payment' && f2 === 'rejected:bad-payment' && f3 === 'applied', [f1, f2, f3].join(' '));
+
+      // the type follows the kind of business
+      const live = async (t) => (await c.query(`select id from payment_types where tenant_id = $1 and kind = 'exchange' and deleted_at is null`, [t])).rows.map((x) => x.id);
+      const first = await live(other.tenant_id);
+      await c.query(`select platform.set_tenant_business_type($1,$2,'restaurant')`, [admin, other.tenant_id]);
+      const asRestaurant = await live(other.tenant_id);
+      await c.query(`select platform.set_tenant_business_type($1,$2,'retail')`, [admin, other.tenant_id]);
+      const again = await live(other.tenant_id);
+      check('E7 a shop that becomes a restaurant has no Exchange type; a shop again, it has the one it had', first.length === 1 && asRestaurant.length === 0 && again.join() === first.join(), JSON.stringify({ first, asRestaurant, again }));
+      const bistro = (await one(`select platform.create_tenant_of_type($1,'Till Bistro','Main','RT9','Owner',$2,'standard','restaurant') as r`, [admin, id()])).r;
+      check('E7 a restaurant is not given one', (await live(bistro.tenant_id)).length === 0);
+      const pulled = await asApp(tid, async () => (await c.query('select sync_pull($1, 0, 1000) as r', [store])).rows[0].r);
+      check('E8 the till is sent the Exchange type with the others', (pulled.changes.payment_types || []).some((x) => x.kind === 'exchange' && x.id === exch));
+    }
+
     await c.query(`select set_config('app.tenant_id', '', true)`);
   } finally {
     await c.query('ROLLBACK');

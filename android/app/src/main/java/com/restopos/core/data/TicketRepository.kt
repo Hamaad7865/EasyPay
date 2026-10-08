@@ -33,6 +33,8 @@ data class PayInput(
     val tendered: Long? = null,
     val change: Long = 0,
     val reference: String? = null,
+    // what the receipt calls it, when that is not the payment type's name
+    val label: String? = null,
 )
 
 data class DiscountPick(
@@ -615,7 +617,7 @@ class TicketRepository @Inject constructor(
         val doc = docs.encode(docs.receipt(
             "receipt", t, payLines, totals,
             discounts.mapIndexed { i, d -> com.restopos.core.print.DocAmount(d.name, totals.discountAmounts[i]) }.filter { it.amount > 0 },
-            payments.map { com.restopos.core.print.DocPayment(types[it.paymentTypeId]?.name ?: "Paid", it.amount, it.tendered, it.change, it.reference) },
+            payments.map { com.restopos.core.print.DocPayment(it.label ?: types[it.paymentTypeId]?.name ?: "Paid", it.amount, it.tendered, it.change, it.reference) },
             number, now,
         ))
         val payArr = buildJsonArray {

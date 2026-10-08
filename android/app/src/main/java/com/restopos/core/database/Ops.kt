@@ -186,6 +186,10 @@ interface OpsDao {
     @Query("SELECT * FROM payment_types WHERE deleted_at IS NULL")
     suspend fun allPaymentTypes(): List<PaymentTypeEntity>
 
+    // the shop's payment type that settles an exchange (migration 0079); a restaurant has none
+    @Query("SELECT * FROM payment_types WHERE kind = 'exchange' AND deleted_at IS NULL AND is_active LIMIT 1")
+    suspend fun exchangeType(): PaymentTypeEntity?
+
     @Query("SELECT * FROM taxes")
     suspend fun allTaxes(): List<TaxEntity>
 

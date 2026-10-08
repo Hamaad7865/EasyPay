@@ -73,11 +73,12 @@ async function savePayment(f: FormData) {
     const id = uuid(f, "id");
     if (f.get("remove") === "1") {
       const left = await c.query(
-        `select count(*)::int as n from payment_types where tenant_id = $1 and deleted_at is null and is_active and id <> $2`,
+        `select count(*)::int as n from payment_types where tenant_id = $1 and deleted_at is null and is_active and id <> $2 and kind <> 'exchange'`,
         [ctx.tenantId, id],
       );
       if (left.rows[0].n === 0) throw new Refused("Keep at least one payment option switched on, or the tills cannot take a payment.");
-      await c.query(`update payment_types set deleted_at = now() where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id]);
+      // (a shop's Exchange type is not a payment option: it settles exchanges, and stays)
+      await c.query(`update payment_types set deleted_at = now() where tenant_id = $1 and id = $2 and deleted_at is null and kind <> 'exchange'`, [ctx.tenantId, id]);
       return "Payment option removed. Receipts already paid with it keep its name.";
     }
     const name = text(f, "name", 40);
@@ -85,7 +86,7 @@ async function savePayment(f: FormData) {
     if (!name || !KINDS.some(([k]) => k === kind)) throw new Refused("A payment option needs a name and a kind.");
     await c.query(
       `update payment_types set name = $3, kind = $4, opens_drawer = $5, is_active = $6, sort_order = $7
-        where tenant_id = $1 and id = $2 and deleted_at is null`,
+        where tenant_id = $1 and id = $2 and deleted_at is null and kind <> 'exchange'`,
       [ctx.tenantId, id, name, kind, on(f, "opens_drawer"), on(f, "is_active"), int(f, "sort_order", 0, 999, 0)],
     );
     return `${name} saved.`;
@@ -146,7 +147,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     payments: (
       await c.query(
         `select id, name, kind, opens_drawer, is_active, sort_order from payment_types
-          where tenant_id = $1 and deleted_at is null order by sort_order, name`,
+          where tenant_id = $1 and deleted_at is null and kind <> 'exchange' order by sort_order, name`,
         [ctx.tenantId],
       )
     ).rows as { id: string; name: string; kind: string; opens_drawer: boolean; is_active: boolean; sort_order: number }[],

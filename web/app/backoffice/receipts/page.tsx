@@ -58,6 +58,13 @@ function describe(v: Review): string {
         )
         .join("; ");
     }
+    case "exchange-unmatched": {
+      // a sale paid in part with returned goods, whose refund is not on the books as the till said (migration 0079)
+      const credits = (Array.isArray(d.credits) ? d.credits : []) as { amount?: number | null; refund?: string | null }[];
+      return credits
+        .map((x) => `${rs(x.amount)} of it was settled as an exchange against refund ${x.refund || "(not named)"}, which is not there for that amount: check that the goods came back`)
+        .join("; ");
+    }
     case "price-unapproved": {
       // a discount on one line, or a price typed for it, by someone whose role does not allow it (migration 0077)
       const lines = (Array.isArray(d.lines) ? d.lines : []) as { kind?: string; listed?: number | null; charged?: number | null }[];

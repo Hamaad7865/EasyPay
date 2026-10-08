@@ -74,9 +74,14 @@ const id = () => crypto.randomUUID();
         ]);
         return { rc, ids };
       };
-      const refund = (rc, ticketLine, amount) => one(`select id from receipt_lines where receipt_id = $1 and ticket_line_id = $2`, [rc, ticketLine]).then((rl) =>
-        push([op('refund.create', { id: id(), refund_of: rc, store_id: store, device_id: dev, number: code + '-R' + (++seq), device_seq: seq, device_time: at(40 - seq),
-          reason: 'changed mind', lines: [{ receipt_line_id: rl.id, qty: 1000 }], payments: [{ payment_type_id: cash, amount }] })]));
+      // gives back one of a line; paid back in cash unless `payments` says otherwise. Returns the refund's number.
+      const refund = async (rc, ticketLine, amount, payments) => {
+        const rl = await one(`select id from receipt_lines where receipt_id = $1 and ticket_line_id = $2`, [rc, ticketLine]);
+        const number = code + '-R' + (++seq);
+        await push([op('refund.create', { id: id(), refund_of: rc, store_id: store, device_id: dev, number, device_seq: seq, device_time: at(40 - seq),
+          reason: 'changed mind', lines: [{ receipt_line_id: rl.id, qty: 1000 }], payments: payments ?? [{ payment_type_id: cash, amount }] })]);
+        return number;
+      };
       const days = async () => (await one(`select (now() at time zone $1 - interval '1 day')::date::text as from, (now() at time zone $1)::date::text as to`, [tz]));
       return { tid, store, owner, dev, cash, cat, sup, item, push, sale, refund, at, days, ctx: { tenantId: tid, employeeId: owner, mode: type } };
     }
@@ -187,6 +192,30 @@ const id = () => crypto.randomUUID();
     for (const href of ['/backoffice/tables', '/backoffice/bookings', '/backoffice/addons']) {
       const got = await see(shop, href, {});
       check('M4 a shop has no ' + href.split('/').pop(), got.error === 'not found', got.error || 'it opened');
+    }
+
+    // ---- an exchange: the hat comes back and pays for part of a shirt and a scarf (migration 0079) ----
+    {
+      const exch = (await one(`select id from payment_types where tenant_id = $1 and kind = 'exchange' and deleted_at is null`, [shop.tid])).id;
+      const before = stats((await see(shop, '/backoffice/reports/sales', range)).html).join(' | ');
+      // Rs 115.00 of hat back, Rs 230.00 of goods out: Rs 115.00 more in cash
+      const number = await shop.refund(b.rc, b.ids[2], 11500, [{ payment_type_id: exch, amount: 11500 }]);
+      await shop.sale([{ item_id: shirt }, { item_id: scarf }], 23000, { payments: [{ payment_type_id: exch, amount: 11500, reference: number }, { payment_type_id: shop.cash, amount: 11500 }] });
+      p = await see(shop, '/backoffice/reports/sales', range);
+      check('X1 after an exchange, what was collected is up by the difference alone', !p.error && before.startsWith('Total collected: Rs 522.00 |') && stats(p.html).join(' | ').startsWith('Total collected: Rs 637.00 | Sales before refunds: Rs 852.00 | Refunds: Rs 215.00'), stats(p.html).join(' | '));
+      const pay = rowsOf(p.html).filter((r) => /^(Cash|Exchange) \|/.test(r));
+      check('X1 by payment method, cash holds what changed hands and the exchange holds nothing', pay.length === 2 && pay[0].startsWith('Cash | 4 | Rs 637.00') && pay[1].startsWith('Exchange | 2 | Rs 0.00'), pay.join(' // '));
+      p = await see(shop, '/backoffice/reports/orders', range);
+      check('X2 Order details says what paid for the sale, naming the refund, and where the refund went',
+        !p.error && p.says.includes(`Paid by Exchange · ref ${number} Rs 115.00`) && p.says.includes('Paid back by Exchange Rs 115.00') && !p.says.includes('Needs a check'), p.error || (p.says.match(/Paid[^R]*Exchange[^R]*Rs [\d.,]+/g) || []).join(' / '));
+      p = await see(shop, '/backoffice/receipts', {});
+      check('X2 neither receipt is listed for review', !p.error && !p.says.includes('exchange against refund'), p.error);
+      p = await see(shop, '/backoffice/settings', { tab: 'payments' });
+      check('X3 the Exchange type is not among the payment options a shop edits', !p.error && p.html.includes('value="Cash"') && !p.html.includes('value="Exchange"'), p.error);
+      // a sale that names a refund which is not there is flagged, and the Receipts page says why
+      await shop.sale([{ item_id: mug }], 11500, { payments: [{ payment_type_id: exch, amount: 11500, reference: 'SP1-R-NOWHERE' }] });
+      p = await see(shop, '/backoffice/receipts', {});
+      check('X4 a sale settled against a refund that is not there is on the Receipts page, with the reason', !p.error && p.says.includes('Rs 115 of it was settled as an exchange against refund SP1-R-NOWHERE, which is not there for that amount'), p.error || (p.says.match(/settled as an exchange[^.]*/) || [p.says.slice(0, 300)])[0]);
     }
 
     // -------------------------------------------------------- a restaurant

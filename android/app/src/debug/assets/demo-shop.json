@@ -46,6 +46,12 @@
       "name": "Card",
       "kind": "card",
       "opens_drawer": false
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000009",
+      "name": "Exchange",
+      "kind": "exchange",
+      "opens_drawer": false
     }
   ],
   "roles": [
