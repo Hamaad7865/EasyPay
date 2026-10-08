@@ -169,6 +169,14 @@ const id = () => crypto.randomUUID();
     // one belt kept, at the Rs 100.00 it was charged: Rs 86.95 without VAT, against the Rs 40.00 it cost
     check('S8 a product\'s sales, and its profit, are from what its lines were charged', !!beltSold && beltSold.includes('| Belt | Clothing | 1 | Rs 100.00 |') && beltSold.includes('| Rs 86.95 | Rs 40.00 | Rs 46.95 |'), beltSold);
 
+    // every product of this shop comes from Textiles Ocean, and none has a brand
+    p = await see(shop, '/backoffice/reports/items', { ...range, group: 'supplier' });
+    const supRows = rowsOf(p.html).filter((r) => /^\d+ \| /.test(r));
+    check('S9 Item sales by supplier: one row for the supplier, with all the sales', !p.error && supRows.length === 1 && supRows[0].startsWith('1 | Textiles Ocean | 5 | Rs 545.00'), p.error || supRows.join(' // '));
+    p = await see(shop, '/backoffice/reports/items', { ...range, group: 'brand' });
+    const brandRows = rowsOf(p.html).filter((r) => /^\d+ \| /.test(r));
+    check('S9 by brand: products with no brand are under "No brand"', !p.error && brandRows.length === 1 && brandRows[0].startsWith('1 | No brand | 5 | Rs 545.00') && p.says.includes('Brands sold'), p.error || brandRows.join(' // '));
+
     // ---- every page in a shop's menu ----
     const menu = [
       ['/backoffice/insights/sales', range], ['/backoffice/insights/menu', range], ['/backoffice/reports/tax', range], ['/backoffice/reports/timecards', range],
@@ -239,6 +247,8 @@ const id = () => crypto.randomUUID();
     check('R3 the dashboard for a restaurant', !p.error && /After Rs 23 of discounts and Rs 0 of refunds/i.test(p.says) && p.says.includes('Order types'), p.error || (p.says.match(/After Rs [\d.,]+ of discounts[^.]{0,40}/i) || [])[0]);
     p = await see(rest, '/backoffice/insights/staff', rrange);
     check('R4 Staff performance for a restaurant', !p.error && p.says.includes('gave the most in discounts: Rs 23.00'), p.error || (p.says.match(/gave the most in discounts: Rs [\d.,]+/) || [])[0]);
+    p = await see(rest, '/backoffice/reports/items', { ...rrange, group: 'supplier' });
+    check('R4 a restaurant is not offered Item sales by supplier or brand, and asked for one gets its items', !p.error && !p.html.includes('value="supplier"') && rowsOf(p.html).some((r) => r.includes('| Soup |')), p.error);
     p = await see(rest, '/backoffice/reports/orders', rrange);
     check('R5 Order details for a restaurant: no line says "listed at"', !p.error && rowsOf(p.html).some((r) => r.startsWith('Soup')) && !p.says.includes('listed at'), p.error);
     for (const href of ['/backoffice/reports/stock', '/backoffice/purchase-orders', '/backoffice/stock-counts']) {

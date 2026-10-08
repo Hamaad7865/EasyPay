@@ -105,8 +105,9 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
       return { rc, said: tag(out[out.length - 1]) };
     };
     const day = report.today(tz);
+    // byCategory: false for each product, true for each category, or 'supplier' / 'brand'
     const sales = async (byCategory, withCost, as = tid) => {
-      const rows = await ask(rep.itemSalesSql(report.RECEIPTS, byCategory, withCost), [tid, day, day, null, null, 'all'], as);
+      const rows = await ask(rep.itemSalesSql(report.RECEIPTS, byCategory === true ? 'category' : byCategory || 'item', withCost), [tid, day, day, null, null, 'all'], as);
       return Object.fromEntries(rows.map((r) => [r.name, { qty: r.qty, amount: Number(r.amount), ex: r.ex_vat == null ? null : Number(r.ex_vat), costed: r.costed == null ? null : Number(r.costed), cost: r.cost == null ? null : Number(r.cost) }]));
     };
     const fig = (r) => (r ? [r.qty, r.amount, r.ex, r.costed, r.cost].join('/') : 'none');
@@ -145,6 +146,16 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     check('the page without costs asks the same sales', Object.keys(r).sort().join() === Object.keys(plain).sort().join() && Object.keys(r).every((k) => r[k].qty === plain[k].qty && r[k].amount === plain[k].amount && plain[k].cost === null),
       JSON.stringify(plain));
     const cats = await sales(true, true);
+    // the shirt and the hat come from Textiles Ocean; the scarf and the bag fee have no supplier
+    const sups = await sales('supplier', true);
+    check('P7 by supplier, the same sums under each supplier, and what has none under "No supplier"',
+      sups['Textiles Ocean']?.ex === r.Shirt.ex + r.Hat.ex && sups['Textiles Ocean']?.cost === r.Shirt.cost + r.Hat.cost && sups['No supplier']?.ex === r.Scarf.ex + r['Bag fee'].ex
+      && Object.values(sups).reduce((a, x) => a + x.amount, 0) === Object.values(r).reduce((a, x) => a + x.amount, 0), JSON.stringify(sups));
+    await c.query(`update items set brand = ' Ocean Wear ' where id = $1`, [shirt]);
+    const brands = await sales('brand', true), plainBrands = await sales('brand', false);
+    check('P7 by brand, a brand is read without the spaces around it, and a product with none is under "No brand"',
+      brands['Ocean Wear']?.ex === r.Shirt.ex && brands['Ocean Wear']?.cost === r.Shirt.cost && brands['No brand']?.amount === Object.values(r).reduce((a, x) => a + x.amount, 0) - r.Shirt.amount
+      && plainBrands['Ocean Wear']?.amount === r.Shirt.amount && plainBrands['Ocean Wear']?.cost === null, JSON.stringify(brands));
     check('P1 by category, the same sums', cats.Clothing?.ex === 28000 && cats.Clothing?.cost === 16200 && cats['No category']?.ex === 11800 && cats['No category']?.cost === 3000 && cats['No category']?.costed === 10000,
       [fig(cats.Clothing), fig(cats['No category'])].join(' '));
 

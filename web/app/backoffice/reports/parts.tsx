@@ -14,7 +14,7 @@ export function ReportFilters({
   path: string;
   f: Filters;
   l: Lists;
-  show: ("employee" | "dining" | "kind" | "payment" | "tax" | "group" | "kind-no-all")[];
+  show: ("employee" | "dining" | "kind" | "payment" | "tax" | "group" | "group-shop" | "kind-no-all")[];
   children?: React.ReactNode;
 }) {
   const has = (k: (typeof show)[number]) => show.includes(k);
@@ -75,12 +75,15 @@ export function ReportFilters({
           </select>
         </label>
       )}
-      {has("group") && (
+      {(has("group") || has("group-shop")) && (
         <label>
           Rank by
           <select name="group" defaultValue={f.group}>
-            <option value="item">Item</option>
+            <option value="item">{has("group-shop") ? "Product" : "Item"}</option>
             <option value="category">Category</option>
+            {/* a shop's products have a supplier and a brand */}
+            {has("group-shop") && <option value="supplier">Supplier</option>}
+            {has("group-shop") && <option value="brand">Brand</option>}
           </select>
         </label>
       )}

@@ -25,7 +25,10 @@ export const RECEIPTS = `
      and ($5::uuid is null or coalesce(t.dining_option_id, dd.id) = $5::uuid)
      and ($6::text = 'all' or v.type = $6::text)`;
 
-export type Filters = { from: string; to: string; employee: string | null; dining: string | null; kind: "sale" | "refund" | "all"; payment: string | null; tax: string | null; group: "item" | "category" };
+export type Filters = { from: string; to: string; employee: string | null; dining: string | null; kind: "sale" | "refund" | "all"; payment: string | null; tax: string | null; group: ItemGroup };
+// what Item sales are ranked by. By supplier and by brand are a shop's: a restaurant's products have neither.
+export type ItemGroup = "item" | "category" | "supplier" | "brand";
+const GROUPS: ItemGroup[] = ["item", "category", "supplier", "brand"];
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
@@ -52,7 +55,7 @@ export function filters(sp: Record<string, string | string[] | undefined>, tz: s
     kind: kind === "sale" || kind === "refund" ? kind : "all",
     payment: id("payment"),
     tax: id("tax"),
-    group: first(sp.group) === "category" ? "category" : "item",
+    group: GROUPS.find((g) => g === first(sp.group)) ?? "item",
   };
 }
 

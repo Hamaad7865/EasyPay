@@ -101,9 +101,18 @@ export function lineOffSql(shop: boolean, r: string, kind: "discount" | "overrid
             where lo.tenant_id = ${tenant} and lo.receipt_id = ${r}.id and lo.price_kind = '${kind}' and lo.list_price is not null)`;
 }
 
-export function itemSalesSql(receipts: string, byCategory: boolean, withCost: boolean): string {
-  const by = byCategory ? `coalesce(c.name, 'No category')` : `rl.name_snapshot`;
-  const cat = byCategory ? "null::text" : "max(c.name)";
+// group: what the rows are: each product as its line named it, or its
+// category, its supplier or its brand as the catalog has them today.
+export function itemSalesSql(receipts: string, group: "item" | "category" | "supplier" | "brand", withCost: boolean): string {
+  const by = {
+    item: `rl.name_snapshot`,
+    category: `coalesce(c.name, 'No category')`,
+    supplier: `coalesce(su.name, 'No supplier')`,
+    brand: `coalesce(nullif(btrim(i.brand), ''), 'No brand')`,
+  }[group];
+  const cat = group === "item" ? "max(c.name)" : "null::text";
+  const catalog = `left join categories c on c.tenant_id = $1 and c.id = i.category_id
+           left join suppliers su on su.tenant_id = $1 and su.id = i.supplier_id`;
   const amount = `(line_amount(rl.unit_price, rl.qty) + coalesce((select sum(m.price) from receipt_line_modifiers m
                    where m.tenant_id = $1 and m.receipt_line_id = rl.id), 0))`;
   if (!withCost) {
@@ -114,7 +123,7 @@ export function itemSalesSql(receipts: string, byCategory: boolean, withCost: bo
            from r join receipt_lines rl on rl.tenant_id = $1 and rl.receipt_id = r.id
            left join ticket_lines tl on tl.tenant_id = $1 and tl.id = rl.ticket_line_id
            left join items i on i.tenant_id = $1 and i.id = tl.item_id
-           left join categories c on c.tenant_id = $1 and c.id = i.category_id
+           ${catalog}
           group by 1 order by 4 desc, 1`;
   }
   return `with r as (${receipts}),
@@ -144,6 +153,6 @@ export function itemSalesSql(receipts: string, byCategory: boolean, withCost: bo
               sum(case when y.unit_cost > 0 then y.sign * round(y.qty * y.unit_cost / 1000) end)::bigint as cost
          from y
          left join items i on i.tenant_id = $1 and i.id = y.item_id
-         left join categories c on c.tenant_id = $1 and c.id = i.category_id
+         ${catalog}
         group by 1 order by 4 desc, 1`;
 }

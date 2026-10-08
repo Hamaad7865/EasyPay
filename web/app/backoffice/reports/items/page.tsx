@@ -22,7 +22,9 @@ export default async function ItemRank({ searchParams }: { searchParams: Search 
     if (!ok) return { l, f, ok: false as const };
     // a shop's cost and profit, for whoever may see them. A restaurant's page asks what it always asked.
     const costs = shop && Boolean((await c.query(`select has_perm($1, 'costs.view') as ok`, [ctx.employeeId])).rows[0]?.ok);
-    const rows = (await c.query(itemSalesSql(RECEIPTS, f.group === "category", costs), args(ctx.tenantId, f))).rows as Row[];
+    // by supplier and by brand are a shop's
+    if (ctx.mode !== "retail" && (f.group === "supplier" || f.group === "brand")) f.group = "item";
+    const rows = (await c.query(itemSalesSql(RECEIPTS, f.group, costs), args(ctx.tenantId, f))).rows as Row[];
     return { l, f, ok: true as const, s, rows, costs };
   });
   const head = (
@@ -40,20 +42,23 @@ export default async function ItemRank({ searchParams }: { searchParams: Search 
   const total = d.rows.reduce((a, r) => a + Number(r.amount), 0);
   const qty = d.rows.reduce((a, r) => a + r.qty, 0);
   const top = Math.max(1, ...d.rows.map((r) => Number(r.amount)));
-  const byCat = d.f.group === "category";
+  // one row for each product, or for each category, supplier or brand
+  const byCat = d.f.group !== "item";
+  const what = { item: shop ? "Product" : "Item", category: "Category", supplier: "Supplier", brand: "Brand" }[d.f.group];
+  const many = { item: shop ? "Different products sold" : "Different items sold", category: "Categories sold", supplier: "Suppliers sold from", brand: "Brands sold" }[d.f.group];
   // profit is over the sales that have a cost: a product with none is not all profit
   const sum = (k: "ex_vat" | "costed" | "cost") => d.rows.reduce((a, r) => a + Number(r[k] ?? 0), 0);
   const exVat = sum("ex_vat"), costed = sum("costed"), cost = sum("cost");
   return (
     <div>
       {head}
-      <ReportFilters path="/backoffice/reports/items" f={d.f} l={d.l} show={["employee", "group"]} />
+      <ReportFilters path="/backoffice/reports/items" f={d.f} l={d.l} show={["employee", shop ? "group-shop" : "group"]} />
       {d.rows.length === 0 ? (
         <Empty icon={ListOrdered} title="Nothing was sold in these days">Pick other dates, or clear the filters.</Empty>
       ) : (
         <>
           <div className="stats">
-            <Stat label={byCat ? "Categories sold" : "Different items sold"} value={String(d.rows.length)} />
+            <Stat label={many} value={String(d.rows.length)} />
             <Stat label="Quantity sold" value={fmtQty(qty)} />
             <Stat label="Sales" value={m(total)} />
             <Stat label="Best seller" value={d.rows[0].name} note={m(d.rows[0].amount)} />
@@ -69,7 +74,7 @@ export default async function ItemRank({ searchParams }: { searchParams: Search 
             <thead>
               <tr>
                 <th className="num">Rank</th>
-                <th>{byCat ? "Category" : "Item"}</th>
+                <th>{what}</th>
                 {!byCat && <th>Category</th>}
                 <th className="num">Quantity</th>
                 <th className="num">Sales</th>
