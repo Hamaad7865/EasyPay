@@ -83,6 +83,80 @@
       "pin": "7350"
     }
   ],
+  "restaurant": {
+    "dining": [
+      {
+        "id": "d0000000-0000-4000-8000-000000000041",
+        "name": "Dine-in",
+        "kind": "dine",
+        "needs_table": true,
+        "kitchen": "save",
+        "is_default": true
+      },
+      {
+        "id": "d0000000-0000-4000-8000-000000000042",
+        "name": "Takeaway",
+        "kind": "takeaway",
+        "needs_table": false,
+        "kitchen": "pay",
+        "is_default": false
+      },
+      {
+        "id": "d0000000-0000-4000-8000-000000000006",
+        "name": "Counter",
+        "kind": "counter",
+        "needs_table": false,
+        "kitchen": "pay",
+        "is_default": false
+      }
+    ],
+    "tables": [
+      {
+        "id": "d0000000-0000-4000-8000-000000000051",
+        "name": "1",
+        "area": "Main",
+        "seats": 4,
+        "shape": "square",
+        "x": 10,
+        "y": 16,
+        "w": 14,
+        "h": 14
+      },
+      {
+        "id": "d0000000-0000-4000-8000-000000000052",
+        "name": "2",
+        "area": "Main",
+        "seats": 4,
+        "shape": "round",
+        "x": 32,
+        "y": 16,
+        "w": 14,
+        "h": 14
+      },
+      {
+        "id": "d0000000-0000-4000-8000-000000000053",
+        "name": "3",
+        "area": "Main",
+        "seats": 4,
+        "shape": "square",
+        "x": 54,
+        "y": 16,
+        "w": 14,
+        "h": 14
+      },
+      {
+        "id": "d0000000-0000-4000-8000-000000000054",
+        "name": "4",
+        "area": "Main",
+        "seats": 6,
+        "shape": "round",
+        "x": 76,
+        "y": 16,
+        "w": 14,
+        "h": 14
+      }
+    ]
+  },
   "categories": [
     {
       "id": "d0000000-0000-4000-8000-000000000011",

@@ -66,7 +66,12 @@ class DemoReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 if (deps.session().isSetUp()) Log.w(TAG, "refused: this tablet is set up for a business")
-                else { seed(context, deps.db(), deps.session()); Log.i(TAG, "seeded: close the app and open it again") }
+                else {
+                    // --es type restaurant: the same catalog as a restaurant's, with tables and order types
+                    val restaurant = intent.getStringExtra("type") == "restaurant"
+                    seed(context, deps.db(), deps.session(), restaurant)
+                    Log.i(TAG, "seeded a " + (if (restaurant) "restaurant" else "shop") + ": close the app and open it again")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "failed", e)
             } finally {
@@ -89,7 +94,7 @@ class DemoReceiver : BroadcastReceiver() {
         return listOf("pbkdf2-sha256", iterations.toString(), b64.encodeToString(salt), b64.encodeToString(hash)).joinToString("$")
     }
 
-    private suspend fun seed(context: Context, db: TillDatabase, session: SessionStore) {
+    private suspend fun seed(context: Context, db: TillDatabase, session: SessionStore, restaurant: Boolean) {
         val shop = Json.parseToJsonElement(context.assets.open("demo-shop.json").bufferedReader().use { it.readText() })
         val tenant = shop.str("tenant")!!
         val store = shop.obj("store")
@@ -101,9 +106,24 @@ class DemoReceiver : BroadcastReceiver() {
             val catalog = db.catalog()
             catalog.upsertStores(listOf(StoreEntity(storeId, tenant, store.str("name")!!, store.str("code")!!)))
             catalog.upsertDevices(listOf(DeviceEntity(device.str("id")!!, tenant, storeId, device.str("name")!!, device.str("code")!!)))
-            db.ops().upsertSettings(SettingsEntity(tenant, shop.obj("settings").toString()))
+            // a restaurant's settings say nothing about the kind of business, as before there were shops
+            val settings = shop.obj("settings")
+            db.ops().upsertSettings(SettingsEntity(tenant, (if (restaurant) JsonObject(settings.filterKeys { it != "businessType" }) else settings).toString()))
             catalog.upsertTaxes(listOf(TaxEntity(tax.str("id")!!, tenant, tax.str("name")!!, tax.jsonObject["rate_bp"]!!.jsonPrimitive.intOrNull ?: 0, tax.str("type")!!, true)))
-            catalog.upsertDining(listOf(DiningOptionEntity(dining.str("id")!!, tenant, dining.str("name")!!, true, 0, kitchen = "pay", kind = dining.str("kind")!!)))
+            if (restaurant) {
+                val r = shop.obj("restaurant")
+                catalog.upsertDining(r.arr("dining").mapIndexed { i, d ->
+                    DiningOptionEntity(d.str("id")!!, tenant, d.str("name")!!, d.bool("is_default"), i, needs_table = d.bool("needs_table"), kitchen = d.str("kitchen")!!, kind = d.str("kind")!!)
+                })
+                db.tables().upsertTables(r.arr("tables").mapIndexed { i, t ->
+                    com.restopos.core.database.TableEntity(
+                        t.str("id")!!, tenant, storeId, t.str("name")!!, t.str("area")!!, t.lng("seats").toInt(), t.str("shape")!!,
+                        t.lng("x").toInt(), t.lng("y").toInt(), t.lng("w").toInt(), t.lng("h").toInt(), i,
+                    )
+                })
+            } else {
+                catalog.upsertDining(listOf(DiningOptionEntity(dining.str("id")!!, tenant, dining.str("name")!!, true, 0, kitchen = "pay", kind = dining.str("kind")!!)))
+            }
             catalog.upsertPayments(shop.arr("payments").mapIndexed { i, p -> PaymentTypeEntity(p.str("id")!!, tenant, p.str("name")!!, p.str("kind")!!, sort_order = i, opens_drawer = p.bool("opens_drawer")) })
             db.staff().upsertRoles(shop.arr("roles").map { RoleEntity(it.str("id")!!, tenant, it.str("name")!!, it.arr("permissions").toString()) })
             db.staff().upsertEmployees(shop.arr("staff").mapIndexed { i, e -> EmployeeEntity(e.str("id")!!, tenant, e.str("name")!!, pinHash(e.str("pin")!!, ByteArray(16) { b -> (b * 7 + i + 1).toByte() }), e.str("role")) })

@@ -10,7 +10,10 @@
 // It is made here with the same ids, in ONE transaction that is rolled back:
 // nothing is left on dev.
 //
-// Usage: node db/scripts/replay-demo-outbox.cjs <till-state.json>
+// Usage: node db/scripts/replay-demo-outbox.cjs <till-state.json> [restaurant]
+//   restaurant: the emulator was filled with the same catalog as a restaurant
+//   (--es type restaurant), to check a restaurant's till still sends what the
+//   server takes.
 //   till-state.json: {"outbox": [...], "receipts": [...], "receipt_lines": [...], "levels": [...], "lines": [...]}
 //   as read off the emulator with sqlite3 -json (see the plan's record for the commands).
 const fs = require('fs');
@@ -27,6 +30,7 @@ function check(name, cond, extra) {
 
 (async () => {
   const till = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+  const restaurant = process.argv[3] === 'restaurant';
   const shop = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'android', 'app', 'src', 'debug', 'assets', 'demo-shop.json'), 'utf8'));
   const c = new Client({ connectionString: devguard.envMap().DATABASE_URL_UNPOOLED, ssl: { require: true } });
   await c.connect();
@@ -34,14 +38,24 @@ function check(name, cond, extra) {
   const one = async (sql, params) => (await c.query(sql, params)).rows[0];
   try {
     const tid = shop.tenant, store = shop.store.id, owner = shop.staff[0].id;
-    await c.query(`insert into tenants (id, tenant_id, name, business_type) values ($1,$1,$2,'retail')`, [tid, shop.store.name]);
+    await c.query(`insert into tenants (id, tenant_id, name, business_type) values ($1,$1,$2,$3)`, [tid, shop.store.name, restaurant ? 'restaurant' : 'retail']);
     await c.query(`insert into stores (id, tenant_id, name, code) values ($1,$2,$3,$4)`, [store, tid, shop.store.name, shop.store.code]);
     await c.query(`insert into pos_devices (id, tenant_id, store_id, name, code) values ($1,$2,$3,$4,$5)`, [shop.device.id, tid, store, shop.device.name, shop.device.code]);
-    await c.query(`insert into pos_settings (tenant_id, data) values ($1,$2::jsonb)`, [tid, JSON.stringify(shop.settings)]);
+    const { businessType, ...plain } = shop.settings;
+    await c.query(`insert into pos_settings (tenant_id, data) values ($1,$2::jsonb)`, [tid, JSON.stringify(restaurant ? plain : shop.settings)]);
     for (const r of shop.roles) await c.query(`insert into roles (id, tenant_id, name, permissions) values ($1,$2,$3,$4::jsonb)`, [r.id, tid, r.name, JSON.stringify(r.permissions)]);
     for (const e of shop.staff) await c.query(`insert into employees (id, tenant_id, name, role_id) values ($1,$2,$3,$4)`, [e.id, tid, e.name, e.role]);
     await c.query(`insert into taxes (id, tenant_id, name, rate_bp, type, is_default) values ($1,$2,$3,$4,$5,true)`, [shop.tax.id, tid, shop.tax.name, shop.tax.rate_bp, shop.tax.type]);
-    await c.query(`insert into dining_options (id, tenant_id, name, is_default, sort_order, needs_table, kitchen, kind) values ($1,$2,$3,true,0,false,'pay',$4)`, [shop.dining.id, tid, shop.dining.name, shop.dining.kind]);
+    if (restaurant) {
+      for (const [i, d] of shop.restaurant.dining.entries()) {
+        await c.query(`insert into dining_options (id, tenant_id, name, is_default, sort_order, needs_table, kitchen, kind) values ($1,$2,$3,$4,$5,$6,$7,$8)`, [d.id, tid, d.name, d.is_default, i, d.needs_table, d.kitchen, d.kind]);
+      }
+      for (const [i, t] of shop.restaurant.tables.entries()) {
+        await c.query(`insert into tables (id, tenant_id, store_id, name, area, seats, shape, x, y, w, h, sort_order) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [t.id, tid, store, t.name, t.area, t.seats, t.shape, t.x, t.y, t.w, t.h, i]);
+      }
+    } else {
+      await c.query(`insert into dining_options (id, tenant_id, name, is_default, sort_order, needs_table, kitchen, kind) values ($1,$2,$3,true,0,false,'pay',$4)`, [shop.dining.id, tid, shop.dining.name, shop.dining.kind]);
+    }
     for (const [i, p] of shop.payments.entries()) await c.query(`insert into payment_types (id, tenant_id, name, kind, opens_drawer, sort_order) values ($1,$2,$3,$4,$5,$6)`, [p.id, tid, p.name, p.kind, p.opens_drawer, i]);
     for (const k of shop.categories) await c.query(`insert into categories (id, tenant_id, name) values ($1,$2,$3)`, [k.id, tid, k.name]);
     for (const it of shop.items) {
