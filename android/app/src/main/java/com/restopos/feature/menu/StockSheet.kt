@@ -68,8 +68,8 @@ class StockEditor(
         val units = StockForm.units(typed)
         if (units == null) { Toaster.say("Type how many, as a number above zero, for example 3 or 1.5"); return }
         val left = LinePrice.left(edit.now, edit.weighed)
-        // the server refuses it too, with what it holds; said here when this till already knows
-        if (way == StockForm.Way.Out && units > edit.now) { Toaster.say(StockForm.refused("not-enough-stock", shop, left)); return }
+        // More than this till believes is there is still asked: a delivery entered
+        // elsewhere since its last sync may have put it there. The server holds the floor.
         if (busy.value) return
         scope.launch {
             busy.value = true
@@ -120,7 +120,7 @@ internal fun StockSheet(editor: StockEditor, edit: StockEdit) {
         T(
             "Now " + (if (edit.now <= 0) "none" else LinePrice.qty(edit.now.toInt(), edit.weighed)) + when {
                 after == null -> ""
-                after < 0 -> " · there is not that much to take out"
+                after < 0 -> " · more than this till knows of"
                 else -> " · will be " + LinePrice.qty(after.toInt(), edit.weighed)
             },
             15.sp, 700, if (after != null && after < 0) V.RedText else V.Text2,
