@@ -29,8 +29,9 @@ Everything to fill in is in `js/config.js`:
   which is a guess: the mailbox has to exist.
 - `whatsapp`: the number in international form, digits only. While it is
   empty the WhatsApp button is hidden.
-- `signInUrl`: the back office's sign-in page. While it is empty the
-  "Sign in" links are hidden.
+- `signInUrl`: the back office's sign-in page. It is `/login`: the site and
+  the back office share one address (see Hosting). Emptied, the "Sign in"
+  links are hidden.
 
 The form has no server behind it. It writes the message and opens the
 visitor's own e-mail app (or WhatsApp) to send it.
@@ -45,5 +46,18 @@ sample menu; real screenshots can replace them.
 
 ## Hosting
 
-Any static host serves the folder as it is. Point the host at `site/` with
-no build command.
+It is the Cloudflare Pages project `easypaypos`, at easypaypos.pages.dev,
+which serves this folder as it is, with no build step. Two files here are
+not part of the site and are not served: `_worker.js` hands the back
+office's addresses (`/login`, `/backoffice`, `/admin` and what they need) to
+the back office's own Worker, so that easypaypos.pages.dev/login is the
+sign-in, and `_routes.json` lists those addresses so a visit to the site
+runs no code at all. `../cloudflare/pages/wrangler.toml` is the project's
+configuration.
+
+It goes live with the "release to production" workflow
+(`.github/workflows/deploy.yml`, last step), or by hand from
+`cloudflare/pages`: `npx wrangler pages deploy --branch restopos`.
+
+Any other static host still serves the folder as it is; the sign-in links
+then need the back office's full address in `js/config.js`.

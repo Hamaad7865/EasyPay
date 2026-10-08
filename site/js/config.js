@@ -11,5 +11,5 @@ window.EASYPAY = {
 
   // The back office's sign-in page. While it is empty the "Sign in" links
   // stay hidden.
-  signInUrl: "",
+  signInUrl: "/login",
 };

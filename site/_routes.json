@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "include": [
+    "/login",
+    "/login/*",
+    "/reset-password",
+    "/reset-password/*",
+    "/onboarding",
+    "/onboarding/*",
+    "/backoffice",
+    "/backoffice/*",
+    "/admin",
+    "/admin/*",
+    "/api/auth/*",
+    "/_next/*",
+    "/icon.png",
+    "/logo-full.png",
+    "/logo-mark.png"
+  ],
+  "exclude": []
+}

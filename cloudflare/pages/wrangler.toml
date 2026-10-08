@@ -1,0 +1,17 @@
+# easypaypos.pages.dev: the public site, and the front door to the back office.
+#
+# A Cloudflare Pages project. What it serves is the `site/` folder as it is;
+# `site/_worker.js` hands the back office's addresses (/login, /backoffice,
+# /admin and what they need) to the Worker `easypay-backoffice`, which is
+# `web/` built for Cloudflare (web/wrangler.toml). Deployed from this folder:
+#
+#   npx wrangler pages deploy
+#
+# The Worker has to exist before this is deployed: the binding below names it.
+name = "easypaypos"
+pages_build_output_dir = "../../site"
+compatibility_date = "2026-07-30"
+
+[[services]]
+binding = "BACKOFFICE"
+service = "easypay-backoffice"
