@@ -3,6 +3,7 @@ package com.restopos.core.database
 import androidx.room.Dao
 import androidx.room.Entity
 import androidx.room.Index
+import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Upsert
@@ -23,6 +24,47 @@ data class KdsTicketEntity(
     val covers: Int? = null,
     val created_at: Long = System.currentTimeMillis(),
     val bumped_at: Long? = null,
+    // who took the order and what was said about the whole of it, as the
+    // kitchen's paper has them; a kitchen screen shows them when asked to
+    val waiter: String? = null,
+    val remark: String? = null,
+)
+
+// One kitchen screen's part of a kitchen ticket (server 0086): the lines of
+// that send that go to that screen, as they were sent. The till writes it
+// down when the order is sent and keeps trying until the screen has it, so
+// nothing depends on one message arriving.
+@Entity(tableName = "kds_parts", primaryKeys = ["kds_id", "screen_id"], indices = [Index("screen_id")])
+data class KdsPartEntity(
+    val kds_id: String,
+    val screen_id: String, // the printers row of kind screen
+    val payload: String, // the ticket as it goes to the screen (WireTicket), frozen when sent
+    val line_ids: String, // the order's lines in it, a JSON list
+    val delivered: Boolean = false, // the screen has confirmed it holds it
+    val bumped_at: Long? = null, // that screen's cooks have it at the pass
+    val created_at: Long = System.currentTimeMillis(),
+)
+
+// A mark the till owes a kitchen screen: a line voided, or a tick, a bump or
+// a recall made on the till's own Kitchen screen. Kept until the screen has
+// answered a request that carried it.
+@Entity(tableName = "kds_out", indices = [Index("screen_id")])
+data class KdsOutEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val screen_id: String,
+    val mark: String, // a WireMark
+)
+
+// What the till knows of a kitchen screen: which set-up of the tablet it last
+// spoke to, how far it has read of what the cooks did, when it last answered
+// and, when it does not, what is wrong in words.
+@Entity(tableName = "kds_screens")
+data class KdsScreenEntity(
+    @PrimaryKey val screen_id: String,
+    val epoch: String = "",
+    val read_to: Long = 0,
+    val heard_at: Long? = null,
+    val trouble: String? = null,
 )
 
 @Entity(tableName = "bookings", indices = [Index("store_id")])
@@ -96,6 +138,54 @@ interface ServiceDao {
 
     @Query("DELETE FROM kds_tickets WHERE created_at < :before")
     suspend fun pruneKds(before: Long)
+
+    // ---- kitchen screens: each screen's part of a kitchen ticket ----
+    @Upsert suspend fun upsertParts(rows: List<KdsPartEntity>)
+
+    @Query("SELECT * FROM kds_parts WHERE kds_id = :kds")
+    suspend fun partsOf(kds: String): List<KdsPartEntity>
+
+    // what a screen still has to cook, the oldest first
+    @Query("SELECT * FROM kds_parts WHERE screen_id = :screen AND bumped_at IS NULL ORDER BY created_at")
+    suspend fun partsOpen(screen: String): List<KdsPartEntity>
+
+    @Query("SELECT * FROM kds_parts WHERE bumped_at IS NULL")
+    fun partsOpenFlow(): Flow<List<KdsPartEntity>>
+
+    @Query("UPDATE kds_parts SET delivered = 1 WHERE screen_id = :screen AND kds_id IN (:kds)")
+    suspend fun setDelivered(screen: String, kds: List<String>)
+
+    // the tablet was set up afresh: it holds nothing it was sent
+    @Query("UPDATE kds_parts SET delivered = 0 WHERE screen_id = :screen AND bumped_at IS NULL")
+    suspend fun undeliver(screen: String)
+
+    @Query("UPDATE kds_parts SET bumped_at = :at WHERE kds_id = :kds AND screen_id = :screen")
+    suspend fun setPartBumped(kds: String, screen: String, at: Long?)
+
+    @Query("UPDATE kds_parts SET bumped_at = :at WHERE kds_id = :kds")
+    suspend fun setPartsBumped(kds: String, at: Long?)
+
+    @Query("DELETE FROM kds_parts WHERE created_at < :before")
+    suspend fun pruneParts(before: Long)
+
+    @Insert suspend fun addOut(rows: List<KdsOutEntity>)
+
+    @Query("SELECT * FROM kds_out WHERE screen_id = :screen ORDER BY id")
+    suspend fun outOf(screen: String): List<KdsOutEntity>
+
+    @Query("DELETE FROM kds_out WHERE id IN (:ids)")
+    suspend fun removeOut(ids: List<Long>)
+
+    @Query("DELETE FROM kds_out WHERE screen_id = :screen")
+    suspend fun clearOut(screen: String)
+
+    @Query("SELECT * FROM kds_screens WHERE screen_id = :screen")
+    suspend fun screenState(screen: String): KdsScreenEntity?
+
+    @Query("SELECT * FROM kds_screens")
+    fun screenStates(): Flow<List<KdsScreenEntity>>
+
+    @Upsert suspend fun saveScreenState(row: KdsScreenEntity)
 
     // ---- many orders at once (the floor, the board, Orders) ----
     @Query(

@@ -165,4 +165,25 @@ object Migrations {
             db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
         }
     }
+
+    // 10 -> 11: kitchen screens (server 0086). A screen is a printers row
+    // with a pairing code; the till writes down each screen's part of a
+    // kitchen ticket, the marks it owes a screen, and what it knows of each.
+    val V10_V11 = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `printers` ADD COLUMN `pair_code` TEXT")
+            db.execSQL("ALTER TABLE `printers` ADD COLUMN `all_items` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `kds_tickets` ADD COLUMN `waiter` TEXT")
+            db.execSQL("ALTER TABLE `kds_tickets` ADD COLUMN `remark` TEXT")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `kds_parts` (`kds_id` TEXT NOT NULL, `screen_id` TEXT NOT NULL, `payload` TEXT NOT NULL, `line_ids` TEXT NOT NULL, `delivered` INTEGER NOT NULL, `bumped_at` INTEGER, `created_at` INTEGER NOT NULL, PRIMARY KEY(`kds_id`, `screen_id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_kds_parts_screen_id` ON `kds_parts` (`screen_id`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `kds_out` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `screen_id` TEXT NOT NULL, `mark` TEXT NOT NULL)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_kds_out_screen_id` ON `kds_out` (`screen_id`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `kds_screens` (`screen_id` TEXT NOT NULL, `epoch` TEXT NOT NULL, `read_to` INTEGER NOT NULL, `heard_at` INTEGER, `trouble` TEXT, PRIMARY KEY(`screen_id`))")
+            // A kitchen screen entered before this build was installed has
+            // been pulled already, without its code: nothing could be sent to
+            // it. Pull again from the start so the code arrives.
+            db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
+        }
+    }
 }

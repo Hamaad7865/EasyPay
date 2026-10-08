@@ -22,6 +22,11 @@ import androidx.room.RoomDatabase
 // sale the price it was listed at when it is charged something else; and the
 // shop's receipts of the last 30 days as the server sends them, so a sale
 // rung up on another till can be found and refunded here.
+// Version 10 adds an item whose price is typed at the sale.
+// Version 11 adds kitchen screens: a screen's pairing code and whether it
+// shows everything, on its printers row; each screen's part of a kitchen
+// ticket, the marks a screen is owed and what the till knows of each screen;
+// and on a kitchen ticket the waiter and the order's remark.
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -37,8 +42,9 @@ import androidx.room.RoomDatabase
         PrinterEntity::class, SettingsEntity::class, CashMoveEntity::class, DayCloseEntity::class, DrawerCountEntity::class,
         CustomerEntity::class, KdsTicketEntity::class, BookingEntity::class,
         ItemVariantEntity::class, StockLevelEntity::class, ReceiptLineTaxEntity::class, ReceiptLineModEntity::class,
+        KdsPartEntity::class, KdsOutEntity::class, KdsScreenEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {

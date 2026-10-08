@@ -18,8 +18,11 @@ data class PrinterEntity(
     val tenant_id: String,
     val store_id: String,
     val name: String,
-    val kind: String = "network", // network | usb
-    val address: String? = null, // ip or ip:port, network printers only
+    // network | usb | screen. A screen is a kitchen screen (server 0086): a
+    // tablet that shows the orders. It prints nothing; Routing keeps it out
+    // of everything that does.
+    val kind: String = "network",
+    val address: String? = null, // ip or ip:port; a USB printer has none
     val paper_mm: Int = 80,
     val is_receipt: Boolean = false, // the cashier's printer: receipts, bills, slips, reports, the drawer
     val feed_lines: Int = 3,
@@ -28,6 +31,10 @@ data class PrinterEntity(
     val sort_order: Int = 0,
     val deleted_at: String? = null,
     val server_seq: Long? = null,
+    // a kitchen screen's: the code its tablet shows, with which the till signs
+    // what it sends, and whether it shows every item or the ticked categories
+    val pair_code: String? = null,
+    val all_items: Boolean = false,
 )
 
 // One row: the settings as the JSON the back office saved.

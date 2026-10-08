@@ -192,6 +192,7 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "name") ?: "", str(it, "kind") ?: "network", str(it, "address"),
                         (lng(it, "paper_mm") ?: 80).toInt(), bool(it, "is_receipt", false), (lng(it, "feed_lines") ?: 3).toInt(), bool(it, "cut", true),
                         bool(it, "is_active", true), (lng(it, "sort_order") ?: 0).toInt(), str(it, "deleted_at"), lng(it, "server_seq"),
+                        pair_code = str(it, "pair_code"), all_items = bool(it, "all_items", false),
                     )
                 })
             }
