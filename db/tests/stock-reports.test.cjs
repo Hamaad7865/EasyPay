@@ -34,7 +34,8 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
   const stock = lib('stock');
   const rep = lib('stock-reports');
   // the receipts every report starts from (web/lib/report.ts); what it imports is not needed for that
-  const report = lib('report', { '@/lib/action': { UUID: /^[0-9a-f-]{36}$/i }, '@/lib/settings': { withDefaults: (x) => x } });
+  // (its own check of a day, web/lib/day.ts, is the real one)
+  const report = lib('report', { '@/lib/action': { UUID: /^[0-9a-f-]{36}$/i }, '@/lib/settings': { withDefaults: (x) => x }, '@/lib/day': lib('day') });
 
   const c = new Client({ connectionString: devguard.envMap().DATABASE_URL_UNPOOLED, ssl: { require: true } });
   await c.connect();
