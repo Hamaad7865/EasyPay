@@ -76,12 +76,15 @@ export const UNSOLD_SQL = `
 // charged, so it takes its part off both.
 //   off      discounts given on a line
 //   changed  listed price less the price typed (below zero: charged more)
+//   sold_off, sold_changed  the same on the sales alone, before any refund
 export function linePricesSql(receipts: string): string {
   // (the same sum as lineOffSql below, over every receipt asked for at once)
   const less = `r.sign * (line_amount(rl.list_price, rl.qty) - line_amount(rl.unit_price, rl.qty))`;
   return `with r as (${receipts})
        select coalesce(sum(${less}) filter (where rl.price_kind = 'discount'), 0)::bigint as off,
-              coalesce(sum(${less}) filter (where rl.price_kind = 'override'), 0)::bigint as changed
+              coalesce(sum(${less}) filter (where rl.price_kind = 'override'), 0)::bigint as changed,
+              coalesce(sum(${less}) filter (where rl.price_kind = 'discount' and r.type = 'sale'), 0)::bigint as sold_off,
+              coalesce(sum(${less}) filter (where rl.price_kind = 'override' and r.type = 'sale'), 0)::bigint as sold_changed
          from r join receipt_lines rl on rl.tenant_id = $1 and rl.receipt_id = r.id
         where rl.price_kind is not null and rl.list_price is not null`;
 }

@@ -8,6 +8,8 @@ import { Card, Empty, PageHead, type Search } from "../../ui";
 import { ReportFilters, Stat } from "../parts";
 
 type Totals = { sales: number; refunds: number; orders: number; gross: string; refunded: string; discounts: string; tax: string; total: string };
+// what a shop's till took off single lines, and what prices typed for one sale came to, on the sales alone
+type LinePrices = { sold_off: string; sold_changed: string };
 type Split = { name: string | null; n: number; amount: string };
 
 export default async function SalesSummary({ searchParams }: { searchParams: Search }) {
@@ -30,7 +32,8 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
                   count(distinct ticket_id) filter (where type = 'sale')::int as orders,
                   coalesce(sum(total) filter (where type = 'sale'), 0) as gross,
                   coalesce(sum(total) filter (where type = 'refund'), 0) as refunded,
-                  coalesce(sum(sign * discount_total), 0) as discounts,
+                  -- on the sales alone: it is said under "Sales before refunds"
+                  coalesce(sum(discount_total) filter (where type = 'sale'), 0) as discounts,
                   coalesce(sum(sign * tax_total), 0) as tax, coalesce(sum(signed_total), 0) as total from r`,
         )
       )[0],
@@ -55,7 +58,7 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
       ),
       // what a shop's till took off single lines, or charged at another price:
       // a receipt's own discount holds neither. A restaurant's till has neither, and is not asked.
-      lines: ctx.mode === "retail" ? ((await c.query(linePricesSql(RECEIPTS), a)).rows[0] as { off: string; changed: string }) : { off: "0", changed: "0" },
+      lines: ctx.mode === "retail" ? ((await c.query(linePricesSql(RECEIPTS), a)).rows[0] as LinePrices) : ({ sold_off: "0", sold_changed: "0" } satisfies LinePrices),
     };
   });
   const head = <PageHead title="Sales summary" lede="What was sold, refunded and collected over the days you pick, and how it splits by payment method, order type and member of staff." />;
@@ -63,9 +66,10 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
   const m = (v: string | number) => money(Number(v), d.s.decimals);
   const t = d.totals;
   const net = Number(t.total) - Number(t.tax);
-  // everything taken off: on the bill, and on single lines
-  const discounts = Number(t.discounts) + Number(d.lines.off);
-  const changed = Number(d.lines.changed);
+  // everything taken off the sales: on the bill, and on single lines
+  const lineOff = Number(d.lines.sold_off);
+  const discounts = Number(t.discounts) + lineOff;
+  const changed = Number(d.lines.sold_changed);
   const split = (title: string, rows: Split[], none: string) => (
     <Card title={title} flush>
       <table>
@@ -97,9 +101,9 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
             <Stat label="Refunds" value={m(t.refunded)} note={`${t.refunds} ${t.refunds === 1 ? "refund" : "refunds"}`} />
             <Stat label="Net of tax" value={m(net)} note={`tax ${m(t.tax)}`} />
           </div>
-          {(Number(d.lines.off) !== 0 || changed !== 0) && (
+          {(lineOff !== 0 || changed !== 0) && (
             <p className="muted">
-              {Number(d.lines.off) !== 0 && `${m(d.lines.off)} of the discounts were given on single lines, ${m(t.discounts)} on whole sales. `}
+              {lineOff !== 0 && `${m(lineOff)} of the discounts were given on single lines, ${m(t.discounts)} on whole sales. `}
               {changed !== 0 && `Prices typed for one sale came to ${m(Math.abs(changed))} ${changed > 0 ? "below" : "above"} the listed prices: that is not counted as a discount.`}
             </p>
           )}

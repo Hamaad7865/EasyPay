@@ -126,13 +126,14 @@ const id = () => crypto.randomUUID();
     let p = await see(shop, '/backoffice/reports/sales', range);
     check('S1 Sales summary opens for a shop', !p.error, p.error);
     check('S1 the figures at its top are the receipts\' own', stats(p.html).join(' | ').startsWith('Total collected: Rs 522.00 | Sales before refunds: Rs 622.00 | Refunds: Rs 100.00'), stats(p.html).join(' | '));
-    // Rs 23.00 off the first sale; Rs 30.00 off the two belts, of which Rs 15.00 came back with the belt
-    check('S2 discounts are what was taken off whole sales and off single lines', p.says.includes('after Rs 38.00 of discounts'), (p.says.match(/after Rs [\d.,]+ of discounts/) || [])[0]);
-    check('S2 and it says which is which', p.says.includes('Rs 15.00 of the discounts were given on single lines, Rs 23.00 on whole sales.'), (p.says.match(/Rs [\d.,]+ of the discounts[^.]*\./) || [])[0]);
+    // Rs 23.00 off the first sale and Rs 30.00 off the two belts. It is said under "Sales before refunds", so the belt that came back changes nothing of it
+    check('S2 discounts are what was taken off whole sales and off single lines', p.says.includes('after Rs 53.00 of discounts'), (p.says.match(/after Rs [\d.,]+ of discounts/) || [])[0]);
+    check('S2 and it says which is which', p.says.includes('Rs 30.00 of the discounts were given on single lines, Rs 23.00 on whole sales.'), (p.says.match(/Rs [\d.,]+ of the discounts[^.]*\./) || [])[0]);
     check('S3 a price typed for one sale is said apart, and is not a discount', p.says.includes('Prices typed for one sale came to Rs 15.00 below the listed prices'), (p.says.match(/Prices typed[^:]*/) || [])[0]);
 
     p = await see(shop, '/backoffice/reports/day-close', range);
     check('S4 Day closing opens for a shop', !p.error, p.error);
+    // the till's own report takes a refund's part of a discount back, and so does this page: Rs 53.00 less the Rs 15.00 of the belt that came back
     check('S4 its discounts are the till\'s figure, with the lines\' in it', p.says.includes('Discounts given Rs 38.00'), (p.says.match(/Discounts given Rs [\d.,]+/g) || []).join(' / '));
     check('S4 and prices typed are a line of their own', p.says.includes('Prices typed, under the listed prices Rs 15.00'), (p.says.match(/Prices typed[^R]*Rs [\d.,]+/g) || []).join(' / '));
     check('S4 the day adds up: Rs 622.00 sold, Rs 100.00 refunded', p.says.includes('Sales Rs 622.00') && p.says.includes('Refunds (1) -Rs 100.00'), (p.says.match(/Sales Rs [\d.,]+/) || [])[0]);

@@ -235,7 +235,8 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
 
     // ---- discounts given on one line, and prices typed for one sale ----
     // (last: these sales would change what the reports above are asked about)
-    const prices = async (as = tid, kind = 'all') => { const x = (await ask(rep.linePricesSql(report.RECEIPTS), [tid, day, day, null, null, kind], as))[0]; return Number(x.off) + '/' + Number(x.changed); };
+    const prices = async (as = tid, kind = 'all') => { const x = (await ask(rep.linePricesSql(report.RECEIPTS), [tid, day, day, null, null, kind], as))[0]; sold = Number(x.sold_off) + '/' + Number(x.sold_changed); return Number(x.off) + '/' + Number(x.changed); };
+    let sold = '';
     check('D1 with nothing changed on a line, nothing is counted (a discount on the bill is the receipt\'s own)', (await prices()) === '0/0', await prices());
     // two belts at Rs 100.00 instead of Rs 115.00 (Rs 30.00 off), a mug typed at Rs 100.00 (Rs 15.00 under), a scarf typed at Rs 125.00 (Rs 10.00 over)
     const beltLine = id();
@@ -254,6 +255,7 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     const back2 = await push([op('refund.create', { id: id(), refund_of: s4.rc, store_id: store, device_id: dev, number: 'SR-R' + (++seq), device_seq: seq, device_time: new Date().toISOString(),
       reason: 'changed mind', lines: [{ receipt_line_id: beltRl.id, qty: 1000 }], payments: [{ payment_type_id: cash, amount: 10000 }] })]);
     check('D3 a refund takes back its part of the discount', tag(back2[0]) === 'applied' && (await prices()) === '1500/500', tag(back2[0]) + ' ' + (await prices()));
+    check('D3 and the sales alone still say what was taken off them', sold === '3000/500', sold);
     check('D3 and asked for sales only, or refunds only, each has its own', (await prices(tid, 'sale')) === '3000/500' && (await prices(tid, 'refund')) === '-1500/0', (await prices(tid, 'sale')) + ' ' + (await prices(tid, 'refund')));
     check('D4 another business sees none of it', (await prices(other.tenant_id)) === '0/0', await prices(other.tenant_id));
     r = await sales(false, true);
