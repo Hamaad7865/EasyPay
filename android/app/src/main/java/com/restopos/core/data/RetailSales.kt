@@ -99,18 +99,20 @@ class RetailSales @Inject constructor(
     // Rings a product up: one more on the line it is already on, or a new
     // line. qty is in thousandths (1000 is one; a weight is its grams). What
     // is weighed is always a line of its own: two weighings are two packets.
+    // price: what was typed for a product whose price is typed at the sale.
+    // It is the line's price, and that too is a line of its own each time.
     // Returns the line it is on.
-    suspend fun add(item: ItemEntity, variant: ItemVariantEntity?, qty: Int = 1000): Result<String> = runCatching {
+    suspend fun add(item: ItemEntity, variant: ItemVariantEntity?, qty: Int = 1000, price: Long? = null): Result<String> = runCatching {
         require(qty > 0) { "Type how many" }
         require(item.is_available) { "${item.name} is not on sale" }
         require(variant != null || db.retail().variantsOf(item.id).isEmpty()) { "Pick which ${item.name}" }
         open()
         val t = tickets.ensureTicket()
         val tenant = session.tenantId() ?: error("no tenant")
-        val unit = variant?.price ?: item.price
+        val unit = price ?: variant?.price ?: item.price
         val weighed = item.sold_by == "weight"
         if (!weighed) {
-            db.tickets().lines(t.id).first().firstOrNull { LinePrice.sameLine(it, item.id, variant?.id, unit) }?.let { same ->
+            db.tickets().lines(t.id).first().firstOrNull { LinePrice.sameLine(it, item.id, variant?.id, unit, typed = price != null) }?.let { same ->
                 edit(same.id, qty = same.qty + qty).getOrThrow()
                 return@runCatching same.id
             }

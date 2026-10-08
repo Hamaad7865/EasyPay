@@ -101,6 +101,7 @@ private val HM = SimpleDateFormat("HH:mm", Locale.US)
 fun OrderScreen(vm: OrderViewModel, onBack: (board: Boolean) -> Unit, onPay: () -> Unit, onSplit: () -> Unit, onSent: () -> Unit, onGone: (board: Boolean) -> Unit) {
     val ui by vm.ui.collectAsState()
     val sheet by vm.sheet.collectAsState()
+    val asking by vm.asking.collectAsState()
     var more by remember { mutableStateOf(false) }
     val left by vm.leftHanded.collectAsState()
     LaunchedEffect(Unit) { vm.open() }
@@ -141,6 +142,8 @@ fun OrderScreen(vm: OrderViewModel, onBack: (board: Boolean) -> Unit, onPay: () 
     }
 
     sheet?.let { OptionsSheet(it, ui.notes, vm) }
+    // an item whose price is typed at the sale: the keypad
+    asking?.let { com.restopos.feature.retail.NumSheet(it) { vm.closeAsk() } }
     if (more) MoreSheet(ui, vm, onDismiss = { more = false }, onGone = { more = false; onGone(ui.board) })
 }
 
@@ -383,7 +386,7 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
                 ) {
                     T(i.name, 15.sp, 700, if (out) V.Text3 else V.Text, Modifier.align(Alignment.TopStart).padding(end = if (n > 0) 30.dp else 0.dp), lines = 3, height = 19.sp)
                     Row(Modifier.align(Alignment.BottomStart).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        T(Money.format(i.price), 14.sp, 700, if (out) V.Text3 else V.Text2)
+                        T(if (i.open_price) "Enter price" else Money.format(i.price), 14.sp, 700, if (out) V.Text3 else V.Text2)
                         Gap()
                         // what else there is to know about it, said quietly
                         val note = if (out) "Sold out" else listOfNotNull(tag, if (withOptions.contains(i.id)) "Options" else null).joinToString(" · ")

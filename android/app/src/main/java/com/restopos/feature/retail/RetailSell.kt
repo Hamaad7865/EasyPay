@@ -362,7 +362,7 @@ private fun Tile(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants: Int
             T(i.name, 15.sp, 700, if (i.is_available) V.Text else V.Text3, lines = 2, height = 19.sp)
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            T(Money.format(i.price) + if (weighed) " /kg" else "", 16.sp, 800, if (i.is_available) V.Text else V.Text3)
+            T(if (i.open_price) "Enter price" else Money.format(i.price) + if (weighed) " /kg" else "", 16.sp, 800, if (i.is_available) V.Text else V.Text3)
             Gap()
             T(note, 12.sp, 700, tone, align = TextAlign.End, lines = 2, height = 15.sp)
         }

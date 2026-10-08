@@ -442,7 +442,10 @@ class TicketRepository @Inject constructor(
     // again: the line is one already on the order being put back with another
     // quantity, so what was true when it was rung up (the item was on sale,
     // its options were offered) is not asked a second time.
-    suspend fun addItem(itemId: String, qty: Int, mods: List<ModPick>, note: String?, course: Int? = null, seat: Int? = null, again: Boolean = false): Result<Unit> =
+    // price: what was typed for an item whose price is typed at the sale. It
+    // is the line's price, and the line is its own: two of the item at two
+    // prices are never added together.
+    suspend fun addItem(itemId: String, qty: Int, mods: List<ModPick>, note: String?, course: Int? = null, seat: Int? = null, again: Boolean = false, price: Long? = null): Result<Unit> =
         runCatching {
             require(qty > 0) { "bad qty" }
             val t = ensureTicket()
@@ -459,7 +462,7 @@ class TicketRepository @Inject constructor(
             val lines = db.tickets().lines(t.id).first()
             val match = lines.filter { it.voided_at == null && it.sent_to_kitchen_at == null && it.item_id == itemId && it.variant_id == null && it.price_kind == null && (it.note ?: "") == (note ?: "") && it.course == course && it.seat == seat }
                 .firstOrNull { db.tickets().modIds(it.id).sorted() == modIds }
-            if (match != null) {
+            if (match != null && price == null) {
                 setQty(match.id, match.qty + qty, "quantity change")
                 return@runCatching
             }
@@ -474,14 +477,14 @@ class TicketRepository @Inject constructor(
             }
             db.withTransaction {
                 db.tickets().upsertLines(listOf(
-                    TicketLineEntity(lineId, tenant, t.id, itemId, null, item.name, item.price, qty, note, course, seat = seat),
+                    TicketLineEntity(lineId, tenant, t.id, itemId, null, item.name, price ?: item.price, qty, note, course, seat = seat),
                 ))
                 db.tickets().upsertLineMods(mods.map { TicketLineModEntity(lineId, it.id, it.name, it.price) })
                 db.catalog().upsertLineTaxes(taxes.map { TicketLineTaxEntity(lineId, it.id, it.rate_bp, it.type) })
                 db.outbox().enqueue(op("ticket.add_line", buildJsonObject {
                     put("id", lineId); put("ticket_id", t.id); put("item_id", itemId)
                     put("qty", qty); note?.let { put("note", it) }; course?.let { put("course", it) }; seat?.let { put("seat", it) }
-                    put("unit_price", item.price); put("name_snapshot", item.name)
+                    put("unit_price", price ?: item.price); put("name_snapshot", item.name)
                     put("modifiers", modArr)
                 }))
             }
@@ -501,7 +504,8 @@ class TicketRepository @Inject constructor(
         // its options as they were rung up, at the prices charged then
         val mods = db.tickets().lineMods(lineId).map { ModPick(it.modifier_id, it.name_snapshot, it.price) }
         voidLine(lineId, reason).getOrThrow()
-        if (qty > 0) addItem(itemId, qty, mods, line.note, line.course, line.seat, again = true).getOrThrow()
+        // one whose price was typed keeps the price typed for it
+        if (qty > 0) addItem(itemId, qty, mods, line.note, line.course, line.seat, again = true, price = line.unit_price.takeIf { item.open_price }).getOrThrow()
     }
 
     // Split check: takes `units` off a line and puts them on a new line of the

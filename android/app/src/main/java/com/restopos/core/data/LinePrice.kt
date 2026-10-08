@@ -1,5 +1,6 @@
 package com.restopos.core.data
 
+import com.restopos.core.common.Money
 import com.restopos.core.database.TicketLineEntity
 import java.util.Locale
 
@@ -55,9 +56,18 @@ object LinePrice {
     // Whether the same thing rung up again goes on this line: the same
     // product and variant at the same price, with nothing said about the line
     // (no note, no changed price) and nothing done with it.
-    fun sameLine(l: TicketLineEntity, itemId: String, variantId: String?, unit: Long): Boolean =
-        l.item_id == itemId && l.variant_id == variantId && l.unit_price == unit && l.price_kind == null && l.note.isNullOrBlank() &&
+    // typed: the price was typed for this one (an item with no price of its
+    // own). It is asked for each time, so it is always a line of its own.
+    fun sameLine(l: TicketLineEntity, itemId: String, variantId: String?, unit: Long, typed: Boolean = false): Boolean =
+        !typed && l.item_id == itemId && l.variant_id == variantId && l.unit_price == unit && l.price_kind == null && l.note.isNullOrBlank() &&
             !l.paid && l.voided_at == null && l.sent_to_kitchen_at == null
+
+    // The price typed on the keypad for an item that has none of its own, in
+    // cents, or null when what was typed is not a price: nothing, zero, or
+    // more than Rs 1,000,000, which is a slip of the finger (the bound the
+    // server puts on a price set from a till).
+    const val MOST = 100_000_000L
+    fun typed(text: String): Long? = Money.parseRs(text)?.takeIf { it in 1..MOST }
 
     // What a tile says is left, and how loudly.
     enum class Stock { Plenty, Few, None }

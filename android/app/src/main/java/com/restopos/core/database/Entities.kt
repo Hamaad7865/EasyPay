@@ -60,6 +60,9 @@ data class ItemEntity(
     val sold_by: String = "each",
     val track_stock: Boolean = false,
     val option_names: String = "[]",
+    // its price is typed at the sale, each time it is sold: a service, or
+    // anything charged differently for each customer (server 0083)
+    val open_price: Boolean = false,
 )
 
 @Entity(tableName = "modifier_groups")

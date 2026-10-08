@@ -123,6 +123,11 @@ class OrderViewModel @Inject constructor(
 
     private val _sheet = MutableStateFlow<OptionSheet?>(null)
     val sheet: StateFlow<OptionSheet?> = _sheet
+    // the keypad, when an item's price is typed at the sale
+    val asking = MutableStateFlow<com.restopos.feature.retail.NumAsk?>(null)
+    fun closeAsk() { asking.value = null }
+    // the price typed for the item whose options are being picked
+    private var typedPrice: Long? = null
 
     // The item that has just gone onto the order, said once: its card on the
     // menu answers the tap. Nothing is said for an order that is only shown.
@@ -174,18 +179,33 @@ class OrderViewModel @Inject constructor(
     fun select(lineId: String?) { _ui.value = _ui.value.copy(selected = lineId) }
 
     // Tapping an item. One with options asks first; the others go straight on.
+    // One whose price is typed at the sale (a service, anything charged
+    // differently each time) brings the keypad up first: what is typed is its
+    // price, and each tap is a line of its own.
     fun tap(item: ItemEntity, ask: Boolean = false) = viewModelScope.launch {
         if (!item.is_available) { Toaster.say("${item.name} is sold out"); return@launch }
+        if (item.open_price) {
+            asking.value = com.restopos.feature.retail.NumAsk(item.name, "Type its price for this order", "Rs", 2, "") { typed ->
+                val price = com.restopos.core.data.LinePrice.typed(typed)
+                if (price == null) Toaster.say("Type the price") else viewModelScope.launch { put(item, ask, price) }
+            }
+            return@launch
+        }
+        put(item, ask, null)
+    }
+
+    private suspend fun put(item: ItemEntity, ask: Boolean, price: Long?) {
         val groups = db.catalog().groupsForItem(item.id)
         if (groups.isEmpty() && !ask) {
-            tickets.addItem(item.id, 1000, emptyList(), null).fold({ _added.tryEmit(item.id) }, { Toaster.say(it.message) })
+            tickets.addItem(item.id, 1000, emptyList(), null, price = price).fold({ _added.tryEmit(item.id) }, { Toaster.say(it.message) })
             reload()
         } else {
+            typedPrice = price
             _sheet.value = OptionSheet(item, groups, db.catalog().modifiersForItem(item.id))
         }
     }
 
-    fun closeSheet() { _sheet.value = null }
+    fun closeSheet() { _sheet.value = null; typedPrice = null }
 
     // A barcode read by the scanner: the item that carries it goes on the
     // order, as if it had been tapped. What the scanner typed into the search
@@ -200,7 +220,9 @@ class OrderViewModel @Inject constructor(
     fun confirm(qty: Int, picks: List<ModPick>, note: String) = viewModelScope.launch {
         val item = _sheet.value?.item ?: return@launch
         _sheet.value = null
-        tickets.addItem(item.id, qty.coerceIn(1, 99) * 1000, picks, note.ifBlank { null }).fold({ _added.tryEmit(item.id) }, { Toaster.say(it.message) })
+        val price = typedPrice.takeIf { item.open_price }
+        typedPrice = null
+        tickets.addItem(item.id, qty.coerceIn(1, 99) * 1000, picks, note.ifBlank { null }, price = price).fold({ _added.tryEmit(item.id) }, { Toaster.say(it.message) })
         reload()
     }
 

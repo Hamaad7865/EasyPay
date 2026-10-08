@@ -199,6 +199,15 @@ class RetailViewModel @Inject constructor(
 
     // true when it went onto the sale now (what is weighed asks its weight first)
     private suspend fun put(item: ItemEntity, variant: ItemVariantEntity?): Boolean {
+        // One whose price is typed at the sale: the keypad comes up, and what
+        // is typed is its price for this customer.
+        if (item.open_price) {
+            asking.value = NumAsk(sales.nameOf(item, variant), "Type its price for this sale", "Rs", 2, "") { typed ->
+                val price = LinePrice.typed(typed)
+                if (price == null) Toaster.say("Type the price") else viewModelScope.launch { add(item, variant, 1000, price) }
+            }
+            return false
+        }
         if (item.sold_by == "weight") {
             val unit = variant?.price ?: item.price
             asking.value = NumAsk("How heavy?", "${sales.nameOf(item, variant)} · ${Money.format(unit)} a kilo", "kg", 3, "") { typed ->
@@ -210,8 +219,8 @@ class RetailViewModel @Inject constructor(
         return add(item, variant, 1000)
     }
 
-    private suspend fun add(item: ItemEntity, variant: ItemVariantEntity?, qty: Int): Boolean {
-        val out = sales.add(item, variant, qty).onFailure { Toaster.say(it.message) }
+    private suspend fun add(item: ItemEntity, variant: ItemVariantEntity?, qty: Int, price: Long? = null): Boolean {
+        val out = sales.add(item, variant, qty, price).onFailure { Toaster.say(it.message) }
         reload()
         return out.isSuccess
     }

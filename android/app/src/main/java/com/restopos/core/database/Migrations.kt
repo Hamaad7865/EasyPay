@@ -154,4 +154,15 @@ object Migrations {
             db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
         }
     }
+
+    // 9 -> 10: an item whose price is typed at the sale (server 0083).
+    val V9_V10 = object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `items` ADD COLUMN `open_price` INTEGER NOT NULL DEFAULT 0")
+            // An item marked before this build was installed has been pulled
+            // already, without its mark, and would be sold at nothing. Pull
+            // again from the start so the mark arrives.
+            db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
+        }
+    }
 }

@@ -92,4 +92,37 @@ class LinePriceTest {
         assertEquals(LinePrice.Stock.Few, LinePrice.stock(1))
         assertEquals(LinePrice.Stock.None, LinePrice.stock(0))
     }
+
+    // An item whose price is typed at the sale ("Labour": Rs 100 for one
+    // customer, Rs 200 for the next). What the keypad holds is its price.
+    @Test fun `a price typed at the sale is read as rupees`() {
+        assertEquals(10000L, LinePrice.typed("100"))
+        assertEquals(9950L, LinePrice.typed("99.5"))
+        assertEquals(120000L, LinePrice.typed("1,200"))
+        assertEquals(5L, LinePrice.typed("0.05"))
+    }
+
+    @Test fun `nothing typed, nothing, a word or less than nothing is not a price`() {
+        assertNull(LinePrice.typed(""))
+        assertNull(LinePrice.typed("0"))
+        assertNull(LinePrice.typed("0.00"))
+        assertNull(LinePrice.typed("abc"))
+        assertNull(LinePrice.typed("-5"))
+    }
+
+    @Test fun `a million rupees for one thing is a slip of the finger`() {
+        // the bound the server puts on a price set from a till
+        assertEquals(100_000_000L, LinePrice.typed("1000000"))
+        assertNull(LinePrice.typed("1000000.01"))
+        assertNull(LinePrice.typed("99999999"))
+    }
+
+    @Test fun `two of an item at two typed prices are never one line`() {
+        val labour = TicketLineEntity("l1", "t", "tk", "labour", null, "Labour", 10000, 1000)
+        // the same price again is still the same line for an ordinary product...
+        assertTrue(LinePrice.sameLine(labour, "labour", null, 10000))
+        // ...but a typed price is asked for each time, and makes its own line even when it is the same
+        assertFalse(LinePrice.sameLine(labour, "labour", null, 10000, typed = true))
+        assertFalse(LinePrice.sameLine(labour, "labour", null, 20000, typed = true))
+    }
 }
