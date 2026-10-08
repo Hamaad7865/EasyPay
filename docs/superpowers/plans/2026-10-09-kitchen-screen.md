@@ -10,6 +10,13 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-09-kitchen-screen-and-premium-design.md`, sections 4 to 7. This plan is piece 2 of 2 and comes after `2026-10-09-premium-gate.md`: it uses `has_premium` (migration 0085), `ctx.premium` and `PosSettings.premium`.
 
+**As built, 2026-10-09.** All fourteen tasks, on `restopos`, dev only, commits `06dd6d8` to `d9b1fa3`; nothing tagged or released. What differs from the plan below:
+- The kitchen side's rules sit in one class, `ScreenBook`, over a thin shelf (`ScreenShelf`: the tablet's `kitchen.db`, or a map in the tests), so there is one set of rules and not two stores to keep in step.
+- `ScreenLink` reads and writes the till's database and is not unit-tested itself; there is no separate LinkTest. Its rules are tested (`Parts`, `Wire`, `ScreenBook`, the sockets over loopback), and the whole path was run on two emulators.
+- Running it changed three things: a ticket's age is its arrival less how long it had waited at the till, said by the till's own clock (`WireRequest.now`), so an order that waited for a screen that was off does not arrive at 0:00; a part put again goes with how its lines stand now (`Parts.standing`), so a tablet set up afresh does not get a voided item back as one to cook; the waiting page shows the address alone.
+- The kitchen tablet has no language choice: its board is in English only. Its update check uses the till's downloader with a short flow of its own, not the shell's.
+- Not done, as the design says: a listener that survives another app in front. Not seen: two real tablets on a restaurant's Wi-Fi; several screens, or two tills on one screen, on a device (unit-tested only); the back office's pages in a browser.
+
 **Written lean on purpose**, as the gate's plan is: code where it fixes a contract, words for screens. The same house rules apply (branch `restopos`, one commit per task, read the committed file before editing, fix-forward migrations from live definitions, dev only, never the owner's emulator).
 
 ---
