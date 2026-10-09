@@ -30,7 +30,8 @@
 // would for a real business. They are sent as a till of their own ("Demo
 // history", T0), switched off afterwards: a tablet set up for the client
 // starts its own numbers and never meets them. Today is left empty, for the
-// sales rung up while showing it.
+// sales rung up while showing it. The client's set-up is marked done, so its
+// first tablet opens on the start screen and not on the set-up (0089).
 //
 // Without --apply everything is done in one transaction and rolled back, so
 // what --apply will do has been done once already. The same client gets the
@@ -411,6 +412,13 @@ async function seed(c, short, name, apply, days) {
     if (got.closes !== plan.length) throw new Error(`${plan.length} days planned and ${got.closes} closed`);
     const pulled = (table) => (page.changes[table] || []).length;
     if (pulled('items') !== got.items || pulled('employees') < staff.length + 1) throw new Error(`a tablet would be sent ${pulled('items')} of ${got.items} things to sell and ${pulled('employees')} staff`);
+
+    // A client shown to customers opens on its start screen. The set-up a new
+    // client is walked through by its first tablet (0089) is marked done:
+    // what it would have asked for is here now.
+    await c.query(
+      `insert into pos_settings (tenant_id, data) values ($1, '{"setup":"done"}'::jsonb)
+         on conflict (tenant_id) do update set data = pos_settings.data || excluded.data`, [t.id]);
 
     await c.query(apply ? 'COMMIT' : 'ROLLBACK');
     return { client: t, type, said, staff, customers: got.customers, days: plan.length, receipts: got.receipts, takings, low: got.low, sent, first: plan[0]?.day, last: plan[plan.length - 1]?.day };

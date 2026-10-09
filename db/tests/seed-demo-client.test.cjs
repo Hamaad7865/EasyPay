@@ -46,6 +46,9 @@ function check(name, cond, extra) {
     check('S1 without --apply it says what each would be given and that nothing was changed', tried.code === 0 && (tried.out.match(/Rehearsed/g) || []).length === 2 && /nothing was changed/.test(tried.out) && !/PINs/.test(tried.out), tried.code + ' ' + tried.err);
     const r0 = await has(resto), s0 = await has(store);
     check('S1 and nothing was', r0.items === 0 && r0.receipts === 0 && r0.staff === 1 && r0.tills === 0 && s0.items === 0 && s0.receipts === 0, JSON.stringify([r0, s0]));
+    // the set-up a client made in /admin starts with (0089)
+    const mark = async (t) => (await q1(`select data->>'setup' as s from pos_settings where tenant_id = $1`, [t])).s;
+    check('S1 nor was its set-up marked done', (await mark(resto)) === 'open' && (await mark(store)) === 'open', (await mark(resto)) + ' ' + (await mark(store)));
     const figures = (out) => (out.match(/\d+ sales over \d+ days[^,]*, Rs [\d,]+ taken/g) || []).join(' | ');
 
     // S2 a client named wrongly
@@ -56,6 +59,7 @@ function check(name, cond, extra) {
     const done = run(short(resto), 'SeedDemo-Resto', short(store), 'SeedDemo-Shop', '--apply');
     check('S3 with --apply both are filled', done.code === 0 && (done.out.match(/Done:/g) || []).length === 2, done.code + ' ' + done.err);
     check('S3 with the sales the rehearsal said', figures(done.out) !== '' && figures(done.out) === figures(tried.out), figures(done.out));
+    check('S3 each opens on its start screen: the set-up a new client is walked through is marked done', (await mark(resto)) === 'done' && (await mark(store)) === 'done', (await mark(resto)) + ' ' + (await mark(store)));
     for (const [label, t, items] of [['restaurant', resto, 43], ['shop', store, 32]]) {
       const g = await q1(
         `select (select count(*)::int from items where tenant_id = $1) as items,
