@@ -2,6 +2,7 @@ package com.restopos.core.data
 
 import android.content.Context
 import androidx.room.withTransaction
+import com.restopos.core.common.PinHash
 import com.restopos.core.common.Uuid7
 import com.restopos.core.database.BookingEntity
 import com.restopos.core.database.OutboxEntity
@@ -17,14 +18,18 @@ import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.SyncScheduler
 import com.restopos.core.sync.pushNow
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -253,6 +258,99 @@ class ServiceRepository @Inject constructor(
             put("units", units); put("direction", way.code); put("reason", reason ?: "")
             staff.approvedBy("stock.adjust", approver)?.let { put("approved_by", it) }
         })
+    }
+
+    // ---- the first-run set-up (server 0089) ----
+    // What a new business is walked through on its tablet, beyond its menu:
+    // its tables, its printer, its details and its staff's PINs. Each is asked
+    // now and waited for, as an item is, and a sync brings the row. Who it is
+    // made by is ask's own rule: the person signed in, or the login that set
+    // the tablet up when nobody is. The ids are the caller's, minted when its
+    // form opened, so a second try after a lost answer sends the same ones and
+    // the server makes nothing twice.
+
+    // The tables of one new room. ids: one for each table, in order.
+    suspend fun addTables(room: String, tables: List<TableLayout.Table>, ids: List<String>, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("settings.device", "set this till up", approver)
+        val store = session.storeId() ?: error("This till is not set up for a store yet.")
+        ask("tables.add", ::tablesRefused, buildJsonObject {
+            put("store_id", store); put("area", room)
+            putJsonArray("tables") {
+                tables.forEachIndexed { i, t ->
+                    addJsonObject {
+                        put("id", ids[i]); put("name", t.name); put("seats", t.seats); put("shape", "square")
+                        put("x", t.x); put("y", t.y); put("w", t.w); put("h", t.h)
+                    }
+                }
+            }
+            staff.approvedBy("settings.device", approver)?.let { put("approved_by", it) }
+        })
+    }
+
+    // The server's refusal of tables.add, in words.
+    private fun tablesRefused(code: String?): String = when (code) {
+        "room-exists" -> "There is already a room of that name."
+        "name-taken" -> "A table already has one of those numbers. Close this and try again."
+        "too-many" -> "A store holds 300 tables at most."
+        "bad-store" -> "This till's store is no longer there."
+        "conflict" -> "That did not work. Close this and try again."
+        "forbidden" -> "You are not allowed to set up tables. Ask a manager."
+        "unknown-op" -> "The server has to be updated before tables can be added from a till."
+        null -> "The server refused it."
+        else -> "The server refused it ($code)."
+    }
+
+    // A printer made, or its name, connection and paper changed.
+    // onePrinter: whether kitchen orders print on it too; null leaves that as it is.
+    suspend fun savePrinter(id: String, p: PrinterForm.Printer, onePrinter: Boolean?, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("settings.device", "set this till up", approver)
+        val store = session.storeId() ?: error("This till is not set up for a store yet.")
+        ask("printer.save", PrinterForm::refused, buildJsonObject {
+            put("id", id); put("store_id", store); put("name", p.name); put("kind", p.kind)
+            put("address", p.address ?: ""); put("paper_mm", p.paper)
+            onePrinter?.let { put("one_printer", it) }
+            staff.approvedBy("settings.device", approver)?.let { put("approved_by", it) }
+        })
+    }
+
+    // What prints at the top of every receipt.
+    suspend fun saveCompany(c: CompanyForm.Company, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("settings.device", "set this till up", approver)
+        ask("company.save", CompanyForm::refused, buildJsonObject {
+            put("name", c.name); put("address", c.address); put("phone", c.phone); put("brn", c.brn); put("vat", c.vat)
+            staff.approvedBy("settings.device", approver)?.let { put("approved_by", it) }
+        })
+    }
+
+    // A member of staff with no login, and their PIN. The PIN is hashed here
+    // and only the hash is sent. Only someone who may manage staff: the owner.
+    suspend fun addStaff(id: String, name: String, roleId: String, pin: String, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("employees.edit", "add staff or set a PIN", approver)
+        val hash = withContext(Dispatchers.Default) { PinHash.make(pin) }
+        ask("staff.save", StaffForm::refused, buildJsonObject {
+            put("id", id); put("name", name); put("role_id", roleId); put("pin_hash", hash)
+            staff.approvedBy("employees.edit", approver)?.let { put("approved_by", it) }
+        })
+    }
+
+    suspend fun setPin(employeeId: String, pin: String, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("employees.edit", "add staff or set a PIN", approver)
+        val hash = withContext(Dispatchers.Default) { PinHash.make(pin) }
+        ask("staff.set_pin", StaffForm::refused, buildJsonObject {
+            put("employee_id", employeeId); put("pin_hash", hash)
+            staff.approvedBy("employees.edit", approver)?.let { put("approved_by", it) }
+        })
+    }
+
+    // "Open the till": the set-up is finished, for every tablet of the
+    // business. Queued like a sale and not waited for; this tablet remembers
+    // it at once, so its start screen stops offering the set-up.
+    suspend fun finishSetup(approver: StaffMember? = null) {
+        db.outbox().enqueue(op("setup.finish", buildJsonObject {
+            staff.approvedBy("settings.device", approver)?.let { put("approved_by", it) }
+        }))
+        session.setSetupClosed(true)
+        pushNow(context)
     }
 
     // One op sent now, outside the outbox, and its answer waited for.

@@ -179,6 +179,31 @@ class Printing @Inject constructor(
         return devices.firstOrNull { it.address == found.address }
     }
 
+    // ---- a printer being set up (the first-run set-up) ----
+    // A print to a printer that is not stored: the test page of one whose
+    // form is still open. Nothing is kept of it, so a page that could not be
+    // sent is not among the failed prints on the Printers page.
+    suspend fun trial(p: PrinterEntity, bytes: ByteArray): Result<Unit> = deliver(p, bytes)
+
+    // The devices paired with this tablet, by name and address, for picking
+    // the printer among them. None when Bluetooth is not allowed, is off or
+    // the tablet has none.
+    @android.annotation.SuppressLint("MissingPermission")
+    fun pairedDevices(): List<Pair<String, String>> {
+        if (!bluetoothAllowed()) return emptyList()
+        val adapter = context.getSystemService(android.bluetooth.BluetoothManager::class.java)?.adapter ?: return emptyList()
+        return runCatching {
+            adapter.bondedDevices.orEmpty().map { (runCatching { it.name }.getOrNull()?.takeIf { n -> n.isNotBlank() } ?: it.address) to it.address }
+        }.getOrDefault(emptyList()).sortedBy { it.first.lowercase() }
+    }
+
+    // The printer plugged into this tablet, by the name it gives itself; null when there is none.
+    fun usbPrinter(): String? {
+        val manager = context.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return null
+        val device = runCatching { manager.deviceList.values.firstOrNull { printerInterface(it) != null } }.getOrNull() ?: return null
+        return runCatching { device.productName }.getOrNull()?.takeIf { it.isNotBlank() } ?: "USB printer"
+    }
+
     // The connection is opened for the one job and closed after it, as the
     // Kids Corner till does: these printers hold a single connection, and one
     // kept open would not come back after the printer's own idle time.

@@ -221,6 +221,8 @@ private val MODE = stringPreferencesKey("mode")
 private val PAIR_CODE = stringPreferencesKey("pair_code")
 private val KITCHEN_EPOCH = stringPreferencesKey("kitchen_epoch")
 private val SEQ_DAY = stringPreferencesKey("seq_day")
+private val SETUP_CLOSED = booleanPreferencesKey("setup_closed")
+private val REGISTERED_AT = longPreferencesKey("registered_at")
 private val Context.sessionPrefs by preferencesDataStore("device")
 
 // Which tenant, store and device this tablet is. Set once at device setup and
@@ -229,8 +231,20 @@ class SessionStore(private val context: Context) {
     private val store = context.sessionPrefs
 
     suspend fun save(tenant: String, storeId: String, device: String) {
-        store.edit { it[TENANT] = tenant; it[STORE] = storeId; it[DEVICE] = device }
+        // set up afresh: whatever this tablet knew of a set-up it closed belongs to the business it was for
+        store.edit { it[TENANT] = tenant; it[STORE] = storeId; it[DEVICE] = device; it.remove(SETUP_CLOSED) }
     }
+
+    // ---- the first-run set-up (server 0089) ----
+    // When this tablet was named as a till. A tablet just registered holds
+    // nothing of its business until a pull has finished after this moment
+    // (lastPull); what it does next waits for that (SetupSteps.after).
+    suspend fun registeredAt(): Long = store.data.map { it[REGISTERED_AT] ?: 0L }.first()
+    suspend fun setRegisteredAt(at: Long) { store.edit { it[REGISTERED_AT] = at } }
+    // "Open the till" was tapped here. The server is told too, but that is
+    // queued like a sale: this hides the start screen's key at once.
+    val setupClosed: Flow<Boolean> = store.data.map { it[SETUP_CLOSED] ?: false }
+    suspend fun setSetupClosed(closed: Boolean) { store.edit { it[SETUP_CLOSED] = closed } }
 
     suspend fun storeId(): String? = store.data.map { it[STORE] }.first()
     suspend fun deviceId(): String? = store.data.map { it[DEVICE] }.first()

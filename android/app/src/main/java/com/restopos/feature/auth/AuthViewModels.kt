@@ -158,6 +158,8 @@ class StoreDeviceViewModel @Inject constructor(
                     val res = api.registerDevice(RegisterDeviceRequest(a.storeId, deviceId, a.name.trim(), a.code.trim().uppercase()))
                     val me = api.me()
                     session.save(me.tenantId, a.storeId, res.deviceId)
+                    // what the tablet does next waits for a whole pull after this moment (SetupSteps.after)
+                    session.setRegisteredAt(System.currentTimeMillis())
                     me.tenants.firstOrNull { it.id == me.tenantId }?.let { session.setBusinessName(it.name) }
                 }.onSuccess {
                     SyncScheduler.pullNow(appContext)

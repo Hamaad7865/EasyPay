@@ -56,6 +56,15 @@ class Approvals @Inject constructor() {
     fun done() { _request.value = null }
 }
 
+// Who approved the set-up being opened from Settings, when the person signed
+// in could not open it alone: sent as approved_by with what it saves. Opened
+// from the start screen, whoever entered their PIN is signed in instead, and
+// this is empty.
+@Singleton
+class SetupDoor @Inject constructor() {
+    var approver: StaffMember? = null
+}
+
 // Who is signed in at this till right now. Kept in memory only: every time
 // the app opens it starts on the start screen (spec 7.1).
 @Singleton
