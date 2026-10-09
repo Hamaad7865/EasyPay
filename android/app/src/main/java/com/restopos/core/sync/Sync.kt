@@ -80,6 +80,7 @@ class PullWorker @AssistedInject constructor(
     private val api: ApiClient,
     private val session: SessionStore,
     private val applier: PullApplier,
+    private val requests: com.restopos.core.data.TillRequests,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -143,6 +144,10 @@ class PullWorker @AssistedInject constructor(
                 }
             }
             session.setLastPull(System.currentTimeMillis())
+            // What the back office asked of this till came with the pull (server
+            // 0091): close its day, or write down cash taken out. The till does
+            // it now, itself. A request that fails is left for the next sync.
+            runCatching { requests.run() }
             // the server took this till: whatever asked for a sign-in before is over
             session.setNeedsSignIn(false)
             Result.success()

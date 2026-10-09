@@ -91,6 +91,28 @@ data class DrawerCountEntity(
     val server_seq: Long? = null,
 )
 
+// What the back office asked of a till (server 0091): close its day, or
+// write down cash taken out. A pull brings the requests of the store; a till
+// acts on its own, once, and `answered` is this tablet's own note that it
+// has: whatever the server's `status` still says when the row comes again.
+@Entity(tableName = "till_requests", indices = [Index("device_id")])
+data class TillRequestEntity(
+    @PrimaryKey val id: String,
+    val tenant_id: String,
+    val device_id: String,
+    val shift_id: String,
+    val kind: String, // close_day | cash_out
+    val counted_cash: Long? = null,
+    val amount: Long? = null,
+    val reason: String? = null,
+    val requested_by: String? = null,
+    val requested_at: Long,
+    val status: String, // waiting | done | refused | cancelled, as the server last said
+    val deleted_at: String? = null,
+    val server_seq: Long? = null,
+    val answered: Boolean = false,
+)
+
 // A payment with its receipt's type and time, for the shift and day reports.
 data class PaidRow(val receipt_id: String, val type: String, val payment_type_id: String, val amount: Long)
 
@@ -114,6 +136,19 @@ interface OpsDao {
 
     @Query("SELECT * FROM drawer_counts WHERE shift_id = :shift AND deleted_at IS NULL ORDER BY device_time")
     suspend fun drawerCounts(shift: String): List<DrawerCountEntity>
+
+    // ---- what the back office asked of a till (TillRequestEntity) ----
+    @Upsert suspend fun upsertRequests(rows: List<TillRequestEntity>)
+
+    // those of this till that still wait and that it has not acted on, oldest first
+    @Query("SELECT * FROM till_requests WHERE device_id = :device AND status = 'waiting' AND answered = 0 AND deleted_at IS NULL ORDER BY requested_at")
+    suspend fun waitingRequests(device: String): List<TillRequestEntity>
+
+    @Query("SELECT answered FROM till_requests WHERE id = :id")
+    suspend fun requestAnswered(id: String): Boolean?
+
+    @Query("UPDATE till_requests SET answered = 1 WHERE id = :id")
+    suspend fun markRequestAnswered(id: String)
 
     @Query("SELECT * FROM printers WHERE store_id = :store AND deleted_at IS NULL AND is_active ORDER BY sort_order, name")
     suspend fun printers(store: String): List<PrinterEntity>

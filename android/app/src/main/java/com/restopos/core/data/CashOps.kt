@@ -9,6 +9,7 @@ import com.restopos.core.database.DrawerCountEntity
 import com.restopos.core.database.OutboxEntity
 import com.restopos.core.database.ShiftEntity
 import com.restopos.core.database.TillDatabase
+import com.restopos.core.database.TillRequestEntity
 import com.restopos.core.print.CashSlipDoc
 import com.restopos.core.print.DocAmount
 import com.restopos.core.print.DocTax
@@ -235,12 +236,14 @@ class CashOps @Inject constructor(
     suspend fun lastShift(): ShiftEntity? = session.deviceId()?.let { db.staff().openShift(it) ?: db.staff().lastClosedShift(it) }
 
     // The day so far: everything since the last day closing.
-    suspend fun dayDoc(closedAt: Long = System.currentTimeMillis(), number: Int? = null): ZDoc {
+    // `by` is who closes it: whoever is signed in at the till, unless the day
+    // is closed because the back office asked (closeDayAsked).
+    suspend fun dayDoc(closedAt: Long = System.currentTimeMillis(), number: Int? = null, by: String? = staff.current.value?.employee?.name): ZDoc {
         val device = session.deviceId() ?: error("no device")
         val last = db.ops().lastDayClose(device)
         val p = period(device, last?.closed_at ?: 0, closedAt)
         return ZDoc(
-            number ?: ((last?.number ?: 0) + 1), till(), last?.closed_at, closedAt, staff.current.value?.employee?.name,
+            number ?: ((last?.number ?: 0) + 1), till(), last?.closed_at, closedAt, by,
             p.sales, p.gross, p.refunds, p.refunded, p.discounts, p.tax, p.payments, p.categories, p.taxes,
             p.cashIn, p.cashOut, p.moves, p.first, p.last, priceChanges = p.priceChanges,
         )
@@ -362,6 +365,97 @@ class CashOps @Inject constructor(
         pushNow(context)
         z to printZ(z).exceptionOrNull()?.message
     }
+
+    // ---- what the back office asked of this till (server 0091, TillRequests) ----
+    //
+    // The back office closes nothing and moves no cash. It asks, and the till
+    // does it here the next time it syncs, with its own figures, as the
+    // person who asked: nobody need be signed in at the till, and the ops
+    // carry that person's id, which the server takes from a till set up
+    // under a login that may set up tills and checks the permission of.
+
+    // The till's answer, sent with whatever it did: done, or refused and why.
+    private fun answer(r: TillRequestEntity, status: String, note: String? = null) = OutboxEntity(
+        Uuid7.next(), "request.answer",
+        buildJsonObject { put("id", r.id); put("status", status); note?.let { put("note", it) } }.toString(),
+        employee_id = r.requested_by,
+    )
+
+    suspend fun refuseAsked(r: TillRequestEntity, why: String) {
+        db.withTransaction {
+            db.outbox().enqueue(answer(r, "refused", why))
+            db.ops().markRequestAnswered(r.id)
+        }
+        pushNow(context)
+    }
+
+    // Why the day cannot be closed at this moment, in this business's words, or null.
+    suspend fun unpaidNow(): String? = db.tickets().unpaidOrderCount().let { n -> if (n == 0L) null else unpaid(n) }
+
+    // Whether this till wrote anything down after a moment of its own clock:
+    // a sale, a refund, cash put in or taken out, a count. The drawer opened
+    // with no sale moved nothing and does not count.
+    suspend fun usedSince(shift: ShiftEntity, moment: Long): Boolean {
+        val now = System.currentTimeMillis()
+        return db.ops().receiptsBetween(shift.device_id, moment, now).isNotEmpty() ||
+            db.ops().cashMoves(shift.device_id, moment, now).any { it.type != "drawer" } ||
+            db.ops().drawerCounts(shift.id).any { it.device_time > moment }
+    }
+
+    // The day closed because the back office asked: what closeDay does, by
+    // the person who asked. `counted` is what they typed, or null to close at
+    // what the till expects. The Z prints when a receipt printer is set up;
+    // it not printing does not undo the closing.
+    suspend fun closeDayAsked(r: TillRequestEntity, counted: Long?): ZDoc {
+        val tenant = session.tenantId() ?: error("no tenant")
+        val store = session.storeId() ?: error("no store")
+        val device = session.deviceId() ?: error("no device")
+        val open = db.staff().openShift(device) ?: error("The day is not open")
+        val now = System.currentTimeMillis()
+        val expected = expectedCash(open, now)
+        val closed = open.copy(closed_by = r.requested_by, closed_at = now, counted_cash = counted ?: expected, expected_cash = expected)
+        val last = db.ops().lastDayClose(device)
+        val z = dayDoc(now, by = name(r.requested_by)).withDrawer(closed)
+        val row = DayCloseEntity(Uuid7.next(), tenant, store, device, z.number, r.requested_by, last?.closed_at, now)
+        db.withTransaction {
+            db.staff().upsertShifts(listOf(closed))
+            db.ops().upsertDayCloses(listOf(row))
+            db.outbox().enqueue(OutboxEntity(Uuid7.next(), "shift.close", buildJsonObject {
+                put("id", closed.id); put("counted_cash", closed.counted_cash ?: expected)
+                put("closed_at", Instant.ofEpochMilli(now).toString())
+            }.toString(), employee_id = r.requested_by))
+            db.outbox().enqueue(dayCloseOp(row, z, null).copy(employee_id = r.requested_by))
+            db.outbox().enqueue(answer(r, "done"))
+            db.ops().markRequestAnswered(r.id)
+        }
+        session.setPeriodSeq(0)
+        pushNow(context)
+        printing.scope.launch { printZ(z).onFailure { printing.report(it.message ?: "The closing report did not print") } }
+        return z
+    }
+
+    // Cash taken out, written down because the back office asked. No slip
+    // and the drawer stays shut: whoever asked is not standing at it.
+    suspend fun cashOutAsked(r: TillRequestEntity, amount: Long, reason: String) {
+        val tenant = session.tenantId() ?: error("no tenant")
+        val store = session.storeId() ?: error("no store")
+        val device = session.deviceId() ?: error("no device")
+        val row = CashMoveEntity(Uuid7.next(), tenant, store, device, r.shift_id, r.requested_by, "out", amount, reason.ifBlank { null }, System.currentTimeMillis())
+        db.withTransaction {
+            db.ops().upsertCashMoves(listOf(row))
+            db.outbox().enqueue(OutboxEntity(Uuid7.next(), "cash.move", buildJsonObject {
+                put("id", row.id); put("store_id", store); put("device_id", device); put("shift_id", r.shift_id)
+                put("type", "out"); put("amount", amount); row.reason?.let { put("reason", it) }
+                put("device_time", Instant.ofEpochMilli(row.device_time).toString())
+            }.toString(), employee_id = r.requested_by))
+            db.outbox().enqueue(answer(r, "done"))
+            db.ops().markRequestAnswered(r.id)
+        }
+        pushNow(context)
+    }
+
+    // said on the till once a request was carried out, and kept among its notices
+    fun say(message: String) = printing.report(message)
 
     suspend fun printZ(z: ZDoc): Result<Unit> = runCatching {
         val p = printing.receiptPrinter() ?: throw PrintError("No receipt printer is set up, so the closing report was not printed. It is in the back office, under Day closing.")

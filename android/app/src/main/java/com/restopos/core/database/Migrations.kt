@@ -197,4 +197,13 @@ object Migrations {
             db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
         }
     }
+
+    // What the back office asked of a till (server 0091): one new table, and
+    // nothing else changes. A pull fills it.
+    val V12_V13 = object : Migration(12, 13) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `till_requests` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `device_id` TEXT NOT NULL, `shift_id` TEXT NOT NULL, `kind` TEXT NOT NULL, `counted_cash` INTEGER, `amount` INTEGER, `reason` TEXT, `requested_by` TEXT, `requested_at` INTEGER NOT NULL, `status` TEXT NOT NULL, `deleted_at` TEXT, `server_seq` INTEGER, `answered` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_till_requests_device_id` ON `till_requests` (`device_id`)")
+        }
+    }
 }

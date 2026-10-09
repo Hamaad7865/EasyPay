@@ -30,6 +30,7 @@ import com.restopos.core.database.SyncStateEntity
 import com.restopos.core.database.TableEntity
 import com.restopos.core.database.TaxEntity
 import com.restopos.core.database.TillDatabase
+import com.restopos.core.database.TillRequestEntity
 import com.restopos.core.database.ReceiptEntity
 import com.restopos.core.database.ReceiptLineEntity
 import com.restopos.core.database.ReceiptLineModEntity
@@ -227,6 +228,19 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                     DrawerCountEntity(
                         id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "device_id") ?: "", str(it, "shift_id") ?: return@mapNotNull null,
                         str(it, "employee_id"), lng(it, "counted") ?: 0, lng(it, "expected") ?: 0, at, str(it, "deleted_at"), lng(it, "server_seq"),
+                    )
+                })
+            }
+            // What the back office asked of the store's tills (server 0091). All of
+            // them are kept; a till acts on its own (TillRequests), and what this
+            // tablet has already acted on stays marked when the row comes again.
+            changes["till_requests"]?.let { rows ->
+                ops.upsertRequests(rows.mapNotNull {
+                    val at = time(it, "requested_at") ?: return@mapNotNull null
+                    TillRequestEntity(
+                        id(it), str(it, "tenant_id") ?: "", str(it, "device_id") ?: return@mapNotNull null, str(it, "shift_id") ?: return@mapNotNull null,
+                        str(it, "kind") ?: return@mapNotNull null, lng(it, "counted_cash"), lng(it, "amount"), str(it, "reason"), str(it, "requested_by"), at,
+                        str(it, "status") ?: "waiting", str(it, "deleted_at"), lng(it, "server_seq"), ops.requestAnswered(id(it)) ?: false,
                     )
                 })
             }

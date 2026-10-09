@@ -27,6 +27,9 @@ import androidx.room.RoomDatabase
 // shows everything, on its printers row; each screen's part of a kitchen
 // ticket, the marks a screen is owed and what the till knows of each screen;
 // and on a kitchen ticket the waiter and the order's remark.
+// Version 12 changes no table: it makes a tablet read its products again.
+// Version 13 adds what the back office asked of a till (server 0091): close
+// its day, or write down cash taken out, which the till carries out itself.
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -43,8 +46,9 @@ import androidx.room.RoomDatabase
         CustomerEntity::class, KdsTicketEntity::class, BookingEntity::class,
         ItemVariantEntity::class, StockLevelEntity::class, ReceiptLineTaxEntity::class, ReceiptLineModEntity::class,
         KdsPartEntity::class, KdsOutEntity::class, KdsScreenEntity::class,
+        TillRequestEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {

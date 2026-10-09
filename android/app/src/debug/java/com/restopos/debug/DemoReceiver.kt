@@ -59,6 +59,7 @@ class DemoReceiver : BroadcastReceiver() {
         fun db(): TillDatabase
         fun session(): SessionStore
         fun applier(): com.restopos.core.sync.PullApplier
+        fun requests(): com.restopos.core.data.TillRequests
         fun updater(): com.restopos.core.sync.AppUpdater
     }
 
@@ -125,6 +126,8 @@ class DemoReceiver : BroadcastReceiver() {
                         val page = Json.parseToJsonElement(java.io.File(context.filesDir, "demo-page.json").readText())
                         val changes = page.obj("changes").mapValues { it.value.jsonArray.toList() }
                         deps.applier().apply(store, changes, page.lng("next_cursor"), "")
+                        // as the pull worker does after a pull: what the back office asked of this till is carried out
+                        deps.requests().run()
                         Log.i(TAG, "pulled: " + changes.filter { it.value.isNotEmpty() }.map { it.key + " " + it.value.size }.joinToString(", "))
                     }
                 } else if (deps.session().isSetUp()) Log.w(TAG, "refused: this tablet is set up for a business")
