@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -544,18 +545,33 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                     Row { T(L.t("of which tax", "dont taxes", "ladan tax"), 13.sp, 600, V.Text3); Gap(); T(Money.format(ui.tax), 13.sp, 600, V.Text3) }
                 }
             }
-            Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = 24.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    T(if (ui.back > 0) "AMOUNT TO GIVE BACK" else "AMOUNT TO CHARGE", 13.sp, 700, V.Text2, spacing = 1.sp)
-                    T(Money.format(if (ui.back > 0) ui.back else ui.amount), 56.sp, 800, spacing = (-2).sp)
+            // How tall this side is decides how it is drawn (PayFit): on a tablet
+            // that is not tall, what is above and below the keypad's row is
+            // drawn lower, so that the row has room for what it holds.
+            BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
+            val short = PayFit.short(maxHeight.value)
+            Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = if (short) 12.dp else 20.dp), verticalArrangement = Arrangement.spacedBy(if (short) 10.dp else 18.dp)) {
+                val what = if (ui.back > 0) "AMOUNT TO GIVE BACK" else "AMOUNT TO CHARGE"
+                val figure = Money.format(if (ui.back > 0) ui.back else ui.amount)
+                if (short) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        T(what, 13.sp, 700, V.Text2, spacing = 1.sp)
+                        Gap()
+                        T(figure, 38.sp, 800, spacing = (-1.2).sp)
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        T(what, 13.sp, 700, V.Text2, spacing = 1.sp)
+                        T(figure, 56.sp, 800, spacing = (-2).sp)
+                    }
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(if (short) 8.dp else 10.dp)) {
                     ui.methods.chunked(5).forEach { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             row.forEach { m ->
                                 val on = ui.method?.id == m.id
                                 Column(
-                                    Modifier.weight(1f).height(if (ui.methods.size > 5) 66.dp else 80.dp).clip(RoundedCornerShape(12.dp)).background(if (on) V.On else V.Key2)
+                                    Modifier.weight(1f).height(if (short) 58.dp else if (ui.methods.size > 5) 66.dp else 80.dp).clip(RoundedCornerShape(12.dp)).background(if (on) V.On else V.Key2)
                                         .clickable { vm.method(m) }.padding(horizontal = 14.dp),
                                     verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
                                 ) {
@@ -570,7 +586,9 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                 // an exchange with nothing for the customer to pay has nothing to count in
                 val settled = ui.exchangeOf != null && ui.amount == 0L
                 if (ui.cash && !settled) {
-                    Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                    val tight = PayFit.tight(maxHeight.value)
+                    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Column(Modifier.weight(1.1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("00", "0", "del")).forEach { row ->
                                 Row(Modifier.weight(1f).heightIn(min = 44.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -582,28 +600,40 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                                 }
                             }
                         }
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(V.Panel).border(1.dp, V.Stroke, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        // Tendered and Change are laid out first and are always whole:
+                        // the change to give is the figure read out to the customer.
+                        // The quick amounts between them take what room is left: both
+                        // rows, one, or none, and never a squeezed one (PayFit).
+                        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(if (tight) 8.dp else 10.dp)) {
+                            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(V.Panel).border(1.dp, V.Stroke, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = if (tight) 8.dp else 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 T("Tendered", 13.sp, 700, V.Text2)
-                                T(if (ui.tend.isEmpty()) Money.format(0) else Money.format(ui.tendered), 30.sp, 800)
+                                T(if (ui.tend.isEmpty()) Money.format(0) else Money.format(ui.tendered), if (tight) 24.sp else 30.sp, 800)
                             }
                             val a = ui.amount
                             val quick = listOf(a, (a + 9_999) / 10_000 * 10_000, (a + 49_999) / 50_000 * 50_000, (a + 99_999) / 100_000 * 100_000, (a + 199_999) / 200_000 * 200_000)
                                 .filter { it > 0 }.distinct().take(4)
-                            quick.chunked(2).forEachIndexed { r, row ->
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    row.forEachIndexed { i, v ->
-                                        VBtn(if (r == 0 && i == 0) "Exact" else Money.format(v), Modifier.weight(1f), V.BlueWash, V.BlueSoft, 54.dp, size = 16.sp, weight = 800) { vm.tender(v) }
+                            // with room to spare they are as tall as they need to be, and Change sits under them as before
+                            BoxWithConstraints(Modifier.weight(1f, fill = false).fillMaxWidth()) {
+                                val rows = PayFit.quickRows(maxHeight.value)
+                                val key = PayFit.quickKey(maxHeight.value, rows).dp
+                                Column(verticalArrangement = Arrangement.spacedBy(PayFit.GAP.dp)) {
+                                    quick.take(rows * 2).chunked(2).forEachIndexed { r, row ->
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            row.forEachIndexed { i, v ->
+                                                VBtn(if (r == 0 && i == 0) "Exact" else Money.format(v), Modifier.weight(1f), V.BlueWash, V.BlueSoft, key, size = 16.sp, weight = 800) { vm.tender(v) }
+                                            }
+                                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                                        }
                                     }
-                                    if (row.size == 1) Spacer(Modifier.weight(1f))
                                 }
                             }
-                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(V.GreenWash).padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.Bottom) {
+                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(V.GreenWash).padding(horizontal = 16.dp, vertical = if (tight) 10.dp else 14.dp), verticalAlignment = Alignment.Bottom) {
                                 T("Change", 15.sp, 700, V.Dim)
                                 Gap()
-                                T(if (ui.short) "Short ${Money.format(ui.amount - ui.tendered)}" else Money.format(ui.change), 28.sp, 800, if (ui.short) V.RedText else V.GreenText)
+                                T(if (ui.short) "Short ${Money.format(ui.amount - ui.tendered)}" else Money.format(ui.change), if (tight) 24.sp else 28.sp, 800, if (ui.short) V.RedText else V.GreenText)
                             }
                         }
+                    }
                     }
                 } else {
                     Column(
@@ -632,8 +662,9 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                         ui.lines.any { !it.info.line.paid } -> "Close · nothing to pay"
                         else -> "Nothing left to pay"
                     },
-                    Modifier.fillMaxWidth(), if (ok) V.Green else V.GreenOff, if (ok) V.GreenInk else V.GreenOffText, 74.dp, 14.dp, 20.sp, 800,
+                    Modifier.fillMaxWidth(), if (ok) V.Green else V.GreenOff, if (ok) V.GreenInk else V.GreenOffText, if (short) 62.dp else 74.dp, 14.dp, 20.sp, 800,
                 ) { vm.charge() }
+            }
             }
         }
         ui.done?.let { d -> Done(d, vm) { onFinish(d.kind) } }
