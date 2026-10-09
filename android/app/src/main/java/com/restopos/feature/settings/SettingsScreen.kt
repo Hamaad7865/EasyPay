@@ -156,6 +156,7 @@ class SettingsViewModel @Inject constructor(
     private val staff: StaffSession,
     private val approvals: Approvals,
     private val screenLink: com.restopos.core.kitchen.ScreenLink,
+    private val door: com.restopos.core.data.SetupDoor,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     private fun <T> Flow<T>.held(initial: T): StateFlow<T> = stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), initial)
@@ -254,6 +255,14 @@ class SettingsViewModel @Inject constructor(
     // someone who may, and does it with their go-ahead.
     fun guard(permission: String, what: String, then: () -> Unit) {
         if (staff.can(permission)) then() else approvals.ask(permission, what) { then() }
+    }
+
+    // Opens the first-run set-up again (This till, Set-up). The person signed
+    // in stays the one its saves are made by; when they may not set up the
+    // till, whoever approves goes with each save as its approver (SetupDoor).
+    fun setUp(then: () -> Unit) {
+        if (staff.can("settings.device")) { door.approver = null; then() }
+        else approvals.ask("settings.device", "set this till up") { who -> door.approver = who; then() }
     }
 
     val needsSignIn = session.needsSignIn.held(false)
@@ -434,6 +443,7 @@ fun SettingsScreen(
     onClosePeriod: () -> Unit,
     onCountDrawer: () -> Unit,
     onSignOut: () -> Unit,
+    onSetUp: () -> Unit = {},
     vm: SettingsViewModel = hiltViewModel(),
     receipts: ReceiptsViewModel = hiltViewModel(),
 ) {
@@ -512,7 +522,7 @@ fun SettingsScreen(
                     Column(Modifier.widthIn(max = 800.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (page != Page.Till) T(page.label, 22.sp, 800, spacing = (-0.4).sp, modifier = Modifier.padding(bottom = 6.dp))
                         when (page) {
-                            Page.Till -> TillPage(vm, keys, network, standing, onSignIn, onRejected) { page = it }
+                            Page.Till -> TillPage(vm, keys, network, standing, shop, onSignIn, onRejected, onSetUp) { page = it }
                             Page.Notices -> NoticesPage(vm, standing)
                             Page.Cash -> CashPage(vm, more, keys)
                             Page.Reports -> ReportsPage(vm, more, shop, keys.close) { sheet = "day" }
@@ -572,7 +582,7 @@ private fun Menu(page: Page, lock: String, waiting: Boolean, printerTrouble: Boo
 // ---- the pages ----
 
 @Composable
-private fun TillPage(vm: SettingsViewModel, keys: CashKeys, network: String, standing: List<Standing>, onSignIn: () -> Unit, onRejected: () -> Unit, onGo: (Page) -> Unit) {
+private fun TillPage(vm: SettingsViewModel, keys: CashKeys, network: String, standing: List<Standing>, shop: Boolean, onSignIn: () -> Unit, onRejected: () -> Unit, onSetUp: () -> Unit, onGo: (Page) -> Unit) {
     val user by vm.user.collectAsState()
     val needsSignIn by vm.needsSignIn.collectAsState()
     val pending by vm.pending.collectAsState()
@@ -625,6 +635,14 @@ private fun TillPage(vm: SettingsViewModel, keys: CashKeys, network: String, sta
         Fact(VI.Screen, "Network", network)
         Line()
         Fact(VI.Person, "Signed in", user?.let { it.employee.name + (it.role?.let { r -> " · $r" } ?: "") } ?: "Nobody: this till does not use staff PINs")
+        Line()
+        // the first-run set-up, open again: what is done, and each step to do or change
+        Fact(
+            VI.Gear, "Set-up",
+            if (shop) "The products, the printer, the business's details and staff PINs, one step at a time"
+            else "The menu, the tables, the printer, the business's details and staff PINs, one step at a time",
+            V.Text2, "Open",
+        ) { vm.setUp(onSetUp) }
     }
 }
 

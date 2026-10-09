@@ -71,6 +71,7 @@ fun StartScreen(
     onClock: () -> Unit,
     onCashCount: () -> Unit,
     onSignIn: () -> Unit,
+    onSetUp: () -> Unit = {},
 ) {
     val staff by vm.staff.collectAsState()
     val shift by vm.shift.collectAsState()
@@ -88,15 +89,15 @@ fun StartScreen(
             all.none { it.hasPin } -> Closed(
                 vm, title = "Register is locked", text = "Open the register to take orders.", button = "Open register",
                 note = "Staff PINs are not set up. Add them in the back office, under Staff, to have staff clock in and sign in here.",
-                onButton = onOpen, onSignIn = onSignIn,
+                onButton = onOpen, onSignIn = onSignIn, onSetUp = onSetUp,
             )
             active.isEmpty() -> Closed(
                 vm,
                 title = if (shift == null) "The day is not open" else "No one is clocked in",
                 text = if (shift == null) "Clock in below. Someone allowed to can then open the day." else "Clock in below to use the register.",
-                button = "Clock in/out", note = null, onButton = onClock, onSignIn = onSignIn,
+                button = "Clock in/out", note = null, onButton = onClock, onSignIn = onSignIn, onSetUp = onSetUp,
             )
-            else -> Users(vm, active, shiftOpen = shift != null, openedAt = shift?.opened_at, onPick = { pinFor = it }, onClock = onClock)
+            else -> Users(vm, active, shiftOpen = shift != null, openedAt = shift?.opened_at, onPick = { pinFor = it }, onClock = onClock, onSetUp = onSetUp)
         }
         message?.let { m ->
             Text(
@@ -135,8 +136,10 @@ private fun Closed(
     note: String?,
     onButton: () -> Unit,
     onSignIn: () -> Unit,
+    onSetUp: () -> Unit,
 ) {
     val needsSignIn by vm.needsSignIn.collectAsState()
+    val setupOpen by vm.setupOpen.collectAsState()
     Row(Modifier.fillMaxSize()) {
         InfoPanel(vm)
         Column(
@@ -162,6 +165,7 @@ private fun Closed(
                 )
                 Text("Sign in", Modifier.clickable(onClick = onSignIn).padding(10.dp), color = Pos.NavOn, fontSize = 15.sp, fontWeight = FontWeight.Medium)
             }
+            if (setupOpen) FinishSetUp(vm, onSetUp)
         }
     }
 }
@@ -193,7 +197,8 @@ private fun InfoPanel(vm: StaffViewModel) {
 
 // Everyone who is clocked in, as tiles: tap your name, then enter your PIN.
 @Composable
-private fun Users(vm: StaffViewModel, active: List<StaffMember>, shiftOpen: Boolean, openedAt: Long?, onPick: (StaffMember) -> Unit, onClock: () -> Unit) {
+private fun Users(vm: StaffViewModel, active: List<StaffMember>, shiftOpen: Boolean, openedAt: Long?, onPick: (StaffMember) -> Unit, onClock: () -> Unit, onSetUp: () -> Unit) {
+    val setupOpen by vm.setupOpen.collectAsState()
     var byTime by rememberSaveable { mutableStateOf(false) }
     val shown = if (byTime) active.sortedBy { it.clockedInAt } else active
     Row(Modifier.fillMaxSize()) {
@@ -234,9 +239,19 @@ private fun Users(vm: StaffViewModel, active: List<StaffMember>, shiftOpen: Bool
                     Modifier.padding(bottom = 12.dp), color = Pos.Text3, fontSize = 13.sp,
                 )
             }
-            BigButton("Clock in/out", Modifier.width(280.dp), onClock)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                BigButton("Clock in/out", Modifier.width(280.dp), onClock)
+                if (setupOpen) { Spacer(Modifier.width(18.dp)); FinishSetUp(vm, onSetUp) }
+            }
         }
     }
+}
+
+// The business's first-run set-up was not finished: the way back into it.
+// Where staff use PINs it asks for someone who may set up the till.
+@Composable
+private fun FinishSetUp(vm: StaffViewModel, onSetUp: () -> Unit) {
+    Text("Finish setting up", Modifier.clickable { vm.setUp(onSetUp) }.padding(10.dp), color = Pos.NavOn, fontSize = 15.sp, fontWeight = FontWeight.Medium)
 }
 
 @Composable

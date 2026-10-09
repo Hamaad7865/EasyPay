@@ -51,9 +51,34 @@ class StaffViewModel @Inject constructor(
     private val db: TillDatabase,
     private val api: ApiClient,
     private val approvals: Approvals,
+    private val door: com.restopos.core.data.SetupDoor,
 ) : ViewModel() {
     private val _info = MutableStateFlow(TillInfo())
     val info: StateFlow<TillInfo> = _info
+
+    // ---- the first-run set-up (server 0089) ----
+    // The business's set-up is still open and this tablet has not closed it:
+    // the start screen offers to finish it.
+    val setupOpen: StateFlow<Boolean> = kotlinx.coroutines.flow.combine(db.ops().settingsFlow(), session.setupClosed) { s, closed ->
+        com.restopos.core.data.PosSettings.parse(s).setupOpen && !closed
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    // Opens the set-up from the start screen, where nobody is signed in.
+    // On a till without PINs it opens as the register does, with one tap,
+    // and what it saves is the till's login's, as everything there is. Where
+    // staff use PINs, someone who may set up the till enters theirs and is
+    // signed in for the set-up: what it saves is then theirs and is held to
+    // their rights. Without that the server would take every save as the
+    // till's login's, which is nearly always the owner's, and a manager at
+    // the tablet could set the owner's PIN. They need not be clocked in;
+    // coming back to the start screen signs them out, as it signs anyone out.
+    // It never asks staffSession.can: with nobody signed in that answers yes.
+    fun setUp(then: () -> Unit) {
+        val all = staff.value ?: return
+        door.approver = null
+        if (all.none { it.hasPin }) then()
+        else approvals.ask("settings.device", "set this till up") { member -> staffSession.signIn(member); then() }
+    }
 
     private val storeId = flow { emit(session.storeId()) }
     private val deviceId = flow { emit(session.deviceId()) }

@@ -20,6 +20,8 @@ import com.restopos.feature.auth.AuthScreen
 import com.restopos.feature.auth.AuthViewModel
 import com.restopos.feature.auth.StoreDeviceScreen
 import com.restopos.feature.main.MainShell
+import com.restopos.feature.setup.SetupScreen
+import com.restopos.feature.setup.SetupWaitScreen
 import com.restopos.feature.staff.CashCountScreen
 import com.restopos.feature.staff.ClockScreen
 import com.restopos.feature.start.StartScreen
@@ -39,6 +41,11 @@ object Routes {
     const val REAUTH = "reauth"
     const val REJECTED = "rejected"
     const val KDS = "kds"
+    // the first-run set-up (server 0089): the wait after "Name this till", the
+    // set-up as it follows it, and the set-up opened again later
+    const val SETUP_WAIT = "setup-wait"
+    const val SETUP_FIRST = "setup-first"
+    const val SETUP = "setup"
 }
 
 @Composable
@@ -92,10 +99,27 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
             KitchenModeScreen(onBecomeTill = { nav.navigate(Routes.AUTH) { popUpTo(0) { inclusive = true } } })
         }
         composable(Routes.DEVICE) {
+            // A tablet just named holds nothing of its business yet. What it
+            // opens on waits for its first pull: the set-up, for a business
+            // whose set-up is open, or the start screen.
             StoreDeviceScreen(onReady = {
                 SyncScheduler.startPeriodic(context)
-                nav.navigate(Routes.START) { popUpTo(Routes.DEVICE) { inclusive = true } }
+                nav.navigate(Routes.SETUP_WAIT) { popUpTo(Routes.DEVICE) { inclusive = true } }
             })
+        }
+        composable(Routes.SETUP_WAIT) {
+            SetupWaitScreen(
+                onSetUp = { nav.navigate(Routes.SETUP_FIRST) { popUpTo(0) { inclusive = true } } },
+                onTill = { nav.navigate(Routes.START) { popUpTo(0) { inclusive = true } } },
+            )
+        }
+        // The set-up as a new business is walked through it: it ends on the start screen.
+        composable(Routes.SETUP_FIRST) {
+            SetupScreen(first = true, onDone = { nav.navigate(Routes.START) { popUpTo(0) { inclusive = true } } })
+        }
+        // The set-up opened again, from the start screen's key or from Settings: back to where it was opened.
+        composable(Routes.SETUP) {
+            SetupScreen(first = false, onDone = { nav.popBackStack() })
         }
         // The register sits on top of the start screen: Lock (or Back) returns here.
         composable(Routes.START) {
@@ -104,6 +128,7 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
                 onClock = { nav.navigate(Routes.CLOCK) },
                 onCashCount = { nav.navigate(Routes.CASH_OPEN) },
                 onSignIn = { nav.navigate(Routes.REAUTH) },
+                onSetUp = { nav.navigate(Routes.SETUP) },
             )
         }
         composable(Routes.CLOCK) {
@@ -138,6 +163,7 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
                 onLock = { nav.popBackStack(Routes.START, inclusive = false) },
                 onOpenPeriod = { nav.navigate(Routes.CASH_OPEN) },
                 onSignOut = onSignOut,
+                onSetUp = { nav.navigate(Routes.SETUP) },
             )
         }
         // Signing in again on a tablet that is already set up: back to the

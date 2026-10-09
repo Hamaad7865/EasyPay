@@ -426,6 +426,7 @@ fun MainShell(
     onLock: () -> Unit,
     onOpenPeriod: () -> Unit,
     onSignOut: () -> Unit,
+    onSetUp: () -> Unit = {},
 ) {
     val shell: ShellViewModel = hiltViewModel()
     val floor: FloorViewModel = hiltViewModel()
@@ -628,6 +629,7 @@ fun MainShell(
                         SettingsScreen(
                             more, lock = if (user != null) "Log out" else "Lock", onLock = onLock, onSignIn = onSignIn, onRejected = onRejected,
                             onClosePeriod = { shell.go(Screen.Cash) }, onCountDrawer = { shell.go(Screen.Cash) }, onSignOut = { confirmSignOut = true },
+                            onSetUp = onSetUp,
                         )
                     }
                 }
