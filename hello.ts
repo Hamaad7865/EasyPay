@@ -66,7 +66,10 @@ async function requireAuth(req: Request): Promise<Authed> {
 // Either way the till drops the key and goes back to its login, as before
 // tills had keys: whoever is signed in on it can still send its sales, and a
 // till that is not deactivated is given a new key under that login.
-const TILL_OFF = { error: "This till was deactivated. Contact EasyPay to reactivate it." };
+// Said by whoever deactivated it: the business itself, in the back office
+// (Point of sale, the till, Settings), or the platform admin. Either can
+// reactivate it, and the back office is where the person at the tablet can.
+const TILL_OFF = { error: "This till was deactivated. Reactivate it in the back office, under Point of sale." };
 const LOGIN_OFF = { error: "The login that set this till up was switched off. Sign in on the till again." };
 type KeyAnswer = { ok: boolean; why?: string; employee_id?: string; tenant_id?: string; store_id?: string; status?: string };
 
@@ -310,13 +313,14 @@ app.post("/devices/register", async (c) => {
   }
   const deviceId = body.deviceId;
   try {
-    // A till the platform admin deactivated stays deactivated: registering
-    // again must not quietly bring it back. Its unsynced sales still push.
+    // A till that was deactivated (by its business in the back office, or by
+    // the platform admin) stays deactivated: registering again must not
+    // quietly bring it back. Its unsynced sales still push.
     const known = await asTenant<{ deactivated: boolean }>(auth.tenantId, (q) =>
       q(`select deleted_at is not null as deactivated from pos_devices where id = $1 and tenant_id = $2`, [deviceId, auth.tenantId]).then((r) => r.rows),
     );
     if (known[0]?.deactivated) {
-      return c.json({ error: "This till was deactivated. Contact EasyPay to reactivate it." }, 403);
+      return c.json(TILL_OFF, 403);
     }
     const rows = await asTenant<{ id: string; last_receipt_seq: string }>(auth.tenantId, (q) =>
       q(
