@@ -54,7 +54,9 @@ One named while the set-up is still open is shown it, with the finished steps ti
 a **Finish setting up** key. Settings has a **Set-up** page for good, for every client. Both open the
 summary. On a till without PINs the key opens it with one tap, as the register opens. Where staff use
 PINs, the person signed in must hold `settings.device`, or someone who does approves with their PIN, as
-for the till's other manager actions.
+for the till's other manager actions. On the start screen nobody is signed in: whoever enters their PIN
+there is signed in for the set-up, so what it saves is theirs and is held to their rights. A manager who
+opens it cannot set a PIN, though the tablet's login is the owner's.
 
 **Never** on a tablet set up as a kitchen screen, and never after "Sign in again".
 
@@ -139,9 +141,10 @@ pull lands. A save that cannot reach the server says so in the till's usual word
 - Everyone the business has: name, role, "PIN set" or "No PIN". Tapping one opens a keypad for a
   four-digit PIN; the digits show as they are typed, as in the back office.
 - **Add someone**: a name, a role and a PIN. The roles are the business's own, except Owner.
-- The first PIN goes to someone who may open the day (`shift.open_close`). Until one of them has a PIN,
-  nobody else can be given one and nobody can be added. A till where only a waiter has a PIN could not
-  open its day.
+- The first PIN goes to someone who may open the day and set up the till (`shift.open_close` and
+  `settings.device`): the owner, or a manager. Until one of them has a PIN, nobody else can be given one
+  and nobody can be added. A till where only a waiter has a PIN could not open its day, and one where
+  only a cashier has could open it and approve nothing.
 - The step says what a PIN changes: each person clocks in and signs in with their own, and the till knows
   who rang up what. Without PINs the register opens with one tap.
 - Only the owner may add staff or set a PIN (`employees.edit`), as in the back office. Under a manager's

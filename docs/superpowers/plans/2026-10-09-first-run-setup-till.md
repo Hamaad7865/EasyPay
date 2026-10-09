@@ -198,9 +198,12 @@ object StaffForm {
     fun read(name: String, pin: String): Result<Pair<String, String>>
     // The first PIN goes to someone who may open the day: with a PIN in use the till asks for one, and
     // the day is opened by someone allowed to.
-    fun mayHavePin(member: StaffMember, all: List<StaffMember>): Boolean =
-        member.can("shift.open_close") || all.any { it.hasPin && it.can("shift.open_close") }
-    fun mayAdd(all: List<StaffMember>): Boolean = all.any { it.hasPin && it.can("shift.open_close") }
+    // Who that is: someone who may open the day and set up the till. The owner and a manager may; a
+    // cashier may open the day and approve nothing, so a till where only a cashier had a PIN would have
+    // nobody to ask.
+    fun leads(member: StaffMember): Boolean = member.can("shift.open_close") && member.can("settings.device")
+    fun mayHavePin(member: StaffMember, all: List<StaffMember>): Boolean = leads(member) || mayAdd(all)
+    fun mayAdd(all: List<StaffMember>): Boolean = all.any { it.hasPin && leads(it) }
     fun refused(code: String?): String
 }
 object CompanyForm {
@@ -231,9 +234,11 @@ object CompanyForm {
     `conflict`, null and anything else as `ItemForm.refused` words them.
   - `StaffForm.read`: the name trimmed and cut at 80, blank "Give them a name"; a PIN that is not four
     digits "A PIN is 4 digits".
-  - `mayHavePin` and `mayAdd`, with members built from `EmployeeEntity`: nobody has a PIN, so a waiter may
-    not have one, a cashier with `shift.open_close` and an owner with `*` may, and nobody can be added;
-    once the owner has one, the waiter may and people can be added.
+  - `mayHavePin` and `mayAdd`, with members built from `EmployeeEntity`: while nobody has a PIN, a waiter
+    and a cashier with `shift.open_close` alone may not have one, a manager with `shift.open_close` and
+    `settings.device` and an owner with `*` may, and nobody can be added; once the owner or the manager
+    has one, the waiter and the cashier may and people can be added. A cashier's PIN alone opens nothing
+    for the others.
   - `StaffForm.refused`: `forbidden` "Only the owner can add staff or set a PIN. Ask the owner, or do it in
     the back office, under Staff."; `bad-role` "That role is no longer there. Pick another."; `bad-pin`
     "That PIN could not be saved. Type it again."; `unknown-staff` "That person is no longer there.";
@@ -254,7 +259,8 @@ object CompanyForm {
 - [ ] **Step 1: `SetupDoor`**, in `StaffRepository.kt`:
 
   ```kotlin
-  // Who let the set-up in, on a till where staff use PINs: sent with what it saves.
+  // Who approved the set-up being opened from Settings, when the person signed in could not open it
+  // alone: sent as approved_by with what it saves.
   @Singleton
   class SetupDoor @Inject constructor() { var approver: StaffMember? = null }
   ```
@@ -279,9 +285,10 @@ object CompanyForm {
     ("" for none), paper_mm}` and `one_printer` only when not null; `company.save {name, address, phone,
     brn, vat}`; `staff.save {id, name, role_id, pin_hash}`; `staff.set_pin {employee_id, pin_hash}`.
   - The store is `session.storeId() ?: error("This till is not set up for a store yet.")`.
-  - `approved_by` is `approver?.employee?.id`, sent whenever there is an approver. Not
-    `staff.approvedBy(...)`: it says nothing while nobody is signed in, and a till set up under a
-    manager's login would then be refused a change its owner approved.
+  - `approved_by` is `staff.approvedBy(permission, approver)`, put in when it is not null, as `saveItem`
+    does. Who the change is made by is `ask`'s own rule and is not touched: the person signed in, or the
+    till's login when nobody is. Task 14 sees that someone who opens the set-up with their PIN is signed
+    in for it, so a manager is never given the owner's rights by the login.
   - The hash: `withContext(Dispatchers.Default) { PinHash.make(pin) }`.
   - Refusals: tables have no form object, so `addTables` words its own, in a private function beside
     it: `room-exists` "There is already a room of that name."; `name-taken` "A table already has one of those numbers. Close this
@@ -345,9 +352,10 @@ printing, door: SetupDoor, @ApplicationContext context)`.
   - For the Printer step, asked again while its form is open: `usb: StateFlow<String?>`
     (`printing.usbPrinter()`, every two seconds) and `paired: StateFlow<List<Pair<String, String>>>`
     (`printing.pairedDevices()`, every three).
-  - `approver = door.approver`. `mayStaff: StateFlow<Boolean?>`: with someone signed in or an approver,
-    whether either holds `employees.edit`; with neither, null (the server says), and false from the first
-    `forbidden` a staff save is answered.
+  - `approver = door.approver`. `mayStaff: StateFlow<Boolean?>`: with someone signed in, whether they or
+    the approver hold `employees.edit`; with nobody signed in, null (the till's login is the one asked,
+    and the server says). `refusedStaff: StateFlow<Boolean>`: true from the first `forbidden` a staff save
+    is answered while nobody is signed in.
 - [ ] **Step 2: what was saved on this visit.** A pull that `ask` starts brings each row; until it lands
   the view model shows what it sent.
   - `saved: StateFlow<Map<SetupStep, String>>`: for a step saved on this visit, the summary's line for it.
@@ -370,9 +378,15 @@ printing, door: SetupDoor, @ApplicationContext context)`.
     Paper(EscPos.columnsFor(p.paper), 3, true)))`. `testSaved(printer)`: `printing.send(printer,
     Docs.test(printer.name, printing.paper(printer)), "Test page")`.
   - `savePrinter(id, p, onePrinter)`, `saveCompany(c)` (and `session.setBusinessName(c.name)` once it is
-    taken), `setPin(member, pin)`, `addStaff(name, roleId, pin)`.
+    taken), `setPin(member, pin, by)`, `addStaff(id, name, roleId, pin, by)`.
+  - A new printer's id and a new person's id are minted when the form or the sheet opens
+    (`remember { Uuid7.next() }`) and kept until the server has taken them: a second try after a lost
+    answer sends the same id, and the server changes nothing twice.
   - `finish()`: `service.finishSetup(approver)`.
-  - Every call that takes an approver is given `approver`.
+  - Every call that takes an approver is given `approver`. The two staff calls take `by`, whoever answered
+    the till's own request for `employees.edit`, in its place when there is one, and hand a
+    `NeedsApproval` on with `.orAsk()` as `ItemEditor.save` does, so that a manager who is signed in is
+    asked for the owner's PIN and is not left at a dead end.
 - [ ] **Step 4:** `assembleDebug`. **Step 5: commit.**
 
 ### Task 8: the frame, the summary and the wait
@@ -479,8 +493,8 @@ printing, door: SetupDoor, @ApplicationContext context)`.
 - [ ] **Step 3: the test.** The main key says what is missing (`PrinterForm.read`'s words) until the form
   reads, then **Print a test page** (`vm.testPrinter`). If it could not be sent: Printing's own words as a
   `Problem`, and `PrinterForm.hint(kind)` under it. If it was sent, the form gives way to "Did it
-  print?": **Yes, save it** (`vm.savePrinter`, then on with the step) and a quiet **No**, which returns
-  to the form with the hint showing.
+  print?": **Yes, save it** (`vm.savePrinter`, with the id the form minted when it opened, then on with
+  the step) and a quiet **No**, which returns to the form with the hint showing.
 - [ ] **Step 4:** Skip while the store has no printer. `assembleDebug`. **Step 5: commit.**
 
 ### Task 12: the Business details step
@@ -501,16 +515,22 @@ printing, door: SetupDoor, @ApplicationContext context)`.
 
 **Files:** create `main/feature/setup/StaffStep.kt`.
 
-- [ ] **Step 1:** when `vm.mayStaff` is false, only this: "Only the owner can add staff or set a PIN. Ask
-  the owner to do it here, or in the back office, under Staff." and `StepFoot("Continue", ...)`.
+- [ ] **Step 1:** when `vm.refusedStaff` is true (the tablet was signed in with a manager's login, and
+  the server said no), only this: "Only the owner can add staff or set a PIN. Ask the owner to set this
+  tablet up, or do it in the back office, under Staff." and `StepFoot("Continue", ...)`.
 - [ ] **Step 2:** otherwise, at the top: "With PINs, each person clocks in and signs in with their own,
-  and the till knows who rang up what. Without PINs the register opens with one tap." Then everyone:
-  name, role, and a chip, "PIN set" in green or "No PIN". A tap opens a sheet, "A PIN for <name>": one
-  box that takes four digits and shows them, and **Set PIN** (`vm.setPin`).
+  and the till knows who rang up what. Without PINs the register opens with one tap." When `vm.mayStaff`
+  is false, a second line: "Adding staff or setting a PIN needs the owner: the till will ask for the
+  owner's PIN." Then everyone: name, role, and a chip, "PIN set" in green or "No PIN". A tap opens a
+  sheet, "A PIN for <name>": one box that takes four digits and shows them, and **Set PIN**
+  (`vm.setPin`).
 - [ ] **Step 3:** someone `StaffForm.mayHavePin` says no to is dimmed, does not open, and says under their
-  name "First give a PIN to someone who can open the day". **Add someone** is a key under the list,
-  dimmed with the same words until `StaffForm.mayAdd`. Its sheet: **Name**, the roles as chips (every
-  role but one whose permissions hold `*`), **PIN**, and **Add** (`vm.addStaff`).
+  name "First give a PIN to the owner or a manager". **Add someone** is a key under the list, dimmed with
+  the same words until `StaffForm.mayAdd`. Its sheet: **Name**, the roles as chips (every role but one
+  whose permissions hold `*`), **PIN**, and **Add** (`vm.addStaff`, with the id the sheet minted when it
+  opened).
+- [ ] **Step 3a:** a save that needs someone else's go-ahead (`NeedsApproval`) asks for it through
+  `Approvals`, as `ItemEditor` does, and is sent again with whoever approved.
 - [ ] **Step 4:** `StepFoot("Continue", ...)`, with Skip while nobody has a PIN. `assembleDebug`.
   **Step 5: commit.**
 
@@ -531,11 +551,18 @@ printing, door: SetupDoor, @ApplicationContext context)`.
     returns to the start screen) is left as it is: it covers these routes.
   - `KDS` and `REAUTH` are not touched: a kitchen screen and "Sign in again" never reach the set-up.
 - [ ] **Step 2: the start screen.** `StaffViewModel` gains `setupOpen: StateFlow<Boolean>` (the settings'
-  `setupOpen` and not `session.setupClosed`) and `setUp(then: () -> Unit)`: where anyone has a PIN,
-  `approvals.ask("settings.device", "set this till up") { door.approver = it; then() }`; where nobody has,
-  `door.approver = null; then()`. It must not ask `staff.can`: on the start screen nobody is signed in,
-  and that answers yes. `Closed` and `Users` show, while `setupOpen`, a quiet key **Finish setting up**
-  under their button, which calls `vm.setUp(onSetUp)`.
+  `setupOpen` and not `session.setupClosed`) and `setUp(then: () -> Unit)`. Either way `door.approver` is
+  set to null.
+  - Where nobody has a PIN: `then()`. Nobody is signed in, and what the set-up saves is the till's
+    login's, as everything on such a till is.
+  - Where anyone has a PIN: `approvals.ask("settings.device", "set this till up") { member ->
+    staffSession.signIn(member); then() }`. Whoever enters their PIN is signed in for the set-up, so
+    what it saves is theirs and is held to their rights: a manager who opens it is not given the owner's
+    rights by the till's login. They need not be clocked in. Returning to the start screen signs them out,
+    as it signs anyone out.
+  - It must not ask `staff.can`: on the start screen nobody is signed in, and that answers yes.
+  - `Closed` and `Users` show, while `setupOpen`, a quiet key **Finish setting up** under their button,
+    which calls `vm.setUp(onSetUp)`.
 - [ ] **Step 3: Settings.** `SettingsViewModel.setUp(then)`: `if (staff.can("settings.device")) {
   door.approver = null; then() } else approvals.ask("settings.device", "set this till up") {
   door.approver = it; then() }`. The This till page gains a row, `Fact(VI.Screen, "Set-up", ..., button =
