@@ -42,6 +42,7 @@ export type TenantActions = {
   setTillActive: Action;
   addLogin: Action;
   setPassword: Action;
+  setPin: Action;
   setActive: Action;
 };
 
@@ -55,6 +56,7 @@ const ACTIONS: Record<string, string> = {
   "login.disable": "Login switched off",
   "login.enable": "Login switched on",
   "login.password": "Password changed",
+  "login.pin": "Till PIN set",
   "store.add": "Store added",
   "tenant.details": "Details changed",
   "till.deactivate": "Till deactivated",
@@ -223,7 +225,7 @@ export function TenantView({
             <div className="card-head">
               <div>
                 <h2>Logins</h2>
-                <p>{count(logins.length, "login")}. Open one to set a new password or to switch it off.</p>
+                <p>{count(logins.length, "login")}. Open one to set a new password or till PIN, or to switch it off.</p>
               </div>
             </div>
             <form action={actions.addLogin} className="table-filters adm-add">
@@ -240,7 +242,7 @@ export function TenantView({
               </select>
               <Submit>Create login</Submit>
             </form>
-            <LoginsTable tenant={tenant.id} logins={logins} setPassword={actions.setPassword} setActive={actions.setActive} />
+            <LoginsTable tenant={tenant.id} logins={logins} setPassword={actions.setPassword} setPin={actions.setPin} setActive={actions.setActive} />
             <p className="adm-note">
               A login opens the back office only when its role has &quot;Sign in to the back office&quot;: an Owner&apos;s and a Manager&apos;s do, a
               Cashier&apos;s and a Waiter&apos;s do not, unless the client ticks it under Roles and permissions. Staff who only sell need no login: they get

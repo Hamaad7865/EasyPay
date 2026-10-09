@@ -30,3 +30,29 @@ export function Password({ label, placeholder, inline }: { label: string; placeh
     </span>
   );
 }
+
+// The same box for the PIN a login opens the till with: four digits, and the
+// eye to read them back before they are handed over. `optional` is for the
+// form that makes a client, where the PIN can wait.
+export function Pin({ label, placeholder, inline, optional }: { label: string; placeholder?: string; inline?: boolean; optional?: boolean }) {
+  const [shown, setShown] = useState(false);
+  const eye = shown ? "Hide PIN" : "Show PIN";
+  return (
+    <span className={inline ? "pw-field inline pin" : "pw-field"}>
+      <input
+        name="pin"
+        type={shown ? "text" : "password"}
+        inputMode="numeric"
+        pattern="\d{4}"
+        maxLength={4}
+        placeholder={placeholder}
+        aria-label={label}
+        required={!optional}
+        autoComplete="off"
+      />
+      <button type="button" className="pw-eye" onClick={() => setShown(!shown)} aria-label={eye} aria-pressed={shown} title={eye}>
+        {shown ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+      </button>
+    </span>
+  );
+}

@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
-import { db } from "@/lib/db";
+import { db, withTenant } from "@/lib/db";
+import { hashPin, isPin } from "@/lib/pin";
 import { adminMessage, requirePlatformAdmin } from "@/lib/platform";
 import { loginForRestaurant, passwordProblem, removeLogin, setLoginPassword } from "@/lib/platform-auth";
 import { type Audit, type Login, type Store, type Tenant, TenantView, type Till } from "./view";
@@ -119,6 +120,37 @@ async function setPassword(formData: FormData) {
   back(tenantId, "notice", "Password changed. Give them the new one.");
 }
 
+// The PIN a login opens the till with. A client's staff get theirs from the
+// client, under Staff in its back office; this is for a client being started,
+// so that its owner can open the till the day it is handed over. Written the
+// way that page writes it (the till checks the same hash, offline). The PIN
+// goes nowhere else: not into the audit log, not into a URL.
+async function setPin(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  const employeeId = String(formData.get("employee") ?? "");
+  const pin = String(formData.get("pin") ?? "");
+  if (!UUID.test(employeeId)) notFound();
+  if (!isPin(pin)) back(tenantId, "error", "A PIN is 4 digits.");
+  const name = await withTenant(tenantId, (c) =>
+    c
+      .query(
+        `update employees set pin_hash = $3
+          where tenant_id = $1 and id = $2 and deleted_at is null and auth_user_id is not null returning name`,
+        [tenantId, employeeId, hashPin(pin)],
+      )
+      .then((r) => (r.rows[0]?.name as string | undefined) ?? null),
+  );
+  if (!name) back(tenantId, "error", "That login does not exist.");
+  await db().query(
+    `insert into platform.audit (admin_auth_user_id, action, tenant_id, detail)
+     values ($1, 'login.pin', $2, jsonb_build_object('employee_id', $3::text))`,
+    [adminId, tenantId, employeeId],
+  );
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  back(tenantId, "notice", `PIN set for ${name}. Give it to them. A till has it after its next sync.`);
+}
+
 async function setDetails(formData: FormData) {
   "use server";
   const { adminId, tenantId } = await tenantOf(formData);
@@ -232,7 +264,7 @@ export default async function TenantPage({
       .then((r) => r.rows as Till[]),
     pool
       .query(
-        `select e.id, e.name, r.name as role, e.is_active, u.email
+        `select e.id, e.name, r.name as role, e.is_active, u.email, e.pin_hash is not null as has_pin
            from employees e
            left join roles r on r.id = e.role_id
            left join neon_auth."user" u on u.id = e.auth_user_id
@@ -263,7 +295,7 @@ export default async function TenantPage({
       audit={audit}
       error={sp.error}
       notice={sp.notice}
-      actions={{ setDetails, setPlan, setBusinessType, setStatus, addStore, setTillActive, addLogin, setPassword, setActive }}
+      actions={{ setDetails, setPlan, setBusinessType, setStatus, addStore, setTillActive, addLogin, setPassword, setPin, setActive }}
     />
   );
 }

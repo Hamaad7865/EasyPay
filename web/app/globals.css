@@ -1161,6 +1161,8 @@ button[aria-busy="true"]::after {
 .bo-main button.pw-eye { position: absolute; top: 3px; right: 3px; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ink3); box-shadow: none; }
 .bo-main button.pw-eye:hover { background: var(--bg); color: var(--ink); }
 .pw-field.inline { display: inline-block; width: 230px; }
+/* four digits want less room than a password */
+.pw-field.inline.pin { width: 170px; }
 /* a line of fields that add to the list under it: the boxes share the line, the button follows */
 .adm-add > input, .adm-add > .pw-field { flex: 1 1 200px; }
 

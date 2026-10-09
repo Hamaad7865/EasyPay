@@ -4,7 +4,7 @@ import { Submit } from "../backoffice/busy";
 import type { Start } from "../backoffice/table-kit";
 import { Empty } from "../backoffice/ui";
 import { ago, cap, day, Notes, supportId } from "./bits";
-import { Password } from "./password";
+import { Password, Pin } from "./password";
 import { type TenantLine, TenantsTable } from "./tenants-table";
 
 export type TenantRow = {
@@ -133,6 +133,11 @@ export function AdminHome({
               Initial password
               <Password label="Initial password" />
               <span className="help">8 characters or more. You give it to the owner.</span>
+            </div>
+            <div className="field">
+              Owner&apos;s till PIN
+              <Pin label="Owner's till PIN" optional />
+              <span className="help">4 digits, to open the till. It can wait: it is also set under the client&apos;s logins.</span>
             </div>
             <div className="field">
               Plan
