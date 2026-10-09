@@ -7,6 +7,8 @@ import { ChevronDown, LogOut, PanelLeftClose, PanelLeftOpen, Search, Store } fro
 import { Submit, Wait } from "./busy";
 import { groupsFor, HOME, groupOf, isOn, type NavCount } from "./nav";
 import type { Mode } from "@/lib/mode";
+import type { Theme } from "@/lib/theme";
+import { ThemeButton, useTheme } from "../theme";
 import { openSearch, SearchBox, useSearchKey } from "./search-box";
 
 // The way round the back office, which has two shapes.
@@ -66,7 +68,7 @@ function Count({ c }: { c: NavCount | undefined }) {
 }
 
 export function Side({
-  restaurant, id, employee, role, signOut, folded, opened, drawn, mode, premium,
+  restaurant, id, employee, role, signOut, folded, opened, look, drawn, mode, premium,
 }: {
   // a restaurant or a shop: which pages the menu has, and what it calls them
   mode: Mode;
@@ -82,6 +84,8 @@ export function Side({
   // that were open (null when it has never been touched)
   folded: boolean;
   opened: string[] | null;
+  // light or dark, where one was chosen in this browser (null: as the device is set)
+  look: Theme | null;
   // when the server last drew the shell. Going from page to page leaves it
   // alone; a save draws it again, and the numbers in the menu are asked for
   // again then, whatever the save's "saved" line says.
@@ -169,6 +173,8 @@ export function Side({
     remember("bo-menu", away ? "open" : "closed");
     setAway(!away);
   };
+  // the switch is drawn twice, in the menu and in the rail's card: one choice behind both
+  const [theme, turn] = useTheme(look);
   const initial = (employee ?? "?").trim().slice(0, 1).toUpperCase();
   const dev = process.env.NODE_ENV === "development" ? " dev" : "";
   // the signs come in one after the other when the menu folds into them
@@ -230,6 +236,7 @@ export function Side({
               <b>{employee ?? "Signed in"}</b>
               {role && <small>{role}</small>}
             </span>
+            <ThemeButton theme={theme} turn={turn} />
             {leave}
           </div>
         </div>
@@ -300,6 +307,7 @@ export function Side({
               <b>{employee ?? "Signed in"}</b>
               {role && <small>{role}</small>}
             </span>
+            <ThemeButton theme={theme} turn={turn} />
             {leave}
           </div>
         </div>

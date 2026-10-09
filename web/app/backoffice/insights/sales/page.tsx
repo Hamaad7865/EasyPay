@@ -134,7 +134,7 @@ export default async function SalesPatterns({ searchParams }: { searchParams: Se
         ]}
       />
 
-      <Card title="Busy hours" lede="Average sales in each hour of each day of the week. Darker is busier.">
+      <Card title="Busy hours" lede="Average sales in each hour of each day of the week. The stronger the green, the busier.">
         <div className="heat-wrap">
           <div className="heat" style={{ "--cols": hours.length } as React.CSSProperties}>
             <span />

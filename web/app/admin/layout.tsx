@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { auth } from "@/lib/auth/server";
 import { requirePlatformAdmin } from "@/lib/platform";
+import { THEME_COOKIE, themeOf } from "@/lib/theme";
 import { AdminShell } from "./shell";
 
 export const metadata: Metadata = { title: "EasyPay admin" };
@@ -16,7 +18,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect("/login");
   }
   return (
-    <AdminShell email={admin.email} signOut={signOut}>
+    <AdminShell email={admin.email} signOut={signOut} look={themeOf((await cookies()).get(THEME_COOKIE)?.value)}>
       {children}
     </AdminShell>
   );
