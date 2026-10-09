@@ -137,6 +137,11 @@ class KitchenModeViewModel @Inject constructor(
     init {
         listen()
         viewModelScope.launch { book.prune() }
+        // An order has arrived: the kitchen hears it, whatever is on the
+        // screen at that moment (the settings, the waiting page turning into
+        // the board). The owner: "It should make sound when orders arrived
+        // in the kitchen screen".
+        viewModelScope.launch { book.arrived.collect { if (prefs.value.sound) com.restopos.core.common.Chime.order() } }
         // the clock the header and "recall" go by, and the address, which a router may change
         viewModelScope.launch {
             while (true) {
@@ -236,7 +241,8 @@ fun KitchenModeScreen(vm: KitchenModeViewModel = hiltViewModel(), onBecomeTill: 
         else if (!state.paired) Waiting(address, code, problem) { settings = true }
         else Column(Modifier.fillMaxSize()) {
             problem?.let { T(it, 14.sp, 600, V.RedText, Modifier.fillMaxWidth().background(V.RedWash).padding(horizontal = 24.dp, vertical = 10.dp), lines = 3) }
-            KdsBoard(state.ui, prefs, onTap = { vm.tap(it) }, onBump = { vm.bump(it) }, onRecall = { vm.recall() }, onSettings = { settings = true }, modifier = Modifier.weight(1f))
+            // the sound is made where the order arrives (the view model), not by the board noticing a new card
+            KdsBoard(state.ui, prefs.copy(sound = false), onTap = { vm.tap(it) }, onBump = { vm.bump(it) }, onRecall = { vm.recall() }, onSettings = { settings = true }, modifier = Modifier.weight(1f))
         }
         ToastHost()
     }

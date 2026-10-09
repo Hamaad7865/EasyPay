@@ -133,6 +133,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // The till's and the kitchen screen's sounds are played as an alarm is
+        // (Chime), so that a tablet with its notifications down still makes
+        // them. While EasyPay is open the tablet's volume keys set that volume.
+        volumeControlStream = android.media.AudioManager.STREAM_ALARM
         SyncScheduler.pullNow(this)
         setContent {
             val scope = rememberCoroutineScope()

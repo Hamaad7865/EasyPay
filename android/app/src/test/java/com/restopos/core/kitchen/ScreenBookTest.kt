@@ -1,5 +1,8 @@
 package com.restopos.core.kitchen
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -91,6 +94,31 @@ class ScreenBookTest {
         val odd = sent.copy(id = "k-2", lines = listOf(WireLine("b", 1, "Item b")))
         ask(put = listOf(odd), tillClock = anHourAhead - 60_000)
         assertEquals(now, open().first { it.id == "k-2" }.receivedAt)
+    }
+
+    // "It should make sound when orders arrived in the kitchen screen": the
+    // book says when one has, and only then. A ticket sent again by a till
+    // that is making sure, a cook's Recall, a mark: none of these is an order
+    // arriving, and a kitchen that hears the sound for nothing stops listening.
+    @Test
+    fun anOrderArrivingIsSaidOnceAndNothingElseIs() {
+        val heard = ArrayList<Int>()
+        val listening = CoroutineScope(Dispatchers.Unconfined).launch { book.arrived.collect { heard.add(it) } }
+        ask(put = listOf(ticket("k-1", "a")))
+        assertEquals(listOf(1), heard)
+        // the same ticket again, a mark, an empty question: silence
+        ask(put = listOf(ticket("k-1", "a")))
+        ask(marks = listOf(WireMark(line = "a", done = true)))
+        ask()
+        runBlocking { book.bump("k-1"); book.recallLast() }
+        assertEquals(listOf(1), heard)
+        // two orders in one message are two arrivals, said together
+        ask(put = listOf(ticket("k-2", "b"), ticket("k-3", "c")))
+        assertEquals(listOf(1, 2), heard)
+        // a stranger's message brings nothing
+        ask(put = listOf(ticket("k-9", "z")), with = "KTCHN235")
+        assertEquals(listOf(1, 2), heard)
+        listening.cancel()
     }
 
     @Test

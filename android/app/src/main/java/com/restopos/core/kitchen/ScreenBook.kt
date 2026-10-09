@@ -1,6 +1,8 @@
 package com.restopos.core.kitchen
 
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -74,6 +76,11 @@ class ScreenBook(
     private val _heard = MutableStateFlow<Heard?>(null)
     // the till that asked last, for the screen's header
     val heard: StateFlow<Heard?> = _heard
+    private val _arrived = MutableSharedFlow<Int>(extraBufferCapacity = 16)
+    // How many tickets a till has just put that the screen did not hold: an
+    // order has arrived, and the kitchen is told by a sound. A ticket put
+    // again, or brought back by Recall, is not an arrival.
+    val arrived: SharedFlow<Int> = _arrived
 
     // The reply to a request, always one line. A request that is not signed
     // with this screen's code is told nothing but "refused".
@@ -83,9 +90,11 @@ class ScreenBook(
         val now = clock()
         // A ticket the screen holds is replaced, never added again, and keeps
         // when it arrived, whether it was bumped and what the cooks ticked.
+        var fresh = 0
         for (t in req.put) {
             val was = shelf.ticket(t.id)
             if (was != null && was.till != req.till) continue
+            if (was == null) fresh++
             val kept = was?.lines?.associateBy { it.id }.orEmpty()
             // how long it waited at the till before it got here, by the till's clock alone
             val waited = if (req.now > 0) (req.now - t.sentAt).coerceIn(0, RECALL_MS) else 0
@@ -109,6 +118,7 @@ class ScreenBook(
             }
         }
         _heard.value = Heard(req.till, req.tillName, now, req.screen)
+        if (fresh > 0) _arrived.tryEmit(fresh)
         Wire.encode(
             WireReply(
                 ok = true, build = build, epoch = shelf.epoch(), seq = shelf.lastSeq(req.till),

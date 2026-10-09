@@ -16,6 +16,8 @@ import com.restopos.core.kitchen.WireMark
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.pushNow
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -124,10 +126,24 @@ class Kitchen @Inject constructor(
         kick.now()
     }
 
+    private val _ready = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    // A takeaway or delivery the kitchen has just finished: what it is called
+    // ("A-12"). The till says so with a sound, whichever of its screens is
+    // open, and counts it on the Takeaway key until it is handed over.
+    val ready: SharedFlow<String> = _ready
+
     // The ticket leaves this till's screen; a takeaway whose last ticket it
-    // was is ready.
+    // was is marked ready.
     private suspend fun done(kdsId: String, ticketId: String) {
-        if (db.tickets().ticket(ticketId)?.stage == "kitchen" && db.service().kdsOpenFor(ticketId) == 0) tickets.setStage(ticketId, "ready")
+        val t = db.tickets().ticket(ticketId) ?: return
+        if (t.stage == "kitchen" && db.service().kdsOpenFor(ticketId) == 0) {
+            tickets.setStage(ticketId, "ready")
+            // The sound is made here and not by whichever screen is open: a
+            // till that has locked itself still hears from its kitchen
+            // screens, and whoever is near it should hear that the food is up.
+            com.restopos.core.common.Chime.ready()
+            _ready.tryEmit(t.order_no ?: t.name ?: "A takeaway")
+        }
     }
 
     // Bump on this till's Kitchen screen: the whole ticket is at the pass and

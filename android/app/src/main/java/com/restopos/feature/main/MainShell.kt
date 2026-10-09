@@ -167,7 +167,10 @@ private val SHOP_ONLY = setOf(Screen.Sell, Screen.Products, Screen.StockCheck)
 // display and bookings. Another plan keeps Send to kitchen and its printers.
 private val PREMIUM_ONLY = setOf(Screen.Kitchen, Screen.Bookings)
 
-data class Badges(val takeaway: Int = 0, val kitchen: Int = 0, val bookings: Int = 0)
+// The numbers on the keys. `takeaway` is the takeaways and deliveries taken
+// and not yet sent to the kitchen (red); `ready` the ones the kitchen has
+// finished, waiting to be handed over (green, beside it on the same key).
+data class Badges(val takeaway: Int = 0, val kitchen: Int = 0, val bookings: Int = 0, val ready: Int = 0)
 
 // A newer build of the till: none, offered, being fetched, or here and ready to install.
 sealed interface Update {
@@ -230,6 +233,13 @@ class ShellViewModel @Inject constructor(
         // for as long as it runs: an order waiting for a screen that was off
         // goes to it when it is back, whichever screen of the till is open.
         screens.start()
+        // The kitchen has finished a takeaway (Bump, on a kitchen screen or on
+        // this till's own Kitchen screen): it is marked ready, the till makes
+        // a sound (Kitchen), says which one here, whichever screen is open,
+        // and the Takeaway key counts it as ready. The owner: "for takeaway,
+        // when bumping it should appear n + 1 in the takeaway with a sound",
+        // "marked as ready".
+        viewModelScope.launch { kitchen.ready.collect { label -> Toaster.say("$label is ready to hand over") } }
     }
     val clockAhead: StateFlow<Long?> = api.clockAhead
     val updateRequired: StateFlow<Boolean> = api.updateRequired
@@ -244,7 +254,11 @@ class ShellViewModel @Inject constructor(
     val badges: StateFlow<Badges> = store.flatMapLatest { s ->
         if (s == null) emptyFlow()
         else combine(db.service().board(s), db.service().kdsLines(), service.bookingsToday(s)) { board, kitchen, bookings ->
-            Badges(board.count { it.stage == "new" }, kitchen.mapNotNull { it.kds_id }.distinct().size, bookings.count { it.status == "confirmed" || it.status == "pending" })
+            Badges(
+                board.count { it.stage == "new" }, kitchen.mapNotNull { it.kds_id }.distinct().size, bookings.count { it.status == "confirmed" || it.status == "pending" },
+                // marked ready by the kitchen (or on the board) and not handed over yet
+                ready = board.count { it.stage == "ready" },
+            )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Badges())
 
@@ -533,6 +547,8 @@ fun MainShell(
                             VIcon(n.icon, 19.dp, if (onPill) V.OnText else V.Text2)
                             T(n.label(), 15.sp, 700, if (onPill) V.OnText else V.Text2)
                             if (count > 0) Badge(count, when (n.screen) { Screen.Takeaway -> V.Red; Screen.Kitchen -> V.Blue; else -> Color(0xFF6243C8) })
+                            // ready to hand over: one more each time the kitchen bumps a takeaway
+                            if (n.screen == Screen.Takeaway && badges.ready > 0) Badge(badges.ready, V.Ok)
                         }
                     }
                 }
@@ -718,7 +734,7 @@ private fun SideMenu(
                 Caps(L.service, modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 6.dp))
                 service(premium).forEach { n ->
                     val count = when (n.screen) { Screen.Takeaway -> badges.takeaway; Screen.Kitchen -> badges.kitchen; Screen.Bookings -> badges.bookings; else -> 0 }
-                    Entry(n, lit == n.screen, count, when (n.screen) { Screen.Takeaway -> V.Red; Screen.Kitchen -> V.Blue; else -> Color(0xFF6243C8) }) { onGo(n.screen) }
+                    Entry(n, lit == n.screen, count, when (n.screen) { Screen.Takeaway -> V.Red; Screen.Kitchen -> V.Blue; else -> Color(0xFF6243C8) }, ready = if (n.screen == Screen.Takeaway) badges.ready else 0) { onGo(n.screen) }
                 }
                 Caps(L.backOffice, modifier = Modifier.padding(start = 12.dp, top = 16.dp, bottom = 6.dp))
                 BACK.forEach { n -> Entry(n, lit == n.screen, 0, V.Red) { onGo(n.screen) } }
@@ -759,7 +775,7 @@ private fun SideMenu(
 }
 
 @Composable
-private fun Entry(n: Nav, on: Boolean, count: Int, badge: Color, onClick: () -> Unit) {
+private fun Entry(n: Nav, on: Boolean, count: Int, badge: Color, ready: Int = 0, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().height(54.dp).clip(RoundedCornerShape(12.dp)).background(if (on) V.Key else Color.Transparent).clickable(onClick = onClick).padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -767,6 +783,7 @@ private fun Entry(n: Nav, on: Boolean, count: Int, badge: Color, onClick: () -> 
         VIcon(n.icon, 20.dp, if (on) V.Text else V.Dim)
         T(n.label(), 16.sp, 700, if (on) V.Text else V.Dim, Modifier.weight(1f))
         if (count > 0) Badge(count, badge, 22.dp)
+        if (ready > 0) Badge(ready, V.Ok, 22.dp)
     }
 }
 

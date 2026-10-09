@@ -65,6 +65,12 @@ class DemoReceiver : BroadcastReceiver() {
         // A scan with no scanner (an emulator has none, and keys typed on a PC
         // are too slow to be taken for one): the code goes where a scan goes.
         //   adb shell am broadcast -n com.restopos.app/com.restopos.debug.DemoReceiver -a com.restopos.app.DEMO_SCAN --es code S1-T1-000123
+        // The till's sounds, to be heard without ringing anything up:
+        //   adb shell am broadcast -n com.restopos.app/com.restopos.debug.DemoReceiver -a com.restopos.app.DEMO_CHIME --es which ready
+        if (intent.action == CHIME) {
+            if (intent.getStringExtra("which") == "ready") com.restopos.core.common.Chime.ready() else com.restopos.core.common.Chime.order()
+            return
+        }
         if (intent.action == SCAN) {
             intent.getStringExtra("code")?.trim()?.takeIf { it.isNotEmpty() }?.let { com.restopos.core.common.Scanner.scanned(it) }
             return
@@ -202,5 +208,6 @@ class DemoReceiver : BroadcastReceiver() {
         const val TAG = "DemoShop"
         const val PULL = "com.restopos.app.DEMO_PULL"
         const val SCAN = "com.restopos.app.DEMO_SCAN"
+        const val CHIME = "com.restopos.app.DEMO_CHIME"
     }
 }

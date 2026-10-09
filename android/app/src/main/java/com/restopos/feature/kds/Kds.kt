@@ -182,14 +182,7 @@ fun KdsBoard(ui: KdsUi, prefs: KitchenPrefs, onTap: (String) -> Unit, onBump: (S
         if (!ui.loaded) return@LaunchedEffect
         val before = seen
         seen = ids.toSet()
-        if (prefs.sound && before != null && ids.any { it !in before }) {
-            runCatching {
-                val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 90)
-                tone.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 300)
-                delay(600)
-                tone.release()
-            }
-        }
+        if (prefs.sound && before != null && ids.any { it !in before }) com.restopos.core.common.Chime.order()
     }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(1000) } }
