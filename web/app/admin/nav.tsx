@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bug, Store } from "lucide-react";
+import { Bug, Gauge, Store } from "lucide-react";
 import { Wait } from "../backoffice/busy";
 
 // The admin area's pages, in the bar. A client's own page counts as being
@@ -10,6 +10,7 @@ import { Wait } from "../backoffice/busy";
 const PAGES = [
   { href: "/admin", label: "Clients", icon: Store, here: (p: string) => p === "/admin" || p.startsWith("/admin/tenants") },
   { href: "/admin/crashes", label: "Crashes", icon: Bug, here: (p: string) => p.startsWith("/admin/crashes") },
+  { href: "/admin/usage", label: "Usage", icon: Gauge, here: (p: string) => p.startsWith("/admin/usage") },
 ];
 
 export function AdminNav() {

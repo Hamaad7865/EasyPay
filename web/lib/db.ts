@@ -128,6 +128,29 @@ async function begin(tenantId: string, readOnly: boolean): Promise<Held> {
   }
 }
 
+// Which five minutes each client was last noted in by this server. The admin
+// area's Usage page estimates which client kept the database awake from one
+// mark for a client in each five-minute slot it was active in (migration
+// 0090), so a client is noted once per slot here and the rest of its requests
+// ask nothing extra.
+const noted = new Map<string, number>();
+
+// Says the client was active, on the connection its transaction has just
+// closed on: the role is the owner's again by then, the only one that may
+// say so. After the transaction and never in it, since a page that only reads
+// runs in a read-only one. Never in the way of a page: a mark that fails is
+// dropped.
+async function note(client: PoolClient, tenantId: string): Promise<void> {
+  const slot = Math.floor(Date.now() / 300_000);
+  if (noted.get(tenantId) === slot) return;
+  noted.set(tenantId, slot);
+  try {
+    await client.query("select platform.usage_mark($1::uuid)", [tenantId]);
+  } catch {
+    noted.delete(tenantId);
+  }
+}
+
 // Tenant-stamped transaction: least-privilege role + GUC (spec 4.2.3).
 // Callers pass tenantId from the session lookup, never from the client.
 // One explicit transaction: SET LOCAL only lives inside a txn block, and a
@@ -142,6 +165,7 @@ export async function withTenant<T>(
   try {
     const out = await fn(held.client);
     await held.client.query("COMMIT");
+    await note(held.client, tenantId);
     await held.done();
     return out;
   } catch (e) {
@@ -167,10 +191,13 @@ export async function readTenant<T>(
 ): Promise<T> {
   const held = await begin(tenantId, true);
   const end = (how: "COMMIT" | "ROLLBACK") =>
-    held.client.query(how).then(
-      () => held.done(),
-      () => held.done(true),
-    );
+    held.client
+      .query(how)
+      .then(() => note(held.client, tenantId))
+      .then(
+        () => held.done(),
+        () => held.done(true),
+      );
   try {
     const out = await fn(held.client);
     const closing = end("COMMIT");

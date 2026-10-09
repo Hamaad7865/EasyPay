@@ -116,6 +116,30 @@ function check(name, cond, extra) {
     check(`${name}: final counts split by tenant`, totalA >= 25 && totalB >= 25, `A=${totalA} B=${totalB}`);
   }
 
+  // T5 (migration 0090): the back office says which client was active, for
+  // the admin area's Usage page. After the client's transaction, never in it:
+  // a page that only reads runs in a read-only one. The till API's helper says
+  // nothing: a till is noted when it syncs (device_heard).
+  {
+    const { readTenant } = require(path.join(dir, 'web', 'lib', 'db.js'));
+    const C = crypto.randomUUID(), D = crypto.randomUUID();
+    await admin.query(`insert into tenants (id, tenant_id, name) values ('${C}','${C}','H-C'), ('${D}','${D}','H-D')`);
+    const marked = async (t) => (await admin.query(
+      `select coalesce(sum(slots), 0)::int as slots from platform.usage_hours where tenant_id = $1 and hour > now() - interval '2 hours'`, [t])).rows[0].slots;
+    const read = await readTenant(C, (c) => c.query(`select count(*)::int n from categories`).then((r) => r.rows[0].n));
+    // on a Node server the page has its rows before the transaction is closed behind it, and the mark follows that
+    for (let i = 0; i < 40 && (await marked(C)) === 0; i++) await new Promise((r) => setTimeout(r, 250));
+    check('readTenant: a page that only reads still gets its rows', read === 0, String(read));
+    check('readTenant: and its client is noted as active', (await marked(C)) > 0);
+    check('withTenant: a client that saved something is noted as active', (await marked(A)) > 0 && (await marked(B)) > 0);
+    await asTenant(D, (q) => q(`select count(*)::int n from categories`).then((r) => r.rows));
+    check('asTenant: the till API\'s helper notes nobody', (await marked(D)) === 0);
+    let threw = false;
+    try { await readTenant(C, (c) => c.query(`insert into categories (tenant_id, name) values ('${C}','No')`)); } catch { threw = true; }
+    check('readTenant: a write is still refused', threw);
+    await admin.query(`delete from tenants where tenant_id in ('${C}','${D}')`);
+  }
+
   for (const t of ['categories', 'tenants']) await admin.query(`delete from ${t} where tenant_id in ('${A}','${B}')`);
   await admin.end();
   console.log(failures === 0 ? 'HELPERS PASS' : `HELPERS FAIL (${failures})`);
