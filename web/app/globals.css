@@ -1149,6 +1149,64 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 .hours i.peak { background: var(--accent); }
 .hours span { font-size: 11px; color: var(--ink3); margin-top: 6px; font-variant-numeric: tabular-nums; }
 
+/* ---- Point of sale: the till cards, and a till's own page ----
+   After Carfection's device cards and its device page. A card is one link
+   into the till; the dot is green when the till synced in the last half hour
+   and grey otherwise, which is all the back office can know. */
+.tills { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
+.bo-main .tills-head { margin: 28px 0 12px; color: var(--ink2); }
+.bo-main a.till {
+  display: block; padding: 16px 18px; background: var(--surface); border: 1px solid var(--glass-line); border-radius: var(--radius);
+  box-shadow: var(--shadow-sm); color: var(--ink); text-decoration: none; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.bo-main a.till:hover { border-color: var(--accent-line); box-shadow: var(--shadow-md); text-decoration: none; }
+.bo-main a.till:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bo-main a.till.off { border-style: dashed; border-color: var(--line-strong); box-shadow: none; }
+.till-top { display: flex; align-items: flex-start; gap: 12px; }
+.till-ico { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--accent); }
+.till-ico svg { width: 20px; height: 20px; }
+.till-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.till-who strong { font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.till-sync { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink2); }
+.till-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0; font-size: 12px; color: var(--ink3); }
+.dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ink4); }
+.dot.on { background: var(--green); }
+.till-go { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line-strong); color: var(--ink2); transition: border-color 0.15s, color 0.15s; }
+.till-go svg { width: 16px; height: 16px; }
+a.till:hover .till-go { border-color: var(--accent); color: var(--accent); }
+.till-day { display: block; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; }
+.till-day.cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.till-day.cols > span { min-width: 0; }
+.till-day small { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink3); }
+.till-day b { display: block; margin-top: 2px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.till-day em { display: block; font-style: normal; font-size: 11.5px; color: var(--ink3); font-variant-numeric: tabular-nums; }
+.till-quiet { color: var(--ink3); }
+
+.till-head { display: flex; align-items: center; gap: 14px; margin: 0 0 18px; }
+.bo-main .till-head h1 { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 4px; }
+.stats.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.bo-main h3.closure { margin: 22px 0 10px; font-size: 13.5px; color: var(--ink2); }
+
+/* Traceability: a band for each day, then a round mark, what happened, and
+   its time large at the end of the line. */
+.trace { max-width: 780px; }
+.bo-main .trace-day { display: flex; align-items: center; gap: 12px; margin: 22px 0 16px; font-size: 13.5px; font-weight: 700; }
+.trace-day span { flex: none; padding: 7px 13px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--line); }
+.trace-day::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.trace ol { list-style: none; margin: 0; padding: 0; }
+.trace li { display: flex; align-items: flex-start; gap: 14px; padding-bottom: 22px; }
+.trace-ico { flex: none; display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; border: 1.5px solid var(--line-strong); background: var(--surface); color: var(--ink2); }
+.trace-ico svg { width: 18px; height: 18px; }
+.trace-ico.green { border-color: var(--green-line); background: var(--green-bg); color: var(--green); }
+.trace-ico.amber { border-color: var(--amber-line); background: var(--amber-bg); color: var(--amber); }
+.trace-ico.red { border-color: var(--red-line); background: var(--red-bg); color: var(--red); }
+.trace-ico.blue { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
+.trace-what { flex: 1; min-width: 0; padding-top: 3px; }
+.trace-what b { display: block; font-size: 12.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; }
+.trace-detail { display: block; margin-top: 2px; font-size: 13px; color: var(--ink2); overflow-wrap: anywhere; }
+.trace-what .badge { margin-top: 6px; }
+.trace time { flex: none; padding-top: 3px; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
 /* ---- receipt preview (hardware) ---- */
 
 .paper-wrap { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; display: grid; place-items: start center; }
@@ -1183,8 +1241,8 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
   .bo-nav { -webkit-mask-image: none; mask-image: none; padding-bottom: 12px; }
   .bo-nav { overflow: visible; }
   .bo-main { padding: 20px 4px 40px; }
-  .floor-wrap, .grid-2, .grid-3, .form-row { grid-template-columns: 1fr; }
-  .kpis, .kpis.six, .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .floor-wrap, .grid-2, .grid-3, .form-row, .tills { grid-template-columns: 1fr; }
+  .kpis, .kpis.six, .stats, .stats.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dash-split { grid-template-columns: 1fr; }
   .bo-main .home-head h1 { font-size: 30px; }
 }

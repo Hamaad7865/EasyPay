@@ -1,8 +1,6 @@
 import {
-  Activity,
   ArrowLeftRight,
   BadgePercent,
-  Banknote,
   BarChart3,
   Barcode,
   Boxes,
@@ -86,9 +84,14 @@ export const GROUPS: NavGroup[] = [
     title: "Point of sale",
     icon: TabletSmartphone,
     links: [
-      { href: "/backoffice/pos/tills", label: "Tills", icon: TabletSmartphone, words: "point of sale pos devices tablets terminals connected online offline last sync version" },
-      { href: "/backoffice/pos/activity", label: "Till activity", icon: Activity, words: "log history events what happened late offline crash devices" },
-      { href: "/backoffice/pos/cash", label: "Cash flow", icon: Banknote, words: "drawer cash in out float ledger balance movements money" },
+      // one page of till cards; each till's own page has its activity (Traceability) and its cash flow
+      {
+        href: "/backoffice/pos",
+        label: "Tills",
+        icon: TabletSmartphone,
+        words:
+          "point of sale pos devices tablets terminals connected online offline last sync version rename deactivate till activity traceability log history events what happened late crash cash flow drawer cash in out float ledger balance movements money cash-ups variance",
+      },
     ],
   },
   {

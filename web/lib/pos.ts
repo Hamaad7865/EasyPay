@@ -53,8 +53,6 @@ export function span(seconds: number): string {
 export const LATE_SECONDS = 120;
 export const isLate = (seconds: number | null) => seconds !== null && seconds > LATE_SECONDS;
 
-export const STATE_BADGE: Record<TillState, string> = { off: "", never: "", ok: "green", idle: "" };
-
 export function stateLine(state: TillState, seen: Date | null, now: Date): string {
   switch (state) {
     case "off": return "Deactivated";
@@ -62,6 +60,98 @@ export function stateLine(state: TillState, seen: Date | null, now: Date): strin
     case "ok": return `Synced ${ago(seen!, now)}`;
     case "idle": return `Last synced ${ago(seen!, now)}`;
   }
+}
+
+// ---- a till's own page ----
+
+// Its tabs, after Carfection's device page: what the address calls each, and
+// what the page does.
+export const TABS = [["general", "General"], ["settings", "Settings"], ["cash", "Cash flow"], ["trace", "Traceability"]] as const;
+export type Tab = (typeof TABS)[number][0];
+export const tabOf = (v: string | undefined): Tab => TABS.find(([key]) => key === v)?.[0] ?? "general";
+
+const TILL_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const WRITTEN_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+// Where an address of the three pages there used to be goes now. Tills is
+// the cards; Till activity and Cash flow are tabs of the till they named,
+// and the cards when they named none. Whether a day written as one is a day
+// of the calendar is the page's to say.
+export function movedTo(page: "tills" | "activity" | "cash", sp: { till?: string; day?: string }): string {
+  if (page === "tills" || !sp.till || !TILL_ID.test(sp.till)) return "/backoffice/pos";
+  if (page === "cash") return `/backoffice/pos/${sp.till}?tab=cash`;
+  const day = sp.day && WRITTEN_DAY.test(sp.day) ? `&from=${sp.day}&to=${sp.day}` : "";
+  return `/backoffice/pos/${sp.till}?tab=trace${day}`;
+}
+
+// A drawer counted against what it should have held. Nothing, for a day that
+// was not counted.
+export function variance(counted: unknown, expected: unknown): { off: number; tone: "green" | "red" | "amber"; word: "Balanced" | "Short" | "Over" } | null {
+  if (counted === null || counted === undefined || expected === null || expected === undefined) return null;
+  const off = Number(counted) - Number(expected);
+  return off === 0 ? { off, tone: "green", word: "Balanced" } : off < 0 ? { off, tone: "red", word: "Short" } : { off, tone: "amber", word: "Over" };
+}
+
+// The events of a timeline under their days, in the order they came: the day
+// is the one in the business's own timezone, written 2026-10-09.
+export function byDay<E extends { at: string }>(events: E[], tz: string): { day: string; events: E[] }[] {
+  const dayOf = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+  const out: { day: string; events: E[] }[] = [];
+  for (const e of events) {
+    const day = dayOf.format(new Date(e.at));
+    if (out.length === 0 || out[out.length - 1].day !== day) out.push({ day, events: [] });
+    out[out.length - 1].events.push(e);
+  }
+  return out;
+}
+
+// What each kind of event is called, and the colour of its mark.
+export const EVENT: Record<string, [string, string]> = {
+  sale: ["Sale", "green"],
+  refund: ["Refund", "red"],
+  cash_in: ["Cash in", "green"],
+  cash_out: ["Cash out", "amber"],
+  cash_drawer: ["Drawer opened", "amber"],
+  count: ["Drawer counted", "blue"],
+  open: ["Day opened", "blue"],
+  close: ["Day closed", "blue"],
+  clock_in: ["Clocked in", ""],
+  clock_out: ["Clocked out", ""],
+  crash: ["App stopped unexpectedly", "red"],
+};
+
+// What an event says about itself, under its name. `m` writes an amount as
+// the business writes money.
+export function eventDetail(e: Event, m: (v: string | number | null) => string): string {
+  const differs = (counted: string | null, expected: string | null) => {
+    const v = variance(counted, expected);
+    return v === null ? "" : v.off === 0 ? ", balanced" : `, ${v.off < 0 ? "short" : "over"} by ${m(Math.abs(v.off))}`;
+  };
+  const counted = () => `Counted ${m(e.amount)}, expected ${m(e.extra)}${differs(e.amount, e.extra)}`;
+  const and = (a: string, b: string | null) => (b ? `${a} · ${b}` : a);
+  switch (e.kind) {
+    case "sale": return and(e.ref ?? "", e.amount === null ? null : m(e.amount));
+    case "refund": return and(e.ref ?? "", e.amount === null ? null : "-" + m(e.amount));
+    case "cash_in": return and(m(e.amount), e.words);
+    case "cash_out": return and("-" + m(e.amount), e.words);
+    case "cash_drawer": return "With no sale";
+    case "count": return counted();
+    case "open": return `Opening float ${m(e.amount)}`;
+    case "close": return `Day closing no. ${e.ref}` + (e.amount !== null && e.extra !== null ? `. ${counted()}` : "");
+    case "crash": return (e.words ?? "") + (e.ref ? ` (version ${e.ref})` : "");
+    default: return "";
+  }
+}
+
+// A payment into or out of a till, as the Cash flow tab lists them.
+export type Move = { at: string; dir: "in" | "out"; who: string | null; method: string; ref: string | null; amount: string; type: string; comment: string | null };
+
+// The payments of a period, in and out apart, each with its total.
+export function splitMoves<M extends Move>(rows: M[]): { inflows: M[]; outflows: M[]; inTotal: number; outTotal: number } {
+  const inflows = rows.filter((r) => r.dir === "in");
+  const outflows = rows.filter((r) => r.dir === "out");
+  const sum = (list: M[]) => list.reduce((a, r) => a + Number(r.amount), 0);
+  return { inflows, outflows, inTotal: sum(inflows), outTotal: sum(outflows) };
 }
 
 // ---- queries ----
@@ -145,13 +235,13 @@ export type Till = {
 export const expectedCash = (float: unknown, taken: unknown, cashIn: unknown, cashOut: unknown) =>
   Number(float ?? 0) + Number(taken ?? 0) + Number(cashIn ?? 0) - Number(cashOut ?? 0);
 
-// What a till did on one day, newest first: its day opened and closed, each
-// sale and refund, cash put in and taken out, the drawer opened with no sale
-// and counted, people clocking in and out on it, and the app stopping
-// unexpectedly. `late` is how many seconds after the till wrote it down the
-// server had it: a sale made offline shows here. $1 tenant, $2 the day,
-// $3 a till or null for all of them, $4 how many at most, $5 the timezone
-// the day is in.
+// What a till did from one day to another, newest first: its day opened and
+// closed, each sale and refund, cash put in and taken out, the drawer opened
+// with no sale and counted, people clocking in and out on it, and the app
+// stopping unexpectedly. `late` is how many seconds after the till wrote it
+// down the server had it: a sale made offline shows here. $1 tenant, $2 the
+// first day, $3 the last, $4 a till or null for all of them, $5 how many at
+// most, $6 the timezone the days are in.
 export const ACTIVITY = `
   with ev as (
     select coalesce(r.device_time, r.created_at) as at, r.type::text as kind, r.device_id, r.employee_id,
@@ -190,35 +280,16 @@ export const ACTIVITY = `
     from ev
     left join pos_devices d on d.tenant_id = $1 and d.id = ev.device_id
     left join employees e on e.tenant_id = $1 and e.id = ev.employee_id
-   where ev.at >= ($2::date::timestamp at time zone $5::text)
-     and ev.at < (($2::date + 1)::timestamp at time zone $5::text)
-     and ($3::uuid is null or ev.device_id = $3::uuid)
+   where ev.at >= ($2::date::timestamp at time zone $6::text)
+     and ev.at < (($3::date + 1)::timestamp at time zone $6::text)
+     and ($4::uuid is null or ev.device_id = $4::uuid)
    order by ev.at desc
-   limit $4`;
+   limit $5`;
 
 export type Event = {
   at: string; kind: string; device_id: string | null; till: string | null; code: string | null; who: string | null;
   ref: string | null; words: string | null; amount: string | null; extra: string | null; late: number | null; total: number;
 };
-
-// The days (shifts) of a till, newest first, for the cash flow's "which day".
-// $1 tenant, $2 the till.
-export const SHIFTS = `
-  select sh.id, sh.opened_at, sh.closed_at
-    from shifts sh where sh.tenant_id = $1 and sh.device_id = $2 and sh.deleted_at is null
-   order by sh.opened_at desc limit 60`;
-
-// One day on a till, as its drawer saw it. $1 tenant, $2 the shift.
-export const SHIFT = `
-  select sh.id, sh.device_id, sh.opened_at, sh.closed_at, sh.opening_float, sh.expected_cash, sh.counted_cash,
-         ob.name as opened_by, cb.name as closed_by, d.name as till, d.code,
-         ${CASH_TAKEN()} as cash_taken, ${MOVED("in")} as cash_in, ${MOVED("out")} as cash_out,
-         (select dc.number from day_closes dc where dc.tenant_id = sh.tenant_id and dc.device_id = sh.device_id and dc.closed_at = sh.closed_at and dc.deleted_at is null limit 1) as close_no
-    from shifts sh
-    join pos_devices d on d.tenant_id = sh.tenant_id and d.id = sh.device_id
-    left join employees ob on ob.tenant_id = sh.tenant_id and ob.id = sh.opened_by
-    left join employees cb on cb.tenant_id = sh.tenant_id and cb.id = sh.closed_by
-   where sh.tenant_id = $1 and sh.id = $2 and sh.deleted_at is null`;
 
 // Everything that touched that drawer, in the order it happened: each cash
 // payment and cash refund, cash put in and taken out, the drawer opened with
@@ -250,3 +321,135 @@ export const LEDGER = `
   order by x.at, x.kind`;
 
 export type Entry = { at: string; kind: string; ref: string | null; words: string | null; who: string | null; amount: string; counted: string | null; expected: string | null };
+
+// ---- the cards, and a till's own page ----
+
+// A payment's amount as it counts for the till: a refund gives it back.
+const SIGNED = `case when r.type = 'refund' then -p.amount else p.amount end`;
+
+// The days that were closed, newest first, across every till: what each
+// drawer should have held and what was counted in it. $1 tenant, $2 how many.
+export const CASH_UPS = `
+  select sh.id, sh.device_id, d.name as till, d.code, sh.opened_at, sh.closed_at, sh.expected_cash, sh.counted_cash
+    from shifts sh
+    join pos_devices d on d.tenant_id = sh.tenant_id and d.id = sh.device_id
+   where sh.tenant_id = $1 and sh.deleted_at is null and sh.closed_at is not null
+   order by sh.closed_at desc
+   limit $2`;
+
+export type CashUp = { id: string; device_id: string; till: string; code: string; opened_at: string; closed_at: string; expected_cash: string | null; counted_cash: string | null };
+
+// What a till took on one day, by payment method: its sales, less what it
+// gave back. A payment whose type was corrected counts as what it became.
+// $1 tenant, $2 the till, $3 the day, $4 the timezone the day is in.
+export const TAKEN = `
+  select pt.name, pt.kind::text as kind, sum(${SIGNED})::bigint as amount
+    from receipts r
+    join receipt_payments_effective p on p.tenant_id = r.tenant_id and p.receipt_id = r.id
+    join payment_types pt on pt.tenant_id = r.tenant_id and pt.id = p.payment_type_id
+   where r.tenant_id = $1 and r.device_id = $2 and r.deleted_at is null
+     and (coalesce(r.device_time, r.created_at) at time zone $4::text)::date = $3::date
+   group by pt.name, pt.kind, pt.sort_order
+   order by pt.sort_order, pt.name`;
+
+export type Taken = { name: string; kind: string; amount: string };
+
+// A till's days, newest first, with who opened and closed each, what was
+// counted and what was expected. A day still open says what moved its drawer
+// so far. $1 tenant, $2 the till, $3 how many.
+export const DAYS = `
+  select sh.id, sh.opened_at, sh.closed_at, ob.name as opened_by, cb.name as closed_by, sh.opening_float, sh.expected_cash, sh.counted_cash,
+         case when sh.closed_at is null then ${CASH_TAKEN()} end as cash_taken,
+         case when sh.closed_at is null then ${MOVED("in")} end as cash_in,
+         case when sh.closed_at is null then ${MOVED("out")} end as cash_out
+    from shifts sh
+    left join employees ob on ob.tenant_id = sh.tenant_id and ob.id = sh.opened_by
+    left join employees cb on cb.tenant_id = sh.tenant_id and cb.id = sh.closed_by
+   where sh.tenant_id = $1 and sh.device_id = $2 and sh.deleted_at is null
+   order by sh.opened_at desc
+   limit $3`;
+
+export type TillDay = {
+  id: string; opened_at: string; closed_at: string | null; opened_by: string | null; closed_by: string | null; opening_float: string;
+  expected_cash: string | null; counted_cash: string | null; cash_taken: string | null; cash_in: string | null; cash_out: string | null;
+};
+
+// The days a till closed on one date, newest first, as each drawer was left:
+// its float, the cash it took, what was put in and paid out, what was counted
+// against what was expected, and what did not go in the drawer at all, by
+// payment method. $1 tenant, $2 the till, $3 the date, $4 the timezone.
+export const CLOSURES = `
+  select sh.id, sh.opened_at, sh.closed_at, sh.opening_float, sh.expected_cash, sh.counted_cash, ob.name as opened_by, cb.name as closed_by,
+         ${CASH_TAKEN()} as cash_taken, ${MOVED("in")} as cash_in, ${MOVED("out")} as cash_out,
+         (select dc.number from day_closes dc where dc.tenant_id = sh.tenant_id and dc.device_id = sh.device_id and dc.closed_at = sh.closed_at and dc.deleted_at is null limit 1) as close_no,
+         coalesce((select jsonb_agg(jsonb_build_object('name', q.name, 'amount', q.amount) order by q.sort_order, q.name)
+            from (select pt.name, pt.sort_order, sum(${SIGNED})::bigint as amount
+                    from receipts r
+                    join receipt_payments_effective p on p.tenant_id = r.tenant_id and p.receipt_id = r.id
+                    join payment_types pt on pt.tenant_id = r.tenant_id and pt.id = p.payment_type_id and pt.kind <> 'cash'
+                   where ${IN_SHIFT("r")}
+                   group by pt.name, pt.sort_order
+                  having sum(${SIGNED}) <> 0) q), '[]'::jsonb) as non_cash
+    from shifts sh
+    left join employees ob on ob.tenant_id = sh.tenant_id and ob.id = sh.opened_by
+    left join employees cb on cb.tenant_id = sh.tenant_id and cb.id = sh.closed_by
+   where sh.tenant_id = $1 and sh.device_id = $2 and sh.deleted_at is null and sh.closed_at is not null
+     and (sh.closed_at at time zone $4::text)::date = $3::date
+   order by sh.closed_at desc`;
+
+export type Closure = {
+  id: string; opened_at: string; closed_at: string; opening_float: string; expected_cash: string | null; counted_cash: string | null;
+  opened_by: string | null; closed_by: string | null; cash_taken: string; cash_in: string; cash_out: string; close_no: number | null;
+  non_cash: { name: string; amount: number }[];
+};
+
+// Every payment into and out of a till from one day to another, newest
+// first: each payment of each sale and refund, whatever it was paid with, and
+// the cash put in and paid out. The drawer opened with no sale moved nothing
+// and is not here. Each line says how many its side has in all; only the
+// latest of each side are handed over. $1 tenant, $2 the till, $3 the first
+// day, $4 the last, $5 the timezone, $6 how many of each side at most.
+export const MOVES = `
+  select y.at, y.dir, y.who, y.method, y.ref, y.amount, y.type, y.comment, y.total
+    from (
+      select x.*, count(*) over (partition by x.dir)::int as total, row_number() over (partition by x.dir order by x.at desc) as n
+        from (
+          select coalesce(r.device_time, r.created_at) as at, case when r.type = 'refund' then 'out' else 'in' end as dir, e.name as who, pt.name as method,
+                 r.number::text as ref, p.amount::bigint as amount, case when r.type = 'refund' then 'Refund' else 'Sale' end as type,
+                 case when r.type = 'refund' and o.number is not null then 'Refund of ' || o.number::text end as comment
+            from receipts r
+            join receipt_payments_effective p on p.tenant_id = r.tenant_id and p.receipt_id = r.id
+            join payment_types pt on pt.tenant_id = r.tenant_id and pt.id = p.payment_type_id
+            left join receipts o on o.tenant_id = r.tenant_id and o.id = r.refund_of
+            left join employees e on e.tenant_id = r.tenant_id and e.id = r.employee_id
+           where r.tenant_id = $1 and r.device_id = $2 and r.deleted_at is null
+          union all
+          select coalesce(m.device_time, m.created_at), m.type::text, e.name, 'Cash', null, m.amount::bigint,
+                 case m.type::text when 'in' then 'Cash in' else 'Cash out' end, m.reason
+            from cash_movements m
+            left join employees e on e.tenant_id = m.tenant_id and e.id = m.employee_id
+           where m.tenant_id = $1 and m.device_id = $2 and m.deleted_at is null and m.type::text in ('in', 'out')
+        ) x
+       where x.at >= ($3::date::timestamp at time zone $5::text)
+         and x.at < (($4::date + 1)::timestamp at time zone $5::text)
+    ) y
+   where y.n <= $6
+   order by y.at desc`;
+
+// A till named again by its own business. The code is never changed: it is
+// in every receipt number the till has issued. $1 tenant, $2 the till, $3
+// the name.
+export const RENAME = `update pos_devices set name = $3 where tenant_id = $1 and id = $2 returning id`;
+
+// A till deactivated, or reactivated: what /admin does (0045), by the
+// business itself. $1 tenant, $2 the till, $3 whether it is active.
+export const SET_ACTIVE = `
+  update pos_devices set deleted_at = case when $3::boolean then null else now() end
+   where tenant_id = $1 and id = $2 returning id`;
+
+// A till's name as typed: trimmed, and nothing when it is empty or longer
+// than a card can show.
+export const cleanName = (v: unknown): string | null => {
+  const name = String(v ?? "").trim().replace(/\s+/g, " ");
+  return name.length >= 1 && name.length <= 40 ? name : null;
+};

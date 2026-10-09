@@ -224,7 +224,8 @@ const id = () => crypto.randomUUID();
       const dated = [
         '/backoffice', '/backoffice/reports/sales', '/backoffice/reports/day-close', '/backoffice/reports/items', '/backoffice/reports/orders',
         '/backoffice/reports/tax', '/backoffice/reports/timecards', '/backoffice/insights/sales', '/backoffice/insights/menu', '/backoffice/insights/staff',
-        '/backoffice/stock-movements', '/backoffice/pos/activity', '/backoffice/pos/cash', '/backoffice/pos/tills',
+        // Point of sale's cards take no day; a till's own tabs do, and pos-pages.test.cjs asks them for one no calendar has
+        '/backoffice/stock-movements', '/backoffice/pos',
       ];
       const stopped = [];
       for (const href of dated) {
