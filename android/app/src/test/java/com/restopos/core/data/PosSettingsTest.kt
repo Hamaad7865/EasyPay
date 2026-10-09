@@ -42,4 +42,16 @@ class PosSettingsTest {
         assertTrue(s.onePrinter)
         assertTrue(s.servicePct == 10)
     }
+
+    // The first-run set-up (server 0089). Only a client made since carries the
+    // mark: settings with none are a client that was there before, or a server
+    // that does not know of it, and such a client is never shown the set-up.
+    @Test
+    fun theSetUpIsOpenOnlyWhenTheSettingsSaySo() {
+        assertTrue(PosSettings.parse("""{"setup":"open"}""").setupOpen)
+        assertFalse(PosSettings.parse("""{"setup":"done"}""").setupOpen)
+        assertFalse(PosSettings.parse("""{"plan":"standard"}""").setupOpen)
+        assertFalse(PosSettings.parse(null).setupOpen)
+        assertFalse(PosSettings().setupOpen)
+    }
 }

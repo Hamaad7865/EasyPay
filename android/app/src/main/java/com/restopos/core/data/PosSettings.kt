@@ -43,6 +43,10 @@ data class PosSettings(
     // every key here: a till whose server has not been told about plans yet
     // goes on showing what it showed.
     val premium: Boolean = true,
+    // The business's first-run set-up is still open (server 0089): a tablet
+    // named for it is walked through the set-up. Only a client made since
+    // carries the mark; with none, as for every key here, nothing changes.
+    val setupOpen: Boolean = false,
 ) {
     fun shop(fallbackName: String): Shop =
         Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer, bars = retail)
@@ -85,6 +89,7 @@ data class PosSettings(
                 retail = d.str("businessType") == "retail",
                 // as the server reads it (has_premium): premium, and trial so that a restaurant trying EasyPay sees all of it
                 premium = d.str("plan")?.trim()?.lowercase()?.let { it == "premium" || it == "trial" } ?: true,
+                setupOpen = d.str("setup") == "open",
             )
         }
     }
