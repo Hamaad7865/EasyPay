@@ -59,6 +59,7 @@ class DemoReceiver : BroadcastReceiver() {
         fun db(): TillDatabase
         fun session(): SessionStore
         fun applier(): com.restopos.core.sync.PullApplier
+        fun updater(): com.restopos.core.sync.AppUpdater
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -69,6 +70,39 @@ class DemoReceiver : BroadcastReceiver() {
         //   adb shell am broadcast -n com.restopos.app/com.restopos.debug.DemoReceiver -a com.restopos.app.DEMO_CHIME --es which ready
         if (intent.action == CHIME) {
             if (intent.getStringExtra("which") == "ready") com.restopos.core.common.Chime.ready() else com.restopos.core.common.Chime.order()
+            return
+        }
+        // The till's own updater, without a newer release to be offered: the
+        // download of the file at `url` is started as the update key starts
+        // it, where it gets to is written to the log (tag DemoShop), and with
+        // --ez install true the file is handed to Android's installer. A test
+        // build is never replaced by a release (another key signed it): the
+        // installer opening on the file is as far as this goes.
+        //   adb shell am broadcast -n com.restopos.app/com.restopos.debug.DemoReceiver -a com.restopos.app.DEMO_UPDATE --es url https://.../easypay.apk --ez install true
+        if (intent.action == UPDATE) {
+            val url = intent.getStringExtra("url")?.trim()?.takeIf { it.isNotEmpty() } ?: return
+            val install = intent.getBooleanExtra("install", false)
+            val updater = EntryPointAccessors.fromApplication(context.applicationContext, Deps::class.java).updater()
+            CoroutineScope(Dispatchers.Main).launch {
+                try {
+                    Log.i(TAG, "update: started ${updater.start(intent.getIntExtra("version", 99), url)}")
+                    repeat(180) {
+                        kotlinx.coroutines.delay(1000)
+                        val d = updater.poll()
+                        if (d !is com.restopos.core.sync.Download.Running || it % 5 == 0) Log.i(TAG, "update: $d")
+                        if (d is com.restopos.core.sync.Download.Ready) {
+                            if (install) {
+                                Log.i(TAG, "update: may install ${updater.canInstall()}")
+                                context.startActivity(if (updater.canInstall()) updater.installIntent(d.apk) else updater.allowIntent())
+                            }
+                            return@launch
+                        }
+                        if (d !is com.restopos.core.sync.Download.Running) return@launch
+                    }
+                } catch (e: Throwable) {
+                    Log.e(TAG, "update: stopped by $e")
+                }
+            }
             return
         }
         if (intent.action == SCAN) {
@@ -209,5 +243,6 @@ class DemoReceiver : BroadcastReceiver() {
         const val PULL = "com.restopos.app.DEMO_PULL"
         const val SCAN = "com.restopos.app.DEMO_SCAN"
         const val CHIME = "com.restopos.app.DEMO_CHIME"
+        const val UPDATE = "com.restopos.app.DEMO_UPDATE"
     }
 }

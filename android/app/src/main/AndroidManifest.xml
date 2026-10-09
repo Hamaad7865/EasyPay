@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- the till installs its own update (the key by the clock): Android still asks the person at the till -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- and fetches it without a notification, saying itself where the download has got to
+         (AppUpdater): without this Android refuses the download outright -->
+    <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
     <!-- a receipt printer on a USB cable; a tablet without USB host still installs -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <application

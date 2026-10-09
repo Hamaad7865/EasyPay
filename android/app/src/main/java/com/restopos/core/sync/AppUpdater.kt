@@ -37,18 +37,33 @@ class AppUpdater @Inject constructor(@ApplicationContext private val context: Co
 
     private val file: File get() = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), FILE)
 
-    // Starts the download, unless this very build is already on its way or already here.
-    fun start(versionCode: Int, url: String) {
-        if (version == versionCode && id != null) return
-        val m = manager ?: return
-        file.delete() // what an earlier try left behind
-        val request = DownloadManager.Request(Uri.parse(url))
-            .setTitle("EasyPay update")
-            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, FILE)
-            // the till says where it has got to itself; nothing sits in the tablet's notifications
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
-        id = m.enqueue(request)
-        version = versionCode
+    // Starts the download, unless this very build is already on its way or
+    // already here. False when this tablet would not take it: said, never
+    // thrown, since it is asked from a key someone has just tapped.
+    //
+    // The till says where the download has got to itself, so it is asked for
+    // without a notification, which Android allows only an app that declares
+    // DOWNLOAD_WITHOUT_NOTIFICATION (the manifest does). 0.5.0 to 0.6.0 did
+    // not declare it: Android refused the request ("Invalid value for
+    // visibility: 2"), nothing caught that, and tapping Download closed the
+    // till. A tablet that still refuses is asked the ordinary way, with the
+    // notification.
+    fun start(versionCode: Int, url: String): Boolean {
+        if (version == versionCode && id != null) return true
+        val m = manager ?: return false
+        return runCatching {
+            file.delete() // what an earlier try left behind
+            val request = { visibility: Int ->
+                DownloadManager.Request(Uri.parse(url))
+                    .setTitle("EasyPay update")
+                    .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, FILE)
+                    .setNotificationVisibility(visibility)
+            }
+            id = runCatching { m.enqueue(request(DownloadManager.Request.VISIBILITY_HIDDEN)) }
+                .getOrElse { m.enqueue(request(DownloadManager.Request.VISIBILITY_VISIBLE)) }
+            version = versionCode
+            true
+        }.getOrDefault(false)
     }
 
     fun poll(): Download {

@@ -16,6 +16,7 @@
                 <action android:name="com.restopos.app.DEMO_PULL" />
                 <action android:name="com.restopos.app.DEMO_SCAN" />
                 <action android:name="com.restopos.app.DEMO_CHIME" />
+                <action android:name="com.restopos.app.DEMO_UPDATE" />
             </intent-filter>
         </receiver>
     </application>

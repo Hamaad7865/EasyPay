@@ -191,7 +191,10 @@ class KitchenModeViewModel @Inject constructor(
 
     fun fetchUpdate() {
         val r = (update.value as? KitchenUpdate.Offered)?.release ?: return
-        updater.start(r.version, r.url)
+        if (!updater.start(r.version, r.url)) {
+            Toaster.say("This tablet would not start the download. The kitchen screen goes on working as it is.")
+            return
+        }
         update.value = KitchenUpdate.Fetching(r)
         viewModelScope.launch {
             while (true) {

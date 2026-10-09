@@ -337,7 +337,10 @@ class ShellViewModel @Inject constructor(
     fun fetchUpdate() {
         val r = update.value.release ?: return
         if (update.value is Update.Fetching || update.value is Update.Ready) return
-        updater.start(r.version, r.url)
+        if (!updater.start(r.version, r.url)) {
+            Toaster.say("This tablet would not start the download. The till goes on working as it is.")
+            return
+        }
         update.value = Update.Fetching(r)
         viewModelScope.launch {
             while (true) {
