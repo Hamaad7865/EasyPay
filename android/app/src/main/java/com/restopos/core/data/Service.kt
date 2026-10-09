@@ -361,7 +361,7 @@ class ServiceRepository @Inject constructor(
         } catch (e: java.io.IOException) {
             error("This needs a connection: the server has to answer first. Try again when the tablet is online.")
         } catch (e: AuthRequired) {
-            error("This tablet has to be signed in again before the menu can be changed from it.")
+            error("This tablet has to be signed in again before anything can be changed from it.")
         } catch (e: ApiError) {
             error(if (e.status == ApiClient.UPDATE_REQUIRED) "This till has to be updated first." else "The server could not do that just now. Try again in a moment.")
         }

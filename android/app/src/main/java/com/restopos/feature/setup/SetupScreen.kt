@@ -50,13 +50,13 @@ import com.restopos.core.data.SetupFacts
 import com.restopos.core.data.SetupStep
 import com.restopos.core.data.SetupSteps
 import com.restopos.core.ui.Gap
-import com.restopos.core.ui.Logo
 import com.restopos.core.ui.Motion
 import com.restopos.core.ui.T
 import com.restopos.core.ui.ToastHost
 import com.restopos.core.ui.V
 import com.restopos.core.ui.VI
 import com.restopos.core.ui.VIcon
+import com.restopos.core.ui.Wordmark
 import com.restopos.core.ui.panel
 import com.restopos.core.ui.press
 import com.restopos.feature.auth.Heading
@@ -146,9 +146,12 @@ fun SetupScreen(first: Boolean, onDone: () -> Unit, vm: SetupViewModel = hiltVie
 // The card's head: whose set-up it is, and how far along.
 @Composable
 private fun Head(business: String, steps: List<SetupStep>, step: SetupStep?, facts: SetupFacts?) {
-    Row(Modifier.fillMaxWidth().height(34.dp), verticalAlignment = Alignment.CenterVertically) {
-        Logo(Modifier.width(104.dp))
-        Spacer(Modifier.width(14.dp))
+    Row(Modifier.fillMaxWidth().height(38.dp), verticalAlignment = Alignment.CenterVertically) {
+        // the name and the mark, as on the sign-in card before it
+        Wordmark()
+        Spacer(Modifier.width(16.dp))
+        Box(Modifier.width(1.dp).height(18.dp).background(V.Stroke2))
+        Spacer(Modifier.width(16.dp))
         T(if (business.isBlank()) "Set-up" else "Set up $business", 14.sp, 700, V.Text2, Modifier.weight(1f))
         if (step != null) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -208,7 +211,9 @@ private fun Summary(facts: SetupFacts, business: String, open: Boolean, steps: L
         }
         val office = runCatching { java.net.URI(BuildConfig.BACK_OFFICE_URL.trim()).host }.getOrNull()?.takeIf { it.isNotBlank() }
         T(
-            "Taxes, discounts, add-ons, the receipt's logo, more printers and the plan's exact layout are set in the back office" + (office?.let { ": $it" } ?: "."),
+            // what the tablet does not set: a shop has no add-ons and no plan
+            (if (facts.retail) "Taxes, discounts, variants, costs, the receipt's logo and more printers are set in the back office"
+            else "Taxes, discounts, add-ons, the receipt's logo, more printers and the plan's exact layout are set in the back office") + (office?.let { ": $it" } ?: "."),
             13.sp, 500, V.Text3, lines = 3, height = 19.sp,
         )
         T(if (facts.pins > 0) "Next: clock in, then open the day." else "Next: tap Open register.", 14.sp, 600, V.Text2)

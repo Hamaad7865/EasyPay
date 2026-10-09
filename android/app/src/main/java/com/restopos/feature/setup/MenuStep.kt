@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -61,6 +64,7 @@ import com.restopos.feature.menu.ItemSheet
 // into, so a menu is typed down the page. Each is saved as it is added, the
 // way the till's own item and category sheets save; those sheets open from
 // here for anything the line does not ask.
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun MenuStep(vm: SetupViewModel, facts: SetupFacts, next: () -> Unit) {
     val shop = facts.retail
@@ -98,12 +102,18 @@ internal fun MenuStep(vm: SetupViewModel, facts: SetupFacts, next: () -> Unit) {
         LaunchedEffect(Unit) { Scanner.codes.collect { barcode = it } }
     }
 
+    // With the tablet's keyboard up there is half a screen left, less on a low
+    // tablet. The heading, the line under the lists and the foot give way, so
+    // that the lists and the line being typed in keep the room.
+    val typing = WindowInsets.isImeVisible
     Column(Modifier.fillMaxSize()) {
-        Heading(
-            if (shop) "What do you sell?" else "What is on the menu?",
-            "Add a category, then what is in it. A few are enough to start: the rest can be added at any time.",
-        )
-        Spacer(Modifier.height(12.dp))
+        if (!typing) {
+            Heading(
+                if (shop) "What do you sell?" else "What is on the menu?",
+                "Add a category, then what is in it. A few are enough to start: the rest can be added at any time.",
+            )
+            Spacer(Modifier.height(12.dp))
+        }
         problem?.let { Problem(it); Spacer(Modifier.height(10.dp)) }
         Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             // the categories
@@ -153,15 +163,17 @@ internal fun MenuStep(vm: SetupViewModel, facts: SetupFacts, next: () -> Unit) {
                 }
             }
         }
-        Spacer(Modifier.height(10.dp))
-        T(
-            if (shop) "Many products? Import a spreadsheet in the back office, under Import products."
-            else "Add-ons and tax are set in the back office, under Menu.",
-            13.sp, 500, V.Text3, lines = 2,
-        )
-        Spacer(Modifier.height(12.dp))
-        if (facts.items > 0) StepFoot("Continue", ready = true, busy = false, onMain = next)
-        else StepFoot(if (shop) "Add a product to go on" else "Add an item to go on", ready = false, busy = false, quiet = SKIP, onQuiet = next, onMain = {})
+        if (!typing) {
+            Spacer(Modifier.height(10.dp))
+            T(
+                if (shop) "Many products? Import a spreadsheet in the back office, under Import products."
+                else "Add-ons and tax are set in the back office, under Menu.",
+                13.sp, 500, V.Text3, lines = 2,
+            )
+            Spacer(Modifier.height(12.dp))
+            if (facts.items > 0) StepFoot("Continue", ready = true, busy = false, onMain = next)
+            else StepFoot(if (shop) "Add a product to go on" else "Add an item to go on", ready = false, busy = false, quiet = SKIP, onQuiet = next, onMain = {})
+        }
     }
     editing?.let { ItemSheet(itemEditor, it, cats, shop) }
     CategorySheets(catEditor, cats, counts, shop)

@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -149,7 +150,7 @@ internal fun MainKey(label: String, ready: Boolean, busy: Boolean, modifier: Mod
         contentAlignment = Alignment.Center,
     ) {
         if (busy) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
-        else T(label, if (ready) 17.sp else 15.sp, if (ready) 800 else 600, if (ready) Color.White else V.Text3, Modifier.padding(horizontal = 14.dp), lines = 2)
+        else T(label, if (ready) 17.sp else 15.sp, if (ready) 800 else 600, if (ready) Color.White else V.Text3, Modifier.padding(horizontal = 14.dp), lines = 2, align = TextAlign.Center)
     }
 }
 
