@@ -186,4 +186,15 @@ object Migrations {
             db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
         }
     }
+
+    // Nothing of the database changes. Until this build the till did not
+    // read, off a product arriving from the back office, that its price is
+    // typed at the sale: every such product is stored as one with a fixed
+    // price, and a tap rings it up without asking. The products are read
+    // again from the start, so the mark arrives.
+    val V11_V12 = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
+        }
+    }
 }

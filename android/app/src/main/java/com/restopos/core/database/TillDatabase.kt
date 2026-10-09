@@ -44,7 +44,7 @@ import androidx.room.RoomDatabase
         ItemVariantEntity::class, StockLevelEntity::class, ReceiptLineTaxEntity::class, ReceiptLineModEntity::class,
         KdsPartEntity::class, KdsOutEntity::class, KdsScreenEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {

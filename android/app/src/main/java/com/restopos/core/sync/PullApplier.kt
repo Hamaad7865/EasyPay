@@ -77,7 +77,10 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         tags = (it.jsonObject["dietary_tags"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { t -> runCatching { t.jsonPrimitive.contentOrNull }.getOrNull() }?.joinToString(",") ?: "",
                         barcode = str(it, "barcode")?.trim()?.ifEmpty { null },
                         sku = str(it, "sku")?.trim()?.ifEmpty { null }, sold_by = str(it, "sold_by") ?: "each", track_stock = bool(it, "track_stock", false),
-                        option_names = (it.jsonObject["option_names"] as? kotlinx.serialization.json.JsonArray)?.toString() ?: "[]")
+                        option_names = (it.jsonObject["option_names"] as? kotlinx.serialization.json.JsonArray)?.toString() ?: "[]",
+                        // its price is typed at the sale: without this every product arrived as one with a fixed price,
+                        // and a tap rang it up at whatever its price field held instead of asking
+                        open_price = bool(it, "open_price", false))
                 })
             }
             // A shop's variants, and what this shop holds of each product. A
