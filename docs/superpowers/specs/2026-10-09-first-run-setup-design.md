@@ -176,8 +176,8 @@ right the back office asks for the same change (`may()`).
   that is another client's), `forbidden`, `bad-payload`.
 - **`printer.save {id, store_id, name, kind, address, paper_mm, one_printer?, approved_by?}`**. Makes a
   printer, or changes the name, connection, address and paper of one. `kind` is `network`, `usb` or
-  `bluetooth`. An id that is a kitchen screen's, or a removed printer's, is `bad-printer`: a kitchen screen
-  is the back office's. The address follows the back office's rules: a network printer needs an IP
+  `bluetooth`. An id that is a kitchen screen's, a removed printer's, or a printer of another store of the
+  business, is `bad-printer`: a kitchen screen is the back office's. The address follows the back office's rules: a network printer needs an IP
   address, a Bluetooth one a name or an address (0088), a USB one has none (`bad-address`). The first
   printer of a store prints its receipts, as `saves.addPrinter` decides; feed and cut take the back
   office's defaults. `one_printer`, when sent, is written to `pos_settings.onePrinter`. Right:
@@ -262,6 +262,19 @@ so a demo client opens on the start screen in front of a customer.
 Two plans: the server (0089, its suite, the demo script), then the till. Built and committed on
 `restopos`; 0089 applied to dev only. Production takes it with the tag that carries till 0.7.0, after
 0088; the release run applies the migrations in order. No tag is pushed before the owner says to go live.
+
+## For the build plans
+
+- The wait after "Name this till" relies on `setLastPull` being written only when a whole paged pull has
+  succeeded. It is (`Sync.kt`, read 2026-10-09).
+- `create_tenant` now writes `setup` into `pos_settings`. Once 0089 is on dev, every dev-safe suite that
+  makes a client is run, not the new one alone: one that compares that row exactly would break.
+- What an added scanner reads goes only to the screens that take scans (0.6.2). The Products step is made
+  one of them, or its barcode box stays empty when a shop with an added scanner opens the set-up from
+  Settings.
+- The debug build's made-up business has no `setup` key and skips sign-in and "Name this till". Its steps
+  are reached from Settings. The wait and what follows it need a debug command, as the update's download
+  did (`DEMO_UPDATE`), or are listed as not seen.
 
 ## Left out
 
