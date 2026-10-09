@@ -185,7 +185,7 @@ export default async function TillPage({ params, searchParams }: { params: Promi
           <span>
             <strong>{d.ok || q.kind === "close_day" ? askSays(q, m) : "Take cash out"}</strong>
             Asked {at(q.requested_at)}
-            {q.who ? ` by ${q.who}` : ""}. The till carries it out the next time it syncs, and says here if it could not.
+            {q.who ? ` by ${q.who}` : ""}. The till carries it out, as of then, the next time it syncs: at once while someone is using it, otherwise when it is next touched. It says here if it could not.
           </span>
           {(q.kind === "close_day" ? d.may.close : d.may.cash) && <Submit className="btn-quiet btn-sm">Cancel it</Submit>}
         </form>

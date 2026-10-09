@@ -71,4 +71,22 @@ class RequestRulesTest {
         // a till that has not heard the server's clock yet takes its own as right
         assertEquals(asked + RequestRules.SLACK_MS, RequestRules.onTablet(asked, null))
     }
+
+    @Test fun a_till_that_hears_of_it_the_next_morning_closes_the_day_as_of_last_night() {
+        // asked at ten at night with nobody at the till; it syncs at eight the next morning
+        val asked = 1_800_000_000_000L
+        val opened = asked - 12 * 3_600_000L
+        val morning = asked + 10 * 3_600_000L
+        assertEquals(asked + RequestRules.SLACK_MS, RequestRules.moment(asked, 0, opened, morning))
+        // the same moment "used since" looks from, whatever the tablet's clock is set to
+        assertEquals(RequestRules.onTablet(asked, 60_000), RequestRules.moment(asked, 60_000, opened, morning))
+    }
+
+    @Test fun never_later_than_now_and_never_before_the_day_opened() {
+        val asked = 1_800_000_000_000L
+        // a till in use carries it out within seconds: its clock has not reached the slack yet
+        assertEquals(asked + 1_000, RequestRules.moment(asked, 0, asked - 3_600_000L, now = asked + 1_000))
+        // a tablet whose clock is far behind the server's
+        assertEquals(asked - 60_000, RequestRules.moment(asked, -3_600_000L, openedAt = asked - 60_000, now = asked))
+    }
 }

@@ -34,7 +34,7 @@ export async function askClose(f: FormData) {
     if (!UUID.test(till)) throw new Refused(refusal("bad-device"));
     if (typed !== "" && counted === null) throw new Refused("Type the counted cash as an amount, like 1,250.00, or leave it empty.");
     await asking(() => c.query(`select till_request($1, $2, 'close_day', $3, null, null)`, [ctx.employeeId, till, counted]));
-    return "Asked. The till closes its day the next time it syncs.";
+    return "Asked. The till closes its day as of now: at once if someone is using it, otherwise the next time it is touched.";
   });
 }
 
@@ -47,7 +47,7 @@ export async function askCashOut(f: FormData) {
     if (amount === null || amount <= 0) throw new Refused("Type the amount taken out, like 190.00.");
     if (!reason) throw new Refused(refusal("reason-required"));
     await asking(() => c.query(`select till_request($1, $2, 'cash_out', null, $3, $4)`, [ctx.employeeId, till, amount, reason]));
-    return "Asked. The till records the cash out the next time it syncs.";
+    return "Asked. The till records the cash out as of now: at once if someone is using it, otherwise the next time it is touched.";
   });
 }
 

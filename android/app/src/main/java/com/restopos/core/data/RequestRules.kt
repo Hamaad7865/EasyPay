@@ -29,6 +29,16 @@ object RequestRules {
     // it (null: not heard yet, and the tablet's clock is taken as right).
     fun onTablet(requestedAt: Long, clockAhead: Long?): Long = requestedAt + (clockAhead ?: 0) + SLACK_MS
 
+    // The moment a request is carried out as of: when it was asked, by the
+    // tablet's clock, and not the moment the till got round to it. A till
+    // nobody is at stops syncing (Quiet) and hears of the request at its next
+    // touch, which for a day left open overnight is the next morning: the
+    // day is still closed as of last night. It is the same moment "used
+    // since" looks from, so nothing falls between the two; never before the
+    // day opened, and never later than now.
+    fun moment(requestedAt: Long, clockAhead: Long?, openedAt: Long, now: Long): Long =
+        minOf(now, maxOf(openedAt, onTablet(requestedAt, clockAhead)))
+
     // `askedShift` is the day the request names, `openShift` the one open on
     // this till now. `unpaid` is why the day cannot be closed yet, in the
     // till's own words, or null. `usedSince`: a sale, a refund, cash moved or

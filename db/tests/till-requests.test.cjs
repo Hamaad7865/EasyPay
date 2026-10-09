@@ -175,13 +175,25 @@ const op = (type, payload, as) => ({ op_id: crypto.randomUUID(), type, payload, 
       check('R7 and leaves the request waiting', (await row(wait.id)).status === 'waiting');
       const theirsTry = await asApp(other, async () => (await c.query('select sync_push($1, $2::jsonb) as r', [theirOwner, JSON.stringify([op('request.answer', { id: wait.id, status: 'done' })])])).rows[0].r);
       check('R7 another business\'s till cannot answer it', tag(theirsTry[0]) === 'rejected:bad-request' && (await row(wait.id)).status === 'waiting', tag(theirsTry[0]));
+      // A till closed its day and said so, but the server did not take its closing
+      // (pushed here as someone who may not close a day): the day is still open on the
+      // server, and "done" must not be what the back office shows.
+      const closing = await ask(tid, owner, dev, 'close_day', 100000, null, null);
+      const sent = await push([
+        op('shift.close', { id: shift, counted_cash: 100000, closed_at: new Date().toISOString() }, cashier),
+        op('request.answer', { id: closing.id, status: 'done' }, cashier),
+      ]);
+      const left = await row(closing.id);
+      check('R7 a closing the server refused is not written down as done', tag(sent[0]) !== 'applied' && tag(sent[1]) === 'applied' && left.status === 'refused'
+        && left.note === 'The till closed its day, but the server did not take the closing. On the till, look at what the server refused.', sent.map(tag).join(',') + ' ' + JSON.stringify(left));
+      check('R7 and the day is still open on the server', (await q1(`select closed_at from shifts where id = $1`, [shift])).closed_at === null);
     }
 
     // R8 another business sees none of it
     {
       const seen = await asApp(other, async () => (await c.query(`select count(*)::int n from till_requests`)).rows[0].n);
       const mine = await asApp(tid, async () => (await c.query(`select count(*)::int n from till_requests`)).rows[0].n);
-      check('R8 a business sees its own requests and no others', seen === 0 && mine === 5, seen + ' and ' + mine);
+      check('R8 a business sees its own requests and no others', seen === 0 && mine === 6, seen + ' and ' + mine);
     }
   } finally {
     await devguard.cleanupTenant(c, tid);

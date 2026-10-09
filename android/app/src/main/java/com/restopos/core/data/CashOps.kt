@@ -404,14 +404,16 @@ class CashOps @Inject constructor(
 
     // The day closed because the back office asked: what closeDay does, by
     // the person who asked. `counted` is what they typed, or null to close at
-    // what the till expects. The Z prints when a receipt printer is set up;
-    // it not printing does not undo the closing.
-    suspend fun closeDayAsked(r: TillRequestEntity, counted: Long?): ZDoc {
+    // what the till expects. `at` is the moment it is closed as of: when it
+    // was asked, not when this till got round to it (RequestRules.moment),
+    // and nothing was written down on the till since. The Z prints when a
+    // receipt printer is set up; it not printing does not undo the closing.
+    suspend fun closeDayAsked(r: TillRequestEntity, counted: Long?, at: Long): ZDoc {
         val tenant = session.tenantId() ?: error("no tenant")
         val store = session.storeId() ?: error("no store")
         val device = session.deviceId() ?: error("no device")
         val open = db.staff().openShift(device) ?: error("The day is not open")
-        val now = System.currentTimeMillis()
+        val now = at
         val expected = expectedCash(open, now)
         val closed = open.copy(closed_by = r.requested_by, closed_at = now, counted_cash = counted ?: expected, expected_cash = expected)
         val last = db.ops().lastDayClose(device)
@@ -434,13 +436,14 @@ class CashOps @Inject constructor(
         return z
     }
 
-    // Cash taken out, written down because the back office asked. No slip
-    // and the drawer stays shut: whoever asked is not standing at it.
-    suspend fun cashOutAsked(r: TillRequestEntity, amount: Long, reason: String) {
+    // Cash taken out, written down because the back office asked, as of
+    // when it was asked. No slip and the drawer stays shut: whoever asked is
+    // not standing at it.
+    suspend fun cashOutAsked(r: TillRequestEntity, amount: Long, reason: String, at: Long) {
         val tenant = session.tenantId() ?: error("no tenant")
         val store = session.storeId() ?: error("no store")
         val device = session.deviceId() ?: error("no device")
-        val row = CashMoveEntity(Uuid7.next(), tenant, store, device, r.shift_id, r.requested_by, "out", amount, reason.ifBlank { null }, System.currentTimeMillis())
+        val row = CashMoveEntity(Uuid7.next(), tenant, store, device, r.shift_id, r.requested_by, "out", amount, reason.ifBlank { null }, at)
         db.withTransaction {
             db.ops().upsertCashMoves(listOf(row))
             db.outbox().enqueue(OutboxEntity(Uuid7.next(), "cash.move", buildJsonObject {
@@ -453,9 +456,6 @@ class CashOps @Inject constructor(
         }
         pushNow(context)
     }
-
-    // said on the till once a request was carried out, and kept among its notices
-    fun say(message: String) = printing.report(message)
 
     suspend fun printZ(z: ZDoc): Result<Unit> = runCatching {
         val p = printing.receiptPrinter() ?: throw PrintError("No receipt printer is set up, so the closing report was not printed. It is in the back office, under Day closing.")

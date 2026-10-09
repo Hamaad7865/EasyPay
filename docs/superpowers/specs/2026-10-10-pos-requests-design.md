@@ -43,9 +43,18 @@ After each pull, for each request of its own that waits and that it has not answ
 - Otherwise the day is closed as `closeDay` closes it: the shift and the day closing written
   together, numbered by the till, the period's bill numbers started again, the Z printed when a
   receipt printer is set up. Counted is what was typed, or what the till expects when nothing was.
+- **It is closed as of the moment it was asked, not the moment the till got round to it.** A till
+  nobody is at stops syncing so the database can sleep, and hears of the request at its next touch:
+  for a day left open overnight, the next morning. Nothing was written down on the till since (or
+  it would have refused), so the figures are the same, and the day's closing, its Z and its cash-up
+  say last night. The moment is the one "used since" looks from, so nothing falls between the two;
+  never before the day opened and never later than now. The back office says so where it asks: at
+  once if someone is using the till, otherwise the next time it is touched.
   It is closed by the person who asked: the ops carry their employee id, which the server takes from
   a till set up under a login that may set up tills, and checks the permission of.
-- The tablet says "The day was closed from the back office by Asha."
+- The tablet says "The day was closed from the back office by Asha", once, to whoever is at it or
+  next comes to it: as a plain notice, and not through the printers' channel, which lists what it
+  is handed under "Earlier, from the printers".
 
 **Take cash out.**
 - Refused when the day asked about is not the one open.
@@ -72,8 +81,10 @@ keeps which it has answered.
 The ops go as the person who asked. The server takes a till's word for who did something only from a
 till set up under a login that may set up tills (`settings.device`), which every till set up since
 0082 is. One set up before that under a cashier's login would have its closing refused by the server
-after the tablet had closed it: such a till shows the closing under "could not be sent", as it shows
-any other refused op, and is set up again under the owner's login.
+after the tablet had closed it: such a till shows the closing among what the server refused, as it
+shows any other refused op, and is set up again under the owner's login. The back office does not
+then say "done": an answer of done to a closing whose day is still open on the server is written
+down as refused, with where to look.
 
 ## What it takes
 

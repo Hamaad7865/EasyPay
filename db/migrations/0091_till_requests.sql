@@ -152,20 +152,35 @@ end $fn$;
 -- The till's answer to a request: {id, status: done | refused, note}. What
 -- it did (the closing, the cash out) came in the ops before this one. An
 -- answer to a request that no longer waits is taken and changes nothing.
+--
+-- A till says "done" to a closing after closing its own day, and its closing
+-- came just before in the same push. If the server did not take that closing
+-- (the till was set up under a login that may not vouch for who did it, say),
+-- the day is still open here: the request is then written down as refused,
+-- with where to look, and not as done.
 create or replace function push_request_answer(p_tenant uuid, p_emp uuid, p jsonb) returns jsonb
 language plpgsql set search_path = public as $fn$
 declare
   v_id uuid;
   v_status text := p->>'status';
+  v_note text := nullif(left(btrim(coalesce(p->>'note', '')), 300), '');
   v_was text;
+  v_kind text;
+  v_shift uuid;
 begin
   begin v_id := (p->>'id')::uuid; exception when others then raise exception 'bad-payload'; end;
   if v_id is null or v_status is null or v_status not in ('done', 'refused') then raise exception 'bad-payload'; end if;
-  select status into v_was from till_requests where tenant_id = p_tenant and id = v_id and deleted_at is null for update;
+  select status, kind, shift_id into v_was, v_kind, v_shift from till_requests
+   where tenant_id = p_tenant and id = v_id and deleted_at is null for update;
   if not found then raise exception 'bad-request'; end if;
   if v_was <> 'waiting' then return jsonb_build_object('id', v_id, 'changed', false); end if;
+  if v_status = 'done' and v_kind = 'close_day'
+     and exists (select 1 from shifts where tenant_id = p_tenant and id = v_shift and closed_at is null) then
+    v_status := 'refused';
+    v_note := 'The till closed its day, but the server did not take the closing. On the till, look at what the server refused.';
+  end if;
   update till_requests
-     set status = v_status, answered_at = now(), note = case when v_status = 'refused' then nullif(left(btrim(coalesce(p->>'note', '')), 300), '') end
+     set status = v_status, answered_at = now(), note = case when v_status = 'refused' then v_note end
    where tenant_id = p_tenant and id = v_id;
   return jsonb_build_object('id', v_id, 'changed', true);
 end $fn$;

@@ -50,7 +50,7 @@ export function CloseDayKey({ action, till, name, expected, back, round }: { act
       till={till}
       back={back}
       title={`Close the day on ${name}?`}
-      text="The till closes its own day the next time it syncs, with its own figures, and prints its closing report. It refuses if an order is still unpaid, or if it was used after you asked."
+      text="The till closes its own day, with its own figures, as of this moment: at once if someone is using it, otherwise the next time it is touched. It prints its closing report then. It refuses if an order is still unpaid, or if it is used after you ask."
       yes="Ask the till to close"
       trigger={(open) =>
         round ? (
@@ -81,7 +81,7 @@ export function CashOutKey({ action, till, name, back }: { action: Ask; till: st
       till={till}
       back={back}
       title={`Take cash out of ${name}`}
-      text="For cash taken from the drawer for a small purchase. The till records it in its open day the next time it syncs. No slip prints and the drawer does not open."
+      text="For cash taken from the drawer for a small purchase. The till records it in its open day, as of this moment: at once if someone is using it, otherwise the next time it is touched. No slip prints and the drawer does not open."
       yes="Ask the till to record it"
       trigger={(open) => (
         <button type="button" className="btn-quiet" aria-haspopup="dialog" onClick={open}>

@@ -117,7 +117,7 @@ export default async function PointOfSale({ searchParams }: { searchParams: Sear
             {closing && (
               <span className="till-asked">
                 Closing asked {at(closing.requested_at)}
-                {closing.who ? ` by ${closing.who}` : ""}: the till closes its day the next time it syncs.
+                {closing.who ? ` by ${closing.who}` : ""}. The till closes its day, as of then, the next time it syncs: when it is next touched, if nobody is at it.
               </span>
             )}
           </span>

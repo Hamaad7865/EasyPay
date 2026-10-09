@@ -439,7 +439,7 @@ function loadPos() {
       const cashAsk = await ask('cash_out', null, 7000, 'Ice');
       cards = await see(me, '/backoffice/pos', {});
       own = await till(me, dev, {});
-      check('P7 once a closing is asked, the card says it waits and the key is gone', cards.says.includes('Closing asked') && cards.says.includes('by Asha') && cards.says.includes('the till closes its day the next time it syncs') && !cards.html.includes('class="till-key"'), (cards.says.match(/Closing asked.{0,80}/) || [''])[0]);
+      check('P7 once a closing is asked, the card says it waits and the key is gone', cards.says.includes('Closing asked') && cards.says.includes('by Asha') && cards.says.includes('The till closes its day, as of then, the next time it syncs: when it is next touched, if nobody is at it.') && !cards.html.includes('class="till-key"'), (cards.says.match(/Closing asked.{0,80}/) || [''])[0]);
       check('P7 the till\'s page says what waits, on every tab, with a way to cancel each', own.says.includes('Close the day at what the till expects') && own.says.includes('Take Rs 70.00 out · Ice') && (own.html.match(/Cancel it/g) || []).length === 2
         && (await till(me, dev, { tab: 'settings' })).says.includes('Take Rs 70.00 out · Ice') && !own.html.includes('name="counted"'));
       const cashTab = await till(me, dev, { tab: 'cash' });

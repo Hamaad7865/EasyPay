@@ -197,9 +197,14 @@ class ShellViewModel @Inject constructor(
     private val updater: AppUpdater,
     private val kitchen: com.restopos.core.data.Kitchen,
     private val screens: com.restopos.core.kitchen.ScreenLink,
+    private val requests: com.restopos.core.data.TillRequests,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     val screen = MutableStateFlow(Screen.Floor)
+    // what this till did because the back office asked (the day closed, cash
+    // written down), said once to whoever is at it or next comes to it
+    val asked: StateFlow<String?> = requests.said
+    fun askedShown() = requests.heard()
     // The business is a shop (the back office's settings say so): the till
     // shows the sell screen. Null for the moment it takes to read the
     // settings this tablet holds, so a shop's till never opens on a floor
@@ -489,6 +494,8 @@ fun MainShell(
     LaunchedEffect(Unit) { more.load(); more.problems.collect { Toaster.say(it) } }
     val said by more.message.collectAsState()
     LaunchedEffect(said) { said?.let { Toaster.say(it); more.messageShown() } }
+    val asked by shell.asked.collectAsState()
+    LaunchedEffect(asked) { asked?.let { Toaster.say(it); shell.askedShown() } }
 
     // Quick sale was tapped with the order screen at this turn: its key is lit at once, before the sale is read
     var quickAt by remember { mutableIntStateOf(-1) }
