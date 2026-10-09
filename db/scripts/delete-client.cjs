@@ -38,32 +38,14 @@
 // PC), as in db/migrate-production.cjs; it is never printed and never written
 // to a file. There is no way back from --apply but a restore point made first:
 //   neon branches create --project-id snowy-fire-89764432 --name production-before-delete-clients --parent production --compute false
-const { execSync } = require('child_process');
-const path = require('path');
 const { Client } = require('pg');
+// which database (production, or --dev) and which client: shared with seed-demo-client.cjs
+const { connection, clientOf, pairsOf } = require('./connection.cjs');
 
-const PROJECT = 'snowy-fire-89764432';
-const BRANCH = 'production';
-// the production compute's host begins with this; the dev branch's does not
-const HOST = 'ep-soft-poetry';
 const GUARDS = ['trg_no_update', 'trg_draft_only', 'trg_open_only'];
 
 const quoted = (name) => '"' + String(name).replace(/"/g, '""') + '"';
 const lit = (text) => "'" + String(text).replace(/'/g, "''") + "'";
-
-function connection(dev) {
-  if (dev) {
-    process.chdir(path.join(__dirname, '..', '..'));
-    // refuses, on require, anything that is or points at production
-    const guard = require(path.join(__dirname, '..', 'tests', 'require-dev.cjs'));
-    const env = guard.envMap();
-    return { url: env.DATABASE_URL_UNPOOLED, where: `dev (${env.NEON_BRANCH})` };
-  }
-  const url = execSync(`neon connection-string ${BRANCH} --project-id ${PROJECT} --role-name neondb_owner`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  const host = new URL(url).hostname;
-  if (!host.startsWith(HOST)) throw new Error(`this is not the production host (${host.split('.')[0]}): nothing was done`);
-  return { url, where: `production (${host.split('.')[0].replace(/-[a-z0-9]{8}$/, '-…')})` };
-}
 
 // One client, in one transaction. Returns what it had. Throws, having changed
 // nothing, when anything is not as expected.
@@ -73,12 +55,7 @@ async function remove(c, short, name, apply) {
   try {
     await c.query(`set local lock_timeout = '8s'`);
     await c.query(`set local statement_timeout = '120s'`);
-    const found = await rows(
-      `select id, name, business_type, plan, status, created_at::date::text as made from tenants where upper(left(id::text, 8)) = upper($1)`, [short]);
-    if (!found.length) throw new Error(`no client has the ID ${short.toUpperCase()}`);
-    if (found.length > 1) throw new Error(`${found.length} clients have an ID beginning ${short.toUpperCase()}`);
-    const t = found[0];
-    if (t.name !== name) throw new Error(`${short.toUpperCase()} is "${t.name}", not "${name}"`);
+    const t = await clientOf(c, short, name);
 
     const tables = (await rows(
       `select c.table_name as t from information_schema.columns c
@@ -168,14 +145,8 @@ $do$`);
   const dev = args.includes('--dev');
   const strange = args.filter((a) => a.startsWith('--') && a !== '--apply' && a !== '--dev');
   const named = args.filter((a) => !a.startsWith('--'));
-  const usage = 'say which client twice, its ID and its name: node db/scripts/delete-client.cjs 7BAFE3B9 "Hamaad Retail"';
   if (strange.length) throw new Error(`${strange.join(' ')} is not something this takes: nothing was done`);
-  if (!named.length || named.length % 2) throw new Error(`${usage}: nothing was done`);
-  const pairs = [];
-  for (let i = 0; i < named.length; i += 2) {
-    if (!/^[0-9a-f]{8}$/i.test(named[i])) throw new Error(`"${named[i]}" is not an ID (eight characters, as under the client's name on /admin). ${usage}: nothing was done`);
-    pairs.push([named[i], named[i + 1]]);
-  }
+  const pairs = pairsOf(named, 'delete-client.cjs');
 
   const { url, where } = connection(dev);
   const c = new Client({ connectionString: url, ssl: { require: true } });
