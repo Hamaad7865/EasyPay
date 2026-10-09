@@ -77,20 +77,38 @@ function missing(listed) {
   return NAMES.filter((x) => !have.has(x));
 }
 
-module.exports = { keyFrom, wrongToken, accountsIn, tidy, missing };
+// ---- how a program is started ----
+
+// One command line, through the shell (neon and wrangler are .cmd files on Windows, which only
+// a shell starts). Nothing secret is ever in it: a key goes in on standard input, and the words
+// here are this file's own.
+// Nothing in it is escaped either, because no escaping holds in both shells it meets. cmd.exe
+// takes every " as the start or the end of a quoted run, whatever stands before it: after a \"
+// it reads & | < > as its own, and a \ before the closing quote takes that quote with it. sh
+// reads $ and ` inside quotes. So an argument is made only of what both leave alone (letters,
+// digits, - _ . / @, and a space or a ' once it is inside double quotes), and one that holds
+// anything else stops the run before a shell sees it. A value that cannot be written that way
+// goes in on standard input, as a key does. The command is not looked at: it is a name written
+// here, or this checkout's own wrangler, already in quotes.
+function commandLine(command, args) {
+  args.forEach((a, i) => {
+    // said by its place, not by what it holds: what is refused is not printed either
+    if (!/^[A-Za-z0-9 '_./@-]+$/.test(a)) throw new Error(`${command} was not run: its argument ${i + 1} is empty, or holds a character a shell could read as its own (a quote, a backslash, & | < > $ % and the like).`);
+  });
+  return [command, ...args.map((a) => (/[ ']/.test(a) ? `"${a}"` : a))].join(' ');
+}
+function run(command, args, input) {
+  const r = spawnSync(commandLine(command, args), { encoding: 'utf8', input, shell: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  return { ok: r.status === 0, out: r.stdout || '', said: `${r.stdout || ''}${r.stderr || ''}`.trim() };
+}
+
+module.exports = { keyFrom, wrongToken, accountsIn, tidy, missing, commandLine, run };
 if (require.main !== module) return;
 
 // ---- the run ----
 
 const here = (...p) => path.join(__dirname, '..', ...p);
 const stop = (why) => { console.error(`\nSTOPPED: ${why}`); process.exit(1); };
-// one command line, through the shell (neon and wrangler are .cmd files on Windows). Nothing
-// secret is ever in it: a key goes in on standard input, and the words here are this file's own.
-const run = (command, args, input) => {
-  const line = [command, ...args.map((a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a))].join(' ');
-  const r = spawnSync(line, { encoding: 'utf8', input, shell: true, stdio: ['pipe', 'pipe', 'pipe'] });
-  return { ok: r.status === 0, out: r.stdout || '', said: `${r.stdout || ''}${r.stderr || ''}`.trim() };
-};
 // the secret goes in on standard input: it is in no command line and no file
 const set = (name, value) => {
   const r = run('gh', ['secret', 'set', name, '--repo', REPO], value);

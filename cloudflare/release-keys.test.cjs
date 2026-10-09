@@ -1,9 +1,10 @@
 // release-keys.test.cjs — what release-keys.cjs reads and refuses before it
 // sets anything: the key Neon's CLI printed, a Cloudflare token off the
-// clipboard, and the account the CLI is signed in to. Needs nothing but Node:
+// clipboard, and the account the CLI is signed in to; and what it will and
+// will not put in a command line. Needs nothing but Node:
 //   node cloudflare/release-keys.test.cjs
 const assert = require('node:assert');
-const { keyFrom, wrongToken, accountsIn, tidy, missing } = require('./release-keys.cjs');
+const { keyFrom, wrongToken, accountsIn, tidy, missing, commandLine, run } = require('./release-keys.cjs');
 
 let n = 0;
 const ok = (name, fn) => { fn(); n++; console.log(`ok ${n} - ${name}`); };
@@ -66,6 +67,48 @@ ok('which of the three are still to be set', () => {
   assert.deepStrictEqual(missing(list(['NEON_API_KEY', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID'])), []);
   // a name that only begins the same is another secret
   assert.deepStrictEqual(missing(list(['NEON_API_KEY_OLD', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID'])), ['NEON_API_KEY']);
+});
+
+// A program that says what it was given: Node itself, started the way the script starts gh,
+// neon and wrangler (one line, through this machine's own shell: cmd.exe on the owner's PC,
+// sh in CI), reading these words on standard input the way gh reads a key.
+const SAYS_WHAT_IT_GOT = 'console.log(JSON.stringify(process.argv.slice(2)))';
+const NODE = `"${process.execPath}"`; // a path in quotes, as the script's own wrangler is
+const given = (args) => {
+  const r = run(NODE, ['-', ...args], SAYS_WHAT_IT_GOT);
+  assert.ok(r.ok, r.said);
+  return JSON.parse(r.out);
+};
+
+ok('every argument the script passes reaches the program as it was written', () => {
+  const words = ['secret', 'set', 'CLOUDFLARE_API_TOKEN', '--repo', 'Hamaad7865/EasyPay', 'api-keys', '--name', 'easypay-github-releases',
+    '--project-id', 'snowy-fire-89764432', '-y', 'wrangler@4.117.0', '-NoProfile', '-Command', 'Get-Clipboard -Raw', "Set-Clipboard -Value ' '"];
+  assert.deepStrictEqual(given(words), words);
+  // and one made of everything an argument may hold
+  assert.deepStrictEqual(given(["Az09 '_./@-"]), ["Az09 '_./@-"]);
+  assert.strictEqual(commandLine('gh', ['secret', 'list', '--repo', 'Hamaad7865/EasyPay']), 'gh secret list --repo Hamaad7865/EasyPay');
+  assert.strictEqual(commandLine('powershell', ['-NoProfile', '-Command', 'Get-Clipboard -Raw']), 'powershell -NoProfile -Command "Get-Clipboard -Raw"');
+});
+ok('a value with a backslash and a quote is refused, and no shell is given it', () => {
+  // Each of these came apart under the quoting this replaced (a " made \"), seen on Windows: the
+  // first arrived as a\b, the second had cmd.exe run the echo, the third arrived with a " on its end.
+  for (const value of ['a\\"b', 'x" & echo ran & "y', 'ends in a backslash\\']) {
+    assert.throws(() => commandLine('gh', ['secret', 'set', value]), /was not run/, value);
+    assert.throws(() => run(NODE, ['-', value], SAYS_WHAT_IT_GOT), /was not run/, value);
+  }
+});
+ok('so is anything else a shell would read as its own, and an argument that is empty', () => {
+  for (const mark of ['"', '\\', '&', '|', '<', '>', '^', '%', '$', '`', ';', '!', '(', ')', '*', '?', '~', '#', '{', '=', ':', ',', '\n', '\r', '\t']) {
+    assert.throws(() => commandLine('gh', ['secret', `a${mark}b`]), /was not run/, JSON.stringify(mark));
+  }
+  // an empty argument would be missing from the line, and every later one would move up a place
+  assert.throws(() => commandLine('gh', ['secret', '']), /was not run/);
+});
+ok('what a refusal says holds nothing of the value, which could be a key', () => {
+  let said = '';
+  try { commandLine('gh', ['secret', 'set', `${NEON}"`]); } catch (e) { said = e.message; }
+  assert.match(said, /gh was not run/);
+  assert.ok(!said.includes(NEON) && !said.includes('k3y'), said);
 });
 
 console.log(`\n${n} checks passed`);
