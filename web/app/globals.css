@@ -1246,6 +1246,10 @@ a.till:hover .till-go { border-color: var(--accent); color: var(--accent); }
   .dash-split { grid-template-columns: 1fr; }
   .bo-main .home-head h1 { font-size: 30px; }
 }
+/* a phone: a till card's three figures go one under the other, and a till's three figures likewise */
+@media (max-width: 640px) {
+  .till-day.cols, .stats.three { grid-template-columns: 1fr; }
+}
 
 /* ---- insights ---- */
 

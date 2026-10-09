@@ -47,8 +47,8 @@ async function setActive(f: FormData) {
     const done = await c.query(SET_ACTIVE, [ctx.tenantId, id, active]);
     if (done.rowCount !== 1) throw new Refused("That till is not one of yours.");
     return active
-      ? "Reactivated. Sign in on the tablet again to use it as a till."
-      : "Deactivated. The tablet goes back to its sign-in at its next sync.";
+      ? "Reactivated. The tablet is given its key again at its next sync."
+      : "Deactivated. A tablet still signed in carries on under its login until it is signed out.";
   });
 }
 

@@ -27,7 +27,7 @@ export function Settings({ d, rename, setActive }: { d: Base & { can: boolean };
       </Card>
 
       {t.off ? (
-        <Card title="Reactivate this till" lede="It was deactivated: its tablet cannot sync as this till. Reactivated, someone signs in on the tablet again and it carries on with its receipt numbers.">
+        <Card title="Reactivate this till" lede="It was deactivated: its key does not work and it cannot be set up as this till. Reactivated, it is given a key again at its next sync, or is set up again on the tablet, and carries on with its receipt numbers.">
           <form action={setActive}>
             <input type="hidden" name="till" value={t.id} />
             <input type="hidden" name="active" value="yes" />
@@ -37,7 +37,7 @@ export function Settings({ d, rename, setActive }: { d: Base & { can: boolean };
       ) : (
         <Card
           title="Deactivate this till"
-          lede="For a tablet that was lost, sold or put away. It goes back to its sign-in at its next sync and can no longer be used as this till. Sales it has not sent yet are still taken once someone signs in on it, and it can be reactivated here."
+          lede="For a tablet that is no longer used as a till. It leaves the tills of Point of sale, its key stops working, and it cannot be set up as this till again. A tablet that is still signed in carries on selling and syncing under that login until it is signed out, and nothing it has sold is lost: to stop a tablet that was lost, also switch off the login signed in on it, under Staff. It can be reactivated here."
         >
           <form action={setActive}>
             <input type="hidden" name="till" value={t.id} />
@@ -48,7 +48,7 @@ export function Settings({ d, rename, setActive }: { d: Base & { can: boolean };
                 title={`Deactivate ${t.name}?`}
                 text={
                   (t.shift_id ? "It has its day open: close the day on the tablet first if you can. " : "") +
-                  "The tablet goes back to its sign-in at its next sync. Sales it has not sent yet are still taken once someone signs in on it. You can reactivate it here."
+                  "Its key stops working and it cannot be set up as this till again. A tablet still signed in carries on under its login until it is signed out, and nothing it has sold is lost. You can reactivate it here."
                 }
                 yes="Deactivate"
               >

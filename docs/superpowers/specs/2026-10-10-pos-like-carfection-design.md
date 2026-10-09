@@ -62,9 +62,13 @@ A head with a way back, the till's name, its sync line, store, code, build, and 
   when it was set up, read only: the code is in every receipt number. For a login that may change how
   a till is set up (`settings.device`); anyone else sees it read only.
   - A new name reaches the tablet at its next sync (`pos_devices` is pulled).
-  - Deactivating ends the till's key: the tablet goes back to its sign-in. What it had not sent is
-    still taken once someone signs in on it (the server takes a sale from a deactivated till), so
-    nothing is trapped; the confirmation says so, and says when the till has its day open.
+  - Deactivating ends the till's key and refuses the till being set up again. It does not stop a
+    tablet that is signed in: the tablet drops the refused key and carries on, selling and syncing,
+    under the login signed in on it (`ApiClient.authed`), until it is signed out or that login is
+    switched off. The server takes a sale from a deactivated till, so nothing is trapped. This is what
+    deactivating in `/admin` has always done; the page and its confirmation say so, say when the till
+    has its day open, and say that a lost tablet is stopped by switching off its login under Staff.
+    (The design first said "the tablet goes back to its sign-in": read in the till's code, it does not.)
   - The owner of a business can reactivate a till, including one deactivated in `/admin`. The API's
     "Contact EasyPay to reactivate it" becomes "Reactivate it in the back office, under Point of sale".
 - **Cash flow.** *History*: the days this till closed on a chosen date (today to begin with): opening
