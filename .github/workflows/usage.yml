@@ -1,0 +1,74 @@
+name: read usage
+
+# Asks Neon what the project has used and saves the answer in production,
+# where the admin area's Usage page reads it (db/scripts/read-usage.cjs,
+# migration 0090). Neon's free plan keeps no history and has no read-only key:
+# a key that can read usage can delete every branch, so the back office holds
+# none and this job, which has the key already, does the asking.
+#
+# Every hour. It saves only while production's compute is awake, so it never
+# wakes a sleeping database; a reading can still keep it awake up to five
+# minutes longer, about 1 of the 100 compute hours a month. Started by hand
+# with "always", it saves even when production is asleep, which wakes it.
+#
+# This repository is public and so is this log: the script prints "saved",
+# "asleep" or "not released yet" and never a figure, a client's name or the
+# database's address. Until migration 0090 is on production it says "not
+# released yet" and succeeds.
+#
+# Needs the repository secret NEON_API_KEY, as the release does. GitHub stops
+# a schedule in a repository nobody has pushed to for 60 days: the Usage page
+# flags a reading more than a day old.
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      always:
+        description: Save even when production is asleep (this wakes it)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: read-usage
+  cancel-in-progress: false
+
+jobs:
+  read:
+    name: read Neon's figures
+    # a copy of this repository has no key and no business asking
+    if: ${{ github.repository == 'Hamaad7865/EasyPay' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+    steps:
+      - name: is the key for Neon there
+        id: key
+        run: |
+          if [ -z "$NEON_API_KEY" ]; then
+            echo "::warning::The repository secret NEON_API_KEY is not set, so Neon was not asked and the Usage page has no reading."
+            echo "have=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "have=yes" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.have == 'yes'
+      - uses: actions/setup-node@v4
+        if: steps.key.outputs.have == 'yes'
+        with:
+          node-version: 24
+          cache: npm
+      - if: steps.key.outputs.have == 'yes'
+        run: npm ci --no-audit --no-fund
+      - if: steps.key.outputs.have == 'yes'
+        run: npm i -g neon@latest --no-audit --no-fund
+      - name: read and save
+        if: steps.key.outputs.have == 'yes'
+        env:
+          ALWAYS: ${{ inputs.always && '--always' || '' }}
+        run: node db/scripts/read-usage.cjs $ALWAYS
