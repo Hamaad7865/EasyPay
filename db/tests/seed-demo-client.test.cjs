@@ -79,14 +79,22 @@ function check(name, cond, extra) {
                 (select count(*)::int from pos_devices where tenant_id = $1 and deleted_at is null) as tills,
                 (select count(*)::int from stock_levels where tenant_id = $1 and qty < 0) as below,
                 (select count(*)::int from stock_levels where tenant_id = $1 and qty > 0 and qty < reorder_point) as low,
-                (select count(*)::int from stock_movements where tenant_id = $1 and reason = 'sale') as sold`, [t]);
+                (select count(*)::int from stock_movements where tenant_id = $1 and reason = 'sale') as sold,
+                (select count(distinct (created_at at time zone 'Indian/Mauritius')::date)::int from stock_movements where tenant_id = $1 and reason = 'sale') as sold_days,
+                (select count(*)::int from stock_movements m where m.tenant_id = $1 and m.reason = 'opening'
+                    and m.created_at >= (select min(device_time) from receipts r where r.tenant_id = $1)) as opening_late,
+                (select count(*)::int from tickets where tenant_id = $1 and (created_at at time zone 'Indian/Mauritius')::date >= (now() at time zone 'Indian/Mauritius')::date) as orders_today,
+                (select count(*)::int from stock_movements where tenant_id = $1 and (created_at at time zone 'Indian/Mauritius')::date >= (now() at time zone 'Indian/Mauritius')::date) as moves_today`, [t]);
       check(`S3 the ${label} has its ${items} things to sell, three staff with a PIN, eight customers`, g.items === items && g.staff === 3 && g.customers === 8 && g.tables === (label === 'restaurant' ? 12 : 0), JSON.stringify([g.items, g.staff, g.customers, g.tables]));
       check(`S3 the ${label} has sales on every day it traded and none today`, g.receipts > DAYS * 5 && g.days === g.closes && g.days >= DAYS - 1 && g.today === 0, JSON.stringify([g.receipts, g.days, g.closes, g.today]));
       check(`S3 the ${label}'s sales are whole: paid in full, taxed, none flagged, every order closed, by more than one member of staff`, g.flagged === 0 && g.reviews === 0 && Number(g.total) > 0 && g.total === g.paid && Number(g.tax) > 0 && g.unpaid === 0 && g.sellers >= 2, JSON.stringify([g.flagged, g.reviews, g.total, g.paid, g.tax, g.unpaid, g.sellers]));
       check(`S3 the ${label}'s days are opened and closed, the drawer right but for one day, staff clocked in and out`, g.open === 0 && g.short === (g.days > 3 ? 1 : 0) && g.punches === g.days * 3 * 2, JSON.stringify([g.open, g.short, g.punches]));
       check(`S3 the ${label} has no till of its own yet: the one the days were rung up on is switched off`, g.tills === 0, String(g.tills));
-      if (label === 'shop') check('S3 the shop\'s stock went down with what was sold, none below nothing, some low', g.below === 0 && g.low > 0 && g.sold > 0, JSON.stringify([g.below, g.low, g.sold]));
-      else check('S3 the restaurant counts no stock', g.sold === 0);
+      if (label === 'shop') {
+        check('S3 the shop\'s stock went down with what was sold, none below nothing, some low', g.below === 0 && g.low > 0 && g.sold > 0, JSON.stringify([g.below, g.low, g.sold]));
+        check('S3 and it left on the days it was sold, after stock that was there before the first of them, none of it today', g.sold_days === g.days && g.opening_late === 0 && g.moves_today === 0, JSON.stringify([g.sold_days, g.days, g.opening_late, g.moves_today]));
+      } else check('S3 the restaurant counts no stock', g.sold === 0);
+      check(`S3 the ${label}'s orders were opened on the days they were paid, none today`, g.orders_today === 0, String(g.orders_today));
     }
     // the PINs it said are the ones stored
     const said = [...done.out.matchAll(/^\s+(\S.*?)\s{2,}(Manager|Cashier|Waiter)\s+(\d{4})\s*$/gm)].map((m) => ({ name: m[1].trim(), pin: m[3] }));

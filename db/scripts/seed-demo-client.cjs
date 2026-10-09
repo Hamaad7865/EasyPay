@@ -370,6 +370,27 @@ async function seed(c, short, name, apply, days) {
     await c.query('RESET ROLE');
     await c.query(`update pos_devices set deleted_at = now() where id = $1 and tenant_id = $2`, [till, t.id]);
 
+    // ---- when it happened. A sale carries the time it was rung up, and the
+    // reports on sales go by that. What the server stores beside it carries
+    // the moment it was stored, which is now: the stock pages go by that, and
+    // would show three weeks of stock leaving in one minute, and "sold in the
+    // last seven days" as everything ever sold. So the stock a sale took goes
+    // to that sale's time, the opening stock to the evening before the first
+    // day, an order to a while before it was paid, the customers to the start.
+    if (plan.length) {
+      await c.query(
+        `update stock_movements m set created_at = r.device_time from receipts r
+          where m.tenant_id = $1 and m.reason = 'sale' and r.tenant_id = m.tenant_id and r.id = coalesce(m.receipt_id, m.ref_id)`, [t.id]);
+      await c.query(`update stock_movements set created_at = $2::timestamptz where tenant_id = $1 and reason = 'opening'`, [t.id, plan[0].at(-240)]);
+      await c.query(
+        `update tickets k set created_at = r.device_time - case when k.table_id is not null then interval '45 minutes' else interval '9 minutes' end
+           from receipts r where k.tenant_id = $1 and r.tenant_id = k.tenant_id and r.ticket_id = k.id`, [t.id]);
+      await c.query(
+        `update ticket_lines l set created_at = k.created_at + interval '1 minute' from tickets k
+          where l.tenant_id = $1 and k.tenant_id = l.tenant_id and k.id = l.ticket_id`, [t.id]);
+      await c.query(`update customers set created_at = $2::timestamptz where tenant_id = $1`, [t.id, plan[0].at(trade.open)]);
+    }
+
     // ---- is it what was planned
     const got = await one(
       `select (select count(*)::int from receipts where tenant_id = $1) as receipts,
