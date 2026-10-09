@@ -8,6 +8,13 @@
     <!-- and fetches it without a notification, saying itself where the download has got to
          (AppUpdater): without this Android refuses the download outright -->
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
+    <!-- a receipt printer paired with the tablet by Bluetooth: the till finds it among the paired
+         devices and prints to it. From Android 12 the person at the till is asked once (Settings,
+         Printers); before that, these two are enough. A tablet without Bluetooth still installs. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <!-- a receipt printer on a USB cable; a tablet without USB host still installs -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <application

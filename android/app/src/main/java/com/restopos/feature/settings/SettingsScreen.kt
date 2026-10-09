@@ -177,6 +177,69 @@ class SettingsViewModel @Inject constructor(
         _testing.value = null
     }
 
+    // ---- the scanners added on this tablet (Settings, Scanners) ----
+    // A scanner that types what it reads (USB, or Bluetooth as a keyboard)
+    // works without being added. Adding it tells the till which device it is:
+    // the page is open, a barcode is scanned, and the device the keys came
+    // from is the scanner.
+    val scanners: StateFlow<List<com.restopos.core.common.AddedScanner>> = session.scanners.held(emptyList())
+    // the devices joined to the tablet at this moment, by the name Android keeps for each
+    private val _joined = MutableStateFlow<Set<String>>(emptySet())
+    val joined: StateFlow<Set<String>> = _joined
+    // what was last read while the page listened, and from which device
+    class ScanRead(val key: String, val name: String, val link: String, val code: String)
+    private val _scanRead = MutableStateFlow<ScanRead?>(null)
+    val scanRead: StateFlow<ScanRead?> = _scanRead
+    private val inputs get() = context.getSystemService(android.hardware.input.InputManager::class.java)
+    private fun devices(): List<android.view.InputDevice> = android.view.InputDevice.getDeviceIds().toList().mapNotNull { android.view.InputDevice.getDevice(it) }.filter { !it.isVirtual }
+    private val plugged = object : android.hardware.input.InputManager.InputDeviceListener {
+        override fun onInputDeviceAdded(deviceId: Int) = lookForScanners()
+        override fun onInputDeviceRemoved(deviceId: Int) = lookForScanners()
+        override fun onInputDeviceChanged(deviceId: Int) = lookForScanners()
+    }
+    fun lookForScanners() { _joined.value = runCatching { devices().map { it.descriptor }.toSet() }.getOrDefault(emptySet()) }
+    // The page is on show: it is told of every scan, and of a scanner plugged in or taken away.
+    fun listenForScans() {
+        lookForScanners()
+        _scanRead.value = null
+        runCatching { inputs?.registerInputDeviceListener(plugged, null) }
+        com.restopos.core.common.Scanner.listener = { key, code ->
+            val device = runCatching { devices().firstOrNull { it.descriptor == key } }.getOrNull()
+            _scanRead.value = ScanRead(key, device?.name?.trim().orEmpty().ifEmpty { "Scanner" }, linkOf(device), code)
+        }
+    }
+    fun stopListeningForScans() {
+        com.restopos.core.common.Scanner.stopListening()
+        runCatching { inputs?.unregisterInputDeviceListener(plugged) }
+    }
+    // On a cable when the tablet has a USB device of the same make and model
+    // plugged in; part of the tablet when Android says it is not external;
+    // otherwise it came over Bluetooth.
+    private fun linkOf(device: android.view.InputDevice?): String {
+        if (device == null) return "bluetooth"
+        val usb = runCatching {
+            context.getSystemService(android.hardware.usb.UsbManager::class.java)?.deviceList?.values
+                ?.any { it.vendorId == device.vendorId && it.productId == device.productId } == true
+        }.getOrDefault(false)
+        return when {
+            usb -> "usb"
+            Build.VERSION.SDK_INT >= 29 && !device.isExternal -> "built in"
+            else -> "bluetooth"
+        }
+    }
+    fun addScanner(read: ScanRead) = viewModelScope.launch {
+        session.addScanner(com.restopos.core.common.AddedScanner(read.key, read.name, read.link))
+        com.restopos.core.ui.Toaster.say("${read.name} added. What it reads goes straight to the sale.")
+    }
+    fun removeScanner(key: String) = viewModelScope.launch { session.removeScanner(key) }
+    // whether the tablet lets EasyPay use Bluetooth, for a printer paired with it
+    fun bluetoothAllowed(): Boolean = printing.bluetoothAllowed()
+    // pairing a Bluetooth scanner or printer is the tablet's own to do: its Bluetooth settings open
+    fun bluetoothSettings() {
+        runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { com.restopos.core.ui.Toaster.say("This tablet would not open its Bluetooth settings. Open them from the tablet's own Settings.") }
+    }
+
     val user: StateFlow<StaffMember?> = staff.current
     fun can(permission: String) = staff.can(permission)
 
@@ -320,13 +383,16 @@ class SettingsViewModel @Inject constructor(
 
 private enum class Page(val label: String) {
     Till("This till"), Notices("Notifications"), Cash("Cash drawer"), Reports("Reports"), Payments("Payments"),
-    Printers("Printers"), Display("Display"), Support("Support"), Help("Help"),
+    Printers("Printers"), Scanners("Scanners"), Display("Display"), Support("Support"), Help("Help"),
 }
+
+// a scanner's frame with a barcode in it, as on the scan key
+private const val SCAN_ICON = "M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 9v6M11 9v6M13.500 9v6M16 9v6"
 
 // The menu's cards, top to bottom.
 private val GROUPS = listOf(
     listOf(Page.Till, Page.Notices), listOf(Page.Cash), listOf(Page.Reports, Page.Payments),
-    listOf(Page.Printers, Page.Display), listOf(Page.Support, Page.Help),
+    listOf(Page.Printers, Page.Scanners, Page.Display), listOf(Page.Support, Page.Help),
 )
 
 private fun icon(p: Page): String = when (p) {
@@ -336,6 +402,7 @@ private fun icon(p: Page): String = when (p) {
     Page.Reports -> VI.Bars
     Page.Payments -> VI.Card
     Page.Printers -> VI.Print
+    Page.Scanners -> SCAN_ICON
     Page.Display -> VI.Sun
     Page.Support -> VI.Help
     Page.Help -> VI.Orders
@@ -451,6 +518,7 @@ fun SettingsScreen(
                             Page.Reports -> ReportsPage(vm, more, shop, keys.close) { sheet = "day" }
                             Page.Payments -> PaymentsPage(vm) { receipts.showId(it) }
                             Page.Printers -> PrintersPage(vm, more, retail)
+                            Page.Scanners -> ScannersPage(vm)
                             Page.Display -> DisplayPage(vm, retail)
                             Page.Support -> SupportPage(vm, shop, network, onSignIn, onRejected, onSignOut)
                             // which business this is, is read in a moment: no help is shown for the wrong one meanwhile
@@ -558,6 +626,71 @@ private fun TillPage(vm: SettingsViewModel, keys: CashKeys, network: String, sta
         Line()
         Fact(VI.Person, "Signed in", user?.let { it.employee.name + (it.role?.let { r -> " · $r" } ?: "") } ?: "Nobody: this till does not use staff PINs")
     }
+}
+
+// The scanners added on this tablet, and adding one. While the page is on
+// show it listens: a barcode scanned with a scanner that is already added
+// shows what it read (the test), and one scanned with anything else offers
+// that device to be added.
+@Composable
+private fun ScannersPage(vm: SettingsViewModel) {
+    val scanners by vm.scanners.collectAsState()
+    val joined by vm.joined.collectAsState()
+    val read by vm.scanRead.collectAsState()
+    androidx.compose.runtime.DisposableEffect(Unit) { vm.listenForScans(); onDispose { vm.stopListeningForScans() } }
+
+    Note("A scanner works as soon as it is plugged into the tablet or paired with it: it types what it reads. Added here, the till knows which device it is. What it reads then goes straight to the sale and is never typed into a box, and this page says whether it is connected.")
+    if (scanners.isEmpty()) Panel { Text("No scanner has been added on this tablet.", color = Pos.Text, fontSize = 14.sp) }
+    scanners.forEach { s ->
+        val here = s.key in joined
+        val last = read?.takeIf { it.key == s.key }
+        Panel {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(s.name, color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        if (here) Tag("Connected", Pos.Ok, dot = true) else Tag("Not connected", Pos.Pink, dot = true)
+                    }
+                    Text("${s.joined} scanner", Modifier.padding(top = 2.dp), color = Pos.Text3, fontSize = 13.sp)
+                    Text(
+                        when {
+                            last != null -> "It read ${last.code}."
+                            here -> "Scan any barcode to try it."
+                            s.link == "bluetooth" -> "Switch it on. If it stays like this, pair it again in the tablet's Bluetooth settings."
+                            else -> "Plug it into the tablet."
+                        },
+                        Modifier.padding(top = 2.dp), color = if (last != null) Pos.Ok else Pos.Text2, fontSize = 13.sp,
+                    )
+                }
+                Small("Remove") { vm.removeScanner(s.key) }
+            }
+        }
+    }
+
+    Heading("Add a scanner")
+    Panel {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                Text("1. Connect it", color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                Text("USB: plug its cable into the tablet. Bluetooth: pair it in the tablet's Bluetooth settings, then come back here.", Modifier.padding(top = 2.dp), color = Pos.Text2, fontSize = 13.sp, lineHeight = 19.sp)
+            }
+            Small("Bluetooth settings") { vm.bluetoothSettings() }
+        }
+        Box(Modifier.padding(vertical = 12.dp)) { Line() }
+        val fresh = read?.takeIf { r -> scanners.none { it.key == r.key } }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                Text("2. Scan any barcode with it", color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                if (fresh == null) {
+                    Text("Waiting for a scan…", Modifier.padding(top = 2.dp), color = Pos.Text2, fontSize = 13.sp)
+                } else {
+                    Text("${fresh.name} read ${fresh.code}.", Modifier.padding(top = 2.dp), color = Pos.Ok, fontSize = 13.sp, lineHeight = 19.sp)
+                }
+            }
+            if (fresh != null) Small("Add this scanner") { vm.addScanner(fresh) }
+        }
+    }
+    Note("A scanner has to end each code with Enter or Tab, as nearly all do when new. One that pairs by Bluetooth but reads nothing here is in another mode: its booklet has a barcode that switches it to keyboard (HID) mode.")
 }
 
 @Composable
@@ -843,15 +976,40 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
     val working by vm.busy.collectAsState()
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Note("The tablet prints straight to each printer, over the network or a USB cable.", Modifier.weight(1f))
+        Note("The tablet prints straight to each printer, over the network, a USB cable or Bluetooth.", Modifier.weight(1f))
         Small(if (checking) "Checking…" else "Check again", enabled = !checking) { vm.check() }
     }
     val list = printers
     if (list != null && list.isEmpty()) {
         Panel { Text("No printer is set up. Add them in the back office, under Printers; they arrive here with the next sync.", color = Pos.Text, fontSize = 14.sp) }
     }
+    // A Bluetooth printer: the tablet has to allow EasyPay to use Bluetooth,
+    // asked once from Android 12 on, and the printer is paired in the tablet
+    // own Bluetooth settings, where the till then finds it.
+    if (list.orEmpty().any { it.kind == "bluetooth" }) {
+        var allowed by remember { mutableStateOf(vm.bluetoothAllowed()) }
+        val ask = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok ->
+            allowed = ok
+            if (ok) vm.check()
+        }
+        Panel {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(if (allowed) "Bluetooth printers" else "EasyPay may not use Bluetooth yet", color = if (allowed) Pos.Text else Pos.Pink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        if (allowed) "Pair the printer in the tablet's Bluetooth settings. The till finds it there by the name or address set in the back office."
+                        else "A Bluetooth printer cannot be reached until the tablet allows it. It asks once.",
+                        Modifier.padding(top = 2.dp), color = Pos.Text2, fontSize = 13.sp, lineHeight = 19.sp,
+                    )
+                }
+                if (allowed) Small("Bluetooth settings") { vm.bluetoothSettings() }
+                else Small("Allow Bluetooth") { ask.launch(android.Manifest.permission.BLUETOOTH_CONNECT) }
+            }
+        }
+    }
     list.orEmpty().forEach { p ->
         val usb = p.kind == "usb"
+        val bt = p.kind == "bluetooth"
         val up = answers[p.id]
         val cats = routes[p.id].orEmpty()
         Panel {
@@ -861,11 +1019,11 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
                         Text(p.name, color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                         when (up) {
                             null -> Tag("Checking", Pos.Text3, dot = true)
-                            true -> Tag(if (usb) "Plugged in" else "Connected", Pos.Ok, dot = true)
-                            else -> Tag(if (usb) "Not plugged in" else "Not answering", Pos.Pink, dot = true)
+                            true -> Tag(if (usb) "Plugged in" else if (bt) "Paired" else "Connected", Pos.Ok, dot = true)
+                            else -> Tag(if (usb) "Not plugged in" else if (bt) "Not paired" else "Not answering", Pos.Pink, dot = true)
                         }
                     }
-                    Text("${if (usb) "USB" else p.address ?: "no address"} · ${p.paper_mm} mm paper", Modifier.padding(top = 2.dp), color = Pos.Text3, fontSize = 13.sp)
+                    Text("${if (usb) "USB" else if (bt) "Bluetooth · ${p.address ?: "no name"}" else p.address ?: "no address"} · ${p.paper_mm} mm paper", Modifier.padding(top = 2.dp), color = Pos.Text3, fontSize = 13.sp)
                     Text(
                         // a shop sends nothing to a kitchen, whatever is ticked in the back office: all it prints is the receipt printer's
                         if (shop) (if (p.is_receipt) "Everything prints here: receipts, reports and the cash drawer." else "Nothing is sent here: a shop's till prints everything on its receipt printer.")
@@ -1049,6 +1207,7 @@ private val SHOP_HELP = listOf(
     "Starting the day" to "Clock in: tap Clock in/out, pick your name and enter your PIN. Then open the day: someone allowed to taps their name on the start screen and counts the cash in the drawer, which opens for the count. The till sells from then on.",
     "Ringing up a sale" to "On Sell, scan each product's barcode, or tap its tile on the right. The same product again adds one more to its line. To find a product, type its name, SKU or barcode in the box at the top, or tap its category under the box. On a line, − and + change how many, and tapping the number between them lets you type it. A code that no product carries adds nothing, and the till says so.",
     "Scanning without the keyboard" to "Tap the scan key beside the search box, on Sell, Receipts, Products & stock or Stock check. While it is lit, the box gives way to a strip that says what the last scan did, and the tablet's keyboard does not come up. Tap the key off again to search by typing. It is one switch for all of these screens.",
+    "Adding a scanner" to "In Settings, under Scanners. Plug the scanner into the tablet, or pair it in the tablet's Bluetooth settings (the page has a key that opens them), scan any barcode, and tap Add this scanner. From then on what it reads goes straight to the sale on Sell, Receipts, Products & stock and Stock check, with the scan key lit or not, and is never typed into the search box. The page says whether each scanner is connected, and a barcode scanned there shows what it read. A scanner that was not added still works as before: it types what it reads.",
     "Sizes, colours and other variants" to "A product that comes in variants asks which one when it is tapped: pick the size, the colour or whatever it has, then tap Add. Where its stock is counted, each choice says what is left. Scanning a variant's own barcode adds that variant at once.",
     "A product sold by weight" to "Tap or scan it, type the weight in kilos (0.350 for 350 grams) and tap Done. Each weighing is a line of its own. To weigh it again, tap the weight on its line.",
     "A discount, or another price, on one line" to "Tap the line on the sale. 10% off and 20% off are one tap; Other % and Rs off ask for the figure, and Rs off comes off each one on the line. Change price sets another price for this sale only. The price it was listed at stays on the line, crossed out, and on the receipt. No discount puts the listed price back.",

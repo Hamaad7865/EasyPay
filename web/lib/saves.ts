@@ -82,7 +82,7 @@ async function tableOf(c: PoolClient, tenantId: string, store: string, table: st
 // code its tablet shows (`pair`) and may show every item (`all`); otherwise
 // it shows the categories ticked for it. A printer has neither.
 export type PrinterForm = {
-  name: string; kind: "network" | "usb" | "screen"; address: string | null; paper: number; feed: number; cut: boolean;
+  name: string; kind: "network" | "usb" | "bluetooth" | "screen"; address: string | null; paper: number; feed: number; cut: boolean;
   pair?: string | null; all?: boolean;
 };
 

@@ -112,6 +112,9 @@ class Printing @Inject constructor(
             if (p.kind == "usb") {
                 val manager = context.getSystemService(Context.USB_SERVICE) as? UsbManager
                 manager?.deviceList?.values?.any { printerInterface(it) != null } == true
+            } else if (p.kind == BLUETOOTH) {
+                // paired with this tablet: whether it is switched on is only known by printing
+                paired(p) != null
             } else {
                 val address = p.address?.trim().orEmpty()
                 if (address.isEmpty()) return@runCatching false
@@ -135,16 +138,77 @@ class Printing @Inject constructor(
 
     private suspend fun deliver(p: PrinterEntity, bytes: ByteArray): Result<Unit> = withContext(Dispatchers.IO) {
         turn(p).withLock { runCatching {
-            if (p.kind == "usb") usb(bytes) else tcp(p, bytes)
+            when (p.kind) { "usb" -> usb(bytes); BLUETOOTH -> bluetooth(p, bytes); else -> tcp(p, bytes) }
         } }.recoverCatching { e ->
             throw PrintError(
                 when (e) {
                     is PrintError -> e.message ?: "${p.name} did not print"
+                    is java.io.IOException if p.kind == BLUETOOTH ->
+                        "${p.name} is not answering over Bluetooth. Check that it is switched on and near the tablet."
                     is java.net.SocketTimeoutException, is java.net.ConnectException, is java.net.NoRouteToHostException ->
                         "${p.name} is not answering at ${p.address}. Check that it is on and on the same network."
                     else -> "${p.name} did not print: ${e.message ?: e.javaClass.simpleName}"
                 },
             )
+        }
+    }
+
+    // ---- a printer paired with this tablet by Bluetooth ----
+    // Whether the tablet lets EasyPay use Bluetooth: from Android 12 on the
+    // person at the till is asked once (Settings, Printers has the key).
+    fun bluetoothAllowed(): Boolean =
+        android.os.Build.VERSION.SDK_INT < 31 ||
+            context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    // The paired device this printer is (BluetoothMatch), or null: Bluetooth
+    // not allowed, none on the tablet, or nothing paired by that name.
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun paired(p: PrinterEntity): android.bluetooth.BluetoothDevice? {
+        if (!bluetoothAllowed()) return null
+        val adapter = context.getSystemService(android.bluetooth.BluetoothManager::class.java)?.adapter ?: return null
+        val devices = runCatching { adapter.bondedDevices.orEmpty().toList() }.getOrDefault(emptyList())
+        val found = BluetoothMatch.pick(
+            p.address,
+            devices.map {
+                BluetoothMatch.Paired(
+                    runCatching { it.name }.getOrNull(), it.address,
+                    runCatching { it.bluetoothClass?.majorDeviceClass == android.bluetooth.BluetoothClass.Device.Major.IMAGING }.getOrDefault(false),
+                )
+            },
+        ) ?: return null
+        return devices.firstOrNull { it.address == found.address }
+    }
+
+    // The connection is opened for the one job and closed after it, as the
+    // Kids Corner till does: these printers hold a single connection, and one
+    // kept open would not come back after the printer's own idle time.
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun bluetooth(p: PrinterEntity, bytes: ByteArray) {
+        val adapter = context.getSystemService(android.bluetooth.BluetoothManager::class.java)?.adapter
+            ?: throw PrintError("This tablet has no Bluetooth, and ${p.name} is a Bluetooth printer.")
+        if (!bluetoothAllowed()) throw PrintError("EasyPay is not allowed to use Bluetooth on this tablet yet. In Settings, under Printers, tap Allow Bluetooth, then print again.")
+        if (!adapter.isEnabled) throw PrintError("Bluetooth is switched off on this tablet. Switch it on, then print again.")
+        val device = paired(p)
+            ?: throw PrintError("${p.name} is not paired with this tablet. Pair it in the tablet's Bluetooth settings. It is looked for as \"${p.address.orEmpty()}\", the name or address set in the back office.")
+        // looking for devices and connecting share the one radio: a search left running makes the connection fail now and then
+        runCatching { adapter.cancelDiscovery() }
+        val socket = device.createRfcommSocketToServiceRecord(SPP)
+        try {
+            socket.connect()
+            val out = socket.outputStream
+            // in pieces: a small printer's buffer overruns when a whole receipt arrives at once
+            var at = 0
+            while (at < bytes.size) {
+                val n = minOf(1024, bytes.size - at)
+                out.write(bytes, at, n)
+                out.flush()
+                at += n
+                if (at < bytes.size) Thread.sleep(20)
+            }
+            // and it drops what is still on its way if the line closes at once
+            Thread.sleep(400)
+        } finally {
+            runCatching { socket.close() }
         }
     }
 
@@ -234,6 +298,10 @@ class Printing @Inject constructor(
 
     companion object {
         const val USB_PERMISSION = "com.restopos.USB_PERMISSION"
+        // a printer's kind in the back office: paired with the tablet by Bluetooth
+        const val BLUETOOTH = "bluetooth"
+        // the serial port every receipt printer offers over Bluetooth
+        private val SPP: java.util.UUID = java.util.UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     }
 }
 

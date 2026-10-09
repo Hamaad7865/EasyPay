@@ -212,6 +212,7 @@ private val SPLIT_SHARES = stringPreferencesKey("split_shares")
 private val LEFT_HANDED = booleanPreferencesKey("left_handed")
 private val KEEP_AWAKE = booleanPreferencesKey("keep_awake")
 private val SCAN_MODE = booleanPreferencesKey("scan_mode")
+private val SCANNERS = stringPreferencesKey("scanners")
 private val LIGHT = booleanPreferencesKey("light_mode_v2")
 private val LAST_PULL = longPreferencesKey("last_pull")
 private val LAST_USE = longPreferencesKey("last_use")
@@ -310,6 +311,16 @@ class SessionStore(private val context: Context) {
     // Kept on the tablet: a counter that has a scanner sets it once.
     val scanMode: Flow<Boolean> = store.data.map { it[SCAN_MODE] ?: false }
     suspend fun setScanMode(on: Boolean) { store.edit { it[SCAN_MODE] = on } }
+    // The scanners added on this tablet (Settings, Scanners). They belong to
+    // the tablet they are plugged into or paired with, not to the business:
+    // kept here, never sent anywhere.
+    val scanners: Flow<List<com.restopos.core.common.AddedScanner>> = store.data.map { com.restopos.core.common.AddedScanners.read(it[SCANNERS]) }
+    suspend fun addScanner(one: com.restopos.core.common.AddedScanner) {
+        store.edit { it[SCANNERS] = com.restopos.core.common.AddedScanners.write(com.restopos.core.common.AddedScanners.with(com.restopos.core.common.AddedScanners.read(it[SCANNERS]), one)) }
+    }
+    suspend fun removeScanner(key: String) {
+        store.edit { it[SCANNERS] = com.restopos.core.common.AddedScanners.write(com.restopos.core.common.AddedScanners.without(com.restopos.core.common.AddedScanners.read(it[SCANNERS]), key)) }
+    }
     val lightMode: Flow<Boolean> = store.data.map { it[LIGHT] ?: false }
     suspend fun setLightMode(on: Boolean) { store.edit { it[LIGHT] = on } }
     // When this tablet last heard from the server.
@@ -341,5 +352,7 @@ class SessionStore(private val context: Context) {
         return out
     }
 
-    suspend fun clear() { store.edit { it.clear() } }
+    // Everything the tablet holds for the business it was set up for. What
+    // belongs to the tablet itself stays: the scanners added on it.
+    suspend fun clear() { store.edit { val scanners = it[SCANNERS]; it.clear(); if (scanners != null) it[SCANNERS] = scanners } }
 }

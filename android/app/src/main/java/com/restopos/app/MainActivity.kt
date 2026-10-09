@@ -78,7 +78,21 @@ class MainActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         if (event.action == android.view.KeyEvent.ACTION_DOWN) used()
         val scanner = com.restopos.core.common.Scanner
-        if (scanner.capturing && event.device?.isVirtual == false) {
+        // a real keyboard or scanner; the keyboard on the screen is not one
+        val device = event.device?.takeIf { !it.isVirtual }
+        // Settings, Scanners is listening: it is told which device each scan
+        // comes from, and nothing of it reaches the screen
+        val listener = scanner.listener
+        if (device != null && listener != null) {
+            val ends = event.keyCode == android.view.KeyEvent.KEYCODE_ENTER || event.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER || event.keyCode == android.view.KeyEvent.KEYCODE_TAB
+            if (!ends && event.unicodeChar == 0) return super.dispatchKeyEvent(event)
+            if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                scanner.listen(device.descriptor, event.unicodeChar, ends, event.eventTime)?.let { listener(device.descriptor, it) }
+            }
+            return true
+        }
+        // scan mode, or a scanner that was added on this tablet (with or without scan mode)
+        if (device != null && scanner.takes(device.descriptor)) {
             val ends = event.keyCode == android.view.KeyEvent.KEYCODE_ENTER || event.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER || event.keyCode == android.view.KeyEvent.KEYCODE_TAB
             val rubs = event.keyCode == android.view.KeyEvent.KEYCODE_DEL || event.keyCode == android.view.KeyEvent.KEYCODE_FORWARD_DEL
             // keys with no character (volume, back and the rest) go on as always

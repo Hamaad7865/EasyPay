@@ -44,14 +44,18 @@ function screenFields(f: FormData): saves.PrinterForm {
 
 function fields(f: FormData) {
   const name = text(f, "name", 40);
-  const kind: saves.PrinterForm["kind"] = f.get("kind") === "usb" ? "usb" : "network";
+  const picked = f.get("kind");
+  const kind: saves.PrinterForm["kind"] = picked === "usb" ? "usb" : picked === "bluetooth" ? "bluetooth" : "network";
   const address = text(f, "address", 40);
   if (!name) throw new Refused("Give the printer a name, for example Kitchen, Bar or Cashier.");
   if (kind === "network" && !IP.test(address)) throw new Refused("A network printer needs its IP address, for example 192.168.1.50.");
+  // what the tablet finds it by among the devices paired with it: an IP address is neither
+  if (kind === "bluetooth" && (!address || IP.test(address)))
+    throw new Refused("A Bluetooth printer needs the name the tablet shows for it once it is paired, for example MPT-II, or its Bluetooth address.");
   return {
     name,
     kind,
-    address: kind === "network" ? address : null,
+    address: kind === "usb" ? null : address,
     paper: f.get("paper_mm") === "58" ? 58 : 80,
     feed: int(f, "feed_lines", 0, 12, 3),
     cut: on(f, "cut"),
@@ -167,14 +171,19 @@ function Hardware({ p }: { p?: Row }) {
           <select name="kind" defaultValue={p?.kind ?? "network"}>
             <option value="network">Network (IP address)</option>
             <option value="usb">USB, plugged into the tablet</option>
+            <option value="bluetooth">Bluetooth, paired with the tablet</option>
           </select>
         </label>
       </div>
       <div className="form-row">
         <label className="field">
-          IP address
+          IP address, or Bluetooth name
           <input name="address" defaultValue={p?.address ?? ""} maxLength={40} placeholder="192.168.1.50" />
-          <span className="help">Network printers only. Port 9100 is used unless you add one, like 192.168.1.50:9101.</span>
+          <span className="help">
+            Network: its IP address. Port 9100 is used unless you add one, like 192.168.1.50:9101. Bluetooth: pair the printer in the tablet&apos;s Bluetooth
+            settings, then type here the name the tablet shows for it (for example MPT-II) or its Bluetooth address. The tablet needs EasyPay 0.6.2 or later.
+            USB: leave it empty.
+          </span>
         </label>
         <label className="field">
           Paper width
@@ -354,7 +363,7 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
               <div>
                 <h2>{p.name}</h2>
                 <p>
-                  {p.kind === "usb" ? "USB" : p.address} · {p.paper_mm} mm
+                  {p.kind === "usb" ? "USB" : p.kind === "bluetooth" ? `Bluetooth · ${p.address ?? ""}` : p.address} · {p.paper_mm} mm
                   {many ? ` · ${storeName.get(p.store_id) ?? ""}` : ""}
                 </p>
               </div>

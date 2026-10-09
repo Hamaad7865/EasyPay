@@ -12,7 +12,7 @@ export type PrinterRow = {
   name: string;
   // "screen": a kitchen screen (0086), a tablet that shows the orders. It
   // prints nothing, so the page hands this file its printers only.
-  kind: "network" | "usb" | "screen";
+  kind: "network" | "usb" | "bluetooth" | "screen";
   address: string | null;
   paper_mm: number;
   is_receipt: boolean;
@@ -66,7 +66,11 @@ function storeWarnings(rows: PrinterRow[], cats: PrinterCat[], one: boolean, dis
   }
   const seen = new Map<string, string>();
   for (const p of live) {
-    const key = p.kind === "usb" ? "usb" : (p.address ?? "").includes(":") ? (p.address ?? "") : `${p.address}:9100`;
+    // a Bluetooth printer is the one of that name or address, whatever the capitals (an address has colons of its own)
+    const key =
+      p.kind === "usb" ? "usb"
+      : p.kind === "bluetooth" ? `bluetooth:${(p.address ?? "").trim().toLowerCase()}`
+      : (p.address ?? "").includes(":") ? (p.address ?? "") : `${p.address}:9100`;
     const other = seen.get(key);
     if (other) out.push(`${other} and ${p.name} are the same printer (${p.kind === "usb" ? "USB" : p.address}). That works, their prints wait for each other; remove one if it was entered twice by mistake.`);
     else seen.set(key, p.name);

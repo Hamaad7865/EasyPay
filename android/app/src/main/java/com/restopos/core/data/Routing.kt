@@ -116,7 +116,10 @@ object Routing {
     // to it are sent one after the other, never two at once. A kitchen screen
     // is at its own address and port, and has one exchange at a time too.
     fun line(p: PrinterEntity): String =
-        if (p.kind == "usb") "usb" else {
+        if (p.kind == "usb") "usb"
+        // a Bluetooth printer by the name or address it is looked for by (an address has colons of its own)
+        else if (p.kind == "bluetooth") "bluetooth:" + p.address?.trim().orEmpty().lowercase()
+        else {
             val port = if (p.kind == SCREEN) 9310 else 9100
             val address = p.address?.trim().orEmpty().lowercase()
             address.substringBefore(':') + ":" + (address.substringAfter(':', port.toString()).toIntOrNull() ?: port)

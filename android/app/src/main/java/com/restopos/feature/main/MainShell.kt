@@ -272,6 +272,8 @@ class ShellViewModel @Inject constructor(
     val lang: StateFlow<String> = session.lang.stateIn(viewModelScope, SharingStarted.Eagerly, "en")
     // a shop's scan mode: the scanner's keys are taken below the screen (see Scanner)
     val scanMode: StateFlow<Boolean> = session.scanMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    // the scanners added on this tablet: their keys are scans with or without scan mode
+    val scanners: StateFlow<Set<String>> = session.scanners.map { list -> list.map { it.key }.toSet() }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     fun go(to: Screen) {
         if (to in PREMIUM_ONLY && !premium.value) return
@@ -475,8 +477,10 @@ fun MainShell(
     // else: a payment, a restaurant's screens and the start screen get their
     // keys as always.
     val scanMode by shell.scanMode.collectAsState()
+    val scanners by shell.scanners.collectAsState()
     SideEffect {
         Scanner.mode = scanMode
+        Scanner.added = scanners
         Scanner.taking = retail && (screen == Screen.Sell || screen == Screen.Products || screen == Screen.StockCheck || screen == Screen.Receipts)
     }
     DisposableEffect(Unit) { onDispose { Scanner.taking = false } }

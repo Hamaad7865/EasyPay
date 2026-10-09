@@ -44,3 +44,63 @@ class ScannerTest {
         assertEquals("33334444", second)
     }
 }
+
+// A scanner added on the tablet (Settings, Scanners): its keys are scans
+// wherever a screen takes scans, and Settings is told which device a scan
+// came from.
+class AddedScannerTest {
+    @org.junit.After fun tidy() { Scanner.mode = false; Scanner.taking = false; Scanner.added = emptySet(); Scanner.stopListening() }
+
+    @Test fun an_added_scanner_is_taken_without_scan_mode_where_a_screen_takes_scans() {
+        Scanner.added = setOf("scanner-a")
+        Scanner.taking = true
+        org.junit.Assert.assertTrue(Scanner.takes("scanner-a"))
+        // a keyboard that was not added types as always
+        org.junit.Assert.assertFalse(Scanner.takes("keyboard-b"))
+        org.junit.Assert.assertFalse(Scanner.takes(null))
+    }
+
+    @Test fun nothing_is_taken_where_no_screen_takes_scans() {
+        Scanner.added = setOf("scanner-a")
+        Scanner.taking = false
+        Scanner.mode = true
+        org.junit.Assert.assertFalse(Scanner.takes("scanner-a"))
+        org.junit.Assert.assertFalse(Scanner.takes("keyboard-b"))
+    }
+
+    @Test fun scan_mode_takes_every_real_keyboard_as_before() {
+        Scanner.taking = true
+        Scanner.mode = true
+        org.junit.Assert.assertTrue(Scanner.takes("keyboard-b"))
+        org.junit.Assert.assertTrue(Scanner.takes(null))
+    }
+
+    @Test fun settings_hears_each_device_apart() {
+        // two devices typing at once do not run into one code
+        var at = 1_000L
+        "6091".forEach { assertNull(Scanner.listen("a", it.code, false, at)); at += 5 }
+        "777".forEach { assertNull(Scanner.listen("b", it.code, false, at)); at += 5 }
+        "2345".forEach { assertNull(Scanner.listen("a", it.code, false, at)); at += 5 }
+        assertEquals("60912345", Scanner.listen("a", 0, true, at))
+        assertEquals("777", Scanner.listen("b", 0, true, at + 5))
+        // an Enter with nothing before it is not a code
+        assertNull(Scanner.listen("a", 0, true, at + 10))
+    }
+
+    @Test fun the_list_is_kept_as_text_and_read_back() {
+        val one = AddedScanner("k1", "Netum Bluetooth", "bluetooth")
+        val two = AddedScanner("k2", "USB Barcode Scanner", "usb")
+        val kept = AddedScanners.write(AddedScanners.with(AddedScanners.with(emptyList(), one), two))
+        assertEquals(listOf(one, two), AddedScanners.read(kept))
+        assertEquals("Bluetooth", one.joined)
+        assertEquals("USB", two.joined)
+        // the same device added again is one scanner, with what it is called now
+        val again = AddedScanners.with(AddedScanners.read(kept), AddedScanner("k1", "Netum NT-1228BL", "bluetooth"))
+        assertEquals(listOf("k2", "k1"), again.map { it.key })
+        assertEquals("Netum NT-1228BL", again.last().name)
+        assertEquals(listOf(two), AddedScanners.without(AddedScanners.read(kept), "k1"))
+        // a list that cannot be read is no list, not a till that will not start
+        assertEquals(emptyList<AddedScanner>(), AddedScanners.read("not a list"))
+        assertEquals(emptyList<AddedScanner>(), AddedScanners.read(null))
+    }
+}
