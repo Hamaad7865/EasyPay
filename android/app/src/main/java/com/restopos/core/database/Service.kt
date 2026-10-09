@@ -282,6 +282,12 @@ interface ServiceDao {
     @Query("SELECT COUNT(*) FROM items WHERE deleted_at IS NULL")
     fun itemCount(): Flow<Int>
 
+    // Which of these items the tablet holds. A screen that has just had the
+    // server make some (the first-run set-up) shows them itself until the
+    // pull has brought them, and asks this to know when that is.
+    @Query("SELECT id FROM items WHERE id IN (:ids)")
+    fun itemsHeld(ids: List<String>): Flow<List<String>>
+
     @Query("SELECT COUNT(*) FROM items WHERE deleted_at IS NULL AND is_available = 0")
     fun soldOutCount(): Flow<Int>
 
