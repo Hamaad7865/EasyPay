@@ -83,8 +83,14 @@ async function open(client, ctx, href, sp = {}, { params, file } = {}) {
 }
 
 // what a page says, without its markup
-const text = (html) => html.replace(/<!-- -->/g, '').replace(/<(script|style)[^>]*>.*?<\/\1>/g, '').replace(/<[^>]+>/g, ' ')
-  .replace(/&amp;/g, '&').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
+const text = (html) => {
+  // a script or style block goes with what is in it, over as many lines as it has; and again
+  // until none is left, because taking one out can bring the two halves of another together
+  let says = html.replace(/<!-- -->/g, ''), before;
+  do { before = says; says = says.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/g, ''); } while (says !== before);
+  // &amp; last: a page that says &quot; is written &amp;quot;, and unescaped first it would be read as "
+  return says.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+};
 // each table row as "cell | cell | cell"
 const rowsOf = (html) => [...html.matchAll(/<tr[^>]*>(.*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<t[hd][^>]*>(.*?)<\/t[hd]>/g)].map((c) => text(c[1])).join(' | '));
 // the figures at the top of a report, as "label: value"
