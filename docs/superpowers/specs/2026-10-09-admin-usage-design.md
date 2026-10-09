@@ -15,7 +15,9 @@ Asked of Neon that day (`neon projects get`, `neon branches list`, `/projects/<i
 - `owner.subscription_type` (`free_v3`), `owner.branches_limit` (10),
   `branch_logical_size_limit_bytes` (1 GB), and each compute's `current_state` (`active` or `idle`).
 - Not the allowance: 100 compute hours a month is the free plan's figure, kept in the page's code
-  beside the plan's name. A plan the page does not know shows what was used and no "left".
+  beside the plan's name. A plan the page does not know shows what was used and no "left". A reading
+  in which Neon did not name the plan at all (it is under the project's owner, which GitHub's key,
+  reaching this project only, may not be told) is counted against the free plan's, and the page says so.
 - Nothing per day: the free plan keeps no history. And nothing per client: Neon meters a project and a
   branch. **Every per-client figure is our own estimate.**
 
@@ -76,8 +78,8 @@ Readings carry the project's id, so a second project is more rows, not a new des
 - **Compute.** Used of the allowance, what is left, when the period ends, production against the
   other branches by name, and the day-by-day list. Where it is heading: used so far, carried at the
   same pace to the period's end, shown once the period is three days old; if that passes the
-  allowance, the day it would run out. The reading's time is in the head; a reading more than a day
-  old is flagged, since the job may have stopped.
+  allowance, the day it would run out. The reading's time is in the head; a reading more than 26
+  hours old is flagged: nobody has used production since, or the job has stopped.
 - **Clients.** For each client, since the period began (or since counting began, if later), up to the
   reading's time:
   - *Share*: every slot in which production was awake for a client is split equally between the

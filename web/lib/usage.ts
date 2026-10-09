@@ -21,7 +21,8 @@ export const ALLOWANCE: Record<string, number> = { free_v3: 100 };
 // hour awake costs, for when there is no reading to take the ratio from.
 export const CAPPED_SIZE = 0.25;
 // The job reads every hour while production is awake, so a reading older than
-// this means it has stopped, not that the database slept through a night.
+// this is more than a night's sleep: nobody used production for a whole day,
+// or the job has stopped. The page says which it may be.
 const STALE_MS = 26 * HOUR_MS;
 
 export type Mark = { tenant_id: string; hour: string; slots: number };
@@ -168,6 +169,8 @@ export type UsageModel = {
   reading: Reading | null;
   stale: boolean;
   allowance: number | null;
+  // Neon did not name the plan: the allowance is the free plan's, taken as read
+  planAssumed: boolean;
   used: number | null;
   left: number | null;
   // the branches that used any compute, production first
@@ -193,7 +196,11 @@ export function usageModel(input: {
   const newest = [...input.readings].sort((a, b) => Date.parse(b.read_at) - Date.parse(a.read_at))[0] ?? null;
   const mine = newest ? input.readings.filter((r) => r.project_id === newest.project_id) : [];
   const main = newest ? mainOf(newest) : null;
-  const allowance = newest?.plan ? (ALLOWANCE[newest.plan] ?? null) : null;
+  // Neon names the plan under the project's owner, which a key that reaches
+  // one project only may not be told. A reading without it is counted against
+  // the free plan's allowance, the plan this is run on, and the page says so.
+  const planAssumed = newest !== null && !newest.plan;
+  const allowance = newest ? (ALLOWANCE[newest.plan || "free_v3"] ?? null) : null;
   const used = newest ? newest.compute_seconds / 3600 : null;
 
   const parts = split(
@@ -225,6 +232,7 @@ export function usageModel(input: {
     reading: newest,
     stale: newest !== null && input.now - Date.parse(newest.read_at) > STALE_MS,
     allowance,
+    planAssumed,
     used,
     left: allowance !== null && used !== null ? Math.max(0, allowance - used) : null,
     branches: newest

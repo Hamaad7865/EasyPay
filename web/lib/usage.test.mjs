@@ -163,6 +163,17 @@ check("a reading more than a day old is flagged, and a plan the page does not kn
   assert.equal(m.left, null);
 });
 
+check("a reading in which Neon did not name the plan is counted against the free plan's allowance, and says so", () => {
+  const m = usageModel({ readings: [reading("2026-03-05", 10800, 3600, { plan: null })], marks: [], tenants, storage, dbBytes: 600, now: at("2026-03-05T13:00:00Z") });
+  assert.equal(m.allowance, 100);
+  assert.equal(m.planAssumed, true);
+  near(m.left, 97, "left");
+  // a plan that was named is not an assumption, whether the page knows it or not
+  const named = (plan) => usageModel({ readings: [reading("2026-03-05", 10800, 3600, { plan })], marks: [], tenants, storage, dbBytes: 600, now: at("2026-03-05T13:00:00Z") });
+  assert.equal(named("free_v3").planAssumed, false);
+  assert.equal(named("launch").planAssumed, false);
+});
+
 check("the page before any reading: the clients by the slots alone, nothing of Neon's", () => {
   const m = usageModel({ readings: [], marks: [mark("a", "2026-03-05T10:00:00Z", 0, 1)], tenants, storage, dbBytes: 600, now: at("2026-03-05T13:00:00Z") });
   assert.equal(m.reading, null);

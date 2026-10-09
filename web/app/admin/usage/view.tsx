@@ -40,8 +40,8 @@ export function UsageView({ m }: { m: UsageModel }) {
       {r && m.stale && (
         <div className="note danger" role="alert">
           <strong>The last reading is from {dayTime(r.read_at)}</strong>
-          The hourly job on GitHub may have stopped: look at &quot;read usage&quot; under the repository&apos;s Actions tab. Everything of
-          Neon&apos;s below is as it was then.
+          A reading is saved only while production is awake, so either nobody has used it since, or the hourly job on GitHub has stopped: look
+          at &quot;read usage&quot; under the repository&apos;s Actions tab. Everything of Neon&apos;s below is as it was then.
         </div>
       )}
 
@@ -52,7 +52,9 @@ export function UsageView({ m }: { m: UsageModel }) {
               <div className="kpi-label">Compute used</div>
               <div className="kpi-value">{h1(m.used)}</div>
               <div className="kpi-note">
-                {m.allowance !== null ? `of ${m.allowance} compute hours` : `compute hours. Neon names the plan ${r.plan ?? "no plan"}: its allowance is not known here`}
+                {m.allowance !== null
+                  ? `of ${m.allowance} compute hours${m.planAssumed ? ". Neon did not name the plan: the free plan's allowance is taken" : ""}`
+                  : `compute hours. Neon names the plan ${r.plan}: its allowance is not known here`}
               </div>
               {m.allowance !== null && (
                 <span className="bar" style={{ marginTop: 10 }}>
