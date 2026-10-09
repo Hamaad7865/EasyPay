@@ -32,13 +32,19 @@
      open page in the menu, a quiet button) */
   --field: #fff;
   --raised: #fff;
-  /* glass: the menu's pane, its edge, the card that opens beside the rail.
-     The smaller pieces of white glass each have their own strength, times
-     --sheen: on a dark page all of them are a faint light. */
+  /* glass: the menu's pane, its edge, the card that opens beside the rail;
+     then the smaller pieces, each its own strength of white (on a dark page
+     all of them are a faint light): the two cards in the menu, a line of the
+     menu under the pointer, a round sign and the search, the fold switch
+     under the pointer, the number beside a page */
   --glass: rgba(255, 255, 255, 0.56);
   --glass-line: rgba(255, 255, 255, 0.9);
   --pop: rgba(255, 255, 255, 0.94);
-  --sheen: 1;
+  --glass-card: rgba(255, 255, 255, 0.6);
+  --glass-hover: rgba(255, 255, 255, 0.66);
+  --glass-key: rgba(255, 255, 255, 0.72);
+  --glass-lit: rgba(255, 255, 255, 0.8);
+  --glass-chip: rgba(255, 255, 255, 0.82);
   --line: #e8eaef;
   --line-strong: #d5d9e1;
   --hairline: rgba(16, 24, 40, 0.06);
@@ -159,7 +165,11 @@
     --glass: rgba(26, 29, 35, 0.62);
     --glass-line: rgba(255, 255, 255, 0.07);
     --pop: rgba(30, 33, 40, 0.96);
-    --sheen: 0.09;
+    --glass-card: rgba(255, 255, 255, 0.054);
+    --glass-hover: rgba(255, 255, 255, 0.059);
+    --glass-key: rgba(255, 255, 255, 0.065);
+    --glass-lit: rgba(255, 255, 255, 0.072);
+    --glass-chip: rgba(255, 255, 255, 0.074);
     --line: #2a2e37;
     --line-strong: #3a404b;
     --hairline: rgba(255, 255, 255, 0.08);
@@ -241,7 +251,11 @@
     --glass: rgba(26, 29, 35, 0.62);
     --glass-line: rgba(255, 255, 255, 0.07);
     --pop: rgba(30, 33, 40, 0.96);
-    --sheen: 0.09;
+    --glass-card: rgba(255, 255, 255, 0.054);
+    --glass-hover: rgba(255, 255, 255, 0.059);
+    --glass-key: rgba(255, 255, 255, 0.065);
+    --glass-lit: rgba(255, 255, 255, 0.072);
+    --glass-chip: rgba(255, 255, 255, 0.074);
     --line: #2a2e37;
     --line-strong: #3a404b;
     --hairline: rgba(255, 255, 255, 0.08);
@@ -406,7 +420,7 @@ body {
 .rail-gap { flex: 1; }
 .rail-sign {
   position: relative; width: 44px; height: 44px; flex: none; padding: 0; display: grid; place-items: center; cursor: pointer;
-  border: 1px solid var(--glass-line); border-radius: 50%; background: rgba(255, 255, 255, calc(0.72 * var(--sheen))); color: var(--ink2);
+  border: 1px solid var(--glass-line); border-radius: 50%; background: var(--glass-key); color: var(--ink2);
   font: inherit; font-size: 14px; font-weight: 700; text-decoration: none;
   box-shadow: 0 1px 2px rgba(22, 28, 45, 0.05);
   transition: background-color 0.18s, color 0.18s, border-color 0.18s, box-shadow 0.2s, transform 0.25s var(--spring);
@@ -495,7 +509,7 @@ body {
   border: 0; border-radius: 50%; background: transparent; color: var(--ink3);
   transition: background-color 0.15s, color 0.15s, transform 0.2s var(--spring);
 }
-.bo-fold:hover { background: rgba(255, 255, 255, calc(0.8 * var(--sheen))); color: var(--ink); }
+.bo-fold:hover { background: var(--glass-lit); color: var(--ink); }
 .bo-fold:active { transform: scale(0.9); }
 .bo-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .bo-fold svg { width: 17px; height: 17px; }
@@ -505,7 +519,7 @@ body {
 .bo-restaurant {
   display: flex; align-items: center; gap: 10px; min-width: 0;
   padding: 8px 10px; margin-bottom: 10px;
-  border: 1px solid var(--glass-line); border-radius: 16px; background: rgba(255, 255, 255, calc(0.6 * var(--sheen)));
+  border: 1px solid var(--glass-line); border-radius: 16px; background: var(--glass-card);
 }
 .bo-restaurant > svg { width: 32px; height: 32px; padding: 8px; flex: none; border-radius: 50%; background: var(--strong); color: var(--on-strong); }
 .bo-restaurant > span { min-width: 0; display: grid; }
@@ -518,7 +532,7 @@ body {
   color: var(--ink2); text-decoration: none; font-size: 13.5px; font-weight: 500;
   transition: background-color 0.15s, color 0.15s, box-shadow 0.2s;
 }
-.bo-nav a:hover, .bo-group-head:hover { background: rgba(255, 255, 255, calc(0.66 * var(--sheen))); color: var(--ink); }
+.bo-nav a:hover, .bo-group-head:hover { background: var(--glass-hover); color: var(--ink); }
 /* the page that is open: a white pill lifted off the glass */
 .bo-nav a.on { background: var(--raised); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.06), 0 8px 18px -10px rgba(22, 28, 45, 0.28); }
 .bo-nav a.on svg { color: var(--accent); }
@@ -558,7 +572,7 @@ body {
 @keyframes n-in { from { opacity: 0; transform: scale(0.6); } }
 .nav-n {
   flex: none; margin-left: auto; min-width: 22px; height: 20px; padding: 0 6px; display: inline-grid; place-items: center;
-  border-radius: 999px; background: rgba(255, 255, 255, calc(0.82 * var(--sheen))); color: var(--ink2);
+  border-radius: 999px; background: var(--glass-chip); color: var(--ink2);
   font-size: 11.5px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: 0;
   box-shadow: 0 1px 2px rgba(22, 28, 45, 0.08);
   animation: n-in 0.32s var(--spring) backwards;
@@ -583,7 +597,7 @@ body {
 /* who is signed in, and the way out */
 .bo-user {
   display: flex; align-items: center; gap: 10px; min-width: 0; margin-top: 8px; padding: 7px 7px 7px 9px;
-  border: 1px solid var(--glass-line); border-radius: 999px; background: rgba(255, 255, 255, calc(0.6 * var(--sheen)));
+  border: 1px solid var(--glass-line); border-radius: 999px; background: var(--glass-card);
 }
 .bo-user > span:nth-child(2) { flex: 1; min-width: 0; display: grid; }
 .bo-user b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -607,7 +621,7 @@ body {
 /* in the menu: it looks like a field and opens the search */
 .bo-side button.search-trigger {
   flex: none; width: 100%; min-width: 0; height: 40px; margin-bottom: 10px; padding: 0 8px 0 14px; display: flex; align-items: center; gap: 10px;
-  border: 1px solid var(--glass-line); border-radius: 999px; background: rgba(255, 255, 255, calc(0.72 * var(--sheen))); color: var(--ink3);
+  border: 1px solid var(--glass-line); border-radius: 999px; background: var(--glass-key); color: var(--ink3);
   font: inherit; font-size: 13.5px; font-weight: 400; cursor: text; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.04);
   transition: background-color 0.15s, color 0.15s, box-shadow 0.2s;
 }
@@ -1398,7 +1412,7 @@ button[aria-busy="true"]::after {
   transition: background-color 0.15s, color 0.15s, box-shadow 0.2s;
 }
 .adm-nav a svg { width: 16px; height: 16px; flex: none; }
-.adm-nav a:hover { background: rgba(255, 255, 255, calc(0.66 * var(--sheen))); color: var(--ink); }
+.adm-nav a:hover { background: var(--glass-hover); color: var(--ink); }
 /* the page that is open: the white pill of the back office's menu */
 .adm-nav a.on { background: var(--raised); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.06), 0 8px 18px -10px rgba(22, 28, 45, 0.28); }
 .adm-nav a.on svg { color: var(--accent); }
