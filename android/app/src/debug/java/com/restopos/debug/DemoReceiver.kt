@@ -145,7 +145,12 @@ class DemoReceiver : BroadcastReceiver() {
                     // the pairing code every debug build's kitchen tablet has (AppNav). From one emulator the
                     // PC is 10.0.2.2; "adb forward tcp:9310 tcp:9310" on the kitchen's emulator joins the two.
                     val screen = intent.getStringExtra("screen")?.trim()?.takeIf { it.isNotEmpty() && restaurant }
-                    seed(context, deps.db(), deps.session(), restaurant, plan)
+                    // --ez setup true: the business's first-run set-up is open (server 0089), as for a
+                    // client just made in /admin. The start screen then offers "Finish setting up".
+                    // The made-up business has no server: the set-up's screens and what each form
+                    // refuses are seen, and every save stops at "This needs a connection".
+                    val setup = intent.getBooleanExtra("setup", false)
+                    seed(context, deps.db(), deps.session(), restaurant, plan, setup)
                     if (screen != null) {
                         val shop = Json.parseToJsonElement(context.assets.open("demo-shop.json").bufferedReader().use { it.readText() })
                         deps.db().ops().upsertPrinters(listOf(
@@ -179,7 +184,7 @@ class DemoReceiver : BroadcastReceiver() {
         return listOf("pbkdf2-sha256", iterations.toString(), b64.encodeToString(salt), b64.encodeToString(hash)).joinToString("$")
     }
 
-    private suspend fun seed(context: Context, db: TillDatabase, session: SessionStore, restaurant: Boolean, plan: String?) {
+    private suspend fun seed(context: Context, db: TillDatabase, session: SessionStore, restaurant: Boolean, plan: String?, setup: Boolean = false) {
         val shop = Json.parseToJsonElement(context.assets.open("demo-shop.json").bufferedReader().use { it.readText() })
         val tenant = shop.str("tenant")!!
         val store = shop.obj("store")
@@ -194,7 +199,8 @@ class DemoReceiver : BroadcastReceiver() {
             // a restaurant's settings say nothing about the kind of business, as before there were shops
             val settings = shop.obj("settings")
             val kept = if (restaurant) settings.filterKeys { it != "businessType" } else settings
-            db.ops().upsertSettings(SettingsEntity(tenant, JsonObject(if (plan == null) kept else kept + ("plan" to kotlinx.serialization.json.JsonPrimitive(plan))).toString()))
+            val planned = if (plan == null) kept else kept + ("plan" to kotlinx.serialization.json.JsonPrimitive(plan))
+            db.ops().upsertSettings(SettingsEntity(tenant, JsonObject(if (setup) planned + ("setup" to kotlinx.serialization.json.JsonPrimitive("open")) else planned).toString()))
             catalog.upsertTaxes(listOf(TaxEntity(tax.str("id")!!, tenant, tax.str("name")!!, tax.jsonObject["rate_bp"]!!.jsonPrimitive.intOrNull ?: 0, tax.str("type")!!, true)))
             if (restaurant) {
                 val r = shop.obj("restaurant")

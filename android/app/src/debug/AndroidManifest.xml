@@ -7,6 +7,9 @@
              shop's screens can be used with no login and no server:
                adb shell am broadcast -n com.restopos.app/com.restopos.debug.DemoReceiver -a com.restopos.app.DEMO_SHOP
              It refuses a tablet that is set up for a business.
+             With the boolean extra "setup" true, the made-up business's
+             first-run set-up is open, as for a client just made in /admin
+             (the command is in DemoReceiver, where the business is seeded).
              DEMO_SCAN stands in for a barcode scanner, which an emulator has
              none of: the code goes to the screen that is open, as a scan would.
              The command, with its code, is at the top of DemoReceiver.onReceive. -->
