@@ -3,7 +3,7 @@
 // expected, the timeline by day, the payments in and out, an event in words.
 // Usage: node web/lib/pos.test.mjs   (Node runs the .ts file itself)
 import assert from "node:assert/strict";
-import { byDay, eventDetail, movedTo, splitMoves, tabOf, variance } from "./pos.ts";
+import { REQUEST_BUILD, askEnded, askSays, byDay, eventDetail, movedTo, refusal, splitMoves, tabOf, takesRequests, variance } from "./pos.ts";
 
 let failures = 0;
 function check(name, fn) {
@@ -98,6 +98,46 @@ check("a count and a closing say what was counted, what was expected, and by how
   assert.equal(eventDetail(ev("close", { ref: "12", amount: "118500", extra: "118000" }), m), "Day closing no. 12. Counted Rs 1185.00, expected Rs 1180.00, over by Rs 5.00");
   assert.equal(eventDetail(ev("close", { ref: "12" }), m), "Day closing no. 12");
   assert.equal(eventDetail(ev("crash", { ref: "0.6.3 (10)", words: "java.lang.SecurityException" }), m), "java.lang.SecurityException (version 0.6.3 (10))");
+});
+
+// ---- what the back office asks of a till (migration 0091) ----
+const asked = (more = {}) => ({ id: "r1", device_id: TILL, shift_id: "s1", kind: "close_day", counted_cash: null, amount: null, reason: null, status: "waiting", note: null,
+  requested_at: "2026-10-09T19:10:00Z", answered_at: null, who: "Mira", ...more });
+
+check("a till takes requests from build 12 on, and one that never said its build does not", () => {
+  assert.equal(REQUEST_BUILD, 12);
+  assert.equal(takesRequests({ till_version: 12, off: false }), true);
+  assert.equal(takesRequests({ till_version: 13, off: false }), true);
+  assert.equal(takesRequests({ till_version: 11, off: false }), false);
+  assert.equal(takesRequests({ till_version: null, off: false }), false);
+  assert.equal(takesRequests({ till_version: 12, off: true }), false);
+});
+
+check("a request says what was asked", () => {
+  assert.equal(askSays(asked(), m), "Close the day at what the till expects");
+  assert.equal(askSays(asked({ counted_cash: "117000" }), m), "Close the day, counted Rs 1170.00");
+  assert.equal(askSays(asked({ kind: "cash_out", amount: "7000", reason: "Ice" }), m), "Take Rs 70.00 out · Ice");
+});
+
+check("and how it ended", () => {
+  assert.deepEqual(askEnded(asked()), ["Waiting for the till to sync", "amber"]);
+  assert.deepEqual(askEnded(asked({ status: "done" })), ["Done", "green"]);
+  assert.deepEqual(askEnded(asked({ status: "cancelled" })), ["Cancelled", ""]);
+  assert.deepEqual(askEnded(asked({ status: "refused", note: "That day is no longer open on the till." })), ["Refused: That day is no longer open on the till.", "red"]);
+  assert.deepEqual(askEnded(asked({ status: "refused" })), ["Refused by the till", "red"]);
+});
+
+check("what the database refuses is put into words", () => {
+  assert.equal(refusal("till-too-old"), "This till's build does not take requests from the back office. Update the till first.");
+  assert.equal(refusal("no-day-open"), "This till has no day open, as far as it has synced.");
+  assert.equal(refusal("already-asked"), "A closing is already waiting for this till.");
+  assert.equal(refusal("forbidden"), "Your role does not include doing this on a till.");
+  assert.equal(refusal("not-waiting"), "The till has already answered it, or it was cancelled.");
+  assert.equal(refusal("reason-required"), "Say what the cash is for.");
+  assert.equal(refusal("bad-amount"), "Type an amount above nothing.");
+  // anything else is not shown as it came
+  assert.equal(refusal("relation \"x\" does not exist"), "That could not be asked. Nothing was changed.");
+  assert.equal(refusal(undefined), "That could not be asked. Nothing was changed.");
 });
 
 if (failures) {

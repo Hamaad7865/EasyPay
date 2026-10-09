@@ -389,7 +389,13 @@ export const CLOSURES = `
                     join payment_types pt on pt.tenant_id = r.tenant_id and pt.id = p.payment_type_id and pt.kind <> 'cash'
                    where ${IN_SHIFT("r")}
                    group by pt.name, pt.sort_order
-                  having sum(${SIGNED}) <> 0) q), '[]'::jsonb) as non_cash
+                  having sum(${SIGNED}) <> 0) q), '[]'::jsonb) as non_cash,
+         -- closed because the back office asked (0091): who asked, and whether they typed a count
+         (select jsonb_build_object('who', e.name, 'counted', q.counted_cash is not null)
+            from till_requests q
+            left join employees e on e.tenant_id = q.tenant_id and e.id = q.requested_by
+           where q.tenant_id = sh.tenant_id and q.shift_id = sh.id and q.kind = 'close_day' and q.status = 'done' and q.deleted_at is null
+           limit 1) as asked
     from shifts sh
     left join employees ob on ob.tenant_id = sh.tenant_id and ob.id = sh.opened_by
     left join employees cb on cb.tenant_id = sh.tenant_id and cb.id = sh.closed_by
@@ -401,6 +407,7 @@ export type Closure = {
   id: string; opened_at: string; closed_at: string; opening_float: string; expected_cash: string | null; counted_cash: string | null;
   opened_by: string | null; closed_by: string | null; cash_taken: string; cash_in: string; cash_out: string; close_no: number | null;
   non_cash: { name: string; amount: number }[];
+  asked: { who: string | null; counted: boolean } | null;
 };
 
 // Every payment into and out of a till from one day to another, newest
@@ -446,6 +453,68 @@ export const RENAME = `update pos_devices set name = $3 where tenant_id = $1 and
 export const SET_ACTIVE = `
   update pos_devices set deleted_at = case when $3::boolean then null else now() end
    where tenant_id = $1 and id = $2 returning id`;
+
+// ---- what the back office asks of a till (migration 0091) ----
+//
+// A till owns its day, so the back office closes nothing and moves no cash:
+// it leaves a request, and the till carries it out the next time it syncs,
+// with its own figures, then answers.
+
+// The first build of the till that carries requests out (till_request_build()).
+export const REQUEST_BUILD = 12;
+export const takesRequests = (t: { till_version: number | null; off: boolean }) => !t.off && t.till_version !== null && t.till_version >= REQUEST_BUILD;
+
+// What was asked of the tills, newest first. $1 tenant, $2 a till or null for
+// all of them, $3 true for those still waiting only, $4 how many.
+export const ASKED = `
+  select q.id, q.device_id, q.shift_id, q.kind, q.counted_cash, q.amount, q.reason, q.status, q.note, q.requested_at, q.answered_at, e.name as who
+    from till_requests q
+    left join employees e on e.tenant_id = q.tenant_id and e.id = q.requested_by
+   where q.tenant_id = $1 and q.deleted_at is null
+     and ($2::uuid is null or q.device_id = $2::uuid)
+     and ($3::boolean is not true or q.status = 'waiting')
+   order by q.requested_at desc
+   limit $4`;
+
+export type Asked = {
+  id: string; device_id: string; shift_id: string; kind: "close_day" | "cash_out"; counted_cash: string | null; amount: string | null; reason: string | null;
+  status: "waiting" | "done" | "refused" | "cancelled"; note: string | null; requested_at: string; answered_at: string | null; who: string | null;
+};
+
+// What may be asked by this person: what their role lets them do on a till.
+// $1 the employee.
+export const MAY_ASK = `select has_perm($1, 'shift.open_close') as close, has_perm($1, 'cash.pay_in_out') as cash`;
+
+export function askSays(q: Asked, m: (v: string | number | null) => string): string {
+  if (q.kind === "cash_out") return `Take ${m(q.amount)} out` + (q.reason ? ` · ${q.reason}` : "");
+  return q.counted_cash === null ? "Close the day at what the till expects" : `Close the day, counted ${m(q.counted_cash)}`;
+}
+
+// How a request ended, and the colour of its tag.
+export function askEnded(q: Asked): [string, string] {
+  switch (q.status) {
+    case "waiting": return ["Waiting for the till to sync", "amber"];
+    case "done": return ["Done", "green"];
+    case "cancelled": return ["Cancelled", ""];
+    case "refused": return [q.note ? `Refused: ${q.note}` : "Refused by the till", "red"];
+  }
+}
+
+// What till_request and till_request_cancel refuse with, in words. Anything
+// else the database says is not shown as it came.
+const REFUSED: Record<string, string> = {
+  forbidden: "Your role does not include doing this on a till.",
+  "bad-kind": "That is not something a till can be asked.",
+  "bad-device": "That till is not one of yours, or was deactivated.",
+  "till-too-old": "This till's build does not take requests from the back office. Update the till first.",
+  "no-day-open": "This till has no day open, as far as it has synced.",
+  "already-asked": "A closing is already waiting for this till.",
+  "bad-amount": "Type an amount above nothing.",
+  "reason-required": "Say what the cash is for.",
+  "bad-request": "That request is not one of yours.",
+  "not-waiting": "The till has already answered it, or it was cancelled.",
+};
+export const refusal = (code: unknown): string => REFUSED[String(code)] ?? "That could not be asked. Nothing was changed.";
 
 // A till's name as typed: trimmed, and nothing when it is empty or longer
 // than a card can show.

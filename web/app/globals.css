@@ -1182,6 +1182,25 @@ a.till:hover .till-go { border-color: var(--accent); color: var(--accent); }
 .till-day em { display: block; font-style: normal; font-size: 11.5px; color: var(--ink3); font-variant-numeric: tabular-nums; }
 .till-quiet { color: var(--ink3); }
 
+/* What the back office asks of a till (0091). On a card the key to close the
+   day sits over the link, at its end; the card makes room for it. */
+.till-wrap { position: relative; display: flex; }
+.till-wrap > a.till { flex: 1; min-width: 0; }
+.till-wrap:has(> .till-key) .till-top { padding-right: 44px; }
+.bo-main button.till-key {
+  position: absolute; top: 16px; right: 18px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border-radius: 50%;
+  background: var(--raised); border: 1px solid var(--red-edge); color: var(--red); box-shadow: none;
+}
+.bo-main button.till-key:hover { background: var(--red-bg); border-color: var(--red-edge-hover); }
+.till-asked { grid-column: 1 / -1; display: block; font-size: 12.5px; color: var(--amber); }
+.till-acts { flex: none; margin-left: auto; }
+.bo-main p.till-acts.left { margin: -6px 0 18px; }
+.note.asked { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.note.asked > span { min-width: 0; }
+.bo-main .confirm.ask h2 { margin-top: 0; }
+.confirm.ask .field { max-width: none; margin: 16px 0 0; }
+.bo-main .confirm.ask p.help { margin-top: 8px; font-size: 12.5px; color: var(--ink3); }
+
 .till-head { display: flex; align-items: center; gap: 14px; margin: 0 0 18px; }
 .bo-main .till-head h1 { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 4px; }
 .stats.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }

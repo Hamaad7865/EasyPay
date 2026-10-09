@@ -411,6 +411,57 @@ function loadPos() {
       check('P6 Cash flow goes to that till\'s Cash flow', (await went('/backoffice/pos/cash', { till: dev })) === `redirect /backoffice/pos/${dev}?tab=cash`);
       check('P6 and with no till named, to the cards', (await went('/backoffice/pos/activity', {})) === 'redirect /backoffice/pos' && (await went('/backoffice/pos/cash', { day: '2026-99-99' })) === 'redirect /backoffice/pos');
     }
+
+    // P7 what the back office asks of a till (migration 0091): the keys only
+    // where they belong, what waits, and how each request ended
+    {
+      const said = async (d, v) => c.query(`select device_heard($1, 'pull', $2)`, [d, v]);
+      const shift2 = crypto.randomUUID();
+      applied(await push([op('shift.open', { id: shift2, device_id: dev, opening_float: 50000, opened_at: new Date().toISOString() })]), 'open again');
+      await said(dev, 11);
+      let cards = await see(me, '/backoffice/pos', {});
+      let own = await till(me, dev, {});
+      check('P7 a till on a build that takes no requests has no key to close its day, and says to update it', !cards.error && !cards.html.includes('class="till-key"') && own.says.includes('Update this till to close its day from here.'), cards.error || own.error);
+      check('P7 nor a key to take cash out', (await till(me, dev, { tab: 'cash' })).says.includes('Update this till to record cash taken out from here.'));
+      await said(dev, 12);
+      cards = await see(me, '/backoffice/pos', {});
+      own = await till(me, dev, {});
+      check('P7 on build 12, with its day open, its card has the key, and only its card', (cards.html.match(/class="till-key"/g) || []).length === 1 && cards.html.includes('name="counted"') && cards.html.includes(`name="till" value="${dev}"`));
+      check('P7 so has its own page, and Cash flow has Take cash out', own.says.includes('Close the day') && own.html.includes('name="counted"')
+        && (await till(me, dev, { tab: 'cash' })).html.includes('name="amount"'));
+      check('P7 the key says what the till expects, as of its last sync', cards.html.includes('Rs 500.00 expected, as of its last sync'), (cards.html.match(/placeholder="[^"]*expected[^"]*"/) || [''])[0]);
+      const b = await see(ben, '/backoffice/pos', {});
+      const bOwn = await till(ben, dev, {});
+      check('P7 someone who may not close a day or move cash has neither key', !b.html.includes('till-key') && !bOwn.html.includes('name="counted"') && !(await till(ben, dev, { tab: 'settings' })).html.includes('name="amount"'));
+
+      const ask = (kind, counted, amount, reason) => asApp(tid, async () => (await c.query(`select till_request($1, $2, $3, $4, $5, $6) as id`, [owner, dev, kind, counted, amount, reason])).rows[0].id);
+      const closeAsk = await ask('close_day', null, null, null);
+      const cashAsk = await ask('cash_out', null, 7000, 'Ice');
+      cards = await see(me, '/backoffice/pos', {});
+      own = await till(me, dev, {});
+      check('P7 once a closing is asked, the card says it waits and the key is gone', cards.says.includes('Closing asked') && cards.says.includes('by Asha') && cards.says.includes('the till closes its day the next time it syncs') && !cards.html.includes('class="till-key"'), (cards.says.match(/Closing asked.{0,80}/) || [''])[0]);
+      check('P7 the till\'s page says what waits, on every tab, with a way to cancel each', own.says.includes('Close the day at what the till expects') && own.says.includes('Take Rs 70.00 out · Ice') && (own.html.match(/Cancel it/g) || []).length === 2
+        && (await till(me, dev, { tab: 'settings' })).says.includes('Take Rs 70.00 out · Ice') && !own.html.includes('name="counted"'));
+      const cashTab = await till(me, dev, { tab: 'cash' });
+      const listed = rowsOf(cashTab.html).filter((r) => r.includes('Waiting for the till to sync'));
+      check('P7 Cash flow lists what was asked and that it waits', cashTab.says.includes('Asked from the back office') && listed.length === 2 && listed.some((r) => r.includes('Take Rs 70.00 out · Ice') && r.includes('Asha')), listed.join(' // '));
+      check('P7 someone who may not cancel sees what waits and no key to cancel it', (await till(ben, dev, {})).says.includes('Close the day at what the till expects') && !(await till(ben, dev, {})).html.includes('Cancel it'));
+
+      // the till carries them out: the cash out refused, the day closed at what it expected
+      const closedAt = new Date().toISOString();
+      applied(await push([
+        { ...op('request.answer', { id: cashAsk, status: 'refused', note: 'The till was used after this was asked. Count the drawer and ask again.' }), employee_id: owner },
+        { ...op('shift.close', { id: shift2, counted_cash: 50000, closed_at: closedAt }), employee_id: owner },
+        { ...op('day.close', { id: crypto.randomUUID(), store_id: store.id, device_id: dev, closed_at: closedAt }), employee_id: owner },
+        { ...op('request.answer', { id: closeAsk, status: 'done' }), employee_id: owner },
+      ]), 'the till\'s answers');
+      const after = await till(me, dev, { tab: 'cash', ref: closedDay });
+      const ended = rowsOf(after.html);
+      check('P7 afterwards nothing waits, and each says how it ended', !after.html.includes('Cancel it') && ended.some((r) => r.includes('Close the day at what the till expects') && r.includes('Done'))
+        && ended.some((r) => r.includes('Take Rs 70.00 out') && r.includes('Refused: The till was used after this was asked.')), ended.filter((r) => r.includes('Asha')).join(' // '));
+      check('P7 and the closing says it was asked from the back office, and that nobody counted', after.says.includes('Closed from the back office, asked by Asha') && after.says.includes('nobody counted the drawer'));
+      check('P7 the day closed on the till itself says no such thing', (after.says.match(/Closed from the back office/g) || []).length === 1);
+    }
   } finally {
     await devguard.cleanupTenant(c, tid);
     await devguard.cleanupTenant(c, other);

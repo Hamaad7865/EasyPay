@@ -5,10 +5,12 @@ import { readTenant } from "@/lib/db";
 import { words } from "@/lib/mode";
 import { money, withDefaults } from "@/lib/settings";
 import { basics, clock, today } from "@/lib/report";
-import { CASH_UPS, type CashUp, FRESH_MINUTES, TILLS, type Till, expectedCash, stateLine, tillState, variance } from "@/lib/pos";
+import { ASKED, type Asked, CASH_UPS, type CashUp, FRESH_MINUTES, MAY_ASK, TILLS, type Till, expectedCash, stateLine, takesRequests, tillState, variance } from "@/lib/pos";
 import { Wait } from "../busy";
-import { Card, Empty, PageHead } from "../ui";
+import { Card, Empty, Flash, PageHead, type Search } from "../ui";
 import { Stat } from "../reports/parts";
+import { askClose } from "./actions";
+import { CloseDayKey } from "./ask";
 
 // Point of sale: every till of the business as a card, and behind each card
 // the till's own page (pos/[till]). Under the cards, the days that were
@@ -20,15 +22,21 @@ import { Stat } from "../reports/parts";
 // asking after half an hour and syncs again at the next touch. So a card says
 // when its till last synced, never that it is "online", and never that a
 // silent one is in trouble: it cannot know.
-export default async function PointOfSale() {
+export default async function PointOfSale({ searchParams }: { searchParams: Search }) {
+  const sp = await searchParams;
   const ctx = await tenantContext();
   const d = await readTenant(ctx.tenantId, async (c) => {
     const b = await basics(c, ctx.tenantId, ctx.employeeId);
-    const [tills, ups] = await Promise.all([
+    const [tills, ups, may, waiting] = await Promise.all([
       c.query(TILLS, [ctx.tenantId, today(b.tz)]),
       b.ok ? c.query(CASH_UPS, [ctx.tenantId, 10]) : Promise.resolve({ rows: [] }),
+      c.query(MAY_ASK, [ctx.employeeId]),
+      c.query(ASKED, [ctx.tenantId, null, true, 100]),
     ]);
-    return { tz: b.tz, ok: b.ok, s: withDefaults(b.settings), rows: tills.rows as Till[], ups: ups.rows as CashUp[] };
+    return {
+      tz: b.tz, ok: b.ok, s: withDefaults(b.settings), rows: tills.rows as Till[], ups: ups.rows as CashUp[],
+      mayClose: Boolean(may.rows[0]?.close), waiting: waiting.rows as Asked[],
+    };
   });
   const w = words(ctx.mode);
   const now = new Date();
@@ -53,8 +61,13 @@ export default async function PointOfSale() {
       ...(Number(t.cash_out ?? 0) !== 0 ? [`${m(t.cash_out)} paid out`] : []),
     ];
     const build = t.till_version === null ? t.app_version : `Build ${t.till_version}`;
+    // a closing asked of this till from here, which it has not carried out yet
+    const closing = d.waiting.find((q) => q.device_id === t.id && q.kind === "close_day");
+    const expected = expectedCash(t.opening_float, t.cash_taken, t.cash_in, t.cash_out);
     return (
-      <Link key={t.id} href={`/backoffice/pos/${t.id}`} className={"till" + (t.off ? " off" : "")}>
+      // the card is one link into the till; the key to close its day sits over it, and is no part of the link
+      <div key={t.id} className="till-wrap">
+      <Link href={`/backoffice/pos/${t.id}`} className={"till" + (t.off ? " off" : "")}>
         <span className="till-top">
           <span className="till-ico" aria-hidden="true">
             <TabletSmartphone strokeWidth={1.9} />
@@ -97,8 +110,14 @@ export default async function PointOfSale() {
             {d.ok && (
               <span>
                 <small>Expected in drawer</small>
-                <b>{m(expectedCash(t.opening_float, t.cash_taken, t.cash_in, t.cash_out))}</b>
+                <b>{m(expected)}</b>
                 <em>{moved.join(" · ")}</em>
+              </span>
+            )}
+            {closing && (
+              <span className="till-asked">
+                Closing asked {at(closing.requested_at)}
+                {closing.who ? ` by ${closing.who}` : ""}: the till closes its day the next time it syncs.
               </span>
             )}
           </span>
@@ -110,6 +129,10 @@ export default async function PointOfSale() {
           </span>
         )}
       </Link>
+      {t.shift_id && d.mayClose && takesRequests(t) && !closing && (
+        <CloseDayKey round action={askClose} till={t.id} name={t.name} expected={d.ok ? m(expected) : null} back="/backoffice/pos" />
+      )}
+      </div>
     );
   };
 
@@ -119,6 +142,7 @@ export default async function PointOfSale() {
         title="Point of sale"
         lede={`Every till of this ${w.place}. Open one for what it took today, its settings, its cash flow and everything it did. A till syncs each sale as it is made and checks in about every 15 minutes while someone is using it; left untouched for half an hour it stops asking, so a till that has said nothing for a while is one no one is at, or a tablet that is off.`}
       />
+      <Flash sp={sp} />
       {tills.length === 0 ? (
         <Empty icon={TabletSmartphone} title="No till is set up yet">Sign in on a tablet with the EasyPay app to set it up as a till. It shows here as soon as it has.</Empty>
       ) : (

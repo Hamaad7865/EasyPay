@@ -5,14 +5,16 @@ import { Refused, UUID, act } from "@/lib/action";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { isDay } from "@/lib/day";
-import { withDefaults } from "@/lib/settings";
-import { basics, today } from "@/lib/report";
+import { money, withDefaults } from "@/lib/settings";
+import { basics, clock, today } from "@/lib/report";
 import {
-  ACTIVITY, CLOSURES, type Closure, DAYS, type Entry, type Event, LEDGER, MOVES, type Move, RENAME, SET_ACTIVE, TABS, TAKEN, TILLS,
-  type Taken, type Till, type TillDay, cleanName, stateLine, tabOf, tillState,
+  ACTIVITY, ASKED, type Asked, CLOSURES, type Closure, DAYS, type Entry, type Event, LEDGER, MAY_ASK, MOVES, type Move, RENAME, SET_ACTIVE, TABS, TAKEN, TILLS,
+  type Taken, type Till, type TillDay, askSays, cleanName, expectedCash, stateLine, tabOf, takesRequests, tillState,
 } from "@/lib/pos";
-import { Wait } from "../../busy";
+import { Submit, Wait } from "../../busy";
 import { Flash, type Search, one } from "../../ui";
+import { askCashOut, askClose, cancelAsk } from "../actions";
+import { CloseDayKey } from "../ask";
 import { CashFlow } from "./cash";
 import { General } from "./general";
 import { Settings } from "./settings";
@@ -72,7 +74,12 @@ export default async function TillPage({ params, searchParams }: { params: Promi
     // a day the address asks for that no calendar has is today
     const asked = (key: "ref" | "from" | "to") => (isDay(one(sp[key])) ? one(sp[key]) : day);
     const [from, to] = [asked("from"), asked("to")].sort();
-    const base = { tz: b.tz, ok: b.ok, s: withDefaults(b.settings), t, day, newest, ref: asked("ref"), from, to };
+    // what this person may ask of a till, and what was asked of this one and still waits
+    const [may, waiting] = await Promise.all([c.query(MAY_ASK, [ctx.employeeId]), c.query(ASKED, [ctx.tenantId, id, true, 20])]);
+    const base = {
+      tz: b.tz, ok: b.ok, s: withDefaults(b.settings), t, day, newest, ref: asked("ref"), from, to,
+      may: { close: Boolean(may.rows[0]?.close), cash: Boolean(may.rows[0]?.cash) }, waiting: waiting.rows as Asked[],
+    };
 
     if (tab === "general") {
       const [taken, days, last] = await Promise.all([
@@ -91,11 +98,12 @@ export default async function TillPage({ params, searchParams }: { params: Promi
       const closures = (await c.query(CLOSURES, [ctx.tenantId, id, base.ref, b.tz])).rows as Closure[];
       // the day open now is part of today's history, ahead of what was closed
       const openNow = t.shift_id !== null && base.ref === day ? t.shift_id : null;
-      const [lines, moves] = await Promise.all([
+      const [lines, moves, asks] = await Promise.all([
         Promise.all([...(openNow ? [openNow] : []), ...closures.map((x) => x.id)].map((shift) => c.query(LEDGER, [ctx.tenantId, shift]).then((r) => [shift, r.rows as Entry[]] as const))),
         c.query(MOVES, [ctx.tenantId, id, from, to, b.tz, MOST_MOVES]),
+        c.query(ASKED, [ctx.tenantId, id, false, 10]),
       ]);
-      return { ...base, tab, closures, openNow, lines: new Map(lines), moves: moves.rows as (Move & { total: number })[] };
+      return { ...base, tab, closures, openNow, lines: new Map(lines), moves: moves.rows as (Move & { total: number })[], asks: asks.rows as Asked[] };
     }
     const events = (await c.query(ACTIVITY, [ctx.tenantId, from, to, id, MOST_EVENTS, b.tz])).rows as Event[];
     return { ...base, tab, events };
@@ -108,6 +116,11 @@ export default async function TillPage({ params, searchParams }: { params: Promi
   const state = tillState(seen, now, t.off);
   const build = t.till_version === null ? t.app_version : `Build ${t.till_version}`;
   const here = `/backoffice/pos/${t.id}`;
+  // where a request made on this tab comes back to
+  const back = tab === "general" ? here : `${here}?tab=${tab}`;
+  const at = clock(d.tz);
+  const m = (v: string | number | null) => money(Number(v ?? 0), d.s.decimals);
+  const closing = d.waiting.some((q) => q.kind === "close_day");
 
   return (
     <div>
@@ -136,6 +149,22 @@ export default async function TillPage({ params, searchParams }: { params: Promi
             {!t.off && t.till_version !== null && t.till_version < d.newest && <span className="badge amber">Older than build {d.newest}</span>}
           </p>
         </div>
+        {/* its day closed from here: the till closes it itself, the next time it syncs */}
+        {t.shift_id && d.may.close && !closing && !t.off && (
+          <div className="till-acts">
+            {takesRequests(t) ? (
+              <CloseDayKey
+                action={askClose}
+                till={t.id}
+                name={t.name}
+                expected={d.ok ? m(expectedCash(t.opening_float, t.cash_taken, t.cash_in, t.cash_out)) : null}
+                back={back}
+              />
+            ) : (
+              <span className="muted">Update this till to close its day from here.</span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="tabs">
@@ -147,11 +176,25 @@ export default async function TillPage({ params, searchParams }: { params: Promi
         ))}
       </div>
       <Flash sp={sp} />
+      {d.waiting.map((q) => (
+        <form key={q.id} action={cancelAsk} className="note asked">
+          <input type="hidden" name="till" value={t.id} />
+          <input type="hidden" name="id" value={q.id} />
+          <input type="hidden" name="kind" value={q.kind} />
+          <input type="hidden" name="back" value={back} />
+          <span>
+            <strong>{d.ok || q.kind === "close_day" ? askSays(q, m) : "Take cash out"}</strong>
+            Asked {at(q.requested_at)}
+            {q.who ? ` by ${q.who}` : ""}. The till carries it out the next time it syncs, and says here if it could not.
+          </span>
+          {(q.kind === "close_day" ? d.may.close : d.may.cash) && <Submit className="btn-quiet btn-sm">Cancel it</Submit>}
+        </form>
+      ))}
 
       {d.tab === "general" && <General d={d} mode={ctx.mode} now={now} />}
       {d.tab === "settings" && <Settings d={d} rename={rename} setActive={setActive} />}
       {d.tab === "none" && <div className="note warn">Your role does not include seeing reports.</div>}
-      {d.tab === "cash" && <CashFlow d={d} here={here} />}
+      {d.tab === "cash" && <CashFlow d={d} here={here} askCashOut={askCashOut} />}
       {d.tab === "trace" && <Trace d={d} here={here} most={MOST_EVENTS} />}
     </div>
   );

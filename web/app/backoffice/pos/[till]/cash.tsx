@@ -1,10 +1,11 @@
 import { Banknote } from "lucide-react";
 import { money } from "@/lib/settings";
 import { clock, fmtDay } from "@/lib/report";
-import { type Closure, type Entry, type Move, expectedCash, splitMoves, variance } from "@/lib/pos";
+import { type Asked, type Closure, type Entry, type Move, askEnded, askSays, expectedCash, splitMoves, takesRequests, variance } from "@/lib/pos";
 import { Go, Submit } from "../../busy";
 import { Card, Empty } from "../../ui";
 import { Stat } from "../../reports/parts";
+import { CashOutKey } from "../ask";
 import type { Base } from "./types";
 
 // What a line of the drawer is called, and the colour of its tag.
@@ -24,9 +25,11 @@ const LINE: Record<string, [string, string]> = {
 export function CashFlow({
   d,
   here,
+  askCashOut,
 }: {
-  d: Base & { closures: Closure[]; openNow: string | null; lines: Map<string, Entry[]>; moves: (Move & { total: number })[] };
+  d: Base & { closures: Closure[]; openNow: string | null; lines: Map<string, Entry[]>; moves: (Move & { total: number })[]; asks: Asked[] };
   here: string;
+  askCashOut: (f: FormData) => Promise<void>;
 }) {
   const { t } = d;
   const at = clock(d.tz);
@@ -174,6 +177,14 @@ export function CashFlow({
                   note={v === null ? undefined : `expected ${m(expected)}, ${v.off === 0 ? "balanced" : (v.off < 0 ? "short by " : "over by ") + m(Math.abs(v.off))}`}
                 />
               </div>
+              {x.asked && (
+                <div className="note">
+                  <strong>Closed from the back office{x.asked.who ? `, asked by ${x.asked.who}` : ""}</strong>
+                  {x.asked.counted
+                    ? "The till closed its own day when it next synced, with the count typed here."
+                    : "The till closed its own day when it next synced, at what it expected: nobody counted the drawer."}
+                </div>
+              )}
               {x.non_cash.length > 0 && (
                 <div className="note">
                   <strong>Not in the drawer</strong>
@@ -207,6 +218,16 @@ export function CashFlow({
         </label>
         <Submit>Show</Submit>
       </Go>
+      {/* cash taken out, written down from here: the till records it the next time it syncs */}
+      {t.shift_id && d.may.cash && !t.off && (
+        <p className="till-acts left">
+          {takesRequests(t) ? (
+            <CashOutKey action={askCashOut} till={t.id} name={t.name} back={`${here}?tab=cash`} />
+          ) : (
+            <span className="muted">Update this till to record cash taken out from here.</span>
+          )}
+        </p>
+      )}
 
       <Card title="Inflows" action={<span className="badge green">{m(inTotal)}</span>} flush>
         {inflows.length === 0 ? (
@@ -269,6 +290,36 @@ export function CashFlow({
         )}
       </Card>
       {cut(outflows) !== null && <div className="note">Showing the latest {outflows.length.toLocaleString("en-US")} of {cut(outflows)!.toLocaleString("en-US")} outflows, and the total above is for those. Pick a shorter period to see them all.</div>}
+      {d.asks.length > 0 && (
+        <Card title="Asked from the back office" lede="What this till was asked to do from here, and how each ended. The till carries a request out the next time it syncs." flush>
+          <table>
+            <thead>
+              <tr>
+                <th>Asked</th>
+                <th>By</th>
+                <th>What</th>
+                <th>How it ended</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.asks.map((q) => {
+                const [ended, tone] = askEnded(q);
+                return (
+                  <tr key={q.id}>
+                    <td style={{ whiteSpace: "nowrap" }}>{at(q.requested_at)}</td>
+                    <td>{q.who ?? ""}</td>
+                    <td>{askSays(q, m)}</td>
+                    <td>
+                      <span className={"badge " + tone} style={{ whiteSpace: "normal" }}>{ended}</span>
+                      {q.answered_at && q.status !== "waiting" && <span className="sub">{at(q.answered_at)}</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
       <p className="muted" style={{ fontSize: 12.5 }}>Figures are as of the till&apos;s last sync. A payment whose type was corrected shows as what it was corrected to.</p>
     </div>
   );
