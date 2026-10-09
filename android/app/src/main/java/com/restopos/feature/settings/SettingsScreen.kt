@@ -229,7 +229,7 @@ class SettingsViewModel @Inject constructor(
     }
     fun addScanner(read: ScanRead) = viewModelScope.launch {
         session.addScanner(com.restopos.core.common.AddedScanner(read.key, read.name, read.link))
-        com.restopos.core.ui.Toaster.say("${read.name} added. What it reads goes straight to the sale.")
+        com.restopos.core.ui.Toaster.say("${read.name} added.")
     }
     fun removeScanner(key: String) = viewModelScope.launch { session.removeScanner(key) }
     // whether the tablet lets EasyPay use Bluetooth, for a printer paired with it
@@ -518,7 +518,7 @@ fun SettingsScreen(
                             Page.Reports -> ReportsPage(vm, more, shop, keys.close) { sheet = "day" }
                             Page.Payments -> PaymentsPage(vm) { receipts.showId(it) }
                             Page.Printers -> PrintersPage(vm, more, retail)
-                            Page.Scanners -> ScannersPage(vm)
+                            Page.Scanners -> ScannersPage(vm, retail == true)
                             Page.Display -> DisplayPage(vm, retail)
                             Page.Support -> SupportPage(vm, shop, network, onSignIn, onRejected, onSignOut)
                             // which business this is, is read in a moment: no help is shown for the wrong one meanwhile
@@ -633,13 +633,18 @@ private fun TillPage(vm: SettingsViewModel, keys: CashKeys, network: String, sta
 // shows what it read (the test), and one scanned with anything else offers
 // that device to be added.
 @Composable
-private fun ScannersPage(vm: SettingsViewModel) {
+private fun ScannersPage(vm: SettingsViewModel, shop: Boolean) {
     val scanners by vm.scanners.collectAsState()
     val joined by vm.joined.collectAsState()
     val read by vm.scanRead.collectAsState()
     androidx.compose.runtime.DisposableEffect(Unit) { vm.listenForScans(); onDispose { vm.stopListeningForScans() } }
 
-    Note("A scanner works as soon as it is plugged into the tablet or paired with it: it types what it reads. Added here, the till knows which device it is. What it reads then goes straight to the sale and is never typed into a box, and this page says whether it is connected.")
+    // only a shop has screens that take a scan below the screen (Sell, Receipts, Products and stock, Stock check)
+    Note(
+        "A scanner works as soon as it is plugged into the tablet or paired with it: it types what it reads. Added here, the till knows which device it is. " +
+            if (shop) "What it reads then goes straight to the sale and is never typed into a box, and this page says whether it is connected."
+            else "This page then says whether it is connected, and shows what it reads.",
+    )
     if (scanners.isEmpty()) Panel { Text("No scanner has been added on this tablet.", color = Pos.Text, fontSize = 14.sp) }
     scanners.forEach { s ->
         val here = s.key in joined
