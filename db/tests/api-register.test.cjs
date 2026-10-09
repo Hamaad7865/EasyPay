@@ -43,13 +43,28 @@ function check(name, cond, extra) {
   const token = (sub, key = made.privateKey) =>
     new jose.SignJWT({}).setProtectedHeader({ alg: 'ES256', kid: 'test-key' }).setSubject(sub).setIssuer(origin).setIssuedAt().setExpirationTime('5m').sign(key);
 
-  // hello.ts as it is, compiled here
+  // hello.ts as it is, compiled here; and what it imports from beside it
+  // (till-release.ts, since tablets are offered a release by themselves),
+  // which is TypeScript too and is compiled the same way when it is asked for
   const ts = require(path.join(ROOT, 'web', 'node_modules', 'typescript'));
-  const js = ts.transpileModule(fs.readFileSync(path.join(ROOT, 'hello.ts'), 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
-  }).outputText;
-  const mod = { exports: {} };
-  new Function('require', 'module', 'exports', js)(require('module').createRequire(path.join(ROOT, 'hello.ts')), mod, mod.exports);
+  const real = require('module').createRequire(path.join(ROOT, 'hello.ts'));
+  const compiled = new Map();
+  function compile(file) {
+    if (compiled.has(file)) return compiled.get(file);
+    const js = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+    }).outputText;
+    const m = { exports: {} };
+    compiled.set(file, m.exports);
+    new Function('require', 'module', 'exports', js)(load, m, m.exports);
+    compiled.set(file, m.exports);
+    return m.exports;
+  }
+  function load(id) {
+    const beside = path.join(ROOT, id + '.ts');
+    return id.startsWith('./') && fs.existsSync(beside) ? compile(beside) : real(id);
+  }
+  const mod = { exports: compile(path.join(ROOT, 'hello.ts')) };
   const app = mod.exports.default;
 
   const c = new Client({ connectionString: env.DATABASE_URL_UNPOOLED, ssl: { require: true } });
