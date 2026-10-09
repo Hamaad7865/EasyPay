@@ -117,7 +117,7 @@ class AuthViewModel @Inject constructor(
 // --- Store + device selection (spec 7.1 step 2; Phase 1 exit needs this) ---
 sealed interface StoreDeviceUiState {
     data object Loading : StoreDeviceUiState
-    data class Pick(val stores: List<StoreDto>, val error: String? = null, val notice: String? = null) : StoreDeviceUiState
+    data class Pick(val stores: List<StoreDto>, val error: String? = null) : StoreDeviceUiState
     data object Busy : StoreDeviceUiState
     data object Ready : StoreDeviceUiState
     data class Error(val message: String) : StoreDeviceUiState
@@ -125,7 +125,6 @@ sealed interface StoreDeviceUiState {
 
 sealed interface StoreDeviceAction {
     data class Register(val storeId: String, val name: String, val code: String) : StoreDeviceAction
-    data object SeedDemo : StoreDeviceAction
 }
 
 @HiltViewModel
@@ -172,11 +171,6 @@ class StoreDeviceViewModel @Inject constructor(
                     }
                     _state.value = StoreDeviceUiState.Pick(stores, error = message)
                 }
-            }
-            StoreDeviceAction.SeedDemo -> {
-                runCatching { api.seedDemo() }
-                    .onSuccess { _state.value = StoreDeviceUiState.Pick(stores, notice = "Demo menu added") }
-                    .onFailure { _state.value = StoreDeviceUiState.Pick(stores, error = it.message ?: "Could not add the demo menu") }
             }
         }
     }

@@ -186,10 +186,6 @@ class ApiClient(baseUrl: String, private val auth: AuthClient, private val versi
         }
     }
 
-    suspend fun seedDemo() {
-        authed { a -> http.post("$functionUrl/seed-demo") { header(HttpHeaders.Authorization, a) } }
-    }
-
     companion object {
         const val VERSION_HEADER = "X-Till-Version"
         const val UPDATE_REQUIRED = 426

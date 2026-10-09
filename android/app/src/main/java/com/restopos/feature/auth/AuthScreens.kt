@@ -1,28 +1,15 @@
 package com.restopos.feature.auth
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,28 +20,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.restopos.app.BuildConfig
 import com.restopos.core.ui.Gap
 import com.restopos.core.ui.T
 import com.restopos.core.ui.V
 import com.restopos.core.ui.VIcon
-import com.restopos.core.ui.Wordmark
 import com.restopos.core.ui.press
 
 // Setting a tablet up: sign in with the business's login, then say which
@@ -194,7 +172,6 @@ fun StoreDeviceScreen(vm: StoreDeviceViewModel = hiltViewModel(), onReady: () ->
             is StoreDeviceUiState.Pick -> {
                 Heading("Name this till", "Its code goes into every receipt number, so each till of a store needs its own.")
                 s.error?.let { Problem(it) }
-                s.notice?.let { T(it, 14.sp, 600, V.BlueText, lines = 3, height = 20.sp) }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     SetupField("Till name", name, { name = it }, "Terminal 01", Modifier.weight(1.6f), ime = ImeAction.Next)
                     SetupField("Till code", code, { code = it }, "T1", Modifier.weight(1f), ime = ImeAction.Done)
@@ -207,105 +184,7 @@ fun StoreDeviceScreen(vm: StoreDeviceViewModel = hiltViewModel(), onReady: () ->
                         ready = ready, busy = false,
                     ) { vm.onAction(StoreDeviceAction.Register(st.id, name, code)) }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    QuietLink("Seed Le Flamboyant demo menu", enabled = true) { vm.onAction(StoreDeviceAction.SeedDemo) }
-                }
             }
         }
     }
-}
-
-// ---------------------------------------------------------------- the card
-
-// One card in the middle of the screen, on the till's own ground. With the
-// keyboard up it scrolls, and the box being typed in stays in view.
-@Composable
-private fun SetupCard(content: @Composable ColumnScope.() -> Unit) {
-    Box(Modifier.fillMaxSize().background(V.Bg).systemBarsPadding().imePadding()) {
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Column(
-                Modifier.widthIn(max = 520.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(V.Panel).border(1.dp, V.Stroke, RoundedCornerShape(22.dp))
-                    .padding(start = 30.dp, end = 30.dp, top = 28.dp, bottom = 26.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                Wordmark()
-                content()
-            }
-            T("EasyPay ${BuildConfig.VERSION_NAME}", 12.sp, 500, V.Text3)
-        }
-    }
-}
-
-@Composable
-private fun Heading(title: String, sub: String) {
-    Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        T(title, 24.sp, 800, V.Text, spacing = (-0.5).sp)
-        T(sub, 14.sp, 500, V.Text2, lines = 3, height = 20.sp)
-    }
-}
-
-// what went wrong, on a wash of its own colour
-@Composable
-private fun Problem(text: String) {
-    T(
-        text, 14.sp, 600, V.RedText,
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(V.RedWash).padding(horizontal = 14.dp, vertical = 11.dp),
-        lines = 4, height = 20.sp,
-    )
-}
-
-// A box to type in, with its name above it. The edge lights up in the logo's
-// green while it is being typed in.
-@Composable
-private fun SetupField(
-    label: String, value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier, enabled: Boolean = true,
-    keyboard: KeyboardType = KeyboardType.Text, ime: ImeAction = ImeAction.Done, onIme: () -> Unit = {}, masked: Boolean = false,
-    trailing: (@Composable () -> Unit)? = null,
-) {
-    var focused by remember { mutableStateOf(false) }
-    val edge by animateColorAsState(if (focused) V.Cyan else V.Stroke, label = "edge")
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        T(label, 13.sp, 600, V.Text2)
-        Row(
-            Modifier.fillMaxWidth().height(54.dp).clip(RoundedCornerShape(12.dp)).background(V.Well).border(if (focused) 1.5.dp else 1.dp, edge, RoundedCornerShape(12.dp))
-                .padding(start = 16.dp, end = if (trailing != null) 5.dp else 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                if (value.isEmpty()) T(placeholder, 16.sp, 400, V.Off)
-                BasicTextField(
-                    value, onChange, Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused }, enabled = enabled, singleLine = true,
-                    textStyle = TextStyle(color = V.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium),
-                    cursorBrush = SolidColor(V.Cyan),
-                    visualTransformation = if (masked) PasswordVisualTransformation() else VisualTransformation.None,
-                    keyboardOptions = KeyboardOptions(keyboardType = keyboard, imeAction = ime),
-                    keyboardActions = KeyboardActions(onDone = { onIme() }),
-                )
-            }
-            if (trailing != null) { Spacer(Modifier.size(4.dp)); trailing() }
-        }
-    }
-}
-
-// The card's one main key. Until it can be pressed it says what is missing,
-// in place of a greyed-out word; while the till is at work it turns.
-@Composable
-private fun MainKey(label: String, ready: Boolean, busy: Boolean, onClick: () -> Unit) {
-    val on = ready && !busy
-    Box(
-        Modifier.fillMaxWidth().height(60.dp).then(if (on) Modifier.press(0.98f, onClick) else Modifier).clip(RoundedCornerShape(14.dp))
-            .background(if (ready) V.Blue else V.Key),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (busy) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
-        else T(label, if (ready) 17.sp else 15.sp, if (ready) 800 else 600, if (ready) Color.White else V.Text3)
-    }
-}
-
-@Composable
-private fun QuietLink(label: String, enabled: Boolean, onClick: () -> Unit) {
-    T(label, 14.sp, 600, if (enabled) V.BlueText else V.Off, Modifier.then(if (enabled) Modifier.press(0.97f, onClick) else Modifier).padding(vertical = 8.dp))
 }
