@@ -1,0 +1,26 @@
+{
+  "name": "Le Flamboyant",
+  "currency": "Rs",
+  "decimals": 2,
+  "note": "Prices in Mauritian rupees.",
+  "accepting": true,
+  "tables": [
+    { "c": "T-1", "name": "Table 1", "area": "Main" },
+    { "c": "T-2", "name": "Table 2", "area": "Main" },
+    { "c": "T-9", "name": "Terrace 1", "area": "Terrace" }
+  ],
+  "categories": [
+    { "id": "c-main", "name": "Mains", "color": "#c4523a" },
+    { "id": "c-drinks", "name": "Drinks" }
+  ],
+  "groups": [
+    { "id": "g-spice", "name": "Curry spice", "min": 1, "max": 1, "opts": [{ "id": "o-mild", "name": "Mild", "price": 0 }, { "id": "o-hot", "name": "Hot", "price": 0 }] },
+    { "id": "g-add", "name": "Add-ons", "min": 0, "max": 1, "opts": [{ "id": "o-rice", "name": "Extra rice", "price": 4000 }] }
+  ],
+  "items": [
+    { "id": "i-curry", "cat": "c-main", "name": "Cari poulet", "price": 38000, "groups": ["g-spice", "g-add"], "tags": ["Veg", "Signature"], "out": false },
+    { "id": "i-fish", "cat": "c-main", "name": "Vindaye", "price": 42000, "groups": [], "tags": [], "out": true, "color": "#2f7fa3" },
+    { "id": "i-alouda", "cat": "c-drinks", "name": "Alouda", "price": 9000, "groups": [], "tags": [], "out": false },
+    { "id": "i-bread", "name": "Bread", "price": 2000, "groups": [], "tags": [], "out": false }
+  ]
+}

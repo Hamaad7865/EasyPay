@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { isStoreId, readMenu, readOrder, forPhones, LIMITS } from "./rules.js";
+import { readFileSync } from "node:fs";
 import { demoMenu, DEMO_STORE, T7 } from "../test/demo-menu.mjs";
 
 const menu = () => readMenu(demoMenu()).menu;
@@ -29,6 +30,25 @@ test("the demo menu is taken whole", () => {
   assert.equal(m.items.find((i) => i.id === "cal").out, true);
   assert.deepEqual(m.items.find((i) => i.id === "gp").tags, ["Veg"]);
   assert.deepEqual(m.popular, ["cp", "dp", "mf", "bp", "alo"]);
+});
+
+// test/till-menu.json is a menu exactly as the till writes one: the till's own
+// test builds it from its records and compares it with this file
+// (android, core/guest/GuestTest.kt). What the till writes, the relay reads.
+test("a menu as the till writes it is taken whole, with nothing dropped", () => {
+  const written = JSON.parse(readFileSync(new URL("../test/till-menu.json", import.meta.url), "utf8"));
+  const got = readMenu(written);
+  assert.equal(got.error, undefined);
+  const m = got.menu;
+  assert.deepEqual(m.tables, written.tables);
+  assert.deepEqual(m.groups, written.groups);
+  assert.deepEqual(m.categories.map((c) => c.id), ["c-main", "c-drinks"]);
+  assert.equal(m.categories[1].color, null, "a category with no colour of its own");
+  assert.deepEqual(m.items.map((i) => [i.id, i.cat, i.price, i.out]), [["i-curry", "c-main", 38000, false], ["i-fish", "c-main", 42000, true], ["i-alouda", "c-drinks", 9000, false], ["i-bread", null, 2000, false]]);
+  assert.deepEqual(m.items[0].groups, ["g-spice", "g-add"]);
+  assert.deepEqual(m.items[0].tags, ["Veg", "Signature"]);
+  assert.equal(readOrder({ table: "T-1", lines: [{ item: "i-curry", qty: 1, mods: ["o-hot", "o-rice"] }] }, m).error, undefined);
+  assert.equal(readOrder({ table: "T-1", lines: [{ item: "i-fish", qty: 1 }] }, m).code, "gone");
 });
 
 test("a menu keeps only what is known of it: a group, a category or a favourite that does not exist is dropped", () => {
