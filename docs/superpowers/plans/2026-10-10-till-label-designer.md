@@ -127,3 +127,48 @@ object LabelEdit {
   text turned 90), and one as a copy; move, size, turn, delete; change the label's size; save; print a
   run on it; decode, and compare with the editor's picture. The lower screen. Delete the label in use.
 - [ ] Fix what was seen; the record at the end of this file; `git ls-remote --tags github`; commit.
+
+---
+
+## Record (2026-10-10, evening)
+
+Built in the order above, on `restopos`, in till 0.9.0 (build 13), which was still untagged when the last
+commit was made. 363 unit tests pass, 21 of them the designer's.
+
+**Where it left the plan**
+
+- The keys that add each thing are under the label, all in sight, not in the panel: with something
+  selected the panel's own keys pushed them out of reach. What a label most often carries comes first.
+- `LabelsViewModel` holds the draft and its changes (`design`, `edit`, `select`, `saveDraft`,
+  `deleteDraft`, `testDraft`); the designer's file holds only what is drawn.
+- A text's box grows with its letters and its lines.
+- In the designer, bars that do not fit are told how to be made to: the box wider, and how wide.
+- Found while looking, a fault of piece 1: a single line of words that only just did not fit was still
+  cut by the layout after being drawn smaller (a price of four figures on the 25 x 15 labels). It is now
+  measured again at each size, a dot at a time, with two dots kept clear.
+
+**Seen running,** on a second emulator of my own (`easypay_claude_own`, port 5592, hidden; the first is
+the owner's since they asked to see it), the made-up shop, against the stand-in printer:
+
+- The sheet of labels with New label, Edit a copy and, once one exists, Edit; the price whole on the
+  small labels.
+- A 50 x 30 label made from nothing: its width typed, six things added, the shop's own words typed,
+  a thing selected by a tap on the label, the bars dragged, the bars sized by their corner (40 x 10
+  to 35 x 8.5 mm), a second price turned a quarter and dragged to the edge, words made bigger, bold
+  and set left. Saved: it became the label in use.
+- Two products printed on it: the pictures the stand-in received are the designer's picture.
+- The same label opened again, narrowed by 12 mm (everything came back in), left without saving after
+  the question; a copy of the smallest ready-made label made and saved, with the designer saying why it
+  has no bars; the label in use deleted, the first ready-made one taking its place with the till saying so.
+- The cashier asked for a manager before designing ("Ben may not design a label").
+- The designer on a lower screen (about 1097 x 686 dp), and a saved label still there after the app
+  was installed again.
+
+**Not seen**
+
+- A real printer, as for piece 1; and so a turned barcode read by a scanner.
+- The logo on a label: the made-up shop has none, so its key is not offered. Its drawing is code read,
+  not run.
+- A text turned by 180 or 270 degrees, bars turned at all, a line turned, the gap changed: unit-tested,
+  not looked at on the screen.
+- Typing the label's name with the on-screen keyboard up.

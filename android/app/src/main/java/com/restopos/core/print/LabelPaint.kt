@@ -50,9 +50,11 @@ object LabelPaint {
                 }
                 // One line of words too wide for its box is drawn smaller, down to
                 // half its size, rather than cut: a price must not lose its end.
+                // Measured again at each size, a dot at a time: letters do not
+                // narrow evenly, and words that only just fit would still be cut
+                // by the layout below. Two dots are kept clear of the box's edge.
                 if (i.lines == 1) {
-                    val wide = paint.measureText(i.text)
-                    if (wide > i.w) paint.textSize = maxOf(i.px * 0.5f, kotlin.math.floor(i.px * i.w / wide))
+                    while (paint.textSize > i.px * 0.5f && paint.measureText(i.text) > i.w - 2) paint.textSize -= 1f
                 }
                 // set across its box as the label says; a name too long for its lines is cut with an ellipsis
                 val layout = StaticLayout.Builder.obtain(i.text, 0, i.text.length, paint, i.w.coerceAtLeast(1))

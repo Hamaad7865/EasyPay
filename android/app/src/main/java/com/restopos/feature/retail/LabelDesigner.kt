@@ -73,8 +73,8 @@ import kotlin.math.abs
 // The label designer, a shop's: the label between millimetre rulers on the
 // left, drawn by the layout and the painter that print it, so what is seen is
 // what comes out; under it the keys that nudge, size, turn and remove what is
-// selected; on the right the label's own name, size and gap, what is selected,
-// everything on the label as a list, and what can be added. Every change is
+// selected, and the keys that add each thing; on the right the label's own
+// name, size and gap, what is selected, and everything on the label as a list. Every change is
 // LabelEdit's: this screen only says what was tapped or dragged.
 @Composable
 fun LabelDesigner(vm: LabelsViewModel, d: LabelDraft) {
@@ -102,6 +102,7 @@ fun LabelDesigner(vm: LabelsViewModel, d: LabelDraft) {
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(V.Panel)) { Sheet(d, drawn.picture, vm) }
+                Adds(t, vm)
                 Keys(sel, drawn.noBars, vm)
             }
             Panel(t, d.selected, sel, vm, Modifier.width(390.dp), onAsk = { asking = it }, onWords = { wording = true })
@@ -234,6 +235,27 @@ private fun Rulers(t: LabelTemplate, k: Float) {
 
 // ---------------------------------------------------------------- the keys under the label
 
+// What can be put on the label, one key each, all of them in sight under it:
+// a thing added is selected at once, and what it needs set shows in the
+// panel. What a label most often carries comes first.
+private val ADD_ORDER = listOf("name", "price", "bars", "shop", "text", "variant", "line", "box", "sku", "category", "code", "date", "logo")
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Adds(t: LabelTemplate, vm: LabelsViewModel) {
+    val names = remember { LabelEdit.KINDS.toMap() }
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(Modifier.height(40.dp), contentAlignment = Alignment.Center) { Caps("Add", modifier = Modifier.padding(start = 4.dp, end = 2.dp)) }
+        ADD_ORDER.forEach { kind ->
+            // the logo is the one the back office holds: without one there is nothing to put
+            if (kind != "logo" || vm.hasLogo) Box(
+                Modifier.height(40.dp).press { vm.edit(select = t.elements.size) { tt, _ -> LabelEdit.add(tt, kind) } }.clip(RoundedCornerShape(20.dp)).background(V.Panel).padding(horizontal = 14.dp),
+                contentAlignment = Alignment.Center,
+            ) { T(names[kind] ?: kind, 13.sp, 700) }
+        }
+    }
+}
+
 @Composable
 private fun Keys(sel: LabelElement?, noBars: String?, vm: LabelsViewModel) {
     val on = sel != null
@@ -250,10 +272,13 @@ private fun Keys(sel: LabelElement?, noBars: String?, vm: LabelsViewModel) {
         Spacer(Modifier.width(6.dp))
         Key("Turn 90°", on && sel !is LabelElement.Logo, 104.dp) { vm.edit { t, i -> LabelEdit.turn(t, i) } }
         Key("Remove", on, 92.dp, V.RedText) { vm.edit(select = -1) { t, i -> LabelEdit.remove(t, i) } }
-        // what the label lacks, said while it is designed; else how the label is worked
+        // What the label lacks, said while it is designed; else how the label is
+        // worked. Here the cure for bars that do not fit is in the designer's
+        // own hands, so it is named.
+        val lacks = if (noBars == LabelLayout.TOO_WIDE) "The barcode's box is too narrow for bars that scan, so the code prints as characters. A 13-digit barcode needs about 29 mm." else noBars
         T(
-            noBars ?: if (on) "Drag it to move it, or its blue corner to size it. The arrows move it half a millimetre." else "Tap a thing on the label to select it, or pick it in the list.",
-            12.sp, 600, if (noBars != null) V.AmberText else V.Text3, Modifier.weight(1f).padding(start = 6.dp), lines = 3, height = 15.sp,
+            lacks ?: if (on) "Drag it to move it, or the dot at its corner to size it. The arrows move it half a millimetre." else "Tap a thing on the label to select it, or pick it in the list.",
+            12.sp, 600, if (lacks != null) V.AmberText else V.Text3, Modifier.weight(1f).padding(start = 6.dp), lines = 3, height = 15.sp,
         )
     }
 }
@@ -268,7 +293,6 @@ private fun Key(label: String, on: Boolean, width: Dp = 52.dp, ink: Color = V.Te
 
 // ---------------------------------------------------------------- the panel
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Panel(t: LabelTemplate, at: Int?, sel: LabelElement?, vm: LabelsViewModel, modifier: Modifier, onAsk: (NumAsk) -> Unit, onWords: () -> Unit) {
     Column(
@@ -300,18 +324,6 @@ private fun Panel(t: LabelTemplate, at: Int?, sel: LabelElement?, vm: LabelsView
             }
         }
 
-        Caps("Add", modifier = Modifier.padding(top = 8.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            LabelEdit.KINDS.forEach { (kind, name) ->
-                val can = kind != "logo" || vm.hasLogo
-                Box(
-                    Modifier.height(40.dp).then(if (can) Modifier.press { vm.edit(select = t.elements.size) { tt, _ -> LabelEdit.add(tt, kind) } } else Modifier)
-                        .clip(RoundedCornerShape(20.dp)).background(V.Key).padding(horizontal = 14.dp),
-                    contentAlignment = Alignment.Center,
-                ) { T(name, 13.sp, 700, if (can) V.Text else V.Off) }
-            }
-        }
-        if (!vm.hasLogo) T("The logo is the one set in the back office, under POS settings. This shop has none yet.", 12.sp, 500, V.Text3, lines = 2, height = 16.sp)
     }
 }
 

@@ -240,7 +240,7 @@ class LabelsViewModel @Inject constructor(
 
     // A new label, one of the shop's own to change, or a copy of a ready-made
     // one: those stay as they are.
-    fun design(of: LabelTemplate?) = guard("Design a label") {
+    fun design(of: LabelTemplate?) = guard("design a label") {
         val mine = of != null && LabelBook.isOwn(of.id)
         val t = when {
             of == null -> LabelEdit.blank(LabelBook.OWN + Uuid7.next(), "My label")
