@@ -1,0 +1,6 @@
+{
+  "type": "supplier.remove",
+  "payload": {
+    "id": "supplier-1"
+  }
+}

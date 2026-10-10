@@ -1,0 +1,6 @@
+{
+  "type": "po.send",
+  "payload": {
+    "id": "order-1"
+  }
+}

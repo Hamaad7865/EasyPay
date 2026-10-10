@@ -1,0 +1,36 @@
+{
+  "type": "count.complete",
+  "payload": {
+    "id": "count-1",
+    "store_id": "store-1",
+    "scope_kind": "all",
+    "scope_id": "",
+    "scope_text": "",
+    "started_at": "2026-10-10T08:00:00Z",
+    "clock_ahead_ms": 0,
+    "uncounted": "leave",
+    "lines": [
+      {
+        "item_id": "item-plain",
+        "variant_id": "",
+        "counted": 9000,
+        "counted_at": "2026-10-10T08:05:00Z",
+        "left_out": false
+      },
+      {
+        "item_id": "item-sized",
+        "variant_id": "variant-s",
+        "counted": null,
+        "counted_at": null,
+        "left_out": false
+      },
+      {
+        "item_id": "item-sized",
+        "variant_id": "variant-m",
+        "counted": null,
+        "counted_at": null,
+        "left_out": true
+      }
+    ]
+  }
+}

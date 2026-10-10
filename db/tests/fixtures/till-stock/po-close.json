@@ -1,0 +1,6 @@
+{
+  "type": "po.close",
+  "payload": {
+    "id": "order-1"
+  }
+}

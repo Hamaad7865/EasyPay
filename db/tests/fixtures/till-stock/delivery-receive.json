@@ -1,0 +1,20 @@
+{
+  "type": "delivery.receive",
+  "payload": {
+    "id": "delivery-1",
+    "store_id": "store-1",
+    "order_id": "order-1",
+    "supplier_id": "",
+    "arrived_on": "2026-10-10",
+    "invoice_no": "INV-88",
+    "note": "",
+    "lines": [
+      {
+        "item_id": "item-plain",
+        "variant_id": "",
+        "qty": 10000,
+        "unit_cost": 4600
+      }
+    ]
+  }
+}

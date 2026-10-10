@@ -1,0 +1,24 @@
+{
+  "type": "po.save",
+  "payload": {
+    "id": "order-1",
+    "store_id": "store-1",
+    "supplier_id": "supplier-1",
+    "expected_on": "2026-10-20",
+    "note": "",
+    "lines": [
+      {
+        "item_id": "item-plain",
+        "variant_id": "",
+        "qty": 12000,
+        "unit_cost": 4500
+      },
+      {
+        "item_id": "item-sized",
+        "variant_id": "variant-s",
+        "qty": 6000,
+        "unit_cost": 18000
+      }
+    ]
+  }
+}

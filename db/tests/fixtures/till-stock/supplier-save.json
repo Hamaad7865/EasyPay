@@ -1,0 +1,12 @@
+{
+  "type": "supplier.save",
+  "payload": {
+    "id": "supplier-1",
+    "name": "Maurilait",
+    "contact": "Devi",
+    "phone": "52501234",
+    "email": "",
+    "address": "Phoenix",
+    "note": ""
+  }
+}

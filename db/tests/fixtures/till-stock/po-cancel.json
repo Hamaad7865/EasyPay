@@ -1,0 +1,6 @@
+{
+  "type": "po.cancel",
+  "payload": {
+    "id": "order-1"
+  }
+}
