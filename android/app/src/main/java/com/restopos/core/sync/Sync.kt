@@ -86,16 +86,28 @@ class PullWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         // Nothing to pull until a store is chosen; not a failure.
         val store = session.storeId() ?: return Result.success()
+        // A tablet that works on its own says nothing to the server: the
+        // database it would wake is the cost the offline plan does not have.
+        // Its queue waits. Only "Connect to the cloud" (CONNECT) goes through,
+        // to learn whether the business has been made Premium.
+        val connect = inputData.getBoolean(SyncScheduler.CONNECT, false)
+        // Not before the first pull has ended: the plan arrives early in it,
+        // and a first pull cut short has to be taken up again, or the tablet
+        // would be left with half a catalogue for good.
+        val filled = session.lastPull.first()?.let { it >= session.registeredAt() } == true
+        if (!connect && filled && com.restopos.core.data.PosSettings.parse(db.ops().settings()).alone) return Result.success()
         // The sync every 15 minutes says nothing to the server while no one
         // is at the till and nothing is waiting: the database it would wake
         // is paid for by the hour (Quiet). Nothing below is reached then, the
         // crash reports and the till's key included: they go with the next
         // sync that does.
         val waiting = db.outbox().pendingCount() > 0
-        if (!Quiet.syncs(inputData.getBoolean(SyncScheduler.ASKED, false), waiting, System.currentTimeMillis(), session.lastUse())) return Result.success()
+        if (!connect && !Quiet.syncs(inputData.getBoolean(SyncScheduler.ASKED, false), waiting, System.currentTimeMillis(), session.lastUse())) return Result.success()
         // Anything still waiting to go up goes with every sync: a push that
         // ended on an error is not left until the next sale to try again.
-        if (waiting) pushNow(applicationContext)
+        // Not while asking whether the business is Premium: the queue is sent
+        // only once the answer is yes (below).
+        if (waiting && !connect) pushNow(applicationContext)
         // What the till wrote down if it stopped unexpectedly goes up too. A
         // server that does not take it yet, or no network, leaves the files
         // for the next sync; it never holds the sync itself up.
@@ -146,6 +158,13 @@ class PullWorker @AssistedInject constructor(
                 }
             }
             session.setLastPull(System.currentTimeMillis())
+            // Asked whether the business is Premium, and it is: the plan came
+            // with the settings just pulled. The queue this tablet kept while
+            // it worked on its own goes up now, in the order things happened.
+            if (connect && !com.restopos.core.data.PosSettings.parse(db.ops().settings()).alone) {
+                pushNow(applicationContext)
+                SyncScheduler.startPeriodic(applicationContext)
+            }
             // What the back office asked of this till came with the pull (server
             // 0091): close its day, or write down cash taken out. The till does
             // it now, itself. A request that fails is left for the next sync.
@@ -179,6 +198,21 @@ object SyncScheduler {
     // has had queued since before this rule), and goes only while the till
     // is in use.
     internal const val ASKED = "asked"
+    // Marks the one sync a tablet that works on its own makes: "Connect to the cloud".
+    internal const val CONNECT = "connect"
+    private const val CONNECT_WORK = "connect-now"
+
+    // Asks the server once whether the business has been made Premium. It
+    // has: the tablet syncs from then on, and what it kept goes up. It has
+    // not: nothing changes. Returns the id of the work, to watch it end.
+    fun connect(context: Context): java.util.UUID {
+        val req = OneTimeWorkRequestBuilder<PullWorker>()
+            .setInputData(workDataOf(ASKED to true, CONNECT to true))
+            .setConstraints(online)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(CONNECT_WORK, ExistingWorkPolicy.REPLACE, req)
+        return req.id
+    }
 
     fun pullNow(context: Context) {
         val req = OneTimeWorkRequestBuilder<PullWorker>()

@@ -44,6 +44,9 @@ class PushWorker @AssistedInject constructor(
     private val json = Json { ignoreUnknownKeys = true }
 
     override suspend fun doWork(): Result {
+        // A tablet that works on its own keeps its queue: nothing is sent
+        // until the business is Premium ("Connect to the cloud", PullWorker).
+        if (com.restopos.core.data.PosSettings.parse(db.ops().settings()).alone) return Result.success()
         var pushedAny = false
         var mustRetry = false
         while (!mustRetry) {

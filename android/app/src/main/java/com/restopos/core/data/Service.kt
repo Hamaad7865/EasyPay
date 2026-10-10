@@ -387,6 +387,25 @@ class ServiceRepository @Inject constructor(
     // refused: the server's code for why not, in the words of whoever asked.
     // internal, not private: a shop's stock work (StockRepository) leaves the tablet through here too.
     internal suspend fun ask(type: String, refused: (String?) -> String, payload: JsonObject) {
+        // A tablet that works on its own answers by its own rules, which are
+        // the server's written again (LocalAnswers), and keeps the change in
+        // the queue: the day the business goes Premium the server takes it
+        // as it takes a linked till's. The change and its place in the queue
+        // are one transaction, so neither is there without the other.
+        if (PosSettings.parse(db.ops().settings()).alone) {
+            val local = LocalAnswers(db.alone())
+            if (!local.answers(type)) error("This tablet works on its own, and this is not something it can do by itself yet.")
+            val tenant = session.tenantId() ?: error("This tablet is not set up")
+            try {
+                db.withTransaction {
+                    local.apply(type, payload, tenant, staff.id())
+                    db.outbox().enqueue(op(type, payload))
+                }
+            } catch (e: Refused) {
+                error(refused(e.code))
+            }
+            return
+        }
         val answer = try {
             api.push(listOf(OutboxOp(Uuid7.next(), type, payload, staff.id()))).firstOrNull()
         } catch (e: java.io.IOException) {

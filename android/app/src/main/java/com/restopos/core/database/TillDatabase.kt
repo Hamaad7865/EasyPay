@@ -81,4 +81,5 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun stock(): StockDao
     abstract fun guest(): GuestDao
     abstract fun log(): TillLogDao
+    abstract fun alone(): AloneDao
 }

@@ -43,6 +43,11 @@ data class PosSettings(
     // every key here: a till whose server has not been told about plans yet
     // goes on showing what it showed.
     val premium: Boolean = true,
+    // The business is on the offline plan: this tablet works on its own. It
+    // does not sync, answers by itself what a linked till asks the server
+    // for, and keeps every change in its queue for the day the business goes
+    // Premium (docs/superpowers/specs/2026-10-11-tablet-alone-design.md).
+    val alone: Boolean = false,
     // The business's first-run set-up is still open (server 0089): a tablet
     // named for it is walked through the set-up. Only a client made since
     // carries the mark; with none, as for every key here, nothing changes.
@@ -58,6 +63,9 @@ data class PosSettings(
     companion object {
         val DEFAULT_NOTES = listOf("No onion", "Less salt", "Nut allergy", "Extra chutney", "Rush")
         private val json = Json { ignoreUnknownKeys = true }
+
+        // the plan on which a tablet works on its own
+        fun isAlone(plan: String?): Boolean = plan?.trim()?.lowercase() == "offline"
 
         fun parse(text: String?): PosSettings {
             val d = runCatching { json.parseToJsonElement(text ?: "{}").jsonObject }.getOrNull() ?: return PosSettings()
@@ -93,6 +101,7 @@ data class PosSettings(
                 retail = d.str("businessType") == "retail",
                 // as the server reads it (has_premium): premium, and trial so that a restaurant trying EasyPay sees all of it
                 premium = d.str("plan")?.trim()?.lowercase()?.let { it == "premium" || it == "trial" } ?: true,
+                alone = isAlone(d.str("plan")),
                 setupOpen = d.str("setup") == "open",
                 tableOrdering = d.bool("tableOrdering") ?: false,
             )
