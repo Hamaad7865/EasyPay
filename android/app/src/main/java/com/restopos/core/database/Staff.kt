@@ -103,6 +103,10 @@ interface StaffDao {
     @Query("SELECT * FROM roles WHERE deleted_at IS NULL")
     fun roles(): Flow<List<RoleEntity>>
 
+    // Everyone, those switched off too: the Staff page of Settings.
+    @Query("SELECT * FROM employees WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE")
+    fun everyone(): Flow<List<EmployeeEntity>>
+
     @Query("SELECT * FROM roles WHERE id = :id")
     suspend fun role(id: String): RoleEntity?
 

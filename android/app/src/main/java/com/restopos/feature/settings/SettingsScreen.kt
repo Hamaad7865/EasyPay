@@ -426,7 +426,7 @@ class SettingsViewModel @Inject constructor(
 private enum class Page(val label: String) {
     Till("This till"), Notices("Notifications"), Cash("Cash drawer"), Reports("Reports"), Payments("Payments"),
     // what the business is set up with, as its back office sets it (server 0094 on)
-    Taxes("Taxes"),
+    Taxes("Taxes"), Discounts("Discounts"), Staff("Staff"), Roles("Roles"),
     Printers("Printers"), Labels("Label printer"), Scanners("Scanners"), Display("Display"), Support("Support"), Help("Help"),
 }
 
@@ -449,6 +449,9 @@ private fun icon(p: Page): String = when (p) {
     Page.Reports -> VI.Bars
     Page.Payments -> VI.Card
     Page.Taxes -> TAX_ICON
+    Page.Discounts -> VI.Tag
+    Page.Staff -> VI.People
+    Page.Roles -> VI.Lock
     Page.Printers -> VI.Print
     Page.Labels -> VI.Tag
     Page.Scanners -> SCAN_ICON
@@ -568,6 +571,9 @@ fun SettingsScreen(
                             Page.Reports -> ReportsPage(vm, more, shop, keys.close) { sheet = "day" }
                             Page.Payments -> PaymentsPage(vm) { receipts.showId(it) }
                             Page.Taxes -> TaxesPage()
+                            Page.Discounts -> DiscountsPage()
+                            Page.Staff -> StaffPage()
+                            Page.Roles -> RolesPage()
                             Page.Printers -> PrintersPage(vm, more, retail)
                             Page.Labels -> LabelPrinterPage()
                             Page.Scanners -> ScannersPage(vm, retail == true)
@@ -1307,6 +1313,8 @@ private fun SupportPage(vm: SettingsViewModel, shop: Boolean, network: String, o
     }
 }
 
+private const val STAFF_HELP = "In Settings. Staff: tap Add staff and give them a name, a role and a PIN of 4 digits; tap someone to change their name or role, to give them a new PIN, or to switch them off, after which they can no longer sign in. Roles: tap a role and tick what it may do; the owner's role can do everything and cannot be changed, and a role staff still have cannot be removed. Discounts: a name, which prints on the receipt, a percentage of the bill or an amount off it, and whether it needs a manager. Each may need the owner's or a manager's PIN."
+
 private val HELP = listOf(
     "Starting the day" to "Clock in: tap Clock in/out, pick your name and enter your PIN. Then open the day: someone allowed to taps their name on the start screen and counts the cash in the drawer, which opens for the count. The till sells from then on.",
     "Serving a table" to "On Tables, tap a free table and the number of guests: its order opens. Tap the items, then Send to kitchen. The table turns blue and shows what it owes and how long it has been. Tap it again to add to the order, print the bill or take payment.",
@@ -1324,6 +1332,7 @@ private val HELP = listOf(
     "Something has run out" to "Menu, Menu & stock, and switch the item to Sold out. It stays on the menu, greyed, on every till, until it is switched back.",
     "Adding, changing or removing an item" to "Menu, Menu & stock. Tap New item, or tap an item's name to change it: its name, its price, its category, its barcode and whether it is on sale. Remove, on the same sheet, takes it off every till; receipts that sold it keep its name. Its tax is on the sheet's second page, Tax. It needs a connection, and may need a manager. An item's add-ons are set in the back office.",
     "Taxes" to "In Settings, under Taxes. Tap Add a tax, or tap a tax to change it: its name, its rate, and whether prices already include it or it is added on top at the sale. One tax is the usual one, and a new item starts on it; to move that, open another tax and switch on The usual tax. A tax is not removed: change its rate, or move items onto another from their own sheet. Orders already open keep the tax they were rung up with. It needs a connection, and may need a manager.",
+    "Staff, roles and discounts" to STAFF_HELP,
     "Categories" to "Menu, Menu & stock, then Categories. Tap New category, or tap one to change it: its name and its colour, which is the colour of its button and of its items' tiles. Remove takes away a category that has no items left in it. Where a category's items print, its place among the buttons and whether its stock is counted are set in the back office. It needs a connection, and may need a manager.",
     "Adding or removing stock" to "For an item whose stock is counted: Menu, Menu & stock, tap the item's name, then Add stock or Remove stock. Type how many. A reason can be picked (a delivery, damaged, expired, lost) and need not be. More than there is cannot be taken out. To have an item's stock counted, switch on Count its stock on its sheet and save: it then says Out until stock is added. It needs a connection, and may need a manager.",
     "An item with no fixed price" to "For a service, or anything charged differently each time, switch on Price typed at the sale on the item. Its tile then says Enter price: tap it, type what this customer pays and tap Done. Each tap is a line of its own, so the same item can be on a bill twice at two prices.",
@@ -1382,6 +1391,7 @@ private val SHOP_HELP = listOf(
     "Adding, changing or removing a product" to "On Products & stock, tap New product. To change one, tap it, then Edit product: its name, its price, its category, its barcode and whether it is on sale. Remove, on the same sheet, takes it off every till; receipts that sold it keep its name. Count its stock, on the same sheet, says whether its stock is counted: switched on, the product says Out until stock is added. It needs a connection, and may need a manager. Variants are set in the back office.",
     "A product's tax, cost and supplier" to "On Products & stock, tap the product, then Edit product, then the second page at the top of the sheet. Pick its tax. Type its SKU and its brand, pick who it is bought from and type what that supplier calls it. Reorder when left is how many are left when it is time to order again, and Order quantity how many to order then, for this shop. Its cost shows only to someone allowed to see cost. A product with variants keeps its SKU and its cost on each variant. Empty a field to take it off the product.",
     "Taxes" to "In Settings, under Taxes. Tap Add a tax, or tap a tax to change it: its name, its rate, and whether prices already include it or it is added on top at the sale. One tax is the usual one, and a new product starts on it; to move that, open another tax and switch on The usual tax. A tax is not removed: change its rate, or move products onto another from their own sheet. It needs a connection, and may need a manager.",
+    "Staff, roles and discounts" to STAFF_HELP,
     "A product or service with no fixed price" to "For a service, or anything charged differently each time (a repair, an alteration), switch on Price typed at the sale on the product. Tapping or scanning it then opens the keypad: type what this customer pays and tap Done. Each one is a line of its own.",
     "Something has run out, or should not be sold" to "A tile on Sell says what is left of its product: amber when few are left, red when it is out. A product that shows out still sells. To stop one being sold, tap it on Products & stock and switch On sale off: it cannot be rung up on any till until it is switched back, and its stock is not touched.",
     "When you are not allowed to" to "A refund, a discount, a changed price, taking a line off, printing a receipt again, opening the drawer and the like may need a manager. The till asks who approves: they tap their name and enter their own PIN, and it is done in your name with their approval on record.",

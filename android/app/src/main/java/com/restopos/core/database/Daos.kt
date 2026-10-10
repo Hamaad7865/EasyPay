@@ -109,6 +109,9 @@ interface CatalogDao {
     @Query("SELECT * FROM discounts WHERE deleted_at IS NULL ORDER BY name")
     suspend fun discounts(): List<DiscountEntity>
 
+    @Query("SELECT * FROM discounts WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE")
+    fun discountsFlow(): kotlinx.coroutines.flow.Flow<List<DiscountEntity>>
+
     @Query("SELECT * FROM discounts WHERE id = :id")
     suspend fun discount(id: String): DiscountEntity?
 
