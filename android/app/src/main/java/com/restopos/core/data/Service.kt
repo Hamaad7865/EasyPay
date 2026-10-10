@@ -10,6 +10,7 @@ import com.restopos.core.database.TableEntity
 import com.restopos.core.database.TicketEntity
 import com.restopos.core.database.TicketLineEntity
 import com.restopos.core.database.TillDatabase
+import com.restopos.core.database.TillLogEntity
 import com.restopos.core.network.ApiClient
 import com.restopos.core.network.ApiError
 import com.restopos.core.network.AuthRequired
@@ -385,6 +386,8 @@ class ServiceRepository @Inject constructor(
         if (item.price == price) return@runCatching
         db.withTransaction {
             db.service().setPrice(itemId, price)
+            // the old price is gone from the product now: written down for the Price Change report
+            db.log().add(TillLogEntity(Uuid7.next(), System.currentTimeMillis(), "price", staff.id(), staff.approvedBy("items.edit", approver), item_id = itemId, was = item.price.toString(), became = price.toString()))
             db.outbox().enqueue(op("item.set_price", buildJsonObject {
                 put("item_id", itemId); put("price", price)
                 staff.approvedBy("items.edit", approver)?.let { put("approved_by", it) }
@@ -401,6 +404,7 @@ class ServiceRepository @Inject constructor(
         if (v.price == price) return@runCatching
         db.withTransaction {
             db.retail().setVariantPrice(variantId, price)
+            db.log().add(TillLogEntity(Uuid7.next(), System.currentTimeMillis(), "price", staff.id(), staff.approvedBy("items.edit", approver), item_id = itemId, variant_id = variantId, was = v.price.toString(), became = price.toString()))
             db.outbox().enqueue(op("item.set_price", buildJsonObject {
                 put("item_id", itemId); put("variant_id", variantId); put("price", price)
                 staff.approvedBy("items.edit", approver)?.let { put("approved_by", it) }

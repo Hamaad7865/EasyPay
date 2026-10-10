@@ -8,6 +8,7 @@ import com.restopos.core.database.ReceiptEntity
 import com.restopos.core.database.ReceiptLineEntity
 import com.restopos.core.database.ReceiptPaymentEntity
 import com.restopos.core.database.TillDatabase
+import com.restopos.core.database.TillLogEntity
 import com.restopos.core.print.DocPayment
 import com.restopos.core.print.Docs
 import com.restopos.core.print.PrintError
@@ -506,6 +507,8 @@ class OrderOps @Inject constructor(
                     else it.copy(name = names[to]?.name ?: it.name, tendered = if (cash) it.tendered else null, change = if (cash) it.change else 0)
                 })))
             }
+            // what it was paid by is rewritten above: written down for the Resettlement report
+            db.log().add(TillLogEntity(Uuid7.next(), System.currentTimeMillis(), "payment", staff.id(), staff.approvedBy("payment.correct", approver), receipt_id = receiptId, was = names[from]?.name ?: "Another type", became = names[to]?.name ?: "Another type"))
             db.outbox().enqueue(op("payment.correct", buildJsonObject {
                 put("id", Uuid7.next()); put("receipt_id", receiptId)
                 put("from_payment_type_id", from); put("to_payment_type_id", to); put("corrected_at", now)

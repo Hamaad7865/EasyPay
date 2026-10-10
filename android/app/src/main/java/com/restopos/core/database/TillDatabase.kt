@@ -37,6 +37,9 @@ import androidx.room.RoomDatabase
 // to order again at. The products are read again from the start for them.
 // Version 15 adds the orders guests send from the codes on their tables
 // (server 0093, core/guest): each waits for the cashier's answer.
+// Version 16 adds the tablet's own log (till_log), for its reports: a product's
+// price changed and a payment type corrected after the sale, neither of which
+// leaves another trace here. Nothing of it is the server's.
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -58,8 +61,9 @@ import androidx.room.RoomDatabase
         DeliveryEntity::class, DeliveryLineEntity::class, StockCountEntity::class, StockCountLineEntity::class,
         StockMovementEntity::class, StockDraftEntity::class,
         GuestOrderEntity::class,
+        TillLogEntity::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
@@ -76,4 +80,5 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun retail(): RetailDao
     abstract fun stock(): StockDao
     abstract fun guest(): GuestDao
+    abstract fun log(): TillLogDao
 }

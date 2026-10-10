@@ -249,4 +249,14 @@ object Migrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_guest_orders_status` ON `guest_orders` (`status`)")
         }
     }
+
+    // The tablet's own log, for its reports (Price Change, Resettlement): one
+    // new table, and nothing else changes. It starts empty: what was changed
+    // before this build was not written down.
+    val V15_V16 = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `till_log` (`id` TEXT NOT NULL, `at` INTEGER NOT NULL, `kind` TEXT NOT NULL, `employee_id` TEXT, `approved_by` TEXT, `item_id` TEXT, `variant_id` TEXT, `receipt_id` TEXT, `was` TEXT NOT NULL, `became` TEXT NOT NULL, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_till_log_at` ON `till_log` (`at`)")
+        }
+    }
 }

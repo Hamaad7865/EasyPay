@@ -165,6 +165,14 @@ data class Paper(val columns: Int = 48, val feed: Int = 3, val cut: Boolean = tr
 // A logo ready for the printer: one bit per dot.
 class Raster(val widthBytes: Int, val height: Int, val bits: ByteArray)
 
+// One of the till's reports, printed as narrow columns: what it is, the days it
+// is of, the till, then its lines. A line is a left and a right, a heading, a
+// rule across the paper, or a total (a row in bold).
+data class ReportLine(val left: String, val right: String = "", val kind: Kind = Kind.Row) {
+    enum class Kind { Row, Head, Rule, Total }
+}
+data class ReportDoc(val title: String, val period: String, val till: String, val printedAt: Long, val lines: List<ReportLine>)
+
 object Docs {
     // Amounts on paper: "1,250.00", with as many decimals as the restaurant set.
     fun num(cents: Long, decimals: Int): String {
@@ -459,6 +467,33 @@ object Docs {
         }
         p.end(paper)
         return p.bytes()
+    }
+
+    // A report of the till's (feature/reports), on the receipt printer.
+    fun report(d: ReportDoc, shop: Shop, paper: Paper): ByteArray = reportPage(d, shop, paper).bytes()
+
+    // The same report as lines of text: what a test reads.
+    fun reportLook(d: ReportDoc, shop: Shop, paper: Paper): List<String> = reportPage(d, shop, paper).look()
+
+    private fun reportPage(d: ReportDoc, shop: Shop, paper: Paper): EscPos {
+        val p = EscPos(paper.columns)
+        p.head(shop, null)
+        p.rule()
+        p.align(EscPos.Align.Center).bold(true).line(d.title.uppercase(Locale.US)).bold(false).align(EscPos.Align.Left)
+        p.row("Period", d.period)
+        p.row("Till", d.till)
+        p.row("Printed", stamp(d.printedAt))
+        p.rule()
+        d.lines.forEach { l ->
+            when (l.kind) {
+                ReportLine.Kind.Row -> p.row(l.left, l.right)
+                ReportLine.Kind.Head -> p.bold(true).line(l.left.uppercase(Locale.US)).bold(false)
+                ReportLine.Kind.Rule -> p.rule()
+                ReportLine.Kind.Total -> p.bold(true).row(l.left, l.right).bold(false)
+            }
+        }
+        p.end(paper)
+        return p
     }
 
     fun test(printer: String, paper: Paper): ByteArray {

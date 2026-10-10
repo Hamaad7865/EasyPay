@@ -182,4 +182,25 @@ object Reports {
         // a rupee of rounding is not a sale without VAT
         return if (rest > lines.size.toLong() * 100 || (lines.isEmpty() && rest != 0L)) lines + TaxLine("No VAT", 0, rest, 0, rest) else lines
     }
+
+    // ---- what the tablet wrote down (till_log) ----
+    // A row of the log with the names read for it: who did it and who gave their word.
+    class Logged(val at: Long, val who: String?, val approvedBy: String?, val item: String?, val variant: String?, val receipt: String?, val was: String, val became: String)
+
+    data class PriceChange(val at: Long, val product: String, val was: Long, val now: Long, val who: String?, val approvedBy: String?)
+
+    // A product's own price changed on this till. product: what it is called now, or null when it is gone.
+    fun priceChanges(rows: List<Logged>, product: (item: String, variant: String?) -> String?): List<PriceChange> = rows.mapNotNull { r ->
+        val item = r.item ?: return@mapNotNull null
+        PriceChange(r.at, product(item, r.variant) ?: "A product that is gone", r.was.toLongOrNull() ?: return@mapNotNull null, r.became.toLongOrNull() ?: return@mapNotNull null, r.who, r.approvedBy)
+    }
+
+    data class Corrected(val at: Long, val receipt: String, val receiptId: String?, val was: String, val now: String, val who: String?, val approvedBy: String?)
+
+    // A payment type corrected after the sale. number: the receipt's number, or null when the tablet no longer holds it.
+    fun corrected(rows: List<Logged>, number: (receiptId: String) -> String?): List<Corrected> = rows.mapNotNull { r ->
+        val id = r.receipt ?: return@mapNotNull null
+        val n = number(id)
+        Corrected(r.at, n ?: "A receipt no longer on this tablet", id.takeIf { n != null }, r.was, r.became, r.who, r.approvedBy)
+    }
 }

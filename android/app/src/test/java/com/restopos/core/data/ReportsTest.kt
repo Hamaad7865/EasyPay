@@ -146,6 +146,39 @@ class ReportsTest {
         assertEquals(listOf(Reports.Refund("3", "T1-3", "T1-1", at(7, 16, 5), 32000, "Ben")), Reports.refunds(all))
     }
 
+    @Test fun `a product's price changed, as the tablet wrote it down`() {
+        val rows = listOf(
+            Reports.Logged(at(8, 10), "Aisha", null, "mug", null, null, "32000", "35000"),
+            Reports.Logged(at(8, 9), "Ben", "Aisha", "shirt", "m", null, "129000", "119000"),
+            Reports.Logged(at(8, 8), "Aisha", null, "removed", null, null, "500", "600"),
+            Reports.Logged(at(8, 7), "Aisha", null, "mug", null, null, "not a price", "35000"), // unreadable: left out
+        )
+        val names = mapOf(("mug" to null) to "Ceramic mug", ("shirt" to "m") to "Linen shirt, M")
+        assertEquals(
+            listOf(
+                Reports.PriceChange(at(8, 10), "Ceramic mug", 32000, 35000, "Aisha", null),
+                Reports.PriceChange(at(8, 9), "Linen shirt, M", 129000, 119000, "Ben", "Aisha"),
+                Reports.PriceChange(at(8, 8), "A product that is gone", 500, 600, "Aisha", null),
+            ),
+            Reports.priceChanges(rows) { item, variant -> names[item to variant] },
+        )
+    }
+
+    @Test fun `a payment corrected, as the tablet wrote it down`() {
+        val rows = listOf(
+            Reports.Logged(at(8, 10), "Ben", "Aisha", null, null, "r1", "Cash", "Card"),
+            Reports.Logged(at(8, 9), "Aisha", null, null, null, "wiped", "Card", "Juice"),
+        )
+        assertEquals(
+            listOf(
+                Reports.Corrected(at(8, 10), "T1-1", "r1", "Cash", "Card", "Ben", "Aisha"),
+                // a receipt the tablet no longer holds cannot be opened, and is still listed
+                Reports.Corrected(at(8, 9), "A receipt no longer on this tablet", null, "Card", "Juice", "Aisha", null),
+            ),
+            Reports.corrected(rows) { if (it == "r1") "T1-1" else null },
+        )
+    }
+
     @Test fun `VAT by rate, what it was charged on worked out from it`() {
         // 15% included in 115.00 is 15.00 on 100.00
         assertEquals(listOf(Reports.TaxLine("VAT", 1500, 10000, 1500, 11500)), Reports.tax(listOf(DocTax("VAT", 1500, 1500, true)), 11500))

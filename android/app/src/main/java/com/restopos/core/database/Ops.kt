@@ -171,6 +171,14 @@ interface OpsDao {
     @Query("SELECT * FROM day_closes WHERE device_id = :device AND deleted_at IS NULL ORDER BY closed_at DESC LIMIT :limit")
     suspend fun dayCloses(device: String, limit: Int = 10): List<DayCloseEntity>
 
+    // The days closed on a till within a period, newest first: the Shift Record report.
+    @Query("SELECT * FROM day_closes WHERE device_id = :device AND deleted_at IS NULL AND closed_at > :from AND closed_at <= :to ORDER BY closed_at DESC")
+    suspend fun dayClosesBetween(device: String, from: Long, to: Long): List<DayCloseEntity>
+
+    // When this till rang up its first receipt: from when its reports know anything.
+    @Query("SELECT MIN(device_time) FROM receipts WHERE device_id = :device AND deleted_at IS NULL")
+    suspend fun firstReceiptAt(device: String): Long?
+
     @Query(
         """SELECT p.id, p.receipt_id, r.number, r.type, r.device_time, p.payment_type_id, p.amount FROM receipt_payments p
            JOIN receipts r ON r.id = p.receipt_id

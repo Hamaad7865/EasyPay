@@ -40,6 +40,7 @@ import com.restopos.core.ui.ScreenHead
 import com.restopos.core.ui.T
 import com.restopos.core.ui.V
 import com.restopos.core.ui.VBtn
+import com.restopos.core.ui.VI
 import com.restopos.core.ui.panel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -146,7 +147,7 @@ private val MIX = listOf(0xFFF2F4F7, 0xFF5FB56A, 0xFFE5484D, 0xFF3B82C4, 0xFF7C5
 private fun short(cents: Long): String = if (cents >= 100_000) "Rs %.1fk".format(Locale.US, cents / 100_000.0) else Money.format(cents)
 
 @Composable
-fun TodayScreen(vm: TodayViewModel, serviceLine: String) {
+fun TodayScreen(vm: TodayViewModel, serviceLine: String, onReports: () -> Unit = {}) {
     val ui by vm.ui.collectAsState()
     val allowed by vm.allowed.collectAsState()
     if (!allowed) {
@@ -158,7 +159,11 @@ fun TodayScreen(vm: TodayViewModel, serviceLine: String) {
         return
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        ScreenHead("$serviceLine · this till", L.todayTitle)
+        Row(verticalAlignment = Alignment.Bottom) {
+            ScreenHead("$serviceLine · this till", L.todayTitle, Modifier.weight(1f))
+            // other days, and the other figures: the till's reports
+            VBtn("Reports", height = 44.dp, pad = 18.dp, icon = VI.Note) { onReports() }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Kpi("Net sales", Money.format(ui.sales), ui.versus, if (ui.up) V.GreenText else V.RedText, Modifier.weight(1f))
             if (ui.retail) {

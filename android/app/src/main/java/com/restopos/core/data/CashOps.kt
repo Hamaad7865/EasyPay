@@ -204,6 +204,24 @@ class CashOps @Inject constructor(
         )
     }
 
+    // A period's figures on this till, for its reports (feature/reports): the
+    // same sum the day closings are made from, so a report and a day closing
+    // of the same days always agree. net: sales less refunds.
+    class Figures(
+        val sales: Int, val gross: Long, val refunds: Int, val refunded: Long, val discounts: Long, val tax: Long, val priceChanges: Long,
+        val payments: List<DocAmount>, val cashIn: Long, val cashOut: Long, val taxes: List<DocTax>,
+    ) {
+        val net: Long get() = gross - refunded
+    }
+
+    // from is not in the period and to is, as everywhere here.
+    suspend fun figures(from: Long, to: Long): Figures? {
+        val p = period(session.deviceId() ?: return null, from, to)
+        return Figures(p.sales, p.gross, p.refunds, p.refunded, p.discounts, p.tax, p.priceChanges, p.payments, p.cashIn, p.cashOut, p.taxes)
+    }
+
+    suspend fun tillName(): String = till()
+
     // What should be in the drawer now: the float, the cash taken (refunds
     // paid in cash come off), cash put in, less cash taken out.
     suspend fun expectedCash(shift: ShiftEntity, until: Long = System.currentTimeMillis()): Long {

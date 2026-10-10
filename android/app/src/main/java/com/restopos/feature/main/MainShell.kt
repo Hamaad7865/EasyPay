@@ -160,7 +160,7 @@ import javax.inject.Inject
 // Every screen of the till. Order, Pay and Split belong to whichever order is
 // open; the rest are places. Sell and Products are a shop's: its sell screen
 // in place of tables and orders, its products and stock in place of the menu.
-enum class Screen { Floor, Order, Pay, Split, Takeaway, Kitchen, Bookings, Orders, Today, Menu, Cash, Receipts, Customers, Settings, Sell, Products, StockCheck, Labels, Stock }
+enum class Screen { Floor, Order, Pay, Split, Takeaway, Kitchen, Bookings, Orders, Today, Menu, Cash, Receipts, Customers, Settings, Sell, Products, StockCheck, Labels, Stock, Reports }
 
 // what only a restaurant has, and what only a shop has
 private val RESTAURANT_ONLY = setOf(Screen.Floor, Screen.Order, Screen.Takeaway, Screen.Kitchen, Screen.Bookings, Screen.Orders, Screen.Menu)
@@ -414,7 +414,7 @@ private val SERVICE = listOf(
 // the service screens a restaurant's plan gives it
 private fun service(premium: Boolean) = if (premium) SERVICE else SERVICE.filter { it.screen !in PREMIUM_ONLY }
 private val BACK = listOf(
-    Nav(Screen.Today, VI.Bars) { L.today }, Nav(Screen.Menu, VI.List) { L.menuStock }, Nav(Screen.Cash, VI.Cash) { L.cashDrawer },
+    Nav(Screen.Today, VI.Bars) { L.today }, Nav(Screen.Reports, VI.Note) { "Reports" }, Nav(Screen.Menu, VI.List) { L.menuStock }, Nav(Screen.Cash, VI.Cash) { L.cashDrawer },
     Nav(Screen.Receipts, VI.Receipt) { L.receipts }, Nav(Screen.Customers, VI.People) { L.customers }, Nav(Screen.Settings, VI.Gear) { L.settings },
 )
 // A shop's till, after the approved "Sell" board: Sell, Receipts, Customers,
@@ -429,7 +429,7 @@ private val SHOP = listOf(
 // Print labels is back-room work, done now and then: here, and on a product's sheet.
 // Stock is the shop's papers: suppliers, orders, deliveries, counts and the history of every movement.
 private val SHOP_BACK = listOf(
-    Nav(Screen.StockCheck, VI.Search) { "Stock check" }, Nav(Screen.Labels, VI.Tag) { "Print labels" }, Nav(Screen.Stock, VI.Orders) { "Stock" },
+    Nav(Screen.StockCheck, VI.Search) { "Stock check" }, Nav(Screen.Labels, VI.Tag) { "Print labels" }, Nav(Screen.Stock, VI.Orders) { "Stock" }, Nav(Screen.Reports, VI.Note) { "Reports" },
     Nav(Screen.Cash, VI.Cash) { L.cashDrawer },
 )
 
@@ -643,7 +643,9 @@ fun MainShell(
                     Screen.Kitchen -> { val vm: KdsViewModel = hiltViewModel(); KdsScreen(vm) }
                     Screen.Bookings -> { val vm: BookingsViewModel = hiltViewModel(); BookingsScreen(vm, serviceLine, onAssign = { b -> b.area?.let { floor.pickZone(it) }; shell.assign(b) }, onSeated = { shell.go(Screen.Order) }) }
                     Screen.Orders -> Box(Modifier.padding(top = 12.dp)) { OrdersScreen(onOpen = { shell.go(Screen.Order) }) }
-                    Screen.Today -> { val vm: TodayViewModel = hiltViewModel(); TodayScreen(vm, if (retail) date else serviceLine) }
+                    Screen.Today -> { val vm: TodayViewModel = hiltViewModel(); TodayScreen(vm, if (retail) date else serviceLine, onReports = { shell.go(Screen.Reports) }) }
+                    // the till's own reports, for a period: a receipt tapped in one opens where receipts are
+                    Screen.Reports -> { val vm: com.restopos.feature.reports.ReportsViewModel = hiltViewModel(); com.restopos.feature.reports.ReportsScreen(vm, onReceipt = { id -> receipts.showId(id); shell.go(Screen.Receipts) }) }
                     Screen.Menu -> { val vm: MenuViewModel = hiltViewModel(); MenuStockScreen(vm) }
                     Screen.Cash -> { val vm: CashViewModel = hiltViewModel(); CashScreen(vm, onOpenPeriod = onOpenPeriod, onClosed = onLock) }
                     Screen.Receipts -> Box(Modifier.padding(top = 12.dp)) { ReceiptsScreen(receipts, onExchange = { shell.go(Screen.Sell) }) }
