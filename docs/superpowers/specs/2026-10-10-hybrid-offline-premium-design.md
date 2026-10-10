@@ -145,6 +145,22 @@ Each is designed, planned, built and released by itself. Sizes are estimates.
 The order is the owner's: **8 first**. The numbers are those of the first list they saw; after 8 the
 rest follow as listed unless they say otherwise.
 
+**The order as the owner set it on 2026-10-11**, after seeing piece 8's first part run:
+
+1. Piece 8, its base: built (the Stock screen with Suppliers and History; plan 1 of three, with its
+   record). Its orders, deliveries and counts are not dropped, and wait behind what follows.
+2. **Piece 7, reports on the tablet**, from a picture of the reports wanted that the owner will send.
+3. **Piece 5, the rest of set-up on the tablet**: "We should be able to add items like the back
+   office, set up tax etc...".
+4. **Pieces 2, 3 and 4**: the unlock code, the tablet alone, backup and restore. "Probably we'll need
+   these also": with them the offline edition is done, in the owner's words "done with the offline one".
+5. Then what is left: piece 8's orders, deliveries and counts, piece 1 (Premium by date) and piece 6
+   (going Premium and coming back).
+
+Their words, in order: "I think we only need report and item 5"; asked what that leaves out, "Dont
+drop anything just do reports I'll you a picture what reports we need and then do 5 thats it I think
+we will be done with the offline one"; then, of pieces 2, 3 and 4, "probably we'll need these also".
+
 - Piece 8 comes before the tablet can stand alone, so its screens first serve the shops whose tills are
   linked today. How it is built so that the same screens serve an offline tablet later is its own
   design's first question.
