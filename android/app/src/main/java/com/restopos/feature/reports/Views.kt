@@ -189,7 +189,8 @@ private fun Analysis(d: ReportData, vm: ReportsViewModel, retail: Boolean) {
             item {
                 T(
                     if (cutting == Cutting.Category) "What each category's lines came to, before any discount on a whole sale. A refund is taken off its category."
-                    else "Whole receipts, discounts and all. A refund is taken off whoever made it.",
+                    else if (cutting == Cutting.Staff) "Whole receipts, discounts and all. A refund is taken off whoever made it."
+                    else "Whole receipts, discounts and all, by how each order was taken.",
                     13.sp, 500, V.Text3, Modifier.padding(horizontal = 18.dp, vertical = 6.dp), lines = 2,
                 )
             }

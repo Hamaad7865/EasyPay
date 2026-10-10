@@ -199,3 +199,13 @@ longer than a screen. A real printer. A tablet signed in to a real client.
 - A manager's word lasts while the screen is open and until someone else signs in, as on Stock.
 - `Docs.report` prints any report as a left and a right; the debug build has `DEMO_PRINTER`.
 - The three rule objects of plan 1's count of files are one file here too: `Reports.kt`.
+
+**The made-up restaurant, seen afterwards the same night** (`DEMO_SHOP --es type restaurant` on the
+hidden emulator): Reports is in the side menu's back office group, in view without a swipe; a takeaway
+sale and a counter sale rung up and paid; Sales Analysis offers By category, By staff and By order type,
+and by order type shows Counter Rs 2,950.00 (83.3%) and Takeaway Rs 590.00 (16.7%); Sales Summary net
+Rs 3,540.00 with VAT Rs 461.74, and the Tax Report adding up to it; a receipt tapped in Transaction
+Detail opens on Receipts as it printed, with Refund and Print again. One sentence under By order type
+spoke of "whoever made it" and now speaks of how the order was taken. Still not seen: an order at a
+table with a service charge (it carries no VAT, and would show as "No VAT" in the Tax Report when it is
+more than a rupee), several days of sales, a real printer, a signed-in tablet.
