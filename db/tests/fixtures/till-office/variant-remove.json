@@ -1,0 +1,4 @@
+{
+  "type": "variant.remove",
+  "payload": { "variant_id": "variant-1" }
+}

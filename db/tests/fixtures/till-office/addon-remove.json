@@ -1,0 +1,4 @@
+{
+  "type": "addon.remove",
+  "payload": { "group_id": "group-1" }
+}

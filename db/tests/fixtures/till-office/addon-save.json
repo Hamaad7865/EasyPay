@@ -1,0 +1,10 @@
+{
+  "type": "addon.save",
+  "payload": {
+    "id": "group-1", "name": "Extras", "min": 0, "max": 2,
+    "choices": [
+      { "id": "choice-1", "name": "Cheese", "price": 2500 },
+      { "id": "choice-2", "name": "Chilli", "price": 0 }
+    ]
+  }
+}

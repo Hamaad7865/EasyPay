@@ -1,0 +1,4 @@
+{
+  "type": "variants.make",
+  "payload": { "item_id": "item-1", "names": ["Size", "Colour"], "values": [["S", "M"], ["White", "Navy"]] }
+}

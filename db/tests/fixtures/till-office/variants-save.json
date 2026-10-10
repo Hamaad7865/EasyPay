@@ -1,0 +1,7 @@
+{
+  "type": "variants.save",
+  "payload": {
+    "item_id": "item-1",
+    "lines": [ { "id": "variant-1", "barcode": "6091234500024", "sku": "POLO-S-WH", "cost": 17500 } ]
+  }
+}
