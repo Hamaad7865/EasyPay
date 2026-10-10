@@ -86,7 +86,8 @@ internal fun GuestOrders(orders: List<GuestShown>, now: Long, onClose: () -> Uni
                     if (declining == o.id) {
                         T("What should the guest be told?", 14.sp, 700, V.Text2)
                         val reasons = (if (checked is Checked.Fault) listOf("Sorry: " + checked.why) else emptyList()) + REASONS
-                        reasons.forEach { r -> VBtn(r, Modifier.fillMaxWidth(), height = 46.dp, size = 14.sp) { declining = null; onDecline(o.id, r) } }
+                        // a shade off the card they sit on, which is a key's own colour: seen as flat words otherwise
+                        reasons.forEach { r -> VBtn(r, Modifier.fillMaxWidth(), bg = V.Hover, height = 46.dp, size = 14.sp) { declining = null; onDecline(o.id, r) } }
                         VBtn("Back", Modifier.fillMaxWidth(), bg = V.Panel, height = 42.dp, size = 14.sp) { declining = null }
                     } else {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

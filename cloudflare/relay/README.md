@@ -77,7 +77,7 @@ browser, and accepts each order after four seconds; a dish with a note that
 says "decline" is declined, and `--never` leaves orders waiting. Then:
 
 ```
-node --test cloudflare/relay/src/rules.test.mjs     9 tests of the rules
+node --test cloudflare/relay/src/rules.test.mjs     10 tests of the rules
 node cloudflare/relay/test/flow.mjs                 16 steps against the Worker running here
 ```
 
@@ -86,6 +86,35 @@ entry runs a second copy on 8790 whose `TILL_API` is the dev branch's till
 service, and `RELAY=http://localhost:8790 node db/tests/api-guest-pass.test.cjs`
 makes a till and its key in the dev database and connects with it (a made-up
 key, the switch off and a deactivated till are all turned away).
+
+## With the till on an emulator
+
+The debug build of the till can stand where the stand-in till does. It needs
+the relay and the stand-in for the till service running (the first command
+above, and `node cloudflare/relay/test/stand-in-api.mjs`), and a build that
+is pointed at both:
+
+```
+./android/gradlew -p android :app:assembleDebug -PfunctionUrl=http://10.0.2.2:8788
+```
+
+with `relayUrl=http://10.0.2.2:8787` in `android/local.properties`
+(`10.0.2.2` is this PC, seen from an emulator). `functionUrl` matters as much
+as `relayUrl`: the made-up restaurant's key is made up too, and a till that
+syncs with a real service is told so (401) and drops the key, after which it
+has nothing to show the relay. The stand-in answers a sync with "not found",
+and the key stays. On an emulator that was never set up:
+
+```
+adb shell am broadcast -n com.restopos.app/com.restopos.debug.DemoReceiver -a com.restopos.app.DEMO_SHOP --es type restaurant --ez ordering true
+```
+
+Then, on the till, clock in, open the day and sign in (the made-up staff and
+their PINs are in `android/app/src/debug/assets/demo-shop.json`). The till
+publishes its menu, and a table's address is
+`http://localhost:8787/demostoreaaaaaaa/<the table's id>`; the ids are in the
+same file. Done on 2026-10-11: an order sent this way was on Tables within
+three seconds, and Accept and Decline were answered to the phone's side.
 
 ## Putting it live
 

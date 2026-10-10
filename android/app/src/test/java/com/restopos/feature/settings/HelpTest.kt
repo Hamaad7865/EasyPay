@@ -49,4 +49,17 @@ class HelpTest {
     fun aShopsHelpDoesNotDependOnItsPlan() {
         assertEquals(helpFor(shop = true, premium = true), helpFor(shop = true, premium = false))
     }
+
+    // ordering from the table: told only where the plan carries it and the
+    // back office's switch is on
+    @Test
+    fun anOrderFromATableIsExplainedWhereGuestsCanSendOne() {
+        val title = "An order from a table"
+        assertTrue(helpFor(shop = false, premium = true, ordering = true).map { it.first }.contains(title))
+        assertFalse(titles(shop = false, premium = true).contains(title))
+        assertFalse(helpFor(shop = false, premium = false, ordering = true).map { it.first }.contains(title))
+        assertFalse(helpFor(shop = true, premium = true, ordering = true).map { it.first }.contains(title))
+        // and the switch takes nothing else away
+        assertEquals(titles(shop = false, premium = true), helpFor(shop = false, premium = true, ordering = true).map { it.first } - title)
+    }
 }

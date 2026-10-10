@@ -309,6 +309,10 @@ fun FloorScreen(
             // orders sent from the tables wait here, whichever room is showing
             val guests by vm.guests.collectAsState()
             var looking by remember { androidx.compose.runtime.mutableStateOf(false) }
+            // Once the last one is answered the sheet is closed, not only empty: the
+            // next order to arrive says so on the strip and waits for Look. Found by
+            // running it: it opened by itself, under whatever the cashier was tapping.
+            androidx.compose.runtime.LaunchedEffect(guests.isEmpty()) { if (guests.isEmpty()) looking = false }
             if (guests.isNotEmpty()) {
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(V.GreenWash).padding(horizontal = 16.dp, vertical = 10.dp),

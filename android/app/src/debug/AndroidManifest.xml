@@ -12,6 +12,9 @@
              With the boolean extra "setup" true, the made-up business's
              first-run set-up is open, as for a client just made in /admin
              (the command is in DemoReceiver, where the business is seeded).
+             With the type "restaurant" and "ordering" true, the made-up restaurant
+             takes orders from its tables through the relay running on this PC
+             (cloudflare/relay/README.md, "With the till on an emulator").
              DEMO_SCAN stands in for a barcode scanner, which an emulator has
              none of: the code goes to the screen that is open, as a scan would.
              The command, with its code, is at the top of DemoReceiver.onReceive. -->

@@ -39,16 +39,30 @@ neither `sync_pull` nor `sync_push`, which 0092 redefines. A till connects
 to `/api/till` and is told its store's id by the relay, so nothing new has to
 reach a till in a pull.
 
-## Piece 3: the till
+## Piece 3: the till. DONE, on an emulator only
 
-The till's database is at 14 with the stock tools (another piece of work,
-uncommitted when this was written): `guest_orders` is the version after
-theirs, and this piece waits until their change to the database's files has
-landed. The least-and-most rule taken out of
-`OrderScreen.kt` into one tested function; `core/guest/` (the snapshot from
-Room, the connection with back-off, the requests, accepting into lines); the
-count on Tables, the request's sheet, the chime; Help. JVM tests first, then
-the emulator against `wrangler dev` at 10.0.2.2.
+`core/guest/`: `OptionRules` (the least and most of a group, taken out of
+`OrderScreen.kt`), `GuestCheck` (an order held against the till's menu as it
+is now), `GuestMenu` and `GuestWire` (what the till and the relay say to each
+other; `cloudflare/relay/test/till-menu.json` is read by both sides' tests),
+`GuestLink` (the one socket, with back-off) and `GuestBook` (what waits,
+Accept, Decline). The database is at 15 with `guest_orders`, the version
+after the stock tools' 14. On Tables: the green strip, the sheet, the chime;
+a Help entry where the switch is on. 386 unit tests.
+
+Run on a hidden emulator on 2026-10-11 against the relay on this PC (the
+recipe is in the relay's README): the till published its menu, the guest's
+page in a browser showed it, an order sent from the page was on Tables within
+seconds, Accept put it on the table's order and the page said Confirmed,
+Decline was told to the phone's side. Three faults showed by running it and
+were changed: a quantity written as thousandths of a dish (the till's measure
+is thousandths), the sheet opening by itself when the next order arrived,
+and the three answers drawn the colour of the card they sit on.
+
+Not seen: a real tablet, a real phone on mobile data, Cloudflare's own
+servers. Known and left: after the app is started the till listens once
+someone has signed in, since the line starts with the main screen (as the
+kitchen screens' does).
 
 ## Piece 4: the back office. DONE, not deployed
 
@@ -72,5 +86,15 @@ the "Table cards" line back in `nav.ts` under Tables (`premium: true`,
 
 ## After
 
-`android/README.md`, the relay's README, memory. The public site says
+`android/README.md` and the relay's README are written. The public site says
 nothing of it until the owner has seen it working.
+
+## The release, on the owner's word only
+
+In this order, since a card is for good: migration 0093 and the till service
+on production; `TILL_API` in `cloudflare/relay/wrangler.toml` set to the
+production till service and `wrangler deploy` there (which makes
+`order.easypaypos.com`); `TABLE_ORDERING_LIVE` true and the "Table cards"
+line back in `nav.ts`; then the tag, which carries the back office and the
+till. Before the tag, a real tablet and a real phone should be tried against
+the deployed relay.

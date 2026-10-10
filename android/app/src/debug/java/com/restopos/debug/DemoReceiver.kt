@@ -181,7 +181,9 @@ class DemoReceiver : BroadcastReceiver() {
                     // say so, and the till is given a made-up key of its own to show the ordering
                     // site's relay on this PC, whose stand-in for EasyPay's till service takes any
                     // key of the right shape (cloudflare/relay/test). Open a day on the till: it
-                    // listens only while one is open.
+                    // listens only while one is open. The build must sync with that stand-in too
+                    // (-PfunctionUrl): a real service refuses the made-up key and the till drops it.
+                    // The whole recipe is in cloudflare/relay/README.md.
                     if (restaurant && intent.getBooleanExtra("ordering", false)) {
                         val shop = Json.parseToJsonElement(context.assets.open("demo-shop.json").bufferedReader().use { it.readText() })
                         val was = Json.parseToJsonElement(deps.db().ops().settings() ?: "{}").jsonObject

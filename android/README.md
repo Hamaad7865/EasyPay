@@ -77,6 +77,24 @@ handoff (`feature/main/MainShell.kt` holds every screen):
   booking, Confirm, No-show, Assign table (pick a free table on the floor),
   Seat (opens the table's order with the party's size). The back office has
   the days ahead.
+- **Orders from the table** (`core/guest`, Premium, a restaurant): a guest
+  scans the code on their table and orders on their phone; the page and the
+  relay are `cloudflare/relay`. The till keeps one socket to the ordering
+  site (`GuestLink`, `RELAY_URL`), with the key it syncs with, while the
+  back office's switch is on (`PosSettings.tableOrdering`), the plan carries
+  it and a day is open on this till. Over it the till publishes its menu,
+  again whenever a dish, an option or a table changes, is handed each order,
+  and gives the cashier's answer. An order is kept on the tablet
+  (`guest_orders`, database version 15), the till chimes and says which
+  table, and a green strip on Tables opens the ones that wait: each is shown
+  at the till's own names and prices (`GuestCheck`: the phone sends no
+  price), Accept puts its lines on the table's order (seating a free table)
+  and opens it for Send to kitchen, Decline asks which of three sentences
+  the guest is told. An order the menu can no longer take says why and can
+  only be declined. The line starts with the till's main screen, so after
+  the app is started it listens once someone has signed in. The back office
+  keeps its side out of sight until the release (`TABLE_ORDERING_LIVE` in
+  `web/lib/plan.ts`), so until then no till has the switch on.
 - **Orders:** every order opened on this tablet that is not fully paid, as a
   list to search and sort.
 - **Today's sales:** this till's receipts today: net sales against the same
@@ -213,6 +231,9 @@ checks below are the first thing to do on a real tablet.
    root `.env.local`. They become `BuildConfig` fields; a trailing slash is
    fine. Use the dev branch values unless you mean to point a build at
    production.
+   `relayUrl` is the ordering site a till listens to for orders from the
+   tables. Left out, it is `https://order.easypaypos.com`; to try it against
+   the relay running on this PC, see `cloudflare/relay/README.md`.
 3. `cd android && ./gradlew :app:assembleDebug`
    The APK lands in `app/build/outputs/apk/debug/`.
 4. `./gradlew :app:testDebugUnitTest` checks that the till's totals match the

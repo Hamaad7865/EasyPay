@@ -253,6 +253,8 @@ class SettingsViewModel @Inject constructor(
     val retail: StateFlow<Boolean?> = db.ops().settingsFlow().map<String?, Boolean?> { PosSettings.parse(it).retail }.held(null)
     // the restaurant's plan carries the kitchen display and bookings (server 0085)
     val premium: StateFlow<Boolean> = db.ops().settingsFlow().map { PosSettings.parse(it).premium }.held(false)
+    // guests order from the code on their table: the back office's switch is on (core/guest)
+    val tableOrdering: StateFlow<Boolean> = db.ops().settingsFlow().map { PosSettings.parse(it).tableOrdering }.held(false)
 
     // Does it at once when the person signed in may; otherwise asks for
     // someone who may, and does it with their go-ahead.
@@ -537,7 +539,11 @@ fun SettingsScreen(
                             Page.Display -> DisplayPage(vm, retail)
                             Page.Support -> SupportPage(vm, shop, network, onSignIn, onRejected, onSignOut)
                             // which business this is, is read in a moment: no help is shown for the wrong one meanwhile
-                            Page.Help -> retail?.let { shop -> val premium by vm.premium.collectAsState(); HelpPage(shop, premium) }
+                            Page.Help -> retail?.let { shop ->
+                                val premium by vm.premium.collectAsState()
+                                val ordering by vm.tableOrdering.collectAsState()
+                                HelpPage(shop, premium, ordering)
+                            }
                         }
                     }
                 }
@@ -1265,6 +1271,7 @@ private val HELP = listOf(
     "Splitting the bill" to "To share a bill evenly, tap Pay, then Split equally, and set how many are paying: each share is paid its own way and each guest gets a printed copy. To let guests pay for their own items, tap Split: move items onto separate checks and pay each check on its own.",
     "Taking an item off" to "Tap the line on the order. Before it has gone to the kitchen it is simply removed. After that it is a void: the kitchen gets a void ticket, and it needs someone allowed to void.",
     "Bookings" to "On Bookings, New booking takes the name, the guests and the time. Assign table holds a free table for them on the floor plan. When they arrive, tap Seat, or tap their table and Guests arrived.",
+    "An order from a table" to "A guest who scans the code on their table sees the menu on their phone and can send an order from their seat. The till makes a sound and says which table, and a green strip on Tables says an order is waiting: tap Look. It shows what was asked for, at this till's own names and prices. Accept puts it on the table's order, seating the table if it was free, and opens that order: tap Send to kitchen as usual. Decline asks what the guest should be told, and their phone says so. Nothing is paid on the phone: the bill is taken here as for any table. Orders come in while a day is open on this till, someone has signed in since the tablet was started, and it has internet; otherwise the phone still shows the menu and says to ask a member of staff. An item switched to Sold out cannot be ordered from a table. The switch is in the back office's POS settings, and the cards for the tables are printed from its Tables page.",
     "Something has run out" to "Menu, Menu & stock, and switch the item to Sold out. It stays on the menu, greyed, on every till, until it is switched back.",
     "Adding, changing or removing an item" to "Menu, Menu & stock. Tap New item, or tap an item's name to change it: its name, its price, its category, its barcode and whether it is on sale. Remove, on the same sheet, takes it off every till; receipts that sold it keep its name. It needs a connection, and may need a manager. An item's add-ons and tax are set in the back office.",
     "Categories" to "Menu, Menu & stock, then Categories. Tap New category, or tap one to change it: its name and its colour, which is the colour of its button and of its items' tiles. Remove takes away a category that has no items left in it. Where a category's items print, its place among the buttons and whether its stock is counted are set in the back office. It needs a connection, and may need a manager.",
@@ -1285,10 +1292,14 @@ private val HELP = listOf(
 // nor that an order is on a display it has not got.
 private val PREMIUM_HELP = setOf("The kitchen display", "A kitchen screen on another tablet", "Bookings")
 private const val ON_THE_DISPLAY = " An order still reaches the kitchen display when a kitchen printer does not answer."
-internal fun helpFor(shop: Boolean, premium: Boolean): List<Pair<String, String>> = when {
+// Ordering from the table is the premium tier's as well, and is there only
+// where the back office's switch is on: nobody else is told of a strip on
+// Tables they will never see.
+private const val TABLE_HELP = "An order from a table"
+internal fun helpFor(shop: Boolean, premium: Boolean, ordering: Boolean = false): List<Pair<String, String>> = when {
     shop -> SHOP_HELP
-    premium -> HELP
-    else -> HELP.filter { it.first !in PREMIUM_HELP }.map { (title, text) -> title to text.replace(ON_THE_DISPLAY, "") }
+    premium -> HELP.filter { ordering || it.first != TABLE_HELP }
+    else -> HELP.filter { it.first !in PREMIUM_HELP && it.first != TABLE_HELP }.map { (title, text) -> title to text.replace(ON_THE_DISPLAY, "") }
 }
 
 // A shop's help: its till has no tables, no kitchen and no bookings. Two keys
@@ -1338,10 +1349,10 @@ private val SHOP_HELP = listOf(
 // One card of questions: a shop's, or a restaurant's. A tap opens the answer
 // under it, and closes the one that was open.
 @Composable
-private fun HelpPage(shop: Boolean, premium: Boolean) {
+private fun HelpPage(shop: Boolean, premium: Boolean, ordering: Boolean) {
     var open by rememberSaveable { mutableStateOf(0) }
     Group {
-        helpFor(shop, premium).forEachIndexed { i, (title, text) ->
+        helpFor(shop, premium, ordering).forEachIndexed { i, (title, text) ->
             if (i > 0) Line()
             val on = open == i
             val turn = animateFloatAsState(if (on) 90f else 0f, spring(dampingRatio = 0.9f, stiffness = 500f), label = "chevron")
