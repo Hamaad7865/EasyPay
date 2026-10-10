@@ -110,7 +110,7 @@ the server's suite and by the Kotlin tests.
 - [x] The made-up shop: Settings > Taxes (the list, the sheet, its refusals in words); a product's
   More page (every field, the cost hidden from the cashier); Save answers that it needs a
   connection. The same on the made-up restaurant (tax only).
-- [ ] A real save needs a till signed in to a dev client: the owner signs in; a tax added, a
+- [x] A real save needs a till signed in to a dev client: the owner signs in; a tax added, a
   product's tax and supplier changed, both read back from the dev database.
 - [x] Database 16 to 17 with data on it.
 - [x] Write the record below: what was seen, what was not.
@@ -167,11 +167,26 @@ What the run showed, and what was changed for it (`7750005`):
   be typed into before and now can, a category's, the stock sheet and the note on a sale). What the
   till says covers the sheet's Cancel key for the three seconds it shows.
 
+**Seen on a signed-in till, by the owner (2026-10-11, 02:40 to 02:45).** They signed the same emulator in
+to their dev client Hamaad Retail and tried it themselves; I kept my hands off it and read the dev
+database. Every change was applied:
+
+- 02:41 a new product from the sheet, with its cost on the second page (`item.save`): Rs 200, cost
+  Rs 100, on the usual tax.
+- 02:43 a tax added, "Test", 10 %, added on top (`tax.save`).
+- 02:44 that product moved onto the new tax: one tax on it afterwards, VAT taken off.
+- 02:44 the new tax made the usual one: VAT stopped being it, one usual tax in all.
+- 02:45 the product sold: receipt S1-T2-000001, Rs 200 and Rs 20 of tax, Rs 220, and **one** tax on
+  its line (Test, 10 %, added). The till had the moved tax by then, so the pull after the save
+  dropped the old link.
+- The owner: "I tested and everything seems good so far".
+
+Their dev client is left with "Test" as its usual tax; that is theirs to put back.
+
 **Not seen by anyone:**
 
-- A save reaching the server from a signed-in till: a tax added, a product's tax, supplier and
-  reorder level changed, the pull bringing them back, and a sale of a product whose tax was moved
-  printing one tax line. This needs a till signed in to a dev client, which is the owner's to do.
+- An existing product's SKU, brand, supplier, supplier's code or reorder figures changed from a
+  signed-in till (the client has no supplier). The server's suite and the payload tests cover them.
 - The first-run set-up's menu step, which opens the same sheet.
 - The other four typed-into sheets with the keyboard up (the label designer's, the label printer's,
   the two of the set-up's staff step).
