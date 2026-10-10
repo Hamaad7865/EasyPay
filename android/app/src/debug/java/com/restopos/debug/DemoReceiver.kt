@@ -61,6 +61,7 @@ class DemoReceiver : BroadcastReceiver() {
         fun applier(): com.restopos.core.sync.PullApplier
         fun requests(): com.restopos.core.data.TillRequests
         fun updater(): com.restopos.core.sync.AppUpdater
+        fun auth(): com.restopos.core.network.AuthClient
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -176,6 +177,17 @@ class DemoReceiver : BroadcastReceiver() {
                     // refuses are seen, and every save stops at "This needs a connection".
                     val setup = intent.getBooleanExtra("setup", false)
                     seed(context, deps.db(), deps.session(), restaurant, plan, setup)
+                    // --ez ordering true: guests may order from the tables (core/guest). The settings
+                    // say so, and the till is given a made-up key of its own to show the ordering
+                    // site's relay on this PC, whose stand-in for EasyPay's till service takes any
+                    // key of the right shape (cloudflare/relay/test). Open a day on the till: it
+                    // listens only while one is open.
+                    if (restaurant && intent.getBooleanExtra("ordering", false)) {
+                        val shop = Json.parseToJsonElement(context.assets.open("demo-shop.json").bufferedReader().use { it.readText() })
+                        val was = Json.parseToJsonElement(deps.db().ops().settings() ?: "{}").jsonObject
+                        deps.db().ops().upsertSettings(SettingsEntity(shop.str("tenant")!!, JsonObject(was + ("tableOrdering" to kotlinx.serialization.json.JsonPrimitive(true))).toString()))
+                        deps.auth().saveTillKey(shop.obj("device").str("id")!!, "d".repeat(64))
+                    }
                     if (screen != null) {
                         val shop = Json.parseToJsonElement(context.assets.open("demo-shop.json").bufferedReader().use { it.readText() })
                         deps.db().ops().upsertPrinters(listOf(

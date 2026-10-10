@@ -420,13 +420,13 @@ private fun OptionsSheet(s: OptionSheet, notes: List<String>, vm: OrderViewModel
     var other by remember(s) { mutableStateOf("") }
     var qty by remember(s) { mutableIntStateOf(1) }
     val picks = s.mods.filter { m -> picked[m.group_id].orEmpty().contains(m.id) }
-    val short = s.groups.firstOrNull { g -> picked[g.id].orEmpty().size < g.min_select }
+    val short = s.groups.firstOrNull { g -> com.restopos.core.guest.OptionRules.tooFew(g.min_select, picked[g.id].orEmpty().size) }
 
     Sheet(onDismiss = { vm.closeSheet() }) {
         SheetHead(s.item.name, Money.format(s.item.price)) { vm.closeSheet() }
         s.groups.forEach { g ->
             val mine = picked[g.id].orEmpty()
-            val max = g.max_select.coerceAtLeast(1)
+            val max = com.restopos.core.guest.OptionRules.most(g.max_select)
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Caps(g.name + if (max > 1) " · up to $max" else "")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -436,13 +436,8 @@ private fun OptionsSheet(s: OptionSheet, notes: List<String>, vm: OrderViewModel
                             Modifier.height(54.dp).clip(RoundedCornerShape(12.dp)).background(if (on) V.On else V.Key)
                                 .border(1.5.dp, if (on) V.On else V.Stroke2, RoundedCornerShape(12.dp))
                                 .clickable {
-                                    picked[g.id] = when {
-                                        // one pick: tapping another moves it; tapping it again clears it, unless one is needed
-                                        max == 1 -> if (on && g.min_select == 0) emptyList() else listOf(m.id)
-                                        on -> mine - m.id
-                                        mine.size < max -> mine + m.id
-                                        else -> mine
-                                    }
+                                    // what a tap leaves picked is one rule, also held to an order sent from a table (core/guest)
+                                    picked[g.id] = com.restopos.core.guest.OptionRules.tap(mine, m.id, g.min_select, g.max_select)
                                 }.padding(horizontal = 18.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {

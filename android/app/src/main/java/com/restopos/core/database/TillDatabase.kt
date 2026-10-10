@@ -35,6 +35,8 @@ import androidx.room.RoomDatabase
 // typed; and on a product, a variant and a line of stock, what the server
 // already sent and the till did not keep: cost, supplier, brand, the level
 // to order again at. The products are read again from the start for them.
+// Version 15 adds the orders guests send from the codes on their tables
+// (server 0093, core/guest): each waits for the cashier's answer.
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -55,8 +57,9 @@ import androidx.room.RoomDatabase
         SupplierEntity::class, PurchaseOrderEntity::class, PurchaseOrderLineEntity::class,
         DeliveryEntity::class, DeliveryLineEntity::class, StockCountEntity::class, StockCountLineEntity::class,
         StockMovementEntity::class, StockDraftEntity::class,
+        GuestOrderEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
@@ -72,4 +75,5 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun service(): ServiceDao
     abstract fun retail(): RetailDao
     abstract fun stock(): StockDao
+    abstract fun guest(): GuestDao
 }

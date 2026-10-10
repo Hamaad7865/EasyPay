@@ -240,4 +240,13 @@ object Migrations {
             db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
         }
     }
+
+    // The orders guests send from the codes on their tables (server 0093,
+    // core/guest): which table, the lines as they came, and how each stands.
+    val V14_V15 = object : Migration(14, 15) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `guest_orders` (`id` TEXT NOT NULL, `table_id` TEXT NOT NULL, `lines` TEXT NOT NULL, `placed_at` INTEGER NOT NULL, `received_at` INTEGER NOT NULL, `status` TEXT NOT NULL, `reason` TEXT, `answered_at` INTEGER, `told` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_guest_orders_status` ON `guest_orders` (`status`)")
+        }
+    }
 }

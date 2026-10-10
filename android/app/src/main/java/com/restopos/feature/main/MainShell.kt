@@ -199,6 +199,7 @@ class ShellViewModel @Inject constructor(
     private val updater: AppUpdater,
     private val kitchen: com.restopos.core.data.Kitchen,
     private val screens: com.restopos.core.kitchen.ScreenLink,
+    private val guests: com.restopos.core.guest.GuestLink,
     private val requests: com.restopos.core.data.TillRequests,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
@@ -240,6 +241,10 @@ class ShellViewModel @Inject constructor(
         // for as long as it runs: an order waiting for a screen that was off
         // goes to it when it is back, whichever screen of the till is open.
         screens.start()
+        // The line to the ordering site, where guests order from their tables:
+        // up from the moment the till is, whichever screen is open, and only
+        // listening when the settings and an open day say this till should.
+        guests.start()
         // The kitchen has finished a takeaway (Bump, on a kitchen screen or on
         // this till's own Kitchen screen): it is marked ready, the till makes
         // a sound (Kitchen), says which one here, whichever screen is open,

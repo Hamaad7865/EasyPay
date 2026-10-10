@@ -47,6 +47,10 @@ data class PosSettings(
     // named for it is walked through the set-up. Only a client made since
     // carries the mark; with none, as for every key here, nothing changes.
     val setupOpen: Boolean = false,
+    // Guests order from the code on their table (the back office's POS
+    // settings; core/guest). Off unless the settings say so, and the till
+    // listens only when the plan carries it and the business is a restaurant.
+    val tableOrdering: Boolean = false,
 ) {
     fun shop(fallbackName: String): Shop =
         Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer, bars = retail)
@@ -90,6 +94,7 @@ data class PosSettings(
                 // as the server reads it (has_premium): premium, and trial so that a restaurant trying EasyPay sees all of it
                 premium = d.str("plan")?.trim()?.lowercase()?.let { it == "premium" || it == "trial" } ?: true,
                 setupOpen = d.str("setup") == "open",
+                tableOrdering = d.bool("tableOrdering") ?: false,
             )
         }
     }

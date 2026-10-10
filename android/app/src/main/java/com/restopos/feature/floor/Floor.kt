@@ -135,7 +135,18 @@ class FloorViewModel @Inject constructor(
     private val tickets: TicketRepository,
     private val orderOps: OrderOps,
     private val approvals: Approvals,
+    private val guestBook: com.restopos.core.guest.GuestBook,
 ) : ViewModel() {
+    // orders guests sent from the codes on their tables, waiting for an answer (core/guest)
+    val guests: StateFlow<List<com.restopos.core.guest.GuestShown>> =
+        guestBook.waiting().stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), emptyList())
+    // Accepting puts the order on its table and opens that table's order: onDone then shows it.
+    fun acceptGuest(id: String, onDone: () -> Unit) = viewModelScope.launch {
+        guestBook.accept(id).onSuccess { selected.value = null; onDone() }
+            .onFailure { com.restopos.core.ui.Toaster.say(it.message ?: "That order could not be taken.") }
+    }
+    fun declineGuest(id: String, reason: String) { viewModelScope.launch { guestBook.decline(id, reason) } }
+
     val zone = MutableStateFlow<String?>(null)
     val selected = MutableStateFlow<String?>(null)
     // an order in hand: the table tapped next takes it, or the two become one bill
@@ -294,6 +305,22 @@ fun FloorScreen(
                 Legend(V.Blue, null, L.seated)
                 Legend(V.Amber, null, L.billAsked)
                 Legend(V.VioletDeep, V.Violet, L.reserved, dashed = true)
+            }
+            // orders sent from the tables wait here, whichever room is showing
+            val guests by vm.guests.collectAsState()
+            var looking by remember { androidx.compose.runtime.mutableStateOf(false) }
+            if (guests.isNotEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(V.GreenWash).padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    T(
+                        if (guests.size == 1) "${tableLabel(guests[0].tableName)} sent an order from the table" else "${guests.size} orders sent from the tables are waiting",
+                        15.sp, 700, V.GreenText, Modifier.weight(1f),
+                    )
+                    VBtn("Look", bg = V.On, fg = V.OnText, height = 40.dp, radius = 10.dp, size = 14.sp) { looking = true }
+                }
+                if (looking) GuestOrders(guests, now, onClose = { looking = false }, onAccept = { id -> looking = false; vm.acceptGuest(id, onOrder) }, onDecline = vm::declineGuest)
             }
             if (assigning != null) {
                 Row(
