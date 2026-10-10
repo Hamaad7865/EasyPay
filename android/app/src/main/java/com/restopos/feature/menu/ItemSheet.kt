@@ -181,7 +181,9 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
     val start = remember(edit, more) { more?.let { typed() } }
 
     // top: the keyboard takes the lower half of the screen
-    Sheet(onDismiss = { editor.close() }, width = 640.dp, gap = 14.dp, top = true) {
+    // The sheet is as tall as the screen allows with its keys in view: the row of pages took the room
+    // that 12 between rows, fields of 52 and the last line kept for the second page give back.
+    Sheet(onDismiss = { editor.close() }, width = 640.dp, gap = 12.dp, top = true) {
         if (removing && was != null) {
             SheetHead("Remove ${was.name}?", "It goes from every till. Receipts that sold it keep its name, and an order that still holds it is taken as it is.") { editor.close() }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -198,26 +200,26 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
                     SegOption("Basics", page == 0) { page = 0 },
                     SegOption(if (!shop) "Tax" else if (costShown) "Tax, cost and supplier" else "Tax and supplier", page == 1) { page = 1 },
                 ),
-                well = V.Key, height = 40.dp, radius = 12.dp, size = 14.sp,
+                well = V.Key, height = 36.dp, radius = 12.dp, size = 14.sp,
             )
         }
 
         if (page == 0) {
             Caps("Name", V.Text2)
-            Field(name, { name = it.take(80) }, if (shop) "What the product is called" else "What the item is called", Modifier.fillMaxWidth(), height = 56.dp, size = 17.sp)
+            Field(name, { name = it.take(80) }, if (shop) "What the product is called" else "What the item is called", Modifier.fillMaxWidth(), height = 52.dp, size = 17.sp)
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Bottom) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Caps("Price", V.Text2)
                     Field(
                         if (open) "" else price, { v -> if (!open) price = v.filter { it.isDigit() || it == '.' }.take(10) },
-                        if (open) "Typed at the sale" else "0.00", Modifier.fillMaxWidth(), height = 56.dp, number = true, size = 17.sp,
+                        if (open) "Typed at the sale" else "0.00", Modifier.fillMaxWidth(), height = 52.dp, number = true, size = 17.sp,
                         leading = { T("Rs", 16.sp, 700, V.Text2) },
                     )
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Caps("Barcode", V.Text2)
-                    Field(barcode, { barcode = it.take(64) }, "Scan it here, or leave empty", Modifier.fillMaxWidth(), height = 56.dp, size = 17.sp)
+                    Field(barcode, { barcode = it.take(64) }, "Scan it here, or leave empty", Modifier.fillMaxWidth(), height = 52.dp, size = 17.sp)
                 }
             }
 
@@ -239,8 +241,8 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
                     }
                     // stock can be changed once the server counts it: after a save, not before
                     if (stock != null && was != null && !was.open_price && (was.track_stock || byCategory)) {
-                        VBtn("Add stock", height = 56.dp, radius = 14.dp, enabled = !busy) { stock(StockForm.Way.In) }
-                        VBtn("Remove stock", height = 56.dp, radius = 14.dp, enabled = !busy) { stock(StockForm.Way.Out) }
+                        VBtn("Add stock", height = 52.dp, radius = 14.dp, enabled = !busy) { stock(StockForm.Way.In) }
+                        VBtn("Remove stock", height = 52.dp, radius = 14.dp, enabled = !busy) { stock(StockForm.Way.Out) }
                     }
                 }
                 if (count && !byCategory && was?.track_stock != true) T(
@@ -302,12 +304,12 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             }
         }
 
-        T("Its ${if (shop) "variants" else "add-ons"} are set in the back office.", 13.sp, 500, V.Text3, lines = 2)
+        if (page == 1) T("Its ${if (shop) "variants" else "add-ons"} are set in the back office.", 13.sp, 500, V.Text3, lines = 2)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (was != null) VBtn("Remove", height = 56.dp, fg = V.RedText, enabled = !busy) { removing = true }
+            if (was != null) VBtn("Remove", height = 52.dp, fg = V.RedText, enabled = !busy) { removing = true }
             Box(Modifier.weight(1f))
-            VBtn("Cancel", height = 56.dp, enabled = !busy) { editor.close() }
-            VBtn(if (busy) "Saving…" else if (was == null) "Add $thing" else "Save", bg = V.Blue, fg = Color.White, height = 56.dp, weight = 800, enabled = !busy) {
+            VBtn("Cancel", height = 52.dp, enabled = !busy) { editor.close() }
+            VBtn(if (busy) "Saving…" else if (was == null) "Add $thing" else "Save", bg = V.Blue, fg = Color.White, height = 52.dp, weight = 800, enabled = !busy) {
                 editor.save(name, price, open, cat, barcode, onSale, count, more?.let { typed() }, start, done = done)
             }
         }
@@ -316,7 +318,7 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
 
 @Composable
 private fun Switch(title: String, on: Boolean, modifier: Modifier = Modifier, flip: () -> Unit) {
-    Row(modifier.height(56.dp).clip(RoundedCornerShape(14.dp)).background(V.Key).press(0.99f, flip).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.height(52.dp).clip(RoundedCornerShape(14.dp)).background(V.Key).press(0.99f, flip).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         T(title, 15.sp, 700, modifier = Modifier.weight(1f))
         Toggle(on)
     }

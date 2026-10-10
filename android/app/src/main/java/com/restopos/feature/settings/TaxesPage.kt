@@ -135,34 +135,28 @@ private fun TaxSheet(vm: TaxesViewModel, edit: TaxEdit) {
     var usual by remember(edit) { mutableStateOf(was?.is_default ?: false) }
 
     // top: the keyboard takes the lower half of the screen
-    Sheet(onDismiss = { vm.close() }, width = 560.dp, gap = 14.dp, top = true) {
-        SheetHead(was?.name ?: "New tax", "Needs a connection. Every till has it at its next sync.") { vm.close() }
+    // Kept short: the keyboard takes the lower half, and Cancel and Save have to stay above it.
+    Sheet(onDismiss = { vm.close() }, width = 560.dp, pad = 22.dp, gap = 10.dp, top = true) {
+        SheetHead(was?.name ?: "New tax") { vm.close() }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1.7f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Caps("Name", V.Text2)
-                Field(name, { name = it.take(30) }, "VAT, for example", Modifier.fillMaxWidth(), height = 56.dp, size = 17.sp)
+                Field(name, { name = it.take(30) }, "VAT, for example", Modifier.fillMaxWidth(), height = 50.dp, size = 17.sp)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Caps("Rate", V.Text2)
-                Field(
-                    rate, { v -> rate = v.filter { it.isDigit() || it == '.' || it == ',' }.take(6) }, "15", Modifier.fillMaxWidth(), height = 56.dp, number = true, size = 17.sp,
-                    leading = { T("%", 16.sp, 700, V.Text2) },
-                )
+                Caps("Rate, %", V.Text2)
+                Field(rate, { v -> rate = v.filter { it.isDigit() || it == '.' || it == ',' }.take(6) }, "15", Modifier.fillMaxWidth(), height = 50.dp, number = true, size = 17.sp)
             }
         }
 
         Row {
             com.restopos.core.ui.Seg(
                 listOf(SegOption("Included in the price", !added) { added = false }, SegOption("Added on top", added) { added = true }),
-                well = V.Key, height = 44.dp, radius = 14.dp,
+                well = V.Key, height = 38.dp, radius = 12.dp, size = 14.sp,
             )
         }
-        T(
-            if (added) "The price on the item is before tax: the tax is added to it at the sale."
-            else "The price on the item is what the customer pays: the tax is worked out of it.",
-            13.sp, 500, V.Text2, lines = 2,
-        )
+        T(if (added) "An item's price is before tax: it is added at the sale." else "An item's price is what the customer pays, tax included.", 13.sp, 500, V.Text2)
 
         Row(
             Modifier.fillMaxWidth().quietTap { if (was?.is_default == true) Toaster.say("To change the usual tax, open another tax and make that one the usual.") else usual = !usual },
@@ -170,15 +164,15 @@ private fun TaxSheet(vm: TaxesViewModel, edit: TaxEdit) {
         ) {
             Column(Modifier.weight(1f).padding(end = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 T("The usual tax", 15.sp, 700)
-                T("A new item starts on it. There is one, so making this the usual tax takes it off the other.", 13.sp, 500, V.Text2, lines = 2)
+                T("A new item starts on it. Only one tax is the usual one.", 13.sp, 500, V.Text2)
             }
             com.restopos.core.ui.Toggle(usual)
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f))
-            VBtn("Cancel", height = 56.dp, enabled = !busy) { vm.close() }
-            VBtn(if (busy) "Saving…" else if (was == null) "Add tax" else "Save", bg = V.Blue, fg = Color.White, height = 56.dp, weight = 800, enabled = !busy) {
+            VBtn("Cancel", height = 50.dp, enabled = !busy) { vm.close() }
+            VBtn(if (busy) "Saving…" else if (was == null) "Add tax" else "Save", bg = V.Blue, fg = Color.White, height = 50.dp, weight = 800, enabled = !busy) {
                 vm.save(name, rate, added, usual)
             }
         }

@@ -71,6 +71,7 @@ import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -85,6 +86,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -481,6 +483,13 @@ fun Field(
 @Composable
 fun Sheet(onDismiss: () -> Unit, width: Dp = 580.dp, pad: Dp = 26.dp, gap: Dp = 20.dp, top: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        // A sheet that is typed into ends where the keyboard begins: what is
+        // under the keyboard can then be slid into view, and what the till
+        // says (below) is above the keyboard and not under it.
+        if (top) {
+            val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+            androidx.compose.runtime.SideEffect { @Suppress("DEPRECATION") window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE) }
+        }
         Box(Modifier.fillMaxSize().quietTap(onDismiss).padding(top = if (top) 28.dp else 0.dp), contentAlignment = if (top) Alignment.TopCenter else Alignment.Center) {
             Column(
                 Modifier.widthIn(max = width).fillMaxWidth(0.92f).heightIn(max = 660.dp).shadow(24.dp, RoundedCornerShape(20.dp))
@@ -488,6 +497,9 @@ fun Sheet(onDismiss: () -> Unit, width: Dp = 580.dp, pad: Dp = 26.dp, gap: Dp = 
                     .quietTap {}.verticalScroll(rememberScrollState()).padding(pad),
                 verticalArrangement = Arrangement.spacedBy(gap), content = content,
             )
+            // What the till says, over the sheet: the screen's own is behind this window, and with the
+            // keyboard up it is behind the sheet itself, so a refusal of what was typed was never seen.
+            ToastHost()
         }
     }
 }
