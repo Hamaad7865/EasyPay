@@ -270,8 +270,12 @@ class SettingsViewModel @Inject constructor(
         else approvals.ask("settings.device", "set this till up") { who -> door.approver = who; then() }
     }
 
-    val needsSignIn = session.needsSignIn.held(false)
-    val pending = db.outbox().pendingCountFlow().held(0L)
+    // The tablet works on its own (the offline plan): it does not sync. What
+    // it keeps is counted (kept), and nothing is said of waiting or signing in.
+    val alone = db.ops().settingsFlow().map { PosSettings.parse(it).alone }.held(false)
+    val kept = db.outbox().pendingCountFlow().held(0L)
+    val needsSignIn = kotlinx.coroutines.flow.combine(session.needsSignIn, alone) { wanted, a -> wanted && !a }.held(false)
+    val pending = kotlinx.coroutines.flow.combine(db.outbox().pendingCountFlow(), alone) { n, a -> if (a) 0L else n }.held(0L)
     val rejected = db.outbox().deadCountFlow().held(0L)
     val lastPull = session.lastPull.held(null)
     val leftHanded = session.leftHanded.held(false)
@@ -381,6 +385,30 @@ class SettingsViewModel @Inject constructor(
 
     fun printShift(s: ShiftEntity) = run { cash.printShift(s).fold({ "Cash drawer report sent to the printer." }, { it.message }) }
     fun printDay(row: DayCloseEntity) = run { cash.printZOf(row).fold({ "Day closing no. ${row.number} sent to the printer." }, { it.message }) }
+
+    // "Connect to the cloud", on a tablet that works on its own: the server
+    // is asked once whether the business has been made Premium. It has: the
+    // tablet syncs from now on, and what it kept goes up by itself, with the
+    // till's own key and nobody signing in. It has not: nothing changes.
+    fun connect() = viewModelScope.launch {
+        com.restopos.core.ui.Toaster.say("Asking EasyPay whether this business is on Premium…")
+        val id = SyncScheduler.connect(context)
+        val work = androidx.work.WorkManager.getInstance(context)
+        var state: androidx.work.WorkInfo.State? = null
+        // the answer is waited for a little; with no network the question stays and is asked when there is one
+        for (n in 1..40) {
+            kotlinx.coroutines.delay(500)
+            state = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { work.getWorkInfoById(id).get()?.state }.getOrNull() }
+            if (state?.isFinished == true) break
+        }
+        val stillAlone = PosSettings.parse(db.ops().settings()).alone
+        com.restopos.core.ui.Toaster.say(when {
+            !stillAlone -> "This business is on Premium: the tablet is connected, and what it kept is being sent to the cloud."
+            state == androidx.work.WorkInfo.State.SUCCEEDED -> "This business is not on Premium. Nothing has changed: the tablet goes on working on its own."
+            state?.isFinished == true -> "EasyPay could not be reached. Try again when the tablet is online."
+            else -> "No answer yet. The tablet asks again as soon as it is online."
+        })
+    }
 
     // Sends what is waiting and fetches what changed in the back office.
     fun sync() = run {
@@ -616,8 +644,14 @@ private fun TillPage(vm: SettingsViewModel, keys: CashKeys, network: String, sta
     Heading("Quick actions")
     CashActions(keys)
     Heading("Status")
+    val alone by vm.alone.collectAsState()
     Group {
         when {
+            // the offline plan: nothing is sent anywhere, and this is the way to Premium
+            alone -> Fact(
+                VI.Signal, "This device", "Works on its own. Everything is kept on this tablet; with Premium it is kept in the cloud too, and the back office opens.",
+                V.Text2, "Connect to the cloud",
+            ) { vm.connect() }
             needsSignIn -> Fact(VI.Signal, "This device", "It cannot sync until someone signs in. Sales are saved here in the meantime.", V.RedText, "Sign in", onSignIn)
             pending > 0 -> Fact(VI.Signal, "This device", "$pending changes are waiting to be sent", V.AmberText, "Reload device") { vm.sync() }
             else -> Fact(
@@ -1233,6 +1267,8 @@ private fun SupportPage(vm: SettingsViewModel, shop: Boolean, network: String, o
     val pending by vm.pending.collectAsState()
     val rejected by vm.rejected.collectAsState()
     val lastPull by vm.lastPull.collectAsState()
+    val alone by vm.alone.collectAsState()
+    val kept by vm.kept.collectAsState()
 
     Note("What to have at hand when asking for help with this till.")
     Panel {
@@ -1242,12 +1278,18 @@ private fun SupportPage(vm: SettingsViewModel, shop: Boolean, network: String, o
         Figure("Version", "EasyPay ${BuildConfig.VERSION_NAME}")
         Figure("Tablet", "${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}")
         Figure("Network", network)
-        Figure("Last heard from the back office", lastPull?.let { stamp.format(Date(it)) } ?: "Not yet")
-        Figure("Changes waiting to be sent", pending.toString())
-        Figure("Changes the server refused", rejected.toString())
+        if (alone) {
+            Figure("Plan", "Works on its own (offline)")
+            Figure("Changes kept for the cloud", kept.toString())
+        } else {
+            Figure("Last heard from the back office", lastPull?.let { stamp.format(Date(it)) } ?: "Not yet")
+            Figure("Changes waiting to be sent", pending.toString())
+            Figure("Changes the server refused", rejected.toString())
+        }
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (needsSignIn) Action("Sign in", primary = true, onClick = onSignIn) else Action("Sync now") { vm.sync() }
+        if (alone) Action("Connect to the cloud") { vm.connect() }
+        else if (needsSignIn) Action("Sign in", primary = true, onClick = onSignIn) else Action("Sync now") { vm.sync() }
         Action(if (rejected > 0) "Refused changes ($rejected)" else "Refused changes", onClick = onRejected)
     }
     Heading("Sign out of this tablet")

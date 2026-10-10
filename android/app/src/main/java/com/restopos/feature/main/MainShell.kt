@@ -278,8 +278,11 @@ class ShellViewModel @Inject constructor(
     val team: StateFlow<List<StaffMember>> = store.flatMapLatest { s -> if (s == null) emptyFlow() else staffRepo.staff(s).map { list -> list.filter { it.hasPin } } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val needsSignIn: StateFlow<Boolean> = session.needsSignIn.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val pending: StateFlow<Long> = db.outbox().pendingCountFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    // The tablet works on its own (the offline plan): it does not sync, so
+    // nothing here speaks of a sign-in that is wanted or of changes waiting.
+    private val alone = db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).alone }
+    val needsSignIn: StateFlow<Boolean> = combine(session.needsSignIn, alone) { wanted, a -> wanted && !a }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val pending: StateFlow<Long> = combine(db.outbox().pendingCountFlow(), alone) { n, a -> if (a) 0L else n }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val rejected: StateFlow<Long> = db.outbox().deadCountFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val lang: StateFlow<String> = session.lang.stateIn(viewModelScope, SharingStarted.Eagerly, "en")
     // a shop's scan mode: the scanner's keys are taken below the screen (see Scanner)
@@ -334,13 +337,15 @@ class ShellViewModel @Inject constructor(
     fun refresh() = viewModelScope.launch {
         if (refreshing.value) return@launch
         refreshing.value = true
-        val signedOut = session.needsSignIn.first()
-        if (!signedOut) { pushNow(context); SyncScheduler.pullNow(context) }
+        val onItsOwn = alone.first()
+        val signedOut = !onItsOwn && session.needsSignIn.first()
+        if (!signedOut && !onItsOwn) { pushNow(context); SyncScheduler.pullNow(context) }
         val found = look()
         delay(600) // long enough for the key to be seen turning
         refreshing.value = false
         when {
             found != null && found !is Update.None -> updateSheet.value = true
+            onItsOwn -> Toaster.say("This tablet works on its own: everything is kept here. Settings, This till, has the key that connects it to the cloud with Premium.")
             signedOut -> Toaster.say("This tablet has to be signed in again before it can sync.")
             found == null -> Toaster.say("The back office could not be reached. Sales are kept on this tablet and sent when it can be.")
             else -> Toaster.say("Syncing with the back office. This till is up to date (EasyPay ${BuildConfig.VERSION_NAME}).")

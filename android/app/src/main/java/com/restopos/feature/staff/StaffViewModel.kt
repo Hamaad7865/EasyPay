@@ -92,9 +92,12 @@ class StaffViewModel @Inject constructor(
         .flatMapLatest { d -> if (d == null) emptyFlow() else repo.openShift(d) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    val needsSignIn: StateFlow<Boolean> = session.needsSignIn
+    // The tablet works on its own (the offline plan): it does not sync, and says nothing of signing in or of changes waiting.
+    val alone: StateFlow<Boolean> = db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).alone }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val pending: StateFlow<Long> = db.outbox().pendingCountFlow()
+    val needsSignIn: StateFlow<Boolean> = kotlinx.coroutines.flow.combine(session.needsSignIn, alone) { wanted, a -> wanted && !a }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val pending: StateFlow<Long> = kotlinx.coroutines.flow.combine(db.outbox().pendingCountFlow(), alone) { n, a -> if (a) 0L else n }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val current: StateFlow<StaffMember?> = staffSession.current
 

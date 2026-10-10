@@ -177,6 +177,7 @@ private fun InfoPanel(vm: StaffViewModel) {
     val info by vm.info.collectAsState()
     val needsSignIn by vm.needsSignIn.collectAsState()
     val pending by vm.pending.collectAsState()
+    val alone by vm.alone.collectAsState()
     val context = LocalContext.current
     val network by produceState(initialValue = network(context)) {
         while (true) { delay(5000); value = network(context) }
@@ -188,6 +189,7 @@ private fun InfoPanel(vm: StaffViewModel) {
         Wordmark()
         Spacer(Modifier.height(28.dp))
         Facts(info, network, when {
+            alone -> "Works on its own"
             needsSignIn -> "Sign-in needed"
             pending > 0 -> "$pending changes waiting"
             else -> "Everything sent"
