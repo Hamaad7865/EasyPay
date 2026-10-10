@@ -141,8 +141,10 @@ Seen:
 
 - The new build installed over the made-up restaurant left from the reports' run, with its unsent
   changes and its open day: the database went from 16 to 17 and everything was there.
-- Settings > Taxes: the list (VAT, usual, "on 13 items"), the sheet for a new tax, "Give the tax a
-  name", a rate of 150 refused in words.
+- Settings > Taxes: the list (VAT, usual, "on 13 items"; on the shop three taxes), the sheet for a
+  new tax, "Give the tax a name", and with a name typed and the keyboard up a rate of 150 answered
+  "The rate is a percentage between 0 and 100", above the keyboard. (That last one was seen only
+  after the fix below: before it the answer was drawn where nobody could read it.)
 - A restaurant's item: two pages, the second its tax.
 - The made-up shop (my emulator cleared and filled again, said first): three taxes; a product's
   second page with its cost, SKU, brand, supplier, and the three fields under them; a product with
@@ -160,8 +162,10 @@ What the run showed, and what was changed for it (`7750005`):
 - A refusal said while a sheet was open was drawn behind the sheet, and with the keyboard up behind
   the keyboard too, so it was never seen. A sheet now draws what the till says over itself, and a
   sheet that is typed into ends where the keyboard begins. **This is in the shared `Sheet` and
-  touches all ten sheets that are typed into**; three were looked at (the item's, the tax's, a
-  supplier's, whose lowest field could not be typed into before and now can).
+  touches all ten sheets that are typed into**, most of them in screens already released; six were
+  looked at with the keyboard up (the item's, the tax's, a supplier's, whose lowest field could not
+  be typed into before and now can, a category's, the stock sheet and the note on a sale). What the
+  till says covers the sheet's Cancel key for the three seconds it shows.
 
 **Not seen by anyone:**
 
@@ -169,8 +173,8 @@ What the run showed, and what was changed for it (`7750005`):
   reorder level changed, the pull bringing them back, and a sale of a product whose tax was moved
   printing one tax line. This needs a till signed in to a dev client, which is the owner's to do.
 - The first-run set-up's menu step, which opens the same sheet.
-- The other seven typed-into sheets with the keyboard up (category, stock, the label designer's and
-  the label printer's, the note on a sale, the two of the set-up's staff step).
+- The other four typed-into sheets with the keyboard up (the label designer's, the label printer's,
+  the two of the set-up's staff step).
 - A real tablet.
 
 **Left for build 2 or later:** the last line of the sheet still says variants and add-ons are the
