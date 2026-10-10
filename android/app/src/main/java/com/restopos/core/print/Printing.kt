@@ -349,6 +349,23 @@ class Printing @Inject constructor(
                 ?.let { i to it }
         }
 
+    // The shop's logo as a picture, for a label that carries it (LabelPaint
+    // fits it into its box): as the back office holds it, whether or not the
+    // receipts show it. Decoded once for each logo.
+    private var labelLogoKey: Int? = null
+    private var labelLogoPicture: Bitmap? = null
+    suspend fun labelLogo(): Bitmap? {
+        val data = settings().logo?.takeIf { it.isNotBlank() } ?: return null
+        val key = data.hashCode()
+        if (key == labelLogoKey) return labelLogoPicture
+        val made = withContext(Dispatchers.Default) {
+            runCatching { Base64.decode(data.substringAfter("base64,"), Base64.DEFAULT).let { raw -> BitmapFactory.decodeByteArray(raw, 0, raw.size) } }.getOrNull()
+        }
+        labelLogoKey = key
+        labelLogoPicture = made
+        return made
+    }
+
     // The logo, scaled to the paper and turned into black and white dots.
     // Worked out once per logo and width.
     private var logoKey: String? = null

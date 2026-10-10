@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.data.PrinterForm
+import com.restopos.core.print.LabelBook
 import com.restopos.core.print.LabelJob
 import com.restopos.core.print.LabelLayout
 import com.restopos.core.print.LabelPaint
@@ -100,7 +101,8 @@ class LabelPrinterViewModel @Inject constructor(
     // typed: nothing has to be saved first, so a wrong address never is. Null
     // when it was sent, else why not, in words.
     suspend fun test(p: LabelPrinter): String? {
-        val of = LabelTemplates.byId(session.labelTemplate.first())
+        // the label in use, one of the shop's own included: the test is of its size
+        val of = LabelBook.find(session.labelTemplates.first(), session.labelTemplate.first()) ?: LabelTemplates.byId(null)
         val placed = LabelLayout.place(LabelTemplates.test(of), LabelWords("", "", "", "", LabelTemplates.testCode(of)), p.dots)
         val raster = withContext(Dispatchers.Default) { LabelPaint.raster(placed) }
         val bytes = LabelJob.bytes(p, listOf(LabelJob.Label(raster, 1)), of).getOrElse { return it.message }

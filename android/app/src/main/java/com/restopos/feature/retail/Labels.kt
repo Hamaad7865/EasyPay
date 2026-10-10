@@ -52,14 +52,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Money
 import com.restopos.core.common.Scanner
+import com.restopos.core.common.Uuid7
+import com.restopos.core.data.Approvals
 import com.restopos.core.data.Found
 import com.restopos.core.data.LabelList
 import com.restopos.core.data.RetailSales
+import com.restopos.core.data.StaffSession
 import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.ItemEntity
 import com.restopos.core.database.ItemLeft
 import com.restopos.core.database.ItemVariantEntity
 import com.restopos.core.database.TillDatabase
+import com.restopos.core.print.LabelBook
+import com.restopos.core.print.LabelEdit
 import com.restopos.core.print.LabelJob
 import com.restopos.core.print.LabelLayout
 import com.restopos.core.print.LabelPaint
@@ -113,6 +118,13 @@ class LabelPick(val item: ItemEntity, val variants: List<ItemVariantEntity>)
 // carries no bars when it should.
 class LabelPreview(val picture: Bitmap, val noBars: String?)
 
+// A label being designed: as it was when the designer opened (`first`), as it
+// is now, and which thing on it is selected. `saved`: it is one of the shop's
+// own already, so it can be deleted, and saving it replaces it.
+data class LabelDraft(val first: LabelTemplate, val template: LabelTemplate, val selected: Int?, val saved: Boolean) {
+    val changed: Boolean get() = template != first
+}
+
 private const val BARS = "M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12"
 
 // Behind Print labels, a shop's: the products to pick from, the run being
@@ -127,9 +139,12 @@ class LabelsViewModel @Inject constructor(
     private val session: SessionStore,
     private val sales: RetailSales,
     private val printing: Printing,
+    private val staff: StaffSession,
+    private val approvals: Approvals,
 ) : ViewModel() {
     private val store = flow { emit(session.storeId()) }
-    val cats: StateFlow<List<CategoryEntity>> = db.catalog().categories().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    // kept while the till is open: a label's category is read from it when a run is printed, whatever screen is on
+    val cats: StateFlow<List<CategoryEntity>> = db.catalog().categories().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val cat = MutableStateFlow<String?>(null)
     val query = MutableStateFlow("")
     val products: StateFlow<List<ItemEntity>> = combine(cat, query) { c, q -> (if (q.isBlank()) c else null) to q.trim() }
@@ -153,13 +168,24 @@ class LabelsViewModel @Inject constructor(
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy
 
-    val template: StateFlow<LabelTemplate> = session.labelTemplate.map { LabelTemplates.byId(it) }
+    // The labels there are to print on: the ready-made ones and the shop's
+    // own (LabelBook), and the one in use among them.
+    val own: StateFlow<List<LabelTemplate>> = session.labelTemplates.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val template: StateFlow<LabelTemplate> = combine(session.labelTemplate, session.labelTemplates) { id, mine -> LabelBook.find(mine, id) ?: LabelTemplates.byId(null) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, LabelTemplates.byId(null))
     val printer: StateFlow<LabelPrinter?> = session.labelPrinter.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     fun setTemplate(id: String) = viewModelScope.launch { session.setLabelTemplate(id) }
 
     private val shop = MutableStateFlow("")
-    init { viewModelScope.launch { shop.value = runCatching { printing.shop().name }.getOrDefault("") } }
+    // the shop's logo, for a label that carries it; none when the back office holds none
+    private val logo = MutableStateFlow<Bitmap?>(null)
+    val hasLogo: Boolean get() = logo.value != null
+    init {
+        viewModelScope.launch {
+            logo.value = runCatching { printing.labelLogo() }.getOrNull()
+            shop.value = runCatching { printing.shop().name }.getOrDefault("")
+        }
+    }
 
     // ---- the label's words ----
     fun words(r: LabelRow): LabelWords {
@@ -172,10 +198,17 @@ class LabelsViewModel @Inject constructor(
             // a price typed at the sale is not a price to put on a label
             price = if (i.open_price) "" else Money.format(v?.price ?: i.price) + if (i.sold_by == "weight") " /kg" else "",
             code = if (v != null) LabelList.code(v.barcode, v.sku) else LabelList.code(i.barcode, i.sku),
+            sku = (v?.sku ?: i.sku).orEmpty().trim(),
+            category = cats.value.firstOrNull { it.id == i.category_id }?.name.orEmpty(),
+            date = today(),
         )
     }
+    // the day a label is printed, as a receipt writes a date
+    private fun today(): String = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.US).format(java.util.Date())
     // what the label looks like before anything is on the list
-    private fun sample() = LabelWords(shop.value.ifBlank { "Shop name" }, "Product name", "Variant", Money.format(12500), "2000000000008")
+    private fun sample() = LabelWords(shop.value.ifBlank { "Shop name" }, "Product name", "Variant", Money.format(12500), "2000000000008", "SKU-001", "Category", today())
+    // the words a label is drawn with on the screen: the selected line's, else the first's, else a sample's
+    private fun shownWords(): LabelWords = (_rows.value.firstOrNull { it.key == selected.value } ?: _rows.value.firstOrNull())?.let { words(it) } ?: sample()
     private fun dots(): Int = printer.value?.dots ?: 203
 
     // The picture of the line that is selected, else of the first, else of a
@@ -183,7 +216,7 @@ class LabelsViewModel @Inject constructor(
     val preview: StateFlow<LabelPreview?> = combine(_rows, selected, template, printer, shop) { rows, sel, t, p, _ ->
         val of = rows.firstOrNull { it.key == sel } ?: rows.firstOrNull()
         val placed = LabelLayout.place(t, of?.let { words(it) } ?: sample(), p?.dots ?: 203)
-        LabelPreview(LabelPaint.bitmap(placed), if (of == null) null else placed.noBars)
+        LabelPreview(LabelPaint.bitmap(placed, logo.value), if (of == null) null else placed.noBars)
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     // Why each line that should have bars on this label will not, by its key.
@@ -192,9 +225,80 @@ class LabelsViewModel @Inject constructor(
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     // one of the ready-made labels with the selected line's words, for picking among them
-    fun picture(t: LabelTemplate): Bitmap {
-        val of = _rows.value.firstOrNull { it.key == selected.value } ?: _rows.value.firstOrNull()
-        return LabelPaint.bitmap(LabelLayout.place(t, of?.let { words(it) } ?: sample(), dots()))
+    fun picture(t: LabelTemplate): Bitmap = LabelPaint.bitmap(LabelLayout.place(t, shownWords(), dots()), logo.value)
+
+    // ---- the designer ----
+    // Designing a label changes what the shop prints on every product, so it
+    // asks what changing a product asks: done at once by someone who may,
+    // otherwise with the go-ahead of someone who may.
+    private fun guard(what: String, then: () -> Unit) {
+        if (staff.can("items.edit")) then() else approvals.ask("items.edit", what) { then() }
+    }
+
+    private val _draft = MutableStateFlow<LabelDraft?>(null)
+    val draft: StateFlow<LabelDraft?> = _draft
+
+    // A new label, one of the shop's own to change, or a copy of a ready-made
+    // one: those stay as they are.
+    fun design(of: LabelTemplate?) = guard("Design a label") {
+        val mine = of != null && LabelBook.isOwn(of.id)
+        val t = when {
+            of == null -> LabelEdit.blank(LabelBook.OWN + Uuid7.next(), "My label")
+            mine -> of
+            else -> LabelEdit.copy(of, LabelBook.OWN + Uuid7.next(), "My ${of.size} label")
+        }
+        _draft.value = LabelDraft(t, t, null, mine)
+    }
+    // a change to the label, and what is selected after it (null keeps the selection; a thing added is selected)
+    fun edit(select: Int? = null, change: (LabelTemplate, Int) -> LabelTemplate) {
+        val d = _draft.value ?: return
+        val next = change(d.template, d.selected ?: -1)
+        val now = select ?: d.selected
+        _draft.value = d.copy(template = next, selected = now?.takeIf { it in next.elements.indices })
+    }
+    fun select(at: Int?) { _draft.value = _draft.value?.let { d -> d.copy(selected = at?.takeIf { it in d.template.elements.indices }) } }
+    fun closeDraft() { _draft.value = null }
+
+    // the draft as the picture that would print, and what it lacks
+    fun drawn(t: LabelTemplate): LabelPreview {
+        val placed = LabelLayout.place(t, shownWords(), dots())
+        return LabelPreview(LabelPaint.bitmap(placed, logo.value), placed.noBars)
+    }
+
+    // Saved, it is the label in use: whoever designed it wants to print on it.
+    fun saveDraft() = viewModelScope.launch {
+        val d = _draft.value ?: return@launch
+        LabelEdit.problem(d.template)?.let { Toaster.say("$it."); return@launch }
+        val t = d.template.copy(name = d.template.name.trim().take(40))
+        session.saveLabelTemplate(t)
+        session.setLabelTemplate(t.id)
+        _draft.value = null
+        Toaster.say("${t.name} is saved, and is the label in use.")
+    }
+
+    // Deleted for good. When it was the label in use, the first ready-made one takes its place, and the till says so.
+    fun deleteDraft() = viewModelScope.launch {
+        val d = _draft.value ?: return@launch
+        val inUse = template.value.id == d.first.id
+        session.removeLabelTemplate(d.first.id)
+        _draft.value = null
+        if (inUse) {
+            val next = LabelTemplates.byId(null)
+            session.setLabelTemplate(next.id)
+            Toaster.say("${d.first.name} is deleted. The label in use is now ${next.size} mm, ${next.name}.")
+        } else Toaster.say("${d.first.name} is deleted.")
+    }
+
+    // One label of the draft as it is, unsaved, to the label printer.
+    fun testDraft() = viewModelScope.launch {
+        val d = _draft.value ?: return@launch
+        val p = printer.value ?: run { Toaster.say("Set up the label printer first: tap More on the top bar, then Label printer."); return@launch }
+        if (_busy.value) return@launch
+        _busy.value = true
+        val raster = withContext(Dispatchers.Default) { LabelPaint.raster(LabelLayout.place(d.template, shownWords(), p.dots), logo.value) }
+        val out = LabelJob.bytes(p, listOf(LabelJob.Label(raster, 1)), d.template).fold({ printing.sendLabels(p, it, "Test of a label") }, { Result.failure(it) })
+        _busy.value = false
+        Toaster.say(out.fold({ "One label sent to ${p.name}." }, { it.message ?: "The label could not be sent." }))
     }
 
     // ---- the run ----
@@ -291,7 +395,7 @@ class LabelsViewModel @Inject constructor(
         val n = run.sumOf { it.copies }
         if (n == 0) { _busy.value = false; return@launch }
         val labels = withContext(Dispatchers.Default) {
-            run.map { r -> LabelJob.Label(LabelPaint.raster(LabelLayout.place(t, words(r), p.dots)), r.copies) }
+            run.map { r -> LabelJob.Label(LabelPaint.raster(LabelLayout.place(t, words(r), p.dots), logo.value), r.copies) }
         }
         val out = LabelJob.bytes(p, labels, t).fold({ printing.sendLabels(p, it, "Labels ($n)") }, { Result.failure(it) })
         _busy.value = false
@@ -310,6 +414,9 @@ fun LabelsScreen(vm: LabelsViewModel) {
     val picking by vm.picking.collectAsState()
     val asking by vm.asking.collectAsState()
     var sheet by remember { mutableStateOf<String?>(null) } // label | printer | clear
+    // a label is being designed: the designer has the screen until it is closed
+    val draft by vm.draft.collectAsState()
+    draft?.let { LabelDesigner(vm, it); return }
     LaunchedEffect(Unit) { vm.refresh(); printers.check() }
     // while this screen is open, a scanned barcode is one more label of its product
     LaunchedEffect(Unit) { Scanner.codes.collect { vm.scanned(it) } }
@@ -514,46 +621,62 @@ private fun WhichSheet(p: LabelPick, vm: LabelsViewModel) {
     }
 }
 
-// The ready-made labels, by the size of sticker they are for, each drawn with
-// the selected line's own words. The sizes that have one label share a row.
+// Every label there is to print on: a new one to design, the ready-made ones
+// (changed only as a copy), then the shop's own. Each is drawn with the
+// selected line's own words, fitted into its card whatever its size.
 @Composable
 private fun TemplateSheet(vm: LabelsViewModel, onDismiss: () -> Unit) {
     val current by vm.template.collectAsState()
-    val groups = remember { LabelTemplates.all.groupBy { it.size }.toList() }
-    val pick = { t: LabelTemplate -> vm.setTemplate(t.id); onDismiss() }
-    Sheet(onDismiss = onDismiss, width = 760.dp, pad = 24.dp, gap = 14.dp) {
-        SheetHead("Which label?", "Pick one in the size of the stickers that are in the printer.", onDismiss)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            groups.filter { it.second.size == 1 }.forEach { (size, group) ->
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Caps("$size mm stickers")
-                    TemplateCard(group[0], group[0].id == current.id, vm, Modifier.fillMaxWidth(), pick)
+    val own by vm.own.collectAsState()
+    val cards: List<LabelTemplate?> = listOf<LabelTemplate?>(null) + LabelTemplates.all + own
+    Sheet(onDismiss = onDismiss, width = 760.dp, pad = 24.dp, gap = 12.dp) {
+        SheetHead("Which label?", "Pick one in the size of the stickers that are in the printer, or design your own.", onDismiss)
+        cards.chunked(3).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { t ->
+                    if (t == null) NewCard(Modifier.weight(1f)) { onDismiss(); vm.design(null) }
+                    else TemplateCard(t, t.id == current.id, vm, Modifier.weight(1f), onPick = { vm.setTemplate(t.id); onDismiss() }, onEdit = { onDismiss(); vm.design(t) })
                 }
-            }
-        }
-        groups.filter { it.second.size > 1 }.forEach { (size, group) ->
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Caps("$size mm stickers")
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    group.forEach { t -> TemplateCard(t, t.id == current.id, vm, Modifier.weight(1f), pick) }
-                }
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
 }
 
+// the picture's room in a card, in dp: a label of any size is fitted into it
+private const val CARD_WIDE = 196f
+private const val CARD_HIGH = 92f
+
 @Composable
-private fun TemplateCard(t: LabelTemplate, on: Boolean, vm: LabelsViewModel, modifier: Modifier, onPick: (LabelTemplate) -> Unit) {
-    val picture = remember(t.id) { vm.picture(t) }
+private fun TemplateCard(t: LabelTemplate, on: Boolean, vm: LabelsViewModel, modifier: Modifier, onPick: () -> Unit, onEdit: () -> Unit) {
+    val picture = remember(t) { vm.picture(t) }
+    val k = minOf(CARD_WIDE / t.widthMm, CARD_HIGH / t.heightMm)
     Column(
-        modifier.press(0.98f) { onPick(t) }.clip(RoundedCornerShape(16.dp)).background(if (on) V.RowOn else V.Well)
-            .border(1.5.dp, if (on) V.Green else Color.Transparent, RoundedCornerShape(16.dp)).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally,
+        modifier.press(0.98f, onPick).clip(RoundedCornerShape(16.dp)).background(if (on) V.RowOn else V.Well)
+            .border(1.5.dp, if (on) V.Green else Color.Transparent, RoundedCornerShape(16.dp)).padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp), horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // a small sticker is drawn a little larger for its size, so that its words can be read here
-        Box(Modifier.height(100.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Picture(picture, t, Modifier.height((t.heightMm * if (t.heightMm < 20f) 4.4f else 3.2f).dp))
-        }
+        Box(Modifier.height(CARD_HIGH.dp).fillMaxWidth(), contentAlignment = Alignment.Center) { Picture(picture, t, Modifier.width((t.widthMm * k).dp)) }
         T(t.name, 14.sp, 700, lines = 1)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            T("${t.size} mm", 12.sp, 600, V.Text2)
+            T("·", 12.sp, 600, V.Text3)
+            // a ready-made label stays as it is: what is changed is a copy of it
+            T(if (LabelBook.isOwn(t.id)) "Edit" else "Edit a copy", 13.sp, 700, V.BlueText, Modifier.quietTap(onEdit).padding(horizontal = 6.dp, vertical = 8.dp))
+        }
+    }
+}
+
+@Composable
+private fun NewCard(modifier: Modifier, onClick: () -> Unit) {
+    Column(
+        modifier.press(0.98f, onClick).clip(RoundedCornerShape(16.dp)).background(V.Well).padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp), horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(Modifier.height(CARD_HIGH.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(56.dp).clip(CircleShape).background(V.Key), contentAlignment = Alignment.Center) { VIcon(VI.Plus, 24.dp, V.BlueText) }
+        }
+        T("New label", 14.sp, 700)
+        T("Your own size and layout", 12.sp, 600, V.Text2, Modifier.padding(vertical = 8.dp))
     }
 }
