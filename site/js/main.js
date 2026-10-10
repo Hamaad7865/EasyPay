@@ -26,9 +26,11 @@
     direct.innerHTML = "Or reach us: " + bits.join(" · ");
     direct.hidden = false;
   }
-  // the same number at the foot of the page
+  // the same number wherever the page gives it, and the keys that open WhatsApp
   if (digits) {
     for (const a of $$("[data-call]")) { a.href = "tel:+" + digits; a.textContent = spoken; a.hidden = false; }
+    const hello = encodeURIComponent("Hello EasyPay, I would like to know more about the till.");
+    for (const a of $$("[data-wa]")) { a.href = `https://wa.me/${digits}?text=${hello}`; a.target = "_blank"; a.rel = "noopener"; a.hidden = false; }
   }
 
   // ---- the bar: loose at the top of the page, a glass pill once it moves ----

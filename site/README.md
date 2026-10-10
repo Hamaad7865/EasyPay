@@ -62,7 +62,8 @@ Everything to fill in is in `js/config.js`:
 - `whatsapp`: the number people reach EasyPay on, by WhatsApp or by calling
   it, in international form, digits only. It is 230 5252 5270, given by the
   owner. It puts "Send on WhatsApp" on the demo form, the number under the
-  form and the number in the foot; emptied, all three are hidden.
+  form, in the third "Why EasyPay" card and in the foot, and the "WhatsApp
+  us" keys in the hero and under the pricing table; emptied, all are hidden.
 - `signInUrl`: the back office's sign-in page. It is `/login`: the site and
   the back office share one address (see Hosting). Emptied, the "Sign in"
   links are hidden.
@@ -73,8 +74,8 @@ visitor's own e-mail app (or WhatsApp) to send it.
 ## What the page may say
 
 Only what the till and the back office do today (`android/README.md` lists
-it, with what is not built). No prices, customer names, figures or reviews
-are on the page, because there are none to quote yet. The screens in the
+it, with what is not built). No customer names, figures or reviews are on
+the page, because there are none to quote yet. The screens in the
 page are drawn in HTML from the app's own colours (`core/ui/V2.kt`), with a
 sample menu; real screenshots can replace them.
 
@@ -85,6 +86,31 @@ shop, because not built or not whole: scanning with the tablet's camera, a
 card terminal driven by the till, transfers between shops, and the three
 languages (a shop's screens are only partly translated). When a shop's
 screen changes, its Help changes, and this page is read against it again.
+
+## The prices
+
+Given by the owner on 2026-10-10: the Starter pack is Rs 5,000, once, for
+each tablet (the till, the back office, reports, printed kitchen tickets);
+Premium is from Rs 2,100 a month for each restaurant and adds the kitchen
+screen and Bookings. Premium is a restaurant's only, so a shop's page shows
+the Starter pack alone. Premium is written as an upgrade to the Starter
+pack, not a way round it: the foot of its column says "Starter pack, then
+from Rs 2,100". That is read from the owner's plan ("if the customer wishes
+to upgrade to the premium plan") and is theirs to overrule. Nothing else is
+said of the prices: no annual price, nothing about VAT, no hardware in the
+pack.
+
+They are written in six places in `index.html`, to change together: the
+page's two descriptions at the top, the line under the hero's buttons, the second
+"Why EasyPay" card (its words and its drawing), "How much does it cost?"
+among the questions, the pricing section's headline, and the foot of its
+table. What comes with Premium is also marked where it is described
+(Bookings under Front of house, the kitchen screen under Kitchen and bar).
+
+Offline is said with the same care everywhere: the till keeps selling,
+taking payments, printing and closing the day, and sends everything on
+later. Setting up a tablet, changing the menu from it and the back office
+need a connection, and "When the line drops" says so.
 
 ## Hosting
 
