@@ -259,6 +259,10 @@ class DemoReceiver : BroadcastReceiver() {
             val planned = if (plan == null) kept else kept + ("plan" to kotlinx.serialization.json.JsonPrimitive(plan))
             db.ops().upsertSettings(SettingsEntity(tenant, JsonObject(if (setup) planned + ("setup" to kotlinx.serialization.json.JsonPrimitive("open")) else planned).toString()))
             catalog.upsertTaxes(listOf(TaxEntity(tax.str("id")!!, tenant, tax.str("name")!!, tax.jsonObject["rate_bp"]!!.jsonPrimitive.intOrNull ?: 0, tax.str("type")!!, true)))
+            // the other taxes of the made-up business: none is the usual one, and no item starts on them
+            (shop.jsonObject["more_taxes"] as? kotlinx.serialization.json.JsonArray)?.let { more ->
+                catalog.upsertTaxes(more.map { t -> TaxEntity(t.str("id")!!, tenant, t.str("name")!!, t.jsonObject["rate_bp"]!!.jsonPrimitive.intOrNull ?: 0, t.str("type")!!, false) })
+            }
             if (restaurant) {
                 val r = shop.obj("restaurant")
                 catalog.upsertDining(r.arr("dining").mapIndexed { i, d ->
@@ -285,6 +289,7 @@ class DemoReceiver : BroadcastReceiver() {
                     it.str("id")!!, tenant, it.str("category"), it.str("name")!!, it.lng("price"), barcode = it.str("barcode"), sku = it.str("sku"),
                     sold_by = it.str("sold_by") ?: "each", track_stock = it.bool("track_stock"), option_names = it.arr("options").toString(),
                     cost = it.lng("cost").takeIf { c -> c > 0 }, supplier_id = it.str("supplier"), brand = it.str("brand"),
+                    supplier_code = it.str("supplier_code"),
                 )
             })
             catalog.upsertItemTaxes(items.map { ItemTaxCrossRef(it.str("id")!!, tax.str("id")!!) })

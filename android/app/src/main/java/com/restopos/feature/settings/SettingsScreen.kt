@@ -397,11 +397,16 @@ class SettingsViewModel @Inject constructor(
 
 private enum class Page(val label: String) {
     Till("This till"), Notices("Notifications"), Cash("Cash drawer"), Reports("Reports"), Payments("Payments"),
+    // what the business is set up with, as its back office sets it (server 0094 on)
+    Taxes("Taxes"),
     Printers("Printers"), Labels("Label printer"), Scanners("Scanners"), Display("Display"), Support("Support"), Help("Help"),
 }
 
 // a scanner's frame with a barcode in it, as on the scan key
 private const val SCAN_ICON = "M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 9v6M11 9v6M13.500 9v6M16 9v6"
+
+// a percent sign
+private const val TAX_ICON = "M19 5L5 19M7 9.500a2.500 2.500 0 1 0 0 -5a2.500 2.500 0 1 0 0 5M17 19.500a2.500 2.500 0 1 0 0 -5a2.500 2.500 0 1 0 0 5"
 
 // The menu's cards, top to bottom.
 private val GROUPS = listOf(
@@ -415,6 +420,7 @@ private fun icon(p: Page): String = when (p) {
     Page.Cash -> VI.Cash
     Page.Reports -> VI.Bars
     Page.Payments -> VI.Card
+    Page.Taxes -> TAX_ICON
     Page.Printers -> VI.Print
     Page.Labels -> VI.Tag
     Page.Scanners -> SCAN_ICON
@@ -533,6 +539,7 @@ fun SettingsScreen(
                             Page.Cash -> CashPage(vm, more, keys)
                             Page.Reports -> ReportsPage(vm, more, shop, keys.close) { sheet = "day" }
                             Page.Payments -> PaymentsPage(vm) { receipts.showId(it) }
+                            Page.Taxes -> TaxesPage()
                             Page.Printers -> PrintersPage(vm, more, retail)
                             Page.Labels -> LabelPrinterPage()
                             Page.Scanners -> ScannersPage(vm, retail == true)
@@ -1273,7 +1280,8 @@ private val HELP = listOf(
     "Bookings" to "On Bookings, New booking takes the name, the guests and the time. Assign table holds a free table for them on the floor plan. When they arrive, tap Seat, or tap their table and Guests arrived.",
     "An order from a table" to "A guest who scans the code on their table sees the menu on their phone and can send an order from their seat. The till makes a sound and says which table, and a green strip on Tables says an order is waiting: tap Look. It shows what was asked for, at this till's own names and prices. Accept puts it on the table's order, seating the table if it was free, and opens that order: tap Send to kitchen as usual. Decline asks what the guest should be told, and their phone says so. Nothing is paid on the phone: the bill is taken here as for any table. Orders come in while a day is open on this till, someone has signed in since the tablet was started, and it has internet; otherwise the phone still shows the menu and says to ask a member of staff. An item switched to Sold out cannot be ordered from a table. The switch is in the back office's POS settings, and the cards for the tables are printed from its Tables page.",
     "Something has run out" to "Menu, Menu & stock, and switch the item to Sold out. It stays on the menu, greyed, on every till, until it is switched back.",
-    "Adding, changing or removing an item" to "Menu, Menu & stock. Tap New item, or tap an item's name to change it: its name, its price, its category, its barcode and whether it is on sale. Remove, on the same sheet, takes it off every till; receipts that sold it keep its name. It needs a connection, and may need a manager. An item's add-ons and tax are set in the back office.",
+    "Adding, changing or removing an item" to "Menu, Menu & stock. Tap New item, or tap an item's name to change it: its name, its price, its category, its barcode and whether it is on sale. Remove, on the same sheet, takes it off every till; receipts that sold it keep its name. Its tax is on the sheet's second page, Tax. It needs a connection, and may need a manager. An item's add-ons are set in the back office.",
+    "Taxes" to "In Settings, under Taxes. Tap Add a tax, or tap a tax to change it: its name, its rate, and whether prices already include it or it is added on top at the sale. One tax is the usual one, and a new item starts on it; to move that, open another tax and switch on The usual tax. A tax is not removed: change its rate, or move items onto another from their own sheet. Orders already open keep the tax they were rung up with. It needs a connection, and may need a manager.",
     "Categories" to "Menu, Menu & stock, then Categories. Tap New category, or tap one to change it: its name and its colour, which is the colour of its button and of its items' tiles. Remove takes away a category that has no items left in it. Where a category's items print, its place among the buttons and whether its stock is counted are set in the back office. It needs a connection, and may need a manager.",
     "Adding or removing stock" to "For an item whose stock is counted: Menu, Menu & stock, tap the item's name, then Add stock or Remove stock. Type how many. A reason can be picked (a delivery, damaged, expired, lost) and need not be. More than there is cannot be taken out. To have an item's stock counted, switch on Count its stock on its sheet and save: it then says Out until stock is added. It needs a connection, and may need a manager.",
     "An item with no fixed price" to "For a service, or anything charged differently each time, switch on Price typed at the sale on the item. Its tile then says Enter price: tap it, type what this customer pays and tap Done. Each tap is a line of its own, so the same item can be on a bill twice at two prices.",
@@ -1329,7 +1337,9 @@ private val SHOP_HELP = listOf(
     "Changing a product's price" to "On Products & stock, scan the product or search for it, then tap it. Change price (Price, on a variant) gives it a new price on every till at its next sync.",
     "Adding or removing stock" to "On Products & stock, tap the product, then Add stock or Remove stock (Stock, on a variant). Type how many. A reason can be picked (a delivery, damaged, expired, lost, returned to the supplier) and need not be. More than there is cannot be taken out. Every change is kept in the stock history with who made it. A delivery with its costs, a count and a transfer are done in the back office. It needs a connection, and may need a manager.",
     "Categories" to "On Products & stock, tap Categories. Tap New category, or tap one to change it: its name and its colour. Remove takes away a category that has no products left in it. It needs a connection, and may need a manager.",
-    "Adding, changing or removing a product" to "On Products & stock, tap New product. To change one, tap it, then Edit product: its name, its price, its category, its barcode and whether it is on sale. Remove, on the same sheet, takes it off every till; receipts that sold it keep its name. Count its stock, on the same sheet, says whether its stock is counted: switched on, the product says Out until stock is added. It needs a connection, and may need a manager. Variants, cost and tax are set in the back office.",
+    "Adding, changing or removing a product" to "On Products & stock, tap New product. To change one, tap it, then Edit product: its name, its price, its category, its barcode and whether it is on sale. Remove, on the same sheet, takes it off every till; receipts that sold it keep its name. Count its stock, on the same sheet, says whether its stock is counted: switched on, the product says Out until stock is added. It needs a connection, and may need a manager. Variants are set in the back office.",
+    "A product's tax, cost and supplier" to "On Products & stock, tap the product, then Edit product, then the second page at the top of the sheet. Pick its tax. Type its SKU and its brand, pick who it is bought from and type what that supplier calls it. Reorder when left is how many are left when it is time to order again, and Order quantity how many to order then, for this shop. Its cost shows only to someone allowed to see cost. A product with variants keeps its SKU and its cost on each variant. Empty a field to take it off the product.",
+    "Taxes" to "In Settings, under Taxes. Tap Add a tax, or tap a tax to change it: its name, its rate, and whether prices already include it or it is added on top at the sale. One tax is the usual one, and a new product starts on it; to move that, open another tax and switch on The usual tax. A tax is not removed: change its rate, or move products onto another from their own sheet. It needs a connection, and may need a manager.",
     "A product or service with no fixed price" to "For a service, or anything charged differently each time (a repair, an alteration), switch on Price typed at the sale on the product. Tapping or scanning it then opens the keypad: type what this customer pays and tap Done. Each one is a line of its own.",
     "Something has run out, or should not be sold" to "A tile on Sell says what is left of its product: amber when few are left, red when it is out. A product that shows out still sells. To stop one being sold, tap it on Products & stock and switch On sale off: it cannot be rung up on any till until it is switched back, and its stock is not touched.",
     "When you are not allowed to" to "A refund, a discount, a changed price, taking a line off, printing a receipt again, opening the drawer and the like may need a manager. The till asks who approves: they tap their name and enter their own PIN, and it is done in your name with their approval on record.",
@@ -1380,24 +1390,24 @@ private fun Heading(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun Note(text: String, modifier: Modifier = Modifier) {
+internal fun Note(text: String, modifier: Modifier = Modifier) {
     Text(text, modifier, color = V.Text3, fontSize = 13.sp, lineHeight = 19.sp)
 }
 
 // a card
 @Composable
-private fun Panel(content: @Composable ColumnScope.() -> Unit) {
+internal fun Panel(content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxWidth().clip(CardShape).background(V.Panel).border(1.dp, V.Stroke, CardShape).padding(horizontal = 18.dp, vertical = 14.dp), content = content)
 }
 
 // A card whose rows run edge to edge, with a Line between them.
 @Composable
-private fun Group(content: @Composable ColumnScope.() -> Unit) {
+internal fun Group(content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxWidth().clip(CardShape).background(V.Panel).border(1.dp, V.Stroke, CardShape), content = content)
 }
 
 @Composable
-private fun Line() {
+internal fun Line() {
     Box(Modifier.fillMaxWidth().height(1.dp).background(V.RowLine))
 }
 
@@ -1420,7 +1430,7 @@ private fun RowScope.Action(label: String, primary: Boolean = false, onClick: ()
 
 // A small key at the end of a row.
 @Composable
-private fun Small(label: String, color: Color = V.Text, enabled: Boolean = true, onClick: () -> Unit) {
+internal fun Small(label: String, color: Color = V.Text, enabled: Boolean = true, onClick: () -> Unit) {
     val shape = RoundedCornerShape(10.dp)
     Box(
         Modifier.height(40.dp).then(if (enabled) Modifier.press(onClick = onClick) else Modifier).clip(shape).background(V.Key2).border(1.dp, V.Stroke2, shape).padding(horizontal = 14.dp),
