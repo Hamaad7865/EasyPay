@@ -224,7 +224,8 @@ class ServiceRepository @Inject constructor(
     // in may see cost. itemId: null for a new item.
     suspend fun itemMore(itemId: String?): ItemMore {
         val taxes = db.catalog().taxes().first()
-        val own = itemId?.let { db.catalog().taxesForItem(it).firstOrNull()?.id } ?: taxes.firstOrNull()?.id
+        // an item that carries no tax is not given one by being opened
+        val own = ItemForm.startTax(itemId == null, itemId?.let { db.catalog().taxesForItem(it).firstOrNull()?.id }, taxes.firstOrNull()?.id)
         val store = session.storeId()
         val level = if (itemId != null && store != null) db.retail().levelsOf(store, itemId).firstOrNull() else null
         return ItemMore(

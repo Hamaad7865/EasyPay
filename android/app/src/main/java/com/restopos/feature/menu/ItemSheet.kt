@@ -83,13 +83,14 @@ class ItemEditor(private val service: ServiceRepository, private val approvals: 
 
     // count: whether its stock is counted, as the sheet's switch stands
     // typed: the sheet's second page, or null when it had not been read yet: the server then leaves all of it as it is
+    // from: that page as it opened, for an item being changed: only what was changed since is sent
     fun save(
         name: String, price: String, open: Boolean, category: String?, barcode: String, available: Boolean, count: Boolean,
-        typed: ItemForm.Typed? = null, by: StaffMember? = null, done: () -> Unit = {},
+        typed: ItemForm.Typed? = null, from: ItemForm.Typed? = null, by: StaffMember? = null, done: () -> Unit = {},
     ) {
         val edit = editing.value ?: return
         val read = ItemForm.read(name, price, open, barcode).getOrElse { Toaster.say(it.message ?: "That is not an $thing yet"); return }
-        val second = typed?.let { t -> ItemForm.readMore(t).getOrElse { Toaster.say(it.message ?: "That is not an $thing yet"); return } }
+        val second = typed?.let { t -> ItemForm.readMore(t, from.takeIf { edit.item != null }).getOrElse { Toaster.say(it.message ?: "That is not an $thing yet"); return } }
         if (busy.value) return
         scope.launch {
             busy.value = true
@@ -98,7 +99,7 @@ class ItemEditor(private val service: ServiceRepository, private val approvals: 
             val need = out.exceptionOrNull() as? NeedsApproval
             if (need != null && by == null) {
                 editing.value = null
-                approvals.ask(need.permission, need.what) { approver -> editing.value = edit; save(name, price, open, category, barcode, available, count, typed, approver, done) }
+                approvals.ask(need.permission, need.what) { approver -> editing.value = edit; save(name, price, open, category, barcode, available, count, typed, from, approver, done) }
             } else out.fold(
                 {
                     editing.value = null
@@ -175,6 +176,9 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
     // a product with variants keeps its codes and its costs on them
     val costShown = shop && more?.mayCost == true && !more.variants
     val skuShown = more?.variants != true
+    fun typed() = ItemForm.Typed(taxId, shop, costShown, cost, skuShown, sku, brand, supplier, supplierCode, reorder, orderQty)
+    // the page as it opened: of an item being changed, only what differs from this is sent
+    val start = remember(edit, more) { more?.let { typed() } }
 
     // top: the keyboard takes the lower half of the screen
     Sheet(onDismiss = { editor.close() }, width = 640.dp, gap = 14.dp, top = true) {
@@ -304,10 +308,7 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             Box(Modifier.weight(1f))
             VBtn("Cancel", height = 56.dp, enabled = !busy) { editor.close() }
             VBtn(if (busy) "Saving…" else if (was == null) "Add $thing" else "Save", bg = V.Blue, fg = Color.White, height = 56.dp, weight = 800, enabled = !busy) {
-                val typed = more?.let {
-                    ItemForm.Typed(taxId, shop, costShown, cost, skuShown, sku, brand, supplier, supplierCode, reorder, orderQty)
-                }
-                editor.save(name, price, open, cat, barcode, onSale, count, typed, done = done)
+                editor.save(name, price, open, cat, barcode, onSale, count, more?.let { typed() }, start, done = done)
             }
         }
     }

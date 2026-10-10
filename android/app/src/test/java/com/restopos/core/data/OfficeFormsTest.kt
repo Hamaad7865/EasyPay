@@ -114,7 +114,7 @@ class OfficeFormsTest {
         val m = ItemForm.readMore(full).getOrThrow()
         assertEquals(OfficeFixtures.payload("item-save-full"), OfficePayloads.itemSave("item-1", polo, "category-1", true, true, m, "store-1", null))
         // emptied: every field is sent as none, so the server clears it
-        val none = ItemForm.readMore(full.copy(cost = "", sku = "", brand = "", supplierId = null, supplierCode = "", reorder = "", orderQty = "")).getOrThrow()
+        val none = ItemForm.readMore(full.copy(cost = "", sku = "", brand = "", supplierId = null, supplierCode = "", reorder = "", orderQty = ""), from = full.copy(taxId = "tax-0")).getOrThrow()
         val sent = OfficePayloads.itemSave("item-1", polo, "category-1", true, true, none, "store-1", null)
         assertEquals(OfficeFixtures.payload("item-save-cleared"), sent)
         assertEquals(JsonNull, sent["cost"])
@@ -126,6 +126,36 @@ class OfficeFormsTest {
         assertFalse(sent.containsKey("cost"))
         assertFalse(sent.containsKey("sku"))
         assertTrue(sent.containsKey("brand") && sent.containsKey("reorder_point"))
+    }
+
+    @Test fun `of a product being changed, only what was changed on the page is sent`() {
+        // nothing touched: the tablet's copy may be older than the server's, so none of it goes
+        val same = ItemForm.readMore(full, from = full).getOrThrow()
+        val basic = setOf("id", "name", "price", "open_price", "category_id", "barcode", "available", "track_stock")
+        assertEquals(basic, OfficePayloads.itemSave("item-1", polo, "category-1", true, true, same, "store-1", null).keys)
+        // one field
+        val brand = ItemForm.readMore(full.copy(brand = "Atelier"), from = full).getOrThrow()
+        assertEquals(basic + "brand", OfficePayloads.itemSave("item-1", polo, "category-1", true, true, brand, "store-1", null).keys)
+        // the tax
+        val tax = ItemForm.readMore(full.copy(taxId = "tax-2"), from = full).getOrThrow()
+        assertEquals(basic + "tax_id", OfficePayloads.itemSave("item-1", polo, "category-1", true, true, tax, "store-1", null).keys)
+        // the two reorder figures go together, with the store they are for
+        val level = ItemForm.readMore(full.copy(orderQty = "24"), from = full).getOrThrow()
+        val sent = OfficePayloads.itemSave("item-1", polo, "category-1", true, true, level, "store-1", null)
+        assertEquals(basic + setOf("store_id", "reorder_point", "reorder_qty"), sent.keys)
+        assertEquals(listOf("3000", "24000"), listOf(sent["reorder_point"].toString(), sent["reorder_qty"].toString()))
+        // spaces typed round a value are not a change
+        assertEquals(basic, OfficePayloads.itemSave("item-1", polo, "category-1", true, true, ItemForm.readMore(full.copy(sku = "POLO-01"), from = full.copy(sku = " POLO-01 ")).getOrThrow(), "store-1", null).keys)
+    }
+
+    @Test fun `an item that carries no tax is not given one by opening its sheet`() {
+        assertEquals("usual", ItemForm.startTax(new = true, own = null, usual = "usual"))
+        assertNull(ItemForm.startTax(new = false, own = null, usual = "usual"))
+        assertEquals("own", ItemForm.startTax(new = false, own = "own", usual = "usual"))
+        // and with none picked, none is sent, new or not
+        val dish = ItemForm.read("Dholl puri", "25", false, "").getOrThrow()
+        val untaxed = ItemForm.readMore(ItemForm.Typed(taxId = null, shop = false)).getOrThrow()
+        assertFalse(OfficePayloads.itemSave("item-1", dish, "category-1", true, false, untaxed, "store-1", null).containsKey("tax_id"))
     }
 
     @Test fun `a restaurant's item is sent with its tax and none of a shop's keys`() {

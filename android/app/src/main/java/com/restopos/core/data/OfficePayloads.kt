@@ -28,14 +28,18 @@ object OfficePayloads {
         put("category_id", categoryId ?: ""); put("barcode", item.barcode ?: ""); put("available", available)
         countStock?.let { put("track_stock", it) }
         more?.let { m ->
-            m.taxId?.let { put("tax_id", it) }
+            // only what the page says is to be sent: for an item being changed, what the person changed
+            fun sent(what: String) = what in m.sent
+            if (sent(ItemForm.TAX)) m.taxId?.let { put("tax_id", it) }
             if (m.shop) {
                 // a product with variants keeps its codes on its lines: its sheet shows no SKU
-                if (m.skuShown) put("sku", m.sku ?: "")
+                if (m.skuShown && sent(ItemForm.SKU)) put("sku", m.sku ?: "")
                 // only from a sheet that showed the cost: the server would ignore it from anyone else
-                if (m.costShown) put("cost", m.cost)
-                put("brand", m.brand ?: ""); put("supplier_id", m.supplierId ?: ""); put("supplier_code", m.supplierCode ?: "")
-                if (store != null) { put("store_id", store); put("reorder_point", m.reorder); put("reorder_qty", m.orderQty) }
+                if (m.costShown && sent(ItemForm.COST)) put("cost", m.cost)
+                if (sent(ItemForm.BRAND)) put("brand", m.brand ?: "")
+                if (sent(ItemForm.SUPPLIER)) put("supplier_id", m.supplierId ?: "")
+                if (sent(ItemForm.SUPPLIER_CODE)) put("supplier_code", m.supplierCode ?: "")
+                if (store != null && sent(ItemForm.REORDER)) { put("store_id", store); put("reorder_point", m.reorder); put("reorder_qty", m.orderQty) }
             }
         }
         approvedBy?.let { put("approved_by", it) }

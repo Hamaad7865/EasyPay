@@ -42,7 +42,37 @@ object ItemForm {
         val brand: String?, val supplierId: String?, val supplierCode: String?,
         // thousandths, as every quantity is
         val reorder: Int?, val orderQty: Int?,
+        // Which of them are sent (TAX, COST and so on). For a new item, all
+        // of them. For one being changed, only what the person changed on
+        // the page: what the tablet holds may be older than the server's (the
+        // back office changed the supplier since the last sync), and a name
+        // put right here must not put the old supplier back.
+        val sent: Set<String> = ALL,
     )
+    const val TAX = "tax"
+    const val COST = "cost"
+    const val SKU = "sku"
+    const val BRAND = "brand"
+    const val SUPPLIER = "supplier"
+    const val SUPPLIER_CODE = "supplier_code"
+    const val REORDER = "reorder"
+    val ALL = setOf(TAX, COST, SKU, BRAND, SUPPLIER, SUPPLIER_CODE, REORDER)
+
+    // The tax a sheet opens on: an item's own, and for a new item the usual
+    // one. An item that carries no tax is not given one by being opened.
+    fun startTax(new: Boolean, own: String?, usual: String?): String? = if (new) usual else own
+
+    // What the person changed on the page since it opened (from).
+    private fun changed(t: Typed, from: Typed): Set<String> = buildSet {
+        if (t.taxId != from.taxId) add(TAX)
+        if (t.cost.trim() != from.cost.trim()) add(COST)
+        if (t.sku.trim() != from.sku.trim()) add(SKU)
+        if (t.brand.trim() != from.brand.trim()) add(BRAND)
+        if (t.supplierId != from.supplierId) add(SUPPLIER)
+        if (t.supplierCode.trim() != from.supplierCode.trim()) add(SUPPLIER_CODE)
+        // the two figures are saved together
+        if (t.reorder.trim() != from.reorder.trim() || t.orderQty.trim() != from.orderQty.trim()) add(REORDER)
+    }
 
     private val QTY = Regex("""(\d{1,7})(?:[.,](\d{1,3}))?""")
 
@@ -55,14 +85,16 @@ object ItemForm {
         return n.toInt()
     }
 
-    fun readMore(t: Typed): Result<More> = runCatching {
-        if (!t.shop) return@runCatching More(t.taxId, false, false, null, false, null, null, null, null, null, null)
+    // from: the page as it opened, for an item being changed; null for a new one.
+    fun readMore(t: Typed, from: Typed? = null): Result<More> = runCatching {
+        val sent = if (from == null) ALL else changed(t, from)
+        if (!t.shop) return@runCatching More(t.taxId, false, false, null, false, null, null, null, null, null, null, sent)
         val cost = if (!t.costShown || t.cost.isBlank()) null else Money.parseRs(t.cost) ?: throw IllegalArgumentException("The cost is not a number")
         require(cost == null || cost <= LinePrice.MOST) { "Rs 1,000,000 is the most a product can cost" }
         More(
             t.taxId, true, t.costShown, cost, t.skuShown, t.sku.trim().take(60).ifEmpty { null },
             t.brand.trim().take(60).ifEmpty { null }, t.supplierId, t.supplierCode.trim().take(60).ifEmpty { null },
-            qty(t.reorder, "The reorder level"), qty(t.orderQty, "The order quantity"),
+            qty(t.reorder, "The reorder level"), qty(t.orderQty, "The order quantity"), sent,
         )
     }
 
