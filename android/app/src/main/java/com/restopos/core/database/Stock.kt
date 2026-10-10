@@ -160,6 +160,9 @@ data class StockDraftEntity(
 // How many live products name a supplier.
 data class SupplierUse(val supplier_id: String, val n: Int)
 
+// Something's id and what it is called: a member of staff, a receipt's number.
+data class IdName(val id: String, val name: String)
+
 @Dao
 interface StockDao {
     @Upsert suspend fun upsertSuppliers(rows: List<SupplierEntity>)
@@ -236,6 +239,13 @@ interface StockDao {
 
     @Query("SELECT * FROM stock_movements WHERE store_id = :store ORDER BY created_at DESC, server_seq DESC LIMIT :limit")
     fun movements(store: String, limit: Int): Flow<List<StockMovementEntity>>
+
+    // What a movement or a line of a document is named by. Removed products
+    // and variants too: an old movement still says what it moved.
+    @Query("SELECT * FROM items") fun everyItem(): Flow<List<ItemEntity>>
+    @Query("SELECT * FROM item_variants") fun everyVariant(): Flow<List<ItemVariantEntity>>
+    @Query("SELECT id, name FROM employees") fun staffNames(): Flow<List<IdName>>
+    @Query("SELECT id, number AS name FROM receipts") fun receiptNumbers(): Flow<List<IdName>>
 
     @Query("SELECT * FROM stock_drafts WHERE kind = :kind") suspend fun draft(kind: String): StockDraftEntity?
     @Upsert suspend fun saveDraft(row: StockDraftEntity)

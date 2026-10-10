@@ -130,6 +130,28 @@ class DemoReceiver : BroadcastReceiver() {
                         deps.requests().run()
                         Log.i(TAG, "pulled: " + changes.filter { it.value.isNotEmpty() }.map { it.key + " " + it.value.size }.joinToString(", "))
                     }
+                } else if (intent.action == STOCK) {
+                    // The made-up shop's stock papers, onto a tablet that already holds the made-up shop from a build
+                    // before there were any: its sales, its labels and its printers stay as they are.
+                    //   adb shell am broadcast -n com.restopos.app/com.restopos.debug.DemoReceiver -a com.restopos.app.DEMO_STOCK
+                    val shop = Json.parseToJsonElement(context.assets.open("demo-shop.json").bufferedReader().use { it.readText() })
+                    val store = deps.session().storeId()
+                    if (store == null || deps.session().tenantId() != shop.str("tenant")) Log.w(TAG, "refused: this tablet is not the made-up business")
+                    else {
+                        val db = deps.db()
+                        db.withTransaction {
+                            shop.arr("items").forEach { i ->
+                                // what a product costs and who it is bought from; what the shop holds of it is left alone
+                                db.catalog().item(i.str("id")!!)?.let { was -> db.catalog().upsertItems(listOf(was.copy(cost = i.lng("cost").takeIf { c -> c > 0 }, supplier_id = i.str("supplier"), brand = i.str("brand")))) }
+                                val lines = i.arr("variants").map { v -> Triple(v.str("id")!!, v, v.lng("cost")) }.ifEmpty { listOf(Triple("", i, i.lng("cost"))) }
+                                lines.forEach { (variant, e, cost) ->
+                                    db.retail().setReorder(store, i.str("id")!!, variant, cost.toDouble(), e.jsonObject["reorder_point"]?.jsonPrimitive?.longOrNull?.toInt(), e.jsonObject["reorder_qty"]?.jsonPrimitive?.longOrNull?.toInt())
+                                }
+                            }
+                            papers(shop, db, shop.str("tenant")!!, store)
+                        }
+                        Log.i(TAG, "the made-up shop has its stock papers")
+                    }
                 } else if (deps.session().isSetUp()) Log.w(TAG, "refused: this tablet is set up for a business")
                 else if (intent.getBooleanExtra("session_only", false)) {
                     // --ez session_only true: only which business, store and till this tablet is; everything else is to come by the pull
@@ -246,51 +268,56 @@ class DemoReceiver : BroadcastReceiver() {
                 else variants.map { v -> StockLevelEntity(storeId, i.str("id")!!, v.str("id")!!, v.lng("stock").toInt(), avg_cost = v.lng("cost").toDouble(), reorder_point = v.level("reorder_point"), reorder_qty = v.level("reorder_qty")) }
             })
             // a shop's stock papers: who it buys from, what it ordered, what arrived, what moved
-            if (!restaurant) {
-                val stock = db.stock()
-                val now = System.currentTimeMillis()
-                fun ago(e: JsonElement, k: String, unit: Long) = now - e.lng(k) * unit
-                stock.upsertSuppliers(shop.arr("suppliers").map { s ->
-                    com.restopos.core.database.SupplierEntity(
-                        s.str("id")!!, tenant, s.str("name")!!, s.str("contact")?.ifEmpty { null }, s.str("phone")?.ifEmpty { null },
-                        s.str("email")?.ifEmpty { null }, s.str("address")?.ifEmpty { null }, s.str("note")?.ifEmpty { null }, server_seq = 1,
-                    )
-                })
-                shop.arr("orders").forEach { o ->
-                    val at = ago(o, "days_ago", 86_400_000L)
-                    stock.upsertOrders(listOf(com.restopos.core.database.PurchaseOrderEntity(
-                        o.str("id")!!, storeId, o.str("number")!!, o.str("supplier")!!, o.str("status")!!, o.str("expected_on"), o.str("note")?.ifEmpty { null },
-                        shop.arr("staff")[0].str("id"), if (o.str("status") == "draft") null else at, at, at, server_seq = 1,
-                    )))
-                    stock.replaceOrderLines(o.str("id")!!, o.arr("lines").map { l ->
-                        com.restopos.core.database.PurchaseOrderLineEntity(o.str("id")!!, l.str("item")!!, l.str("variant") ?: "", l.lng("qty").toInt(), l.lng("cost"), l.lng("received").toInt())
-                    })
-                }
-                shop.arr("deliveries").forEach { d ->
-                    stock.upsertDeliveries(listOf(com.restopos.core.database.DeliveryEntity(
-                        d.str("id")!!, storeId, d.str("number")!!, d.str("order"), d.str("supplier"), d.str("arrived_on")!!, d.str("invoice_no")?.ifEmpty { null },
-                        d.str("note")?.ifEmpty { null }, d.str("by"), ago(d, "days_ago", 86_400_000L), server_seq = 1,
-                    )))
-                    stock.replaceDeliveryLines(d.str("id")!!, d.arr("lines").map { l ->
-                        com.restopos.core.database.DeliveryLineEntity(d.str("id")!!, l.str("item")!!, l.str("variant") ?: "", l.lng("qty").toInt(), l.lng("cost"))
-                    })
-                }
-                stock.upsertMovements(shop.arr("movements").map { m ->
-                    com.restopos.core.database.StockMovementEntity(
-                        m.str("id")!!, storeId, m.str("item")!!, m.str("variant") ?: "", m.lng("qty").toInt(), m.str("reason")!!, null, m.str("ref_type"), m.str("ref"),
-                        null, m.str("by"), m.str("note")?.ifEmpty { null }, ago(m, "minutes_ago", 60_000L), server_seq = 1,
-                    )
-                })
-            }
+            if (!restaurant) papers(shop, db, tenant, storeId)
         }
         session.save(tenant, storeId, device.str("id")!!)
         session.setBusinessName(store.str("name")!!)
+    }
+
+    // A shop's stock papers from the made-up shop's file: suppliers, orders, deliveries and movements,
+    // their times counted back from now. Called inside a transaction.
+    private suspend fun papers(shop: JsonElement, db: TillDatabase, tenant: String, storeId: String) {
+        val stock = db.stock()
+        val now = System.currentTimeMillis()
+        fun ago(e: JsonElement, k: String, unit: Long) = now - e.lng(k) * unit
+        stock.upsertSuppliers(shop.arr("suppliers").map { s ->
+            com.restopos.core.database.SupplierEntity(
+                s.str("id")!!, tenant, s.str("name")!!, s.str("contact")?.ifEmpty { null }, s.str("phone")?.ifEmpty { null },
+                s.str("email")?.ifEmpty { null }, s.str("address")?.ifEmpty { null }, s.str("note")?.ifEmpty { null }, server_seq = 1,
+            )
+        })
+        shop.arr("orders").forEach { o ->
+            val at = ago(o, "days_ago", 86_400_000L)
+            stock.upsertOrders(listOf(com.restopos.core.database.PurchaseOrderEntity(
+                o.str("id")!!, storeId, o.str("number")!!, o.str("supplier")!!, o.str("status")!!, o.str("expected_on"), o.str("note")?.ifEmpty { null },
+                shop.arr("staff")[0].str("id"), if (o.str("status") == "draft") null else at, at, at, server_seq = 1,
+            )))
+            stock.replaceOrderLines(o.str("id")!!, o.arr("lines").map { l ->
+                com.restopos.core.database.PurchaseOrderLineEntity(o.str("id")!!, l.str("item")!!, l.str("variant") ?: "", l.lng("qty").toInt(), l.lng("cost"), l.lng("received").toInt())
+            })
+        }
+        shop.arr("deliveries").forEach { d ->
+            stock.upsertDeliveries(listOf(com.restopos.core.database.DeliveryEntity(
+                d.str("id")!!, storeId, d.str("number")!!, d.str("order"), d.str("supplier"), d.str("arrived_on")!!, d.str("invoice_no")?.ifEmpty { null },
+                d.str("note")?.ifEmpty { null }, d.str("by"), ago(d, "days_ago", 86_400_000L), server_seq = 1,
+            )))
+            stock.replaceDeliveryLines(d.str("id")!!, d.arr("lines").map { l ->
+                com.restopos.core.database.DeliveryLineEntity(d.str("id")!!, l.str("item")!!, l.str("variant") ?: "", l.lng("qty").toInt(), l.lng("cost"))
+            })
+        }
+        stock.upsertMovements(shop.arr("movements").map { m ->
+            com.restopos.core.database.StockMovementEntity(
+                m.str("id")!!, storeId, m.str("item")!!, m.str("variant") ?: "", m.lng("qty").toInt(), m.str("reason")!!, null, m.str("ref_type"), m.str("ref"),
+                null, m.str("by"), m.str("note")?.ifEmpty { null }, ago(m, "minutes_ago", 60_000L), server_seq = 1,
+            )
+        })
     }
 
     private companion object {
         const val TAG = "DemoShop"
         const val PULL = "com.restopos.app.DEMO_PULL"
         const val SCAN = "com.restopos.app.DEMO_SCAN"
+        const val STOCK = "com.restopos.app.DEMO_STOCK"
         const val CHIME = "com.restopos.app.DEMO_CHIME"
         const val UPDATE = "com.restopos.app.DEMO_UPDATE"
     }

@@ -392,3 +392,70 @@ object StockHistory {
   build before this plan: it opens, the products are there.
 - [ ] Commit. Append to this file a record: what was seen, what was not (a save going through from a
   signed-in till is the owner's to try), and anything decided along the way.
+
+---
+
+## Record: plan 1 as it was built (2026-10-10 and the first hour of 2026-10-11)
+
+All nine tasks are done and committed on `restopos` (`bbe4af5` the suite, `a016ac7` the migration,
+`1cffae3` the tablet's tables and the sync's reader, `aacbe6f` the shared product pane, the supplier
+rules and the history's words, then the screen). Nothing is pushed, nothing is on production.
+
+**The numbers.** The migration is 0092 and is on dev. The other session's table ordering took 0093 the
+same evening; it touches neither `sync_push` nor `sync_pull`, and the live `sync_pull` still carries the
+shop's block after it was applied. The till's database is at 14 with this work: table ordering's
+`guest_orders` will be 15.
+
+**Seen.**
+- `db/tests/till-stock.test.cjs`: 70 checks, all pass, run three times on dev. Before the migration it
+  failed on `unknown-op`, as it should. The eleven suites that must not move pass, each run alone
+  (`stock-counts` stopped once on "deadlock detected" at its delete-all step, at the minute the other
+  session applied 0093, and passed when run again).
+- 371 unit tests pass (363 before; `SupplierFormTest` 5, `StockHistoryTest` 3). The supplier payloads
+  the till builds equal the files the suite sends.
+- The database's step from 13 to 14, on an emulator of mine holding the made-up shop from build 13:
+  it opened, 13 products, 8 variants and 19 lines of stock were intact, the seven new columns and the
+  nine new tables were there, `user_version` 14. Again on the owner's open emulator, over their build
+  13 with their own data.
+- The sync's reader, fed with no network the page dev sent the suite's shop (`KEEP_PULL`, `DEMO_PULL`),
+  on an emulator of mine set up empty: the eight tables read back held exactly the page (3 suppliers,
+  6 orders with 6 lines, 4 deliveries with 6 lines, 7 counts, 10 count lines, 20 movements); "no
+  variant" was kept as empty text and nowhere as null; an average cost kept its decimals; the same
+  order fed again with one line had one line.
+- On the owner's open emulator, at their word ("use it to test and let me shadow"), with the made-up
+  shop: Stock in the side menu; the five tabs; Deliveries, Orders and Counts saying they come with the
+  next build; Suppliers with two suppliers and how many products name each; a supplier's sheet; a save
+  with no server answering with the till's own sentence and keeping what was typed; an empty name
+  refused before anything is asked; History with its six movements, who made each and the delivery's
+  number; the four filters; a scanned barcode narrowing it to one product; as the cashier, Deliveries
+  and History locked, "Ask a manager" opening the approval sheet, the owner's PIN letting him in,
+  "Add a supplier" asking too, and the approval forgotten once he left the screen and came back.
+- Print labels with the shared product pane, same emulator: a tile tapped, a product with variants
+  asking which with the label's own words, a scan, a category key. As before.
+- On an emulator of mine at 1024 x 600: the History tab and a supplier's sheet with its message, the
+  keys in view.
+
+**Not seen by anyone.** A save reaching a server from a signed-in till, and the rows coming back in a
+real sync: I cannot sign a tablet in. The Help entries were compiled, not opened. A supplier removed
+from the till. A shop with more than 200 movements ("Show more").
+
+**Found by running it, and changed.**
+- The supplier sheet with a message showing pushed its keys out of view: its fields and keys are a
+  little lower and closer.
+- Two staff ids in the made-up shop's new movements were one digit short, so History named nobody.
+
+**Decided along the way.**
+- Stock opens for everyone and each tab asks for its own permission; the design said the entry opens
+  for someone holding one of them. Someone holding none sees Suppliers and four locked tabs.
+- A manager's word for a tab lasts while the screen is open and until someone else signs in.
+- `ServiceRepository.ask` is `internal`, and a shop's stock saves live in `StockRepository`.
+- When a count comes back from the server the tablet's own lines for it are dropped first, so a line
+  the server did not write (left out, its product gone) does not linger.
+- The debug build has `DEMO_STOCK`: the made-up shop's stock papers onto a tablet that already holds
+  the made-up shop, leaving its sales, labels and printers alone. `RetailDao.setReorder` was added for
+  it and will serve piece 5.
+- History names a sale by its receipt's number when the tablet holds the receipt.
+
+**For plan 2.** `StockViewModel.costs(words)` and `approver(permission)` are there for the tabs to come.
+The tabs' "Coming with the next build" text is `Soon` in `StockScreen.kt`. The made-up shop has a
+draft, a sent and a part-received order, two deliveries, and products at and under their reorder level.

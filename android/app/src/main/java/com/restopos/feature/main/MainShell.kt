@@ -160,11 +160,11 @@ import javax.inject.Inject
 // Every screen of the till. Order, Pay and Split belong to whichever order is
 // open; the rest are places. Sell and Products are a shop's: its sell screen
 // in place of tables and orders, its products and stock in place of the menu.
-enum class Screen { Floor, Order, Pay, Split, Takeaway, Kitchen, Bookings, Orders, Today, Menu, Cash, Receipts, Customers, Settings, Sell, Products, StockCheck, Labels }
+enum class Screen { Floor, Order, Pay, Split, Takeaway, Kitchen, Bookings, Orders, Today, Menu, Cash, Receipts, Customers, Settings, Sell, Products, StockCheck, Labels, Stock }
 
 // what only a restaurant has, and what only a shop has
 private val RESTAURANT_ONLY = setOf(Screen.Floor, Screen.Order, Screen.Takeaway, Screen.Kitchen, Screen.Bookings, Screen.Orders, Screen.Menu)
-private val SHOP_ONLY = setOf(Screen.Sell, Screen.Products, Screen.StockCheck, Screen.Labels)
+private val SHOP_ONLY = setOf(Screen.Sell, Screen.Products, Screen.StockCheck, Screen.Labels, Screen.Stock)
 // what only a restaurant on the premium tier has (server 0085): the kitchen
 // display and bookings. Another plan keeps Send to kitchen and its printers.
 private val PREMIUM_ONLY = setOf(Screen.Kitchen, Screen.Bookings)
@@ -422,7 +422,11 @@ private val SHOP = listOf(
 )
 // Stock check is a look-up, not a place of its own along the top: it is here and under the sale's More.
 // Print labels is back-room work, done now and then: here, and on a product's sheet.
-private val SHOP_BACK = listOf(Nav(Screen.StockCheck, VI.Search) { "Stock check" }, Nav(Screen.Labels, VI.Tag) { "Print labels" }, Nav(Screen.Cash, VI.Cash) { L.cashDrawer })
+// Stock is the shop's papers: suppliers, orders, deliveries, counts and the history of every movement.
+private val SHOP_BACK = listOf(
+    Nav(Screen.StockCheck, VI.Search) { "Stock check" }, Nav(Screen.Labels, VI.Tag) { "Print labels" }, Nav(Screen.Stock, VI.Orders) { "Stock" },
+    Nav(Screen.Cash, VI.Cash) { L.cashDrawer },
+)
 
 // What is always on screen once someone is at the till: the top bar with the
 // service screens, the open screen under it, and the side menu behind the
@@ -492,7 +496,7 @@ fun MainShell(
     SideEffect {
         Scanner.mode = scanMode
         Scanner.added = scanners
-        Scanner.taking = retail && (screen == Screen.Sell || screen == Screen.Products || screen == Screen.StockCheck || screen == Screen.Receipts || screen == Screen.Labels)
+        Scanner.taking = retail && (screen == Screen.Sell || screen == Screen.Products || screen == Screen.StockCheck || screen == Screen.Receipts || screen == Screen.Labels || screen == Screen.Stock)
     }
     DisposableEffect(Unit) { onDispose { Scanner.taking = false } }
     // what a printer said when it could not print behind the scenes, and what Settings has to say
@@ -628,6 +632,7 @@ fun MainShell(
                     )
                     Screen.Products -> { val vm: ProductsViewModel = hiltViewModel(); ProductsScreen(vm, onLabel = { item -> labels.tap(item); shell.go(Screen.Labels) }) }
                     Screen.Labels -> LabelsScreen(labels)
+                    Screen.Stock -> { val vm: com.restopos.feature.stock.StockViewModel = hiltViewModel(); com.restopos.feature.stock.StockScreen(vm, date) }
                     Screen.StockCheck -> { val vm: StockCheckViewModel = hiltViewModel(); StockCheckScreen(vm, onBack = { shell.go(Screen.Sell) }) }
                     Screen.Takeaway -> { val vm: BoardViewModel = hiltViewModel(); BoardScreen(vm, onOrder = { shell.go(Screen.Order) }, onPay = { shell.go(Screen.Pay) }) }
                     Screen.Kitchen -> { val vm: KdsViewModel = hiltViewModel(); KdsScreen(vm) }

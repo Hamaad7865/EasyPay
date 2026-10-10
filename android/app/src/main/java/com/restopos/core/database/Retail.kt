@@ -107,6 +107,10 @@ interface RetailDao {
     @Query("UPDATE stock_levels SET qty = qty + :by WHERE store_id = :store AND item_id = :item AND variant_id = :variant")
     suspend fun moveLevel(store: String, item: String, variant: String, by: Int): Int
 
+    // What a line of stock cost on average and the level to order it again at, without touching what the shop holds of it.
+    @Query("UPDATE stock_levels SET avg_cost = :avg, reorder_point = :point, reorder_qty = :qty WHERE store_id = :store AND item_id = :item AND variant_id = :variant")
+    suspend fun setReorder(store: String, item: String, variant: String, avg: Double, point: Int?, qty: Int?): Int
+
     @Query("UPDATE item_variants SET price = :price WHERE id = :id")
     suspend fun setVariantPrice(id: String, price: Long)
 
