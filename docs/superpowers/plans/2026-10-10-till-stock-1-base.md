@@ -22,6 +22,15 @@ kotlinx.serialization, JUnit 4.
 - Take the next free numbers at the time: `ls db/migrations | tail -1` (0092 when this was written) and
   `version =` in `core/database/TillDatabase.kt` (13 when written). If they moved, use the next and say
   so in the commit.
+- **The other session's plan wants the same numbers and the same function.**
+  `docs/superpowers/plans/2026-10-10-table-ordering.md` (untracked when this was written) names
+  migration 0092, the till's database 14 (`guest_orders`), and hands a store's key to its tills in a
+  pull, which means its own `sync_pull`. Before Task 2 and before Task 3, look at what it has
+  committed. Whichever migration is applied to dev second is built from the live `sync_pull` and
+  `sync_push` of that hour, so it carries the first one's lines; whichever database change lands
+  second is the next version with its own step. Do not build the two at the same time in
+  `Migrations.kt`, `TillDatabase.kt`, `PullApplier.kt` or `MainShell.kt`: tell the owner which goes
+  first.
 - A function that exists is rebuilt from its **live** definition on dev
   (`node db/scripts/dump-function.cjs <name>`), the same hour the migration is applied, never from an
   older migration file. The migration's header names what was copied.
@@ -44,9 +53,9 @@ kotlinx.serialization, JUnit 4.
 Set up as `db/tests/till-setup.test.cjs` does (its `check`, `op`, `asApp`, `pushAs`, `one`, `pull`): a
 shop `TS-Probe` (`pos_settings.data.businessType = 'retail'`), a restaurant `TS-Resto`, another shop
 `TS-Other`; in the shop a second store; roles Owner `['*']`, Stock `['stock.receive','stock.count',
-'stock.view','suppliers.edit']`, Cashier `['sale.create','payment.take']`; two products counted in
-stock (one plain, one with two variants) and one that is not counted. Everything it makes is removed in
-`finally`.
+'stock.view','suppliers.edit']`, Cashier `['sale.create','payment.take']`; three products counted in
+stock, each holding some (one plain, one with two variants, and `item-extra`, which no example payload
+names) and one that is not counted. Everything it makes is removed in `finally`.
 
 The example payloads, one file a change, each `{ "type": ..., "payload": ... }` with these stand-in ids,
 which the suite swaps for real ones before sending and the Kotlin tests of plans 1 to 3 pass in as they
@@ -85,8 +94,9 @@ by the Cashier with `approved_by` a Stock person (done).
 - [ ] **Counts.** The example: the count exists with exactly its three lines, `C-0001`, completed; the
   plain product holds 9000 plus what sold after 08:05 on a receipt whose own time is later; the
   uncounted line is as it was; the left-out line is as it was. With `"uncounted":"zero"`: the uncounted
-  line is 0, the left-out one untouched, **and a counted product that was not among the lines keeps its
-  stock**. The same count sent again: the first answer, no second movement. A sale stamped 08:04 by the
+  line is 0, the left-out one untouched, **and `item-extra`, which was not among the lines, keeps its
+  stock**. A left-out line whose product was removed since: the count completes and has no such line.
+  A counted line whose product was removed: `unknown-item`. The same count sent again: the first answer, no second movement. A sale stamped 08:04 by the
   till's clock does not count as after; one stamped 08:06 does. The tablet's clock ten minutes fast
   (`clock_ahead_ms: 600000`): a correction is made now, then a count whose line was counted at "now
   plus 8 minutes" by the tablet's clock (2 minutes before the correction, in truth) is completed, and
@@ -102,6 +112,11 @@ by the Cashier with `approved_by` a Stock person (done).
   test) is not sent; an open one of the same age is. The restaurant's pull has none of the six keys.
   `TS-Other` is sent nothing of `TS-Probe`'s. Run with `KEEP_PULL=<file>` the suite writes the shop's
   pull to that file, for Task 4's check on the emulator.
+- [ ] **Two at once.** A second tap can arrive while the first is still being written (the answer was
+  slow, not lost). On two connections, as `db/tests/stock-locks.test.cjs` holds one transaction open
+  while another runs: the same new supplier sent on both, and the same new order sent on both. The
+  second waits, then answers done; there is one row, and neither is answered `conflict` or
+  `name-taken`.
 - [ ] **What must not move.** `node db/tests/purchase-orders.test.cjs`, `stock-counts.test.cjs`,
   `stock-adjust.test.cjs`, `till-categories-stock.test.cjs`, `till-setup.test.cjs`,
   `till-requests.test.cjs`, `pull-pages.test.cjs`, `retail-till.test.cjs`, `shop-pages.test.cjs` pass
@@ -110,6 +125,16 @@ by the Cashier with `approved_by` a Stock person (done).
   fixtures.
 
 ### Task 2: the migration (`db/migrations/0092_till_stock.sql`)
+
+Asked of dev on 2026-10-10: all eight tables the pull will read (`suppliers`, `purchase_orders`,
+`purchase_order_lines`, `deliveries`, `delivery_lines`, `stock_counts`, `stock_count_lines`,
+`stock_movements`) have `trg_touch`, an index on `(tenant_id, server_seq)` and no row without a
+`server_seq`. So nothing is backfilled and no index is added.
+
+Every function here that saves under an id the tablet made (`push_supplier_save`, `po_save_as`,
+`count_from_till`) first takes `pg_advisory_xact_lock(hashtextextended(<id>::text, 0))`, as
+`delivery_receive` does: a second send that arrives while the first is still running waits for it and
+then finds its row, instead of colliding on the key.
 
 - `alter table stock_counts add column if not exists clock_ahead_ms integer not null default 0`.
 - `stock_moved_since_at(p_tenant, p_store, p_item, p_variant, p_since timestamptz, p_since_server
@@ -123,9 +148,11 @@ by the Cashier with `approved_by` a Stock person (done).
   answered with what was written (`already: true`); else checks the store, the scope kind, the title
   (as `count_start` works it out; a brand's is `scope_text`), `clock_ahead_ms` within a day, at least
   one line; takes `next_doc_number(p_tenant, 'count')`; inserts the count with the id given and
-  `clock_ahead_ms`; inserts **exactly the lines given** (`stock_line_ok` on each, `variant_id` through
-  `nullif(..., '')`, `counted_at` as sent, `counted_by` the person); then `count_complete` with
-  `uncounted`. It never reads `stock_on_hand`.
+  `clock_ahead_ms`; inserts **exactly the lines given** (`variant_id` through `nullif(..., '')`,
+  `counted_at` as sent, `counted_by` the person); then `count_complete` with `uncounted`. It never
+  reads `stock_on_hand`. `stock_line_ok` is asked of every line that is not left out. A left-out line
+  is not checked, and one whose product or variant is gone is not written at all: leaving a line out
+  is the way past a product removed in the back office while the shop was being counted.
 - `po_save_as(p_tenant, p_emp, p_id uuid, p_store, p_supplier, p_expected date, p_note, p_lines)`: no
   order of this client with that id: a new draft with that id, as `po_save` makes one; otherwise
   `po_save` on it.
@@ -244,9 +271,7 @@ data class StockCountLineEntity(val count_id: String, val item_id: String, val v
   the debug build takes a page of a pull with no network (`DEMO_PULL` in `DemoReceiver`, which reads
   the page as dev sends it), and `db/scripts/read-till-state.cjs` shows how to copy the till's database
   off an emulator and open it with `node:sqlite`.
-- [ ] After Task 5, on my emulator: a page of dev's pull for the suite's shop (kept from Task 1 as a
-  file, with one of each new row) is fed in and the eight tables read back hold it; the same order fed
-  again with one line has one line; `variant_id` null arrived as `""`. Commit.
+- [ ] The debug app builds. Commit. (What the applier does with a real page is seen in Task 5.)
 
 ### Task 5: the made-up shop has stock papers (`android/app/src/debug/assets/demo-shop.json`, `android/app/src/debug/java/com/restopos/debug/DemoReceiver.kt`)
 
@@ -254,7 +279,9 @@ data class StockCountLineEntity(val count_id: String, val item_id: String, val v
   no order), `movements` (a sale, a delivery, a correction), and on its items a `supplier`, and on two
   of them a `reorder_point` below what they hold and above.
 - The receiver writes them through `StockDao` with the shop's own ids, and the levels' reorder points.
-- [ ] Debug build compiles. Commit with Task 6.
+- [ ] Debug build compiles. On my emulator: the page of dev's pull kept in Task 1 (`KEEP_PULL`) is fed
+  in with `DEMO_PULL` and the eight tables, read back off the emulator, hold it; the same order fed
+  again with one line has one line; a `variant_id` that was null arrived as `""`. Commit.
 
 ---
 

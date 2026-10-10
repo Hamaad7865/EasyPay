@@ -106,6 +106,11 @@ suspend fun receive(d: DeliveryForm.Delivery, approver: StaffMember? = null): Re
 
 - A draft is written to `stock_drafts` on every change of it and dropped when its save is answered
   done. The ids in it were made when it was begun, so a second try sends the same ones.
+- Signing the tablet out empties its database (`MainActivity.kt`, `session.clear()` then
+  `db.clearAllTables()`), drafts included. Where Settings says what signing out does
+  (`feature/settings/SettingsScreen.kt`, beside the outbox's `pending`), a kept draft is named: "An
+  order you were writing will be lost." It does not hold the sign-out back; plan 3 holds it back for
+  an open count.
 - [ ] `StockDraftsTest`: both round trips with a variant, no variant, a note with a quote and a line
   break; garbage reads as none. Fail, write, pass. All unit tests pass. Commit.
 
@@ -124,7 +129,10 @@ suspend fun receive(d: DeliveryForm.Delivery, approver: StaffMember? = null): Re
   (name and variant, quantity, cost, line value, Remove), the totals, and the keys **Add what is low**
   (`PoFill.low`; a toast says how many were added, or that nothing is low), **Save as a draft**,
   **Send**; on the right `ProductPane`. Send saves, then sends: if the second step fails the order is a
-  draft on the server and the screen says so.
+  draft on the server and the screen says so. A second tap of Send after its answer was lost finds the
+  order sent already, and the save step is refused `not-draft`: within Send that refusal means "it is
+  no longer a draft", so the till goes on to `po.send`, which answers done. Only Save as a draft shows
+  `not-draft` to the person.
 - A draft of the server's opened here becomes the tablet's draft with the same id.
 - An order's record: the lines with ordered, received and still due; **Receive** for a waiting one
   (hands `DeliveryForm.fromOrder` to Task 5's screen); **Cancel order** behind a confirmation while

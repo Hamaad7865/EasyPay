@@ -44,6 +44,10 @@ object CountBook {
     data class Row(val line: Line, val expected: Int, val diff: Int?)   // diff null: not counted
     fun review(lines: List<Line>, levelNow: (Stock) -> Int): List<Row>  // counted: against what it held when counted; not counted: what it holds now
     fun totals(rows: List<Row>): Triple<Int, Int, Int>              // lines that differ, units over, units short
+    // The lines the server would refuse (not left out, and the product is gone, no longer counted, or names a variant that is gone),
+    // so that the review can name them and offer to leave them out.
+    fun gone(lines: List<Line>, items: Map<String, ItemEntity>, counted: (ItemEntity) -> Boolean, variantsOf: (String) -> List<ItemVariantEntity>): List<Line>
+    fun leaveOutAll(lines: List<Line>, these: List<Line>): List<Line>
     fun refused(code: String?): String   // nothing-to-count, bad-scope, bad-uncounted, unknown-store, unknown-item, not-counted, pick-variant, unknown-line, forbidden, conflict, unknown-op, null, else
 }
 // added to StockPayloads. Moments go as java.time.Instant.ofEpochMilli(ms).toString() ("2026-10-10T08:05:00Z");
@@ -59,7 +63,9 @@ fun countComplete(id: String, store: String, kind: String, scopeId: String?, sco
   twice is 2000 with the second moment and the second level; `add` of a product outside the count
   joins it; `set` to 0 is counted at nothing; `clear`; `leaveOut` and back; `progress` ignores what is
   left out; `review` of a line counted 9000 when the tablet held 10000 is -1000 whatever it holds now,
-  and of an uncounted line shows what it holds now and no difference; `totals`; every refusal;
+  and of an uncounted line shows what it holds now and no difference; `totals`; `gone` for a removed
+  product, one no longer counted and a removed variant, and not for a line already left out;
+  `leaveOutAll`; every refusal;
   `countComplete` for the fixture's count equals
   `../../db/tests/fixtures/till-stock/count-complete.json`. Fail, write, pass. Commit.
 
@@ -96,10 +102,18 @@ suspend fun completeCount(countId: String, uncounted: String, approver: StaffMem
 - Each change reads the count's lines, applies `CountBook`, and writes the line back with the level the
   tablet holds (`RetailDao.levelsOf`), in one transaction.
 - `completeCount`: `drainOutbox` first; anything but `Done` fails with "The sales this till is holding
-  have to go up first. Complete the count when the tablet is online."; then
+  have to go up first. Complete the count when the tablet is online."; then one call that answers with
+  the server's clock and touches no database (`api.latestTill()`, the update check), because
+  `api.clockAhead` is empty after the app was restarted and nothing has been sent since: a count must
+  not go up with a difference of 0 that was never measured, so no answer is "needs a connection"; then
   `ask("count.complete", CountBook::refused, StockPayloads.countComplete(...))` with
-  `api.clockAhead.value ?: 0`; done: the tablet's row is marked `completed`, and the sync that `ask`
-  starts brings the server's count and lines over them.
+  `api.clockAhead.value`; done: the tablet's row is marked `completed`, and the sync that `ask` starts
+  brings the server's count and lines over them.
+- **Signing out is held back while this tablet has an open count**, in the place and in the way it is
+  held back while the outbox is not empty (find it from `pending` in
+  `feature/settings/SettingsScreen.kt`; the wipe itself is `MainActivity.kt`, `db.clearAllTables()`):
+  "A stock count is open on this tablet. Complete it or throw it away first." A count that exists
+  nowhere else must not vanish with a sign-out.
 - [ ] Compiles; all unit tests pass. Commit with Task 4.
 
 ### Task 4: Counts (`feature/stock/Counts.kt`, `feature/stock/Counting.kt`, `feature/stock/StockScreen.kt`, `feature/settings/SettingsScreen.kt`)
@@ -120,7 +134,10 @@ suspend fun completeCount(countId: String, uncounted: String, approver: StaffMem
   someone who may see costs: difference times the level's average cost); how many match; the lines
   nobody counted, with the choice **Leave them as they are** or **Set them to nothing**; one sentence,
   "Sales made on another till since its last sync are not in these figures; the server works the count
-  out again with them."; **Complete the count**.
+  out again with them."; **Complete the count**. After a refusal of `unknown-item`, `not-counted`,
+  `pick-variant` or `unknown-line` the tablet syncs, and the review names the lines `CountBook.gone`
+  finds ("Polo shirt M was removed in the back office") with one key, **Leave these out and
+  complete**: the server takes a count whose left-out lines name products that are gone.
 - A finished count's record, wherever it was made: its lines with expected, counted and difference as
   the server wrote them.
 - The tab's "Coming with the next build" text is removed for Counts.
