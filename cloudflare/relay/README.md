@@ -26,13 +26,16 @@ test/flow.mjs        the whole exchange, asserted, against the Worker running he
   id, sixteen letters and digits made once by EasyPay's server; `<table>` is
   the table's id. Neither is a secret. Opening the address serves
   `public/index.html` without running the Worker at all.
-- **A till** connects to `/api/<store>/till` with the credential it already
-  syncs with (`Authorization: Device ...`). The Worker hands that to EasyPay's
-  till service (`TILL_API`, `GET /guest/pass`) and is told which store the
-  till is of and whether table ordering is on for it. So the relay keeps no
-  secret, a tablet that was deactivated is turned away here as it is there,
-  and nobody else can publish a menu. A till connected for more than twelve
-  hours is told to come back and is asked about again.
+- **A till** connects to `/api/till` with the credential it already syncs
+  with (`Authorization: Device ...`). It does not say which store it is of:
+  the Worker hands the credential to EasyPay's till service (`TILL_API`,
+  `GET /guest/pass`, migration 0093), is told which store the till belongs
+  to and whether table ordering is on for it, and takes the till to that
+  store's room. So the relay keeps no secret, a tablet that was deactivated
+  is turned away here as it is there, and nobody else can publish a menu or
+  reach another store's room. The first thing a till is told is its store's
+  public id. A till connected for more than twelve hours is told to come
+  back and is asked about again.
 - **Over its socket** the till publishes its menu, is handed each order, and
   answers it. It says `ping` to keep the line and is answered `pong` without
   the room waking: whoever reads the socket skips `pong`.
@@ -75,14 +78,20 @@ says "decline" is declined, and `--never` leaves orders waiting. Then:
 
 ```
 node --test cloudflare/relay/src/rules.test.mjs     9 tests of the rules
-node cloudflare/relay/test/flow.mjs                 15 steps against the Worker running here
+node cloudflare/relay/test/flow.mjs                 16 steps against the Worker running here
 ```
+
+And with the real service in the stand-in's place: the `relay-dev` launch
+entry runs a second copy on 8790 whose `TILL_API` is the dev branch's till
+service, and `RELAY=http://localhost:8790 node db/tests/api-guest-pass.test.cjs`
+makes a till and its key in the dev database and connects with it (a made-up
+key, the switch off and a deactivated till are all turned away).
 
 ## Putting it live
 
-Not done, and only on the owner's word. It needs, first, the till service's
-`GET /guest/pass` on production and a store's public id (the next piece of
-the plan); then `TILL_API` in `wrangler.toml` set to the production till
+Not done, and only on the owner's word. It needs, first, migration 0093
+and the till service's `GET /guest/pass` on production (they are on the dev
+branch); then `TILL_API` in `wrangler.toml` set to the production till
 service's address; then `wrangler deploy` from this folder, which creates
 the Worker and the address `order.easypaypos.com` in the easypaypos.com
 zone. The address cannot change once cards are printed.

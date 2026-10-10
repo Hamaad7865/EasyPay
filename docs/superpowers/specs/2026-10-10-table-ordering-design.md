@@ -40,9 +40,11 @@ table's code, so that an order cannot be sent to a table from a photograph of
 another's card.
 
 **Whose till it is.** A till gives the relay the credential it already syncs
-with, and the relay asks EasyPay's till service, once at each connection,
-which store that till is of and whether table ordering is on for it
-(`GET /guest/pass`; the database is awake then anyway, for the till's sync).
+with and does not say which store it is of. The relay asks EasyPay's till
+service, once at each connection, which store that till belongs to and
+whether table ordering is on for it (`GET /guest/pass`; the database is awake
+then anyway, for the till's sync), takes the till to that store's room, and
+tells it the store's public id.
 So the relay keeps no secret and nothing is set by hand; a tablet that was
 deactivated is turned away here as it is there, and its cards go on working;
 Premium and the switch are the server's word, not the tablet's; and nobody
@@ -111,8 +113,9 @@ cashier; anything on the public site about it, until it has been seen working.
 ## Order of work
 
 1. The relay and the guest's page, tried in a browser against a stand-in till.
-2. The server: the store's public id, the switch (one migration), and the
-   till service's `GET /guest/pass`.
+2. The server: the store's public id (migration 0093) and the till
+   service's `GET /guest/pass`. The switch is a key of the POS settings the
+   back office already saves.
 3. The till: the connection, the menu it publishes, the requests and accepting.
 4. The back office: the switch and the cards.
 

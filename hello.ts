@@ -409,6 +409,38 @@ app.delete("/devices/key", async (c) => {
   }
 });
 
+// Whose till is this, and may its tables order? Asked by the relay that
+// carries a guest's order from the code on their table to the restaurant's
+// till (cloudflare/relay, order.easypaypos.com), once each time a till
+// connects to it, with the key the till itself gave it. So the relay keeps no
+// secret of its own, a till that was deactivated is turned away there as it
+// is here (403, as on the sync routes), and Premium and the back office's
+// switch are this service's word, not the tablet's. A login is not taken:
+// only a till has a store. The answer is guest_pass's (migration 0093):
+// { store: the store's public id, ordering: true or false }.
+app.get("/guest/pass", async (c) => {
+  if (!(c.req.header("authorization") ?? "").toLowerCase().startsWith("device ")) return c.json({ error: "a till asks with its own key" }, 401);
+  let auth: Authed;
+  try {
+    auth = await requireTill(c.req.raw);
+  } catch (res) {
+    return res as Response;
+  }
+  const storeId = auth.storeId;
+  if (!storeId) return c.json({ error: "a till asks with its own key" }, 401);
+  try {
+    const out = await asTenant<{ r: { store: string; ordering: boolean } | null }>(auth.tenantId, (q) =>
+      q(`select guest_pass($1::uuid) as r`, [storeId]).then((r) => r.rows),
+    );
+    const pass = out[0]?.r;
+    if (!pass) return c.json({ error: "this till's store is not known" }, 403);
+    return c.json({ store: pass.store, ordering: pass.ordering === true });
+  } catch (err) {
+    console.error("guest pass failed:", (err as Error).message);
+    return c.json({ error: "the pass could not be given" }, 503);
+  }
+});
+
 // Push contract for the Android outbox worker (spec 5.4). The employee comes
 // from the JWT lookup, never the body. Per-op results always 200; only
 // batch-level failures (bad shape, unknown employee) are 4xx.

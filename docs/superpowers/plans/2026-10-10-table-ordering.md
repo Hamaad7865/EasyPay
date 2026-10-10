@@ -24,18 +24,27 @@ without the owner's word.
    a group that must be chosen, the order, sent, confirmed, declined, a sold
    out dish, no till connected.
 
-## Piece 2: the server (one migration, 0092)
+## Piece 2: the server (migration 0093). DONE on dev
 
 `stores.guest_id` (sixteen letters and digits, random, for good) made for
-every store and for new ones, handed to that store's tills in a pull and read
-by the back office for the cards; `pos_settings.data.tableOrdering` set by
-the back office's save; the till service's `GET /guest/pass` (a till's own
-credential in, `{store, ordering}` out: ordering is Premium, a restaurant and
-the switch); a suite on dev.
+every store and for new ones, read by the back office for the cards;
+`guest_pass(store)` and the till service's `GET /guest/pass` (a till's own
+key in, `{store, ordering}` out: ordering is Premium or a trial, a
+restaurant, an account that is not suspended, and
+`pos_settings.data.tableOrdering`, which the back office's save will set in
+piece 4). Suites `table-ordering` (the database) and `api-guest-pass` (the
+deployed dev service, and with RELAY the relay asking it). The number is 0093
+because another piece of work took 0092 the same evening; 0093 touches
+neither `sync_pull` nor `sync_push`, which 0092 redefines. A till connects
+to `/api/till` and is told its store's id by the relay, so nothing new has to
+reach a till in a pull.
 
 ## Piece 3: the till
 
-Room 14 (`guest_orders`); the least-and-most rule taken out of
+The till's database is at 14 with the stock tools (another piece of work,
+uncommitted when this was written): `guest_orders` is the version after
+theirs, and this piece waits until their change to the database's files has
+landed. The least-and-most rule taken out of
 `OrderScreen.kt` into one tested function; `core/guest/` (the snapshot from
 Room, the connection with back-off, the requests, accepting into lines); the
 count on Tables, the request's sheet, the chime; Help. JVM tests first, then

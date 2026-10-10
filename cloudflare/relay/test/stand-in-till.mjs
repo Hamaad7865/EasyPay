@@ -20,7 +20,7 @@ const items = new Map(menu.items.map((i) => [i.id, i]));
 const opts = new Map(menu.groups.flatMap((g) => g.opts.map((o) => [o.id, o])));
 
 function connect() {
-  const ws = new WebSocket(relay.replace(/^http/, "ws") + `/api/${store}/till`, { headers: { authorization: proofFor(store) } });
+  const ws = new WebSocket(relay.replace(/^http/, "ws") + "/api/till", { headers: { authorization: proofFor(store) } });
   const say = (o) => ws.send(JSON.stringify(o));
   ws.addEventListener("open", () => {
     console.log("till: connected");

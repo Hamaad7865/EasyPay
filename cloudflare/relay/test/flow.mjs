@@ -35,8 +35,8 @@ function line(url, proof) {
   });
   return { ws, opened, closed, next, say: (o) => ws.send(JSON.stringify(o)), quiet: () => got.length === 0 };
 }
-const tillUrl = `${wsBase}/api/${store}/till`;
-const till = () => line(tillUrl, proofFor(store));
+const tillUrl = `${wsBase}/api/till`;
+const till = (of = store) => line(tillUrl, proofFor(of));
 
 let n = 0;
 const step = async (what, run) => { await run(); console.log("ok  " + (++n) + ". " + what); };
@@ -49,20 +49,20 @@ await step("a store nobody has published for has no menu, and takes no order", a
   assert.equal((await api("/orders/aaaaaaaaaaaa")).status, 404);
 });
 
-await step("only a till EasyPay vouches for, of this store, with ordering on, gets in", async () => {
+await step("only a till EasyPay vouches for, with ordering on, gets in", async () => {
   await assert.rejects(line(tillUrl).opened, "no credential");
   await assert.rejects(line(tillUrl, "Bearer made-up-key-0123456789abcdef0123456789").opened, "not a till's credential");
   await assert.rejects(line(tillUrl, proofFor(store, "bad")).opened, "a till nobody knows");
-  await assert.rejects(line(tillUrl, proofFor(newStore())).opened, "another store's till");
   await assert.rejects(line(tillUrl, proofFor(store, "off")).opened, "ordering switched off");
-  assert.equal((await api("/till", { headers: { authorization: proofFor(store) } })).status, 426, "the right till, but not a socket");
+  await assert.rejects(line(`${wsBase}/api/${store}/till`, proofFor(store)).opened, "a store's room is not reached by naming it");
+  assert.equal((await fetch(`${relay}/api/till`, { headers: { authorization: proofFor(store) } })).status, 426, "the right till, but not a socket");
   assert.equal((await api("/menu/" + T7)).status, 404, "none of them left a menu behind");
 });
 
 let t1 = till();
 await step("the store's till connects and publishes its menu", async () => {
   await t1.opened;
-  assert.deepEqual(await t1.next(), { t: "hello", menu: false, waiting: 0 });
+  assert.deepEqual(await t1.next(), { t: "hello", store, menu: false, waiting: 0 }, "the till is told its store's public id");
   t1.say({ t: "menu", menu: { name: "" } });
   assert.equal((await t1.next()).t, "menu.no");
   t1.say({ t: "menu", menu: demoMenu() });
@@ -171,7 +171,7 @@ await step("with no till listening the menu still shows, and ordering says to as
 await step("a till that comes back is handed what waited, oldest first", async () => {
   t1 = till();
   await t1.opened;
-  assert.deepEqual(await t1.next(), { t: "hello", menu: true, waiting: waiting.length });
+  assert.deepEqual(await t1.next(), { t: "hello", store, menu: true, waiting: waiting.length });
   for (const id of waiting) assert.equal((await t1.next()).order.id, id);
   assert.equal((await menuOf()).open, true);
 });
@@ -186,6 +186,26 @@ await step("with two tills, the one that did not answer is told the order is gon
   assert.deepEqual(await t1.next(), { t: "gone", id: waiting[0], status: "accepted" });
   t2.ws.close();
   await t2.closed;
+});
+
+await step("a till is taken to its own store's room and to no other", async () => {
+  const elsewhere = newStore();
+  const t3 = till(elsewhere);
+  await t3.opened;
+  assert.equal((await t3.next()).store, elsewhere);
+  t3.say({ t: "menu", menu: { ...demoMenu(), name: "Another place" } });
+  await t3.next();
+  assert.equal((await menuOf()).menu.name, "Le Flamboyant", "this store's menu is as its own till published it");
+  assert.equal((await (await fetch(`${relay}/api/${elsewhere}/menu/${T7}`)).json()).menu.name, "Another place");
+  const id = (await (await post({ table: T7, lines: [{ item: "gp", qty: 1 }] })).json()).id;
+  assert.equal((await t1.next()).order.id, id);
+  assert.ok(t3.quiet(), "the other store's till heard nothing of it");
+  t3.say({ t: "answer", id, status: "accepted" });
+  assert.equal((await t3.next()).t, "answer.no", "and cannot answer it");
+  t1.say({ t: "answer", id, status: "accepted" });
+  await t1.next();
+  t3.ws.close();
+  await t3.closed;
 });
 
 await step("a till that says it has stopped taking orders closes the table's ordering", async () => {

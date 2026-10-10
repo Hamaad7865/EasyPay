@@ -3,16 +3,17 @@
 //   GET  /api/<store>/menu/<table>  the menu the till last published, that table's name, and whether orders are taken
 //   POST /api/<store>/orders        an order from a table; answers its id
 //   GET  /api/<store>/orders/<id>   where that order stands; as a WebSocket, told the moment it is answered
-//   GET  /api/<store>/till          a till's WebSocket: it publishes the menu, is handed each order and answers it
+//   GET  /api/till                  a till's WebSocket: it publishes the menu, is handed each order and answers it
 //
-// <store> is the store's public id, made by EasyPay's server. A till is one
-// of that store's when EasyPay's till service says so: the relay hands it the
-// credential the till already syncs with and is told which store it belongs
-// to and whether table ordering is on for it (TILL_API, `GET /guest/pass`).
-// So the relay keeps no secret, a tablet that is deactivated is turned away
-// here as it is there, and nobody else can publish a menu.
+// <store> is the store's public id, made by EasyPay's server. A till does not
+// say which store it is of: EasyPay's till service does. The relay hands it
+// the credential the till already syncs with and is told which store that
+// till belongs to and whether table ordering is on for it (TILL_API,
+// `GET /guest/pass`), and takes the till to that store's room. So the relay
+// keeps no secret, a tablet that is deactivated is turned away here as it is
+// there, and nobody else can publish a menu or reach another store's room.
 import { DurableObject } from "cloudflare:workers";
-import { LIMITS, readMenu, readOrder, forPhones } from "./rules.js";
+import { LIMITS, isStoreId, readMenu, readOrder, forPhones } from "./rules.js";
 
 const json = (body, status = 200) =>
   new Response(typeof body === "string" ? body : JSON.stringify(body), {
@@ -40,32 +41,45 @@ async function bodyText(request, most) {
   return new TextDecoder().decode(all);
 }
 
-// Is this till one of that store's, and is table ordering on for it? EasyPay's
-// till service is asked, with the till's own credential. Answers null when it
-// is, or what to tell the till.
-async function turnedAway(request, env, store) {
+// Which store is this till of, and is table ordering on for it? EasyPay's
+// till service is asked, with the till's own credential. Answers the store's
+// public id, or what to tell the till.
+async function vouchedFor(request, env) {
+  const no = (answer) => ({ no: answer });
   const proof = request.headers.get("authorization") || "";
-  if (!/^Device\s+\S{16,300}$/i.test(proof)) return json({ error: "a till gives its own credential" }, 401);
+  if (!/^Device\s+\S{16,300}$/i.test(proof)) return no(json({ error: "a till gives its own credential" }, 401));
   const api = String(env.TILL_API || "").replace(/\/$/, "");
-  if (!api) return json({ error: "the relay has not been told where EasyPay's till service is" }, 503);
+  if (!api) return no(json({ error: "the relay has not been told where EasyPay's till service is" }, 503));
   let r;
-  try { r = await fetch(api + "/guest/pass", { headers: { authorization: proof } }); } catch { return json({ error: "EasyPay's till service did not answer" }, 503); }
-  if (r.status === 401 || r.status === 403) return json({ error: "this till is not known, or has been switched off" }, 401);
-  if (!r.ok) return json({ error: "EasyPay's till service did not answer" }, 503);
+  try { r = await fetch(api + "/guest/pass", { headers: { authorization: proof } }); } catch { return no(json({ error: "EasyPay's till service did not answer" }, 503)); }
+  if (r.status === 401 || r.status === 403) return no(json({ error: "this till is not known, or has been switched off" }, 401));
+  if (!r.ok) return no(json({ error: "EasyPay's till service did not answer" }, 503));
   const pass = await r.json().catch(() => null);
-  if (!pass || pass.store !== store) return json({ error: "this till belongs to another store" }, 403);
-  if (pass.ordering !== true) return json({ error: "table ordering is not switched on for this store", code: "off" }, 403);
-  return null;
+  if (!pass || !isStoreId(pass.store)) return no(json({ error: "EasyPay's till service did not answer" }, 503));
+  if (pass.ordering !== true) return no(json({ error: "table ordering is not switched on for this store", code: "off" }, 403));
+  return { store: pass.store };
 }
 
 export default {
   async fetch(request, env) {
-    const { pathname } = new URL(request.url);
-    const m = /^\/api\/([a-z2-7]{16})\/(menu|orders|till)(?:\/([A-Za-z0-9_-]{1,64}))?$/.exec(pathname);
+    const url = new URL(request.url);
+    const { pathname } = url;
     // A body is always read to its end before anything is answered, whatever
     // it holds: an answer sent while one is still arriving stopped the local
     // server. What is over an order's size is read and thrown away.
     const drop = async (answer) => { await bodyText(request, 0); return answer; };
+
+    // A till: EasyPay says whose it is, and it is taken to that store's room.
+    if (pathname === "/api/till") {
+      if (request.method !== "GET") return drop(json({ error: "not found" }, 404));
+      if (request.headers.get("upgrade") !== "websocket") return json({ error: "a till connects with a WebSocket" }, 426);
+      const till = await vouchedFor(request, env);
+      if (till.no) return till.no;
+      url.pathname = `/api/${till.store}/till`;
+      return env.ROOMS.get(env.ROOMS.idFromName(till.store)).fetch(new Request(url, request));
+    }
+
+    const m = /^\/api\/([a-z2-7]{16})\/(menu|orders)(?:\/([A-Za-z0-9_-]{1,64}))?$/.exec(pathname);
     if (!m) return drop(json({ error: "not found" }, 404));
     const [, store, what, id] = m;
     const room = env.ROOMS.get(env.ROOMS.idFromName(store));
@@ -77,13 +91,6 @@ export default {
       return room.fetch(new Request(request.url, { method: "POST", body: text }));
     }
     if (request.method !== "GET") return drop(json({ error: "not found" }, 404));
-    if (what === "till") {
-      if (id) return json({ error: "not found" }, 404);
-      if (request.headers.get("upgrade") !== "websocket") return json({ error: "a till connects with a WebSocket" }, 426);
-      // before a room is reached: EasyPay says whose till this is
-      const no = await turnedAway(request, env, store);
-      if (no) return no;
-    }
     return room.fetch(request);
   },
 };
@@ -157,15 +164,17 @@ export class Room extends DurableObject {
 
   async fetch(request) {
     const { pathname } = new URL(request.url);
-    const [, , , what, id] = pathname.split("/");
+    const [, , store, what, id] = pathname.split("/");
     const socket = request.headers.get("upgrade") === "websocket";
 
+    // only the Worker sends a till here, once EasyPay has said whose it is
     if (what === "till") {
       const [client, server] = Object.values(new WebSocketPair());
       this.ctx.acceptWebSocket(server, ["till"]);
       server.serializeAttachment({ since: Date.now() });
       const waiting = this.inUse() ? this.sql.exec("select id, tbl, body, at, status, reason from orders where status = 'waiting' and at >= ? order by at", Date.now() - LIMITS.staleMs).toArray() : [];
-      server.send(JSON.stringify({ t: "hello", menu: this.kept("menu") !== null, waiting: waiting.length }));
+      // the till is told its store's public id: it is the address on its table cards
+      server.send(JSON.stringify({ t: "hello", store, menu: this.kept("menu") !== null, waiting: waiting.length }));
       for (const row of waiting) server.send(JSON.stringify(this.forTill(row)));
       return new Response(null, { status: 101, webSocket: client });
     }

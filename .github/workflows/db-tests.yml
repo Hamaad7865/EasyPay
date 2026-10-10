@@ -89,12 +89,12 @@ jobs:
       # Every suite that needs only the database, one at a time. Left out:
       # the ones that make real accounts on the sign-in service (api6,
       # signup-lock, platform-auth) and the ones that call a deployed till API
-      # (api-shop-gate, api-till-activity, api-till-key): a throwaway branch
+      # (api-shop-gate, api-till-activity, api-till-key, api-guest-pass): a throwaway branch
       # has neither. truncate runs last: it empties every table of the branch.
       - name: suites
         if: steps.key.outputs.have == 'yes'
         run: |
-          skip=" guard truncate api6 signup-lock platform-auth api-shop-gate api-till-activity api-till-key "
+          skip=" guard truncate api6 signup-lock platform-auth api-shop-gate api-till-activity api-till-key api-guest-pass "
           failed=""
           for f in db/tests/*.test.cjs; do
             s=$(basename "$f" .test.cjs)
