@@ -55,8 +55,21 @@ class AuthViewModel @Inject constructor(
     private val auth: AuthClient,
     private val api: ApiClient,
     private val session: SessionStore,
+    private val backups: com.restopos.core.data.Backup,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
+    // ---- a tablet filled from a backup (core/data/Backup) ----
+    // The backup that was read and waits for a yes, and what was said of one that could not be.
+    val backup = MutableStateFlow<com.restopos.core.data.BackupFile.Note?>(null)
+    val backupSaid = MutableStateFlow<String?>(null)
+    fun readBackup(from: android.net.Uri) = viewModelScope.launch {
+        backupSaid.value = "Reading the backup…"
+        backups.read(from).fold({ backup.value = it; backupSaid.value = null }, { backupSaid.value = it.message ?: "That file could not be read." })
+    }
+    fun leaveBackup() { backup.value = null; backups.forget() }
+    // the app starts again with what the backup holds
+    fun useBackup() { if (backup.value != null) backups.restart() }
+
     private val _state = MutableStateFlow<AuthUiState>(AuthUiState.Form)
     val state: StateFlow<AuthUiState> = _state
 

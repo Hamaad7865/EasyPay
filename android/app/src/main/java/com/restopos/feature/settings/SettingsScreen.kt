@@ -160,6 +160,7 @@ class SettingsViewModel @Inject constructor(
     private val approvals: Approvals,
     private val screenLink: com.restopos.core.kitchen.ScreenLink,
     private val door: com.restopos.core.data.SetupDoor,
+    private val backups: com.restopos.core.data.Backup,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     private fun <T> Flow<T>.held(initial: T): StateFlow<T> = stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), initial)
@@ -386,6 +387,17 @@ class SettingsViewModel @Inject constructor(
     fun printShift(s: ShiftEntity) = run { cash.printShift(s).fold({ "Cash drawer report sent to the printer." }, { it.message }) }
     fun printDay(row: DayCloseEntity) = run { cash.printZOf(row).fold({ "Day closing no. ${row.number} sent to the printer." }, { it.message }) }
 
+    // ---- a backup of this tablet, saved to a file the owner keeps ----
+    val lastBackup = session.lastBackup.held(null)
+    suspend fun backupName(): String = backups.name(session.businessName())
+    fun backup(to: android.net.Uri) = viewModelScope.launch {
+        com.restopos.core.ui.Toaster.say("Saving the backup…")
+        backups.save(to).fold(
+            { bytes -> com.restopos.core.ui.Toaster.say("Backup saved (${(bytes + 1023) / 1024} KB). Keep the file somewhere that is not this tablet.") },
+            { com.restopos.core.ui.Toaster.say(it.message ?: "The backup could not be saved there.") },
+        )
+    }
+
     // "Connect to the cloud", on a tablet that works on its own: the server
     // is asked once whether the business has been made Premium. It has: the
     // tablet syncs from now on, and what it kept goes up by itself, with the
@@ -527,7 +539,15 @@ fun SettingsScreen(
         close = { if (shift == null) vm.say("The day is not open.") else onClosePeriod() },
     )
     val failed = jobs.count { it.error != null }
+    val aloneNow by vm.alone.collectAsState()
+    val lastBackupAt by vm.lastBackup.collectAsState()
     val standing = buildList {
+        // the only copy of an offline business is this tablet, unless a backup was saved
+        if (aloneNow) {
+            val days = lastBackupAt?.let { (System.currentTimeMillis() - it) / 86_400_000L }
+            if (days == null) add(Standing("No backup of this tablet yet", "It works on its own: if the tablet breaks, what it holds is gone. Save a backup to a USB stick or a Drive.", "Support") { page = Page.Support })
+            else if (days >= 7) add(Standing("The last backup is $days days old", "Sales since then are only on this tablet. Save a new backup.", "Support", soft = true) { page = Page.Support })
+        }
         if (needsSignIn) add(Standing("This tablet cannot sync", "Its login was signed out or switched off. Sales are saved here until someone signs in.", "Sign in", onClick = onSignIn))
         if (rejected > 0) add(Standing("$rejected changes were refused by the server", "They are kept on this tablet until someone has looked at them.", "Review", onClick = onRejected))
         if (pending > 0 && !needsSignIn) add(Standing("$pending changes are waiting to be sent", "They go as soon as there is a connection.", "Sync now", soft = true) { vm.sync() })
@@ -1275,6 +1295,10 @@ private fun SupportPage(vm: SettingsViewModel, shop: Boolean, network: String, o
     val lastPull by vm.lastPull.collectAsState()
     val alone by vm.alone.collectAsState()
     val kept by vm.kept.collectAsState()
+    val lastBackup by vm.lastBackup.collectAsState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // the file is saved where the owner picks: a USB stick, the tablet's Downloads, a Drive
+    val saveTo = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")) { uri -> if (uri != null) vm.backup(uri) }
 
     Note("What to have at hand when asking for help with this till.")
     Panel {
@@ -1284,6 +1308,7 @@ private fun SupportPage(vm: SettingsViewModel, shop: Boolean, network: String, o
         Figure("Version", "EasyPay ${BuildConfig.VERSION_NAME}")
         Figure("Tablet", "${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}")
         Figure("Network", network)
+        Figure("Last backup saved", lastBackup?.let { stamp.format(Date(it)) } ?: "Never")
         if (alone) {
             Figure("Plan", "Works on its own (offline)")
             Figure("Changes kept for the cloud", kept.toString())
@@ -1296,8 +1321,13 @@ private fun SupportPage(vm: SettingsViewModel, shop: Boolean, network: String, o
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         if (alone) Action("Connect to the cloud") { vm.connect() }
         else if (needsSignIn) Action("Sign in", primary = true, onClick = onSignIn) else Action("Sync now") { vm.sync() }
+        Action("Save a backup", primary = alone) { scope.launch { saveTo.launch(vm.backupName()) } }
         Action(if (rejected > 0) "Refused changes ($rejected)" else "Refused changes", onClick = onRejected)
     }
+    Note(
+        if (alone) "A backup is one file with everything this tablet holds: the products, the staff, every sale. This tablet works on its own, so that file is the only copy besides the tablet itself. Save one often, on a USB stick or a Drive, and keep it away from the tablet. A new tablet is filled from it at its first screen, under Restore from a backup."
+        else "A backup is one file with everything this tablet holds. A tablet that is not set up yet can be filled from it at its first screen, under Restore from a backup.",
+    )
     Heading("Sign out of this tablet")
     Panel {
         Row(verticalAlignment = Alignment.CenterVertically) {

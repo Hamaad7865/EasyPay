@@ -142,6 +142,28 @@ fun AuthScreen(
                 QuietLink("Set up as a kitchen screen", enabled = !busy, onClick = onKitchen)
                 T("For a tablet in the kitchen: it shows the orders as they are sent. It needs no login.", 12.sp, 500, V.Text3, lines = 2, align = TextAlign.Center, height = 17.sp)
             }
+            // A tablet that replaces one that broke: filled from the backup its owner saved. Offered only
+            // here, where the tablet holds nothing yet, so a backup never writes over a tablet's sales.
+            val waiting by vm.backup.collectAsStateWithLifecycle()
+            val said by vm.backupSaid.collectAsStateWithLifecycle()
+            val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.readBackup(uri) }
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(V.Well).padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                val found = waiting
+                if (found == null) {
+                    QuietLink("Restore from a backup", enabled = !busy) { pick.launch(arrayOf("*/*")) }
+                    T(said ?: "For a tablet that replaces another: pick the backup file its owner saved. It needs no login.", 12.sp, 500, if (said != null) V.AmberText else V.Text3, lines = 3, align = TextAlign.Center, height = 17.sp)
+                } else {
+                    T("Backup of " + found.business.ifBlank { "a till" } + ", saved " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(found.madeAt)), 14.sp, 700, lines = 2, align = TextAlign.Center)
+                    T("This tablet becomes that till, with everything the backup holds. Sales made on the old tablet after the backup was saved are not in it.", 12.sp, 500, V.Text3, lines = 3, align = TextAlign.Center, height = 17.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        QuietLink("Not this one", enabled = true) { vm.leaveBackup() }
+                        QuietLink("Restore it", enabled = true) { vm.useBackup() }
+                    }
+                }
+            }
         }
     }
 }
