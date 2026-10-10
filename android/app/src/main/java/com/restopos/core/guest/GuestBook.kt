@@ -71,7 +71,7 @@ class GuestBook @Inject constructor(
             is Checked.Ready -> c
         }
         tickets.openTable(ready.table)
-        for (l in ready.lines) tickets.addItem(l.item.id, l.qty, l.mods, l.note).getOrThrow()
+        for (l in ready.lines) tickets.addItem(l.item.id, l.thousandths, l.mods, l.note).getOrThrow()
         if (db.guest().answer(id, "accepted", null, System.currentTimeMillis()) > 0) kick.now()
         ready.table
     }

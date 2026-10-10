@@ -23,6 +23,10 @@ class MenuBook(
 
 // A line as the cashier is shown it, and as it goes on the table's order.
 data class ReadyLine(val item: ItemEntity, val qty: Int, val mods: List<ModPick>, val note: String?) {
+    // The till writes a line's quantity in thousandths (a shop sells by weight):
+    // two of a dish are 2000. Found by running it: an order accepted with the
+    // guest's plain "2" went onto the table as two thousandths of a dish.
+    val thousandths: Int get() = qty * 1000
     val unit: Long get() = item.price + mods.sumOf { it.price }
     val total: Long get() = unit * qty
 }

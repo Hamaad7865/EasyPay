@@ -4,7 +4,9 @@
 //   Authorization: Device <store>:<word>-anything
 //
 // says the till is of <store>; a word of "bad" is a till nobody knows (401)
-// and "off" a store whose table ordering is switched off. The real service
+// and "off" a store whose table ordering is switched off. A key of the shape a
+// real till has (a device's id and sixty-four hex digits, as the debug build's
+// made-up restaurant is given) is taken for the demo store's. The real service
 // looks the till up in the database (hello.ts); nothing here is a secret.
 //
 //   node test/stand-in-api.mjs        listens on 127.0.0.1:8788
@@ -18,7 +20,9 @@ export function standInApi(port = 8788) {
     const server = http.createServer((req, res) => {
       const say = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
       if (req.method !== "GET" || req.url !== "/guest/pass") return say(404, { error: "not found" });
-      const m = /^Device\s+([a-z2-7]{16}):(\w+)-/.exec(req.headers.authorization || "");
+      const proof = req.headers.authorization || "";
+      if (/^Device\s+[0-9a-f]{8}-[0-9a-f-]{27}:[0-9a-f]{64}$/i.test(proof)) return say(200, { store: "demostoreaaaaaaa", ordering: true });
+      const m = /^Device\s+([a-z2-7]{16}):(\w+)-/.exec(proof);
       if (!m || m[2] === "bad") return say(401, { error: "Unauthorized" });
       say(200, { store: m[1], ordering: m[2] !== "off" });
     });

@@ -89,6 +89,9 @@ class GuestTest {
         assertEquals(listOf("Hot", "Extra rice"), c.lines[0].mods.map { it.name })
         assertEquals(42000L, c.lines[0].unit)
         assertEquals(84000L, c.lines[0].total)
+        // onto the table's order in the till's own measure of a quantity: thousandths
+        assertEquals(2000, c.lines[0].thousandths)
+        assertEquals(1000, c.lines[1].thousandths)
         assertEquals("no onion", c.lines[0].note)
         assertEquals(null, c.lines[1].note)
         assertEquals(93000L, c.total)
