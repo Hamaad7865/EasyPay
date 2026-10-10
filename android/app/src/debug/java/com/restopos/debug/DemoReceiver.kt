@@ -230,18 +230,58 @@ class DemoReceiver : BroadcastReceiver() {
                 ItemEntity(
                     it.str("id")!!, tenant, it.str("category"), it.str("name")!!, it.lng("price"), barcode = it.str("barcode"), sku = it.str("sku"),
                     sold_by = it.str("sold_by") ?: "each", track_stock = it.bool("track_stock"), option_names = it.arr("options").toString(),
+                    cost = it.lng("cost").takeIf { c -> c > 0 }, supplier_id = it.str("supplier"), brand = it.str("brand"),
                 )
             })
             catalog.upsertItemTaxes(items.map { ItemTaxCrossRef(it.str("id")!!, tax.str("id")!!) })
             db.retail().upsertVariants(items.flatMap { i ->
-                i.arr("variants").map { v -> ItemVariantEntity(v.str("id")!!, tenant, i.str("id")!!, v.str("name")!!, v.lng("price"), v.str("sku"), v.str("barcode"), v.arr("values").toString()) }
+                i.arr("variants").map { v -> ItemVariantEntity(v.str("id")!!, tenant, i.str("id")!!, v.str("name")!!, v.lng("price"), v.str("sku"), v.str("barcode"), v.arr("values").toString(), cost = v.lng("cost").takeIf { c -> c > 0 }) }
             })
-            // what the shop holds: a line for each variant, or for the product itself; nothing for what is not counted
+            // what the shop holds: a line for each variant, or for the product itself; nothing for what is not counted.
+            // Each with what it cost and, where the file gives one, the level to order it again at.
+            fun JsonElement.level(k: String): Int? = jsonObject[k]?.jsonPrimitive?.longOrNull?.toInt()
             db.retail().upsertLevels(items.filter { it.bool("track_stock") }.flatMap { i ->
                 val variants = i.arr("variants")
-                if (variants.isEmpty()) listOf(StockLevelEntity(storeId, i.str("id")!!, "", i.lng("stock").toInt()))
-                else variants.map { v -> StockLevelEntity(storeId, i.str("id")!!, v.str("id")!!, v.lng("stock").toInt()) }
+                if (variants.isEmpty()) listOf(StockLevelEntity(storeId, i.str("id")!!, "", i.lng("stock").toInt(), avg_cost = i.lng("cost").toDouble(), reorder_point = i.level("reorder_point"), reorder_qty = i.level("reorder_qty")))
+                else variants.map { v -> StockLevelEntity(storeId, i.str("id")!!, v.str("id")!!, v.lng("stock").toInt(), avg_cost = v.lng("cost").toDouble(), reorder_point = v.level("reorder_point"), reorder_qty = v.level("reorder_qty")) }
             })
+            // a shop's stock papers: who it buys from, what it ordered, what arrived, what moved
+            if (!restaurant) {
+                val stock = db.stock()
+                val now = System.currentTimeMillis()
+                fun ago(e: JsonElement, k: String, unit: Long) = now - e.lng(k) * unit
+                stock.upsertSuppliers(shop.arr("suppliers").map { s ->
+                    com.restopos.core.database.SupplierEntity(
+                        s.str("id")!!, tenant, s.str("name")!!, s.str("contact")?.ifEmpty { null }, s.str("phone")?.ifEmpty { null },
+                        s.str("email")?.ifEmpty { null }, s.str("address")?.ifEmpty { null }, s.str("note")?.ifEmpty { null }, server_seq = 1,
+                    )
+                })
+                shop.arr("orders").forEach { o ->
+                    val at = ago(o, "days_ago", 86_400_000L)
+                    stock.upsertOrders(listOf(com.restopos.core.database.PurchaseOrderEntity(
+                        o.str("id")!!, storeId, o.str("number")!!, o.str("supplier")!!, o.str("status")!!, o.str("expected_on"), o.str("note")?.ifEmpty { null },
+                        shop.arr("staff")[0].str("id"), if (o.str("status") == "draft") null else at, at, at, server_seq = 1,
+                    )))
+                    stock.replaceOrderLines(o.str("id")!!, o.arr("lines").map { l ->
+                        com.restopos.core.database.PurchaseOrderLineEntity(o.str("id")!!, l.str("item")!!, l.str("variant") ?: "", l.lng("qty").toInt(), l.lng("cost"), l.lng("received").toInt())
+                    })
+                }
+                shop.arr("deliveries").forEach { d ->
+                    stock.upsertDeliveries(listOf(com.restopos.core.database.DeliveryEntity(
+                        d.str("id")!!, storeId, d.str("number")!!, d.str("order"), d.str("supplier"), d.str("arrived_on")!!, d.str("invoice_no")?.ifEmpty { null },
+                        d.str("note")?.ifEmpty { null }, d.str("by"), ago(d, "days_ago", 86_400_000L), server_seq = 1,
+                    )))
+                    stock.replaceDeliveryLines(d.str("id")!!, d.arr("lines").map { l ->
+                        com.restopos.core.database.DeliveryLineEntity(d.str("id")!!, l.str("item")!!, l.str("variant") ?: "", l.lng("qty").toInt(), l.lng("cost"))
+                    })
+                }
+                stock.upsertMovements(shop.arr("movements").map { m ->
+                    com.restopos.core.database.StockMovementEntity(
+                        m.str("id")!!, storeId, m.str("item")!!, m.str("variant") ?: "", m.lng("qty").toInt(), m.str("reason")!!, null, m.str("ref_type"), m.str("ref"),
+                        null, m.str("by"), m.str("note")?.ifEmpty { null }, ago(m, "minutes_ago", 60_000L), server_seq = 1,
+                    )
+                })
+            }
         }
         session.save(tenant, storeId, device.str("id")!!)
         session.setBusinessName(store.str("name")!!)

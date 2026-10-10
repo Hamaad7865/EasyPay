@@ -197,6 +197,10 @@
       "sold_by": "each",
       "track_stock": true,
       "stock": 0,
+      "supplier": "d0000000-0000-4000-8000-000000000401",
+      "brand": "Maison Bleue",
+      "reorder_point": null,
+      "reorder_qty": null,
       "options": [
         "Size",
         "Colour"
@@ -213,7 +217,9 @@
           "barcode": "2000000003016",
           "price": 129000,
           "cost": 62000,
-          "stock": 8000
+          "stock": 8000,
+          "reorder_point": null,
+          "reorder_qty": null
         },
         {
           "id": "d0000000-0000-4000-8000-000000000302",
@@ -226,7 +232,9 @@
           "barcode": "2000000003023",
           "price": 129000,
           "cost": 62000,
-          "stock": 14000
+          "stock": 14000,
+          "reorder_point": null,
+          "reorder_qty": null
         },
         {
           "id": "d0000000-0000-4000-8000-000000000303",
@@ -239,7 +247,9 @@
           "barcode": "2000000003030",
           "price": 129000,
           "cost": 62000,
-          "stock": 9000
+          "stock": 9000,
+          "reorder_point": null,
+          "reorder_qty": null
         },
         {
           "id": "d0000000-0000-4000-8000-000000000304",
@@ -252,7 +262,9 @@
           "barcode": "2000000003047",
           "price": 129000,
           "cost": 62000,
-          "stock": 4000
+          "stock": 4000,
+          "reorder_point": null,
+          "reorder_qty": null
         },
         {
           "id": "d0000000-0000-4000-8000-000000000305",
@@ -265,7 +277,9 @@
           "barcode": "2000000003054",
           "price": 129000,
           "cost": 62000,
-          "stock": 6000
+          "stock": 6000,
+          "reorder_point": null,
+          "reorder_qty": null
         },
         {
           "id": "d0000000-0000-4000-8000-000000000306",
@@ -278,7 +292,9 @@
           "barcode": "2000000003061",
           "price": 129000,
           "cost": 62000,
-          "stock": 11000
+          "stock": 11000,
+          "reorder_point": null,
+          "reorder_qty": null
         },
         {
           "id": "d0000000-0000-4000-8000-000000000307",
@@ -291,7 +307,9 @@
           "barcode": "2000000003078",
           "price": 129000,
           "cost": 62000,
-          "stock": 3000
+          "stock": 3000,
+          "reorder_point": 4000,
+          "reorder_qty": null
         },
         {
           "id": "d0000000-0000-4000-8000-000000000308",
@@ -304,7 +322,9 @@
           "barcode": "2000000003085",
           "price": 129000,
           "cost": 62000,
-          "stock": 0
+          "stock": 0,
+          "reorder_point": 4000,
+          "reorder_qty": 6000
         }
       ]
     },
@@ -319,6 +339,10 @@
       "sold_by": "each",
       "track_stock": true,
       "stock": 3000,
+      "supplier": "d0000000-0000-4000-8000-000000000401",
+      "brand": "Maison Bleue",
+      "reorder_point": 4000,
+      "reorder_qty": 6000,
       "options": [],
       "variants": []
     },
@@ -333,6 +357,10 @@
       "sold_by": "each",
       "track_stock": true,
       "stock": 6000,
+      "supplier": "d0000000-0000-4000-8000-000000000401",
+      "brand": null,
+      "reorder_point": 2000,
+      "reorder_qty": 0,
       "options": [],
       "variants": []
     },
@@ -347,6 +375,10 @@
       "sold_by": "each",
       "track_stock": true,
       "stock": 2000,
+      "supplier": "d0000000-0000-4000-8000-000000000401",
+      "brand": null,
+      "reorder_point": null,
+      "reorder_qty": null,
       "options": [],
       "variants": []
     },
@@ -361,6 +393,10 @@
       "sold_by": "each",
       "track_stock": true,
       "stock": 0,
+      "supplier": "d0000000-0000-4000-8000-000000000401",
+      "brand": null,
+      "reorder_point": null,
+      "reorder_qty": null,
       "options": [],
       "variants": []
     },
@@ -375,6 +411,10 @@
       "sold_by": "each",
       "track_stock": true,
       "stock": 26000,
+      "supplier": "d0000000-0000-4000-8000-000000000402",
+      "brand": null,
+      "reorder_point": 30000,
+      "reorder_qty": 24000,
       "options": [],
       "variants": []
     },
@@ -389,6 +429,10 @@
       "sold_by": "each",
       "track_stock": true,
       "stock": 31000,
+      "supplier": "d0000000-0000-4000-8000-000000000402",
+      "brand": null,
+      "reorder_point": null,
+      "reorder_qty": null,
       "options": [],
       "variants": []
     },
@@ -403,6 +447,10 @@
       "sold_by": "each",
       "track_stock": true,
       "stock": 4000,
+      "supplier": "d0000000-0000-4000-8000-000000000402",
+      "brand": null,
+      "reorder_point": 5000,
+      "reorder_qty": 0,
       "options": [],
       "variants": []
     },
@@ -417,6 +465,10 @@
       "sold_by": "each",
       "track_stock": true,
       "stock": 0,
+      "supplier": null,
+      "brand": null,
+      "reorder_point": null,
+      "reorder_qty": null,
       "options": [],
       "variants": []
     },
@@ -431,6 +483,10 @@
       "sold_by": "each",
       "track_stock": true,
       "stock": 18000,
+      "supplier": null,
+      "brand": null,
+      "reorder_point": null,
+      "reorder_qty": null,
       "options": [],
       "variants": []
     },
@@ -445,6 +501,10 @@
       "sold_by": "weight",
       "track_stock": true,
       "stock": 25000,
+      "supplier": null,
+      "brand": null,
+      "reorder_point": null,
+      "reorder_qty": null,
       "options": [],
       "variants": []
     },
@@ -459,6 +519,10 @@
       "sold_by": "each",
       "track_stock": true,
       "stock": 40000,
+      "supplier": "d0000000-0000-4000-8000-000000000402",
+      "brand": null,
+      "reorder_point": null,
+      "reorder_qty": null,
       "options": [],
       "variants": []
     },
@@ -473,8 +537,223 @@
       "sold_by": "each",
       "track_stock": false,
       "stock": 0,
+      "supplier": null,
+      "brand": null,
+      "reorder_point": null,
+      "reorder_qty": null,
       "options": [],
       "variants": []
+    }
+  ],
+  "suppliers": [
+    {
+      "id": "d0000000-0000-4000-8000-000000000401",
+      "name": "Textiles Ocean",
+      "contact": "Devi",
+      "phone": "5250 1234",
+      "email": "orders@textiles-ocean.example",
+      "address": "Royal Road, Curepipe",
+      "note": "Delivers on Tuesdays"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000402",
+      "name": "Maison & Co",
+      "contact": "",
+      "phone": "5999 0000",
+      "email": "",
+      "address": "Port Louis",
+      "note": ""
+    }
+  ],
+  "orders": [
+    {
+      "id": "d0000000-0000-4000-8000-000000000501",
+      "number": "PO-0001",
+      "supplier": "d0000000-0000-4000-8000-000000000402",
+      "status": "draft",
+      "expected_on": "2026-10-20",
+      "note": "Before the holidays",
+      "days_ago": 1,
+      "lines": [
+        {
+          "item": "d0000000-0000-4000-8000-000000000107",
+          "variant": "",
+          "qty": 12000,
+          "cost": 21000,
+          "received": 0
+        }
+      ]
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000502",
+      "number": "PO-0002",
+      "supplier": "d0000000-0000-4000-8000-000000000401",
+      "status": "sent",
+      "expected_on": "2026-10-14",
+      "note": "",
+      "days_ago": 3,
+      "lines": [
+        {
+          "item": "d0000000-0000-4000-8000-000000000102",
+          "variant": "",
+          "qty": 6000,
+          "cost": 140000,
+          "received": 0
+        },
+        {
+          "item": "d0000000-0000-4000-8000-000000000101",
+          "variant": "d0000000-0000-4000-8000-000000000308",
+          "qty": 6000,
+          "cost": 62000,
+          "received": 0
+        },
+        {
+          "item": "d0000000-0000-4000-8000-000000000101",
+          "variant": "d0000000-0000-4000-8000-000000000307",
+          "qty": 4000,
+          "cost": 62000,
+          "received": 0
+        }
+      ]
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000503",
+      "number": "PO-0003",
+      "supplier": "d0000000-0000-4000-8000-000000000402",
+      "status": "part",
+      "expected_on": "2026-10-07",
+      "note": "",
+      "days_ago": 6,
+      "lines": [
+        {
+          "item": "d0000000-0000-4000-8000-000000000106",
+          "variant": "",
+          "qty": 24000,
+          "cost": 14000,
+          "received": 12000
+        },
+        {
+          "item": "d0000000-0000-4000-8000-000000000108",
+          "variant": "",
+          "qty": 6000,
+          "cost": 36000,
+          "received": 0
+        }
+      ]
+    }
+  ],
+  "deliveries": [
+    {
+      "id": "d0000000-0000-4000-8000-000000000601",
+      "number": "D-0001",
+      "order": "d0000000-0000-4000-8000-000000000503",
+      "supplier": "d0000000-0000-4000-8000-000000000402",
+      "arrived_on": "2026-10-08",
+      "invoice_no": "INV-2041",
+      "note": "",
+      "by": "d0000000-0000-4000-8000-00000000031",
+      "days_ago": 2,
+      "lines": [
+        {
+          "item": "d0000000-0000-4000-8000-000000000106",
+          "variant": "",
+          "qty": 12000,
+          "cost": 14000
+        }
+      ]
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000602",
+      "number": "D-0002",
+      "order": null,
+      "supplier": null,
+      "arrived_on": "2026-10-09",
+      "invoice_no": "",
+      "note": "Bought at the market",
+      "by": "d0000000-0000-4000-8000-00000000031",
+      "days_ago": 1,
+      "lines": [
+        {
+          "item": "d0000000-0000-4000-8000-000000000111",
+          "variant": "",
+          "qty": 5000,
+          "cost": 4500
+        }
+      ]
+    }
+  ],
+  "movements": [
+    {
+      "id": "d0000000-0000-4000-8000-000000000701",
+      "item": "d0000000-0000-4000-8000-000000000106",
+      "variant": "",
+      "qty": 12000,
+      "reason": "receive",
+      "ref_type": "delivery",
+      "ref": "d0000000-0000-4000-8000-000000000601",
+      "by": "d0000000-0000-4000-8000-00000000031",
+      "note": "",
+      "minutes_ago": 2880
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000702",
+      "item": "d0000000-0000-4000-8000-000000000111",
+      "variant": "",
+      "qty": 5000,
+      "reason": "receive",
+      "ref_type": "delivery",
+      "ref": "d0000000-0000-4000-8000-000000000602",
+      "by": "d0000000-0000-4000-8000-00000000031",
+      "note": "",
+      "minutes_ago": 1500
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000703",
+      "item": "d0000000-0000-4000-8000-000000000106",
+      "variant": "",
+      "qty": -2000,
+      "reason": "sale",
+      "ref_type": "receipt",
+      "ref": null,
+      "by": "d0000000-0000-4000-8000-00000000032",
+      "note": "",
+      "minutes_ago": 300
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000704",
+      "item": "d0000000-0000-4000-8000-000000000108",
+      "variant": "",
+      "qty": -1000,
+      "reason": "damaged",
+      "ref_type": null,
+      "ref": null,
+      "by": "d0000000-0000-4000-8000-00000000031",
+      "note": "Handle broke",
+      "minutes_ago": 120
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000705",
+      "item": "d0000000-0000-4000-8000-000000000101",
+      "variant": "d0000000-0000-4000-8000-000000000302",
+      "qty": -1000,
+      "reason": "sale",
+      "ref_type": "receipt",
+      "ref": null,
+      "by": "d0000000-0000-4000-8000-00000000032",
+      "note": "",
+      "minutes_ago": 45
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000706",
+      "item": "d0000000-0000-4000-8000-000000000111",
+      "variant": "",
+      "qty": -350,
+      "reason": "sale",
+      "ref_type": "receipt",
+      "ref": null,
+      "by": "d0000000-0000-4000-8000-00000000032",
+      "note": "",
+      "minutes_ago": 20
     }
   ]
 }

@@ -355,7 +355,8 @@ class ServiceRepository @Inject constructor(
 
     // One op sent now, outside the outbox, and its answer waited for.
     // refused: the server's code for why not, in the words of whoever asked.
-    private suspend fun ask(type: String, refused: (String?) -> String, payload: JsonObject) {
+    // internal, not private: a shop's stock work (StockRepository) leaves the tablet through here too.
+    internal suspend fun ask(type: String, refused: (String?) -> String, payload: JsonObject) {
         val answer = try {
             api.push(listOf(OutboxOp(Uuid7.next(), type, payload, staff.id()))).firstOrNull()
         } catch (e: java.io.IOException) {

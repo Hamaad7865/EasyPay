@@ -111,9 +111,6 @@ import javax.inject.Inject
 // One line of a run of labels: a product, or one variant of it, and how many.
 class LabelRow(val key: String, val item: ItemEntity, val variant: ItemVariantEntity?, val copies: Int)
 
-// A product that comes in variants, tapped: which of them get a label.
-class LabelPick(val item: ItemEntity, val variants: List<ItemVariantEntity>)
-
 // The label as it will print, for the screen: the picture itself, and why it
 // carries no bars when it should.
 class LabelPreview(val picture: Bitmap, val noBars: String?)
@@ -124,8 +121,6 @@ class LabelPreview(val picture: Bitmap, val noBars: String?)
 data class LabelDraft(val first: LabelTemplate, val template: LabelTemplate, val selected: Int?, val saved: Boolean) {
     val changed: Boolean get() = template != first
 }
-
-private const val BARS = "M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12"
 
 // Behind Print labels, a shop's: the products to pick from, the run being
 // put together (LabelList holds its limits), the ready-made label in use and
@@ -142,28 +137,15 @@ class LabelsViewModel @Inject constructor(
     private val staff: StaffSession,
     private val approvals: Approvals,
 ) : ViewModel() {
-    private val store = flow { emit(session.storeId()) }
+    // The products to pick from, as every screen with a product pane has them (ProductPane.kt): a tap,
+    // a search or a scan is one more label of what was chosen.
+    val pane = ProductPick(viewModelScope, db, session, sales, said = { i, v -> "Label · ${sales.nameOf(i, v)}" }, onAdd = { i, v -> add(i, v) })
     // kept while the till is open: a label's category is read from it when a run is printed, whatever screen is on
-    val cats: StateFlow<List<CategoryEntity>> = db.catalog().categories().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    val cat = MutableStateFlow<String?>(null)
-    val query = MutableStateFlow("")
-    val products: StateFlow<List<ItemEntity>> = combine(cat, query) { c, q -> (if (q.isBlank()) c else null) to q.trim() }
-        .distinctUntilChanged()
-        .flatMapLatest { (c, q) -> db.retail().products(c, q) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val left: StateFlow<Map<String, ItemLeft>> = store.flatMapLatest { s -> if (s == null) emptyFlow() else db.retail().leftByItem(s) }
-        .map { rows -> rows.associateBy { it.item_id } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
-    val variantCounts: StateFlow<Map<String, Int>> = db.retail().variantCounts().map { rows -> rows.associate { it.item_id to it.n } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
-    val scanMode: StateFlow<Boolean> = session.scanMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
-    fun setScanMode(on: Boolean) = viewModelScope.launch { session.setScanMode(on); if (on) query.value = "" }
-    fun pickCat(id: String?) { cat.value = id; query.value = "" }
+    val cats: StateFlow<List<CategoryEntity>> get() = pane.cats
 
     private val _rows = MutableStateFlow<List<LabelRow>>(emptyList())
     val rows: StateFlow<List<LabelRow>> = _rows
     val selected = MutableStateFlow<String?>(null)
-    val picking = MutableStateFlow<LabelPick?>(null)
     val asking = MutableStateFlow<NumAsk?>(null)
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy
@@ -324,37 +306,10 @@ class LabelsViewModel @Inject constructor(
         return true
     }
 
-    // A tile was tapped: one more label of it. A product with variants asks which.
-    fun tap(item: ItemEntity) = viewModelScope.launch {
-        val variants = db.retail().variantsOf(item.id)
-        if (variants.isNotEmpty()) picking.value = LabelPick(item, variants) else add(item, null)
-    }
-    fun closePicker() { picking.value = null }
-    fun pick(item: ItemEntity, chosen: List<ItemVariantEntity>) {
-        picking.value = null
-        for (v in chosen) if (!add(item, v)) break
-    }
-
-    // A barcode read by the scanner: one more label of what carries it.
-    fun scanned(code: String) = viewModelScope.launch {
-        query.value = ""
-        when (val f = sales.find(code)) {
-            is Found.Product -> if (add(f.item, f.variant)) Scanner.say(true, "Label · ${sales.nameOf(f.item, f.variant)}")
-            is Found.Pick -> { tap(f.item); Scanner.say(true, "Pick which · ${f.item.name}") }
-            is Found.Several -> { Toaster.say("Two products carry the code ${f.code}. Find it by its name."); Scanner.say(false, "Two products carry ${f.code}") }
-            is Found.Nothing -> { Toaster.say("No product has the code ${f.code}. Nothing was added."); Scanner.say(false, "No match · ${f.code}") }
-        }
-    }
-    // Enter in the search box: a whole code adds its product; anything else stays a search.
-    fun enter() = viewModelScope.launch {
-        val q = query.value.trim()
-        if (q.isEmpty()) return@launch
-        when (val f = sales.find(q)) {
-            is Found.Product -> { query.value = ""; add(f.item, f.variant) }
-            is Found.Pick -> { query.value = ""; tap(f.item) }
-            else -> products.value.singleOrNull()?.let { query.value = ""; tap(it) }
-        }
-    }
+    // From a product's sheet on Products & stock: one more label of it. A product with variants asks which.
+    fun tap(item: ItemEntity) = pane.tap(item)
+    // A barcode read by the scanner while this screen is open: one more label of what carries it.
+    fun scanned(code: String) = pane.scanned(code)
 
     fun more(r: LabelRow) { add(r.item, r.variant) }
     fun fewer(r: LabelRow) = put(LabelList.set(list(), r.key, r.copies - 1))
@@ -411,7 +366,7 @@ class LabelsViewModel @Inject constructor(
 @Composable
 fun LabelsScreen(vm: LabelsViewModel) {
     val printers: LabelPrinterViewModel = hiltViewModel()
-    val picking by vm.picking.collectAsState()
+    val picking by vm.pane.picking.collectAsState()
     val asking by vm.asking.collectAsState()
     var sheet by remember { mutableStateOf<String?>(null) } // label | printer | clear
     // a label is being designed: the designer has the screen until it is closed
@@ -423,10 +378,10 @@ fun LabelsScreen(vm: LabelsViewModel) {
 
     Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Run(vm, printers, onLabel = { sheet = "label" }, onPrinter = { sheet = "printer" }, onClear = { sheet = "clear" })
-        Products(vm, Modifier.weight(1f))
+        ProductPane(vm.pane, Modifier.weight(1f))
     }
 
-    picking?.let { WhichSheet(it, vm) }
+    picking?.let { WhichSheet(vm.pane, it, "Which ones get a label? One of each is added: change how many on the list.", none = "Tap the ones to label") { n -> if (n == 1) "Add 1 label" else "Add $n labels" } }
     asking?.let { NumSheet(it) { vm.closeAsk() } }
     when (sheet) {
         "label" -> TemplateSheet(vm) { sheet = null }
@@ -543,83 +498,7 @@ private fun Picture(b: Bitmap?, t: LabelTemplate, modifier: Modifier) {
     }
 }
 
-// ---------------------------------------------------------------- the products
-
-@Composable
-private fun Products(vm: LabelsViewModel, modifier: Modifier) {
-    val cats by vm.cats.collectAsState()
-    val cat by vm.cat.collectAsState()
-    val q by vm.query.collectAsState()
-    val items by vm.products.collectAsState()
-    val left by vm.left.collectAsState()
-    val variants by vm.variantCounts.collectAsState()
-    val byId = remember(cats) { cats.associateBy { it.id } }
-    val searching = q.isNotBlank()
-    val scan by vm.scanMode.collectAsState()
-
-    Column(modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ScanKey(scan) { vm.setScanMode(it) }
-            // scan mode: nothing to type into, so nothing brings the keyboard up
-            if (scan) ScanPill(Modifier.weight(1f))
-            else Box(Modifier.weight(1f)) {
-                Field(
-                    q, { vm.query.value = it.take(60) }, "Scan, or search a name, SKU or barcode", Modifier.fillMaxWidth(), height = 56.dp, bg = V.Panel, size = 16.sp,
-                    leading = { VIcon(BARS, 22.dp, V.BlueText) }, onDone = { vm.enter() },
-                )
-                if (searching) {
-                    Box(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) { IconKey(VI.Close, size = 40.dp, onClick = { vm.query.value = "" }) }
-                }
-            }
-        }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CatKey("All", !searching && cat == null) { vm.pickCat(null) }
-            cats.forEach { c -> CatKey(c.name, !searching && cat == c.id) { vm.pickCat(c.id) } }
-        }
-        LazyVerticalGrid(GridCells.Adaptive(176.dp), Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                T(
-                    if (searching) "Nothing matches “${q.trim()}”." else "No products here yet. They are added on Products & stock, or in the back office.",
-                    15.sp, 500, V.Text2, Modifier.padding(40.dp), lines = 3,
-                )
-            }
-            items(items, key = { it.id }) { i -> Tile(i, byId[i.category_id], left[i.id]?.qty, variants[i.id] ?: 0) { vm.tap(i) } }
-        }
-    }
-}
-
 // ---------------------------------------------------------------- the sheets
-
-// A product that comes in variants: which of them get a label. Each is a key
-// that is in or out; All of them is one tap for a delivery of every size.
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun WhichSheet(p: LabelPick, vm: LabelsViewModel) {
-    var chosen by remember(p) { mutableStateOf(emptySet<String>()) }
-    Sheet(onDismiss = { vm.closePicker() }, width = 600.dp, pad = 24.dp, gap = 18.dp) {
-        SheetHead(p.item.name, "Which ones get a label? One of each is added: change how many on the list.") { vm.closePicker() }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            p.variants.forEach { v ->
-                val on = v.id in chosen
-                Column(
-                    Modifier.height(64.dp).widthIn(min = 110.dp).press { chosen = if (on) chosen - v.id else chosen + v.id }.clip(RoundedCornerShape(14.dp)).background(if (on) V.On else V.Key).padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    T(v.name, 16.sp, 800, if (on) V.OnText else V.Text)
-                    T(Money.format(v.price), 12.sp, 700, if (on) V.OnSub else V.Text2)
-                }
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            VBtn("All of them", Modifier.weight(1f), height = 56.dp, radius = 16.dp, size = 16.sp) { vm.pick(p.item, p.variants) }
-            val n = chosen.size
-            VBtn(
-                if (n == 0) "Tap the ones to label" else if (n == 1) "Add 1 label" else "Add $n labels", Modifier.weight(2f),
-                if (n > 0) V.Green else V.Key, if (n > 0) V.GreenInk else V.Text3, 56.dp, 16.dp, 16.sp, 800, enabled = n > 0,
-            ) { vm.pick(p.item, p.variants.filter { it.id in chosen }) }
-        }
-    }
-}
 
 // Every label there is to print on: a new one to design, the ready-made ones
 // (changed only as a copy), then the shop's own. Each is drawn with the
