@@ -220,6 +220,7 @@ private val SCAN_MODE = booleanPreferencesKey("scan_mode")
 private val SCANNERS = stringPreferencesKey("scanners")
 private val LABEL_PRINTER = stringPreferencesKey("label_printer")
 private val LABEL_TEMPLATE = stringPreferencesKey("label_template")
+private val LABEL_TEMPLATES = stringPreferencesKey("label_templates")
 private val LIGHT = booleanPreferencesKey("light_mode_v2")
 private val LAST_PULL = longPreferencesKey("last_pull")
 private val LAST_USE = longPreferencesKey("last_use")
@@ -351,6 +352,15 @@ class SessionStore(private val context: Context) {
     }
     val labelTemplate: Flow<String?> = store.data.map { it[LABEL_TEMPLATE] }
     suspend fun setLabelTemplate(id: String) { store.edit { it[LABEL_TEMPLATE] = id } }
+    // The labels this shop designed itself (LabelBook). They are kept here and
+    // nowhere else: another tablet of the shop does not have them.
+    val labelTemplates: Flow<List<com.restopos.core.print.LabelTemplate>> = store.data.map { com.restopos.core.print.LabelBook.read(it[LABEL_TEMPLATES]) }
+    suspend fun saveLabelTemplate(t: com.restopos.core.print.LabelTemplate) {
+        store.edit { it[LABEL_TEMPLATES] = com.restopos.core.print.LabelBook.write(com.restopos.core.print.LabelBook.with(com.restopos.core.print.LabelBook.read(it[LABEL_TEMPLATES]), t)) }
+    }
+    suspend fun removeLabelTemplate(id: String) {
+        store.edit { it[LABEL_TEMPLATES] = com.restopos.core.print.LabelBook.write(com.restopos.core.print.LabelBook.without(com.restopos.core.print.LabelBook.read(it[LABEL_TEMPLATES]), id)) }
+    }
     val lightMode: Flow<Boolean> = store.data.map { it[LIGHT] ?: false }
     suspend fun setLightMode(on: Boolean) { store.edit { it[LIGHT] = on } }
     // When this tablet last heard from the server.
@@ -384,11 +394,14 @@ class SessionStore(private val context: Context) {
 
     // Everything the tablet holds for the business it was set up for. What
     // belongs to the tablet itself stays: the scanners added on it, and its
-    // label printer with the label last picked.
+    // label printer with the label last picked. The labels designed on it
+    // stay too: there is no other copy of them, and a sign-out that lost a
+    // shop its designs would cost more than a tablet that changes hands with
+    // them still on it.
     suspend fun clear() {
         store.edit {
             // (a key `to` a value is DataStore's own pair here, hence Pair)
-            val kept = listOf(SCANNERS, LABEL_PRINTER, LABEL_TEMPLATE).mapNotNull { key -> it[key]?.let { v -> Pair(key, v) } }
+            val kept = listOf(SCANNERS, LABEL_PRINTER, LABEL_TEMPLATE, LABEL_TEMPLATES).mapNotNull { key -> it[key]?.let { v -> Pair(key, v) } }
             it.clear()
             kept.forEach { (key, v) -> it[key] = v }
         }

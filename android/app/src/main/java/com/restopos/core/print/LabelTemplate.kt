@@ -6,8 +6,9 @@ import java.util.Locale
 
 // What a label looks like: its size, the gap to the next one on the roll, and
 // what is on it and where, all in millimetres from the label's top left
-// corner. It can be written down as JSON, so that a shop's own labels can be
-// kept once there is an editor for them; the ready-made ones are below.
+// corner. A shop's own labels are kept on the tablet as this, written down as
+// JSON (LabelBook), so whatever is added here has a default: a label written
+// by an earlier build must still be read. The ready-made ones are below.
 @Serializable
 data class LabelTemplate(
     val id: String,
@@ -28,19 +29,31 @@ data class LabelTemplate(
 
 @Serializable
 sealed class LabelElement {
-    // Words in a box, centred. `field` says which of the label's words (shop,
-    // name, variant, price, code); empty, the box holds `text` as written.
-    // `size` is the height of the letters; `lines` how many the box may take.
+    // Words in a box. `field` says which of the label's words (shop, name,
+    // variant, price, code, sku, category, date); empty, the box holds `text`
+    // as written. `size` is the height of the letters; `lines` how many the
+    // box may take; `align` where they are set (left, center, right).
+    // `turn` is 0, 90, 180 or 270: the box is where the words sit on the label
+    // as it is seen, and turned a quarter they run down it or up it.
     @Serializable @SerialName("text")
     data class Text(
         val x: Float, val y: Float, val w: Float, val h: Float,
         val field: String = "", val text: String = "", val size: Float, val bold: Boolean = false, val lines: Int = 1,
+        val align: String = "center", val turn: Int = 0,
     ) : LabelElement()
 
     // The bars of the label's code, with the code in letters `digits` high
-    // under them (0: bars alone).
+    // under them (0: bars alone). Turned, as a text is.
     @Serializable @SerialName("bars")
-    data class Bars(val x: Float, val y: Float, val w: Float, val h: Float, val digits: Float = 2.4f) : LabelElement()
+    data class Bars(val x: Float, val y: Float, val w: Float, val h: Float, val digits: Float = 2.4f, val turn: Int = 0) : LabelElement()
+
+    // A line: a bar of ink, as long and as thick as its box.
+    @Serializable @SerialName("line")
+    data class Line(val x: Float, val y: Float, val w: Float, val h: Float) : LabelElement()
+
+    // The shop's logo, as the back office holds it, fitted into the box.
+    @Serializable @SerialName("logo")
+    data class Logo(val x: Float, val y: Float, val w: Float, val h: Float) : LabelElement()
 
     // A frame, its line `thick`.
     @Serializable @SerialName("box")
@@ -49,7 +62,10 @@ sealed class LabelElement {
 
 // One label's words. The code is what the bars stand for: null when the
 // product has neither a barcode nor a SKU.
-class LabelWords(val shop: String, val name: String, val variant: String, val price: String, val code: String?)
+class LabelWords(
+    val shop: String, val name: String, val variant: String, val price: String, val code: String?,
+    val sku: String = "", val category: String = "", val date: String = "",
+)
 
 // The labels a shop can print without designing one, in the sizes stickers
 // are commonly sold in.
