@@ -24,7 +24,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -64,6 +66,12 @@ class Printing @Inject constructor(
     val jobs: StateFlow<List<PrintJob>> = _jobs
     private val jobSeq = AtomicLong()
     fun clearJobs() { _jobs.value = emptyList() }
+
+    // The tablet's own label printer (a shop's: More, Label printer), kept at
+    // hand so that a receipt going out by USB knows which device not to take.
+    @Volatile private var label: LabelPrinter? = null
+    init { scope.launch { session.labelPrinter.collect { label = it } } }
+    suspend fun labelPrinter(): LabelPrinter? = session.labelPrinter.first()
 
     suspend fun settings(): PosSettings = PosSettings.parse(db.ops().settings()).also { Money.decimals = it.decimals }
 
@@ -111,7 +119,7 @@ class Printing @Inject constructor(
         runCatching {
             if (p.kind == "usb") {
                 val manager = context.getSystemService(Context.USB_SERVICE) as? UsbManager
-                manager?.deviceList?.values?.any { printerInterface(it) != null } == true
+                manager != null && usbDevice(manager, null) != null
             } else if (p.kind == BLUETOOTH) {
                 // paired with this tablet: whether it is switched on is only known by printing
                 paired(p) != null
@@ -134,11 +142,13 @@ class Printing @Inject constructor(
     // turn instead. Kept by the printer's address, not its name, so one
     // printer entered twice in the back office is still one printer.
     private val turns = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
-    private fun turn(p: PrinterEntity): Mutex = turns.getOrPut(Routing.line(p)) { Mutex() }
+    // (the label printer on a cable is a device of its own, so it has a turn of its own)
+    private fun turn(p: PrinterEntity): Mutex = turns.getOrPut(if (p.id == LabelPrinter.ID && p.kind == "usb") "usb:label" else Routing.line(p)) { Mutex() }
 
-    private suspend fun deliver(p: PrinterEntity, bytes: ByteArray): Result<Unit> = withContext(Dispatchers.IO) {
+    // `forLabel`: the job is for the tablet's label printer, which says which USB device it is.
+    private suspend fun deliver(p: PrinterEntity, bytes: ByteArray, forLabel: LabelPrinter? = null): Result<Unit> = withContext(Dispatchers.IO) {
         turn(p).withLock { runCatching {
-            when (p.kind) { "usb" -> usb(bytes); BLUETOOTH -> bluetooth(p, bytes); else -> tcp(p, bytes) }
+            when (p.kind) { "usb" -> usb(bytes, forLabel); BLUETOOTH -> bluetooth(p, bytes); else -> tcp(p, bytes) }
         } }.recoverCatching { e ->
             throw PrintError(
                 when (e) {
@@ -197,12 +207,58 @@ class Printing @Inject constructor(
         }.getOrDefault(emptyList()).sortedBy { it.first.lowercase() }
     }
 
-    // The printer plugged into this tablet, by the name it gives itself; null when there is none.
+    // The printer plugged into this tablet, by the name it gives itself; null
+    // when there is none. Never the label printer: this is where receipts go.
     fun usbPrinter(): String? {
         val manager = context.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return null
-        val device = runCatching { manager.deviceList.values.firstOrNull { printerInterface(it) != null } }.getOrNull() ?: return null
+        val device = usbDevice(manager, null) ?: return null
         return runCatching { device.productName }.getOrNull()?.takeIf { it.isNotBlank() } ?: "USB printer"
     }
+
+    // Every printer plugged into this tablet, as what the tablet says of each,
+    // in an order that does not change from one look to the next.
+    private fun usbSeen(manager: UsbManager): List<Pair<UsbDevice, UsbPick.Seen>> =
+        runCatching { manager.deviceList.values.filter { printerInterface(it) != null }.sortedBy { it.deviceName } }.getOrDefault(emptyList()).map { d ->
+            d to UsbPick.Seen(
+                d.vendorId, d.productId,
+                runCatching { d.productName }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() },
+                // told only once the person at the till has allowed the device
+                runCatching { d.serialNumber }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() },
+            )
+        }
+    fun usbPrinters(): List<UsbPick.Seen> =
+        (context.getSystemService(Context.USB_SERVICE) as? UsbManager)?.let { m -> usbSeen(m).map { it.second } } ?: emptyList()
+
+    // Which device a job goes to: the label printer's own for a label, and
+    // for everything else the first printer that is not the label printer
+    // (UsbPick). Before there could be two, it was simply the first.
+    private fun usbDevice(manager: UsbManager, forLabel: LabelPrinter?): UsbDevice? {
+        val seen = usbSeen(manager)
+        val list = seen.map { it.second }
+        val pick = if (forLabel != null) UsbPick.match(forLabel, list) else UsbPick.receipt(list, label)
+        return seen.firstOrNull { it.second === pick }?.first
+    }
+
+    // ---- the tablet's label printer ----
+    // A run of labels, to a printer that is not one of the store's. It is
+    // listed with the other print jobs, and cannot be sent again from there:
+    // the Print labels screen keeps its list when a run did not go.
+    suspend fun sendLabels(lp: LabelPrinter, bytes: ByteArray, what: String): Result<Unit> {
+        val p = labelEntity(lp)
+        val result = deliver(p, bytes, lp)
+        val job = PrintJob(jobSeq.incrementAndGet(), what, p, System.currentTimeMillis(), result.exceptionOrNull()?.message, null)
+        _jobs.update { (listOf(job) + it).take(40) }
+        return result
+    }
+
+    // Whether the label printer is there right now: plugged in, paired, or answering on the network.
+    suspend fun labelAnswers(lp: LabelPrinter): Boolean =
+        if (lp.kind == "usb") withContext(Dispatchers.IO) {
+            runCatching { (context.getSystemService(Context.USB_SERVICE) as? UsbManager)?.let { usbDevice(it, lp) } != null }.getOrDefault(false)
+        } else answers(labelEntity(lp))
+
+    private fun labelEntity(lp: LabelPrinter) =
+        PrinterEntity(LabelPrinter.ID, "", "", lp.name, lp.kind, lp.address, lp.paper, is_receipt = false, feed_lines = 0, cut = false)
 
     // The connection is opened for the one job and closed after it, as the
     // Kids Corner till does: these printers hold a single connection, and one
@@ -211,10 +267,14 @@ class Printing @Inject constructor(
     private fun bluetooth(p: PrinterEntity, bytes: ByteArray) {
         val adapter = context.getSystemService(android.bluetooth.BluetoothManager::class.java)?.adapter
             ?: throw PrintError("This tablet has no Bluetooth, and ${p.name} is a Bluetooth printer.")
-        if (!bluetoothAllowed()) throw PrintError("EasyPay is not allowed to use Bluetooth on this tablet yet. In Settings, under Printers, tap Allow Bluetooth, then print again.")
+        val its = p.id == LabelPrinter.ID
+        if (!bluetoothAllowed()) throw PrintError("EasyPay is not allowed to use Bluetooth on this tablet yet. In Settings, under ${if (its) "Label printer" else "Printers"}, tap Allow Bluetooth, then print again.")
         if (!adapter.isEnabled) throw PrintError("Bluetooth is switched off on this tablet. Switch it on, then print again.")
         val device = paired(p)
-            ?: throw PrintError("${p.name} is not paired with this tablet. Pair it in the tablet's Bluetooth settings. It is looked for as \"${p.address.orEmpty()}\", the name or address set in the back office.")
+            ?: throw PrintError(
+                if (its) "${p.name} is not paired with this tablet any more. Pair it in the tablet's Bluetooth settings, then pick it again in Settings, under Label printer."
+                else "${p.name} is not paired with this tablet. Pair it in the tablet's Bluetooth settings. It is looked for as \"${p.address.orEmpty()}\", the name or address set in the back office.",
+            )
         // looking for devices and connecting share the one radio: a search left running makes the connection fail now and then
         runCatching { adapter.cancelDiscovery() }
         val socket = device.createRfcommSocketToServiceRecord(SPP)
@@ -251,10 +311,10 @@ class Printing @Inject constructor(
         }
     }
 
-    private fun usb(bytes: ByteArray) {
+    private fun usb(bytes: ByteArray, forLabel: LabelPrinter? = null) {
         val manager = context.getSystemService(Context.USB_SERVICE) as? UsbManager ?: throw PrintError("This tablet has no USB port for a printer.")
-        val device = manager.deviceList.values.firstOrNull { printerInterface(it) != null }
-            ?: throw PrintError("No USB printer is plugged into this tablet.")
+        val device = usbDevice(manager, forLabel)
+            ?: throw PrintError(if (forLabel != null) "${forLabel.name} is not plugged into this tablet." else "No USB printer is plugged into this tablet.")
         if (!manager.hasPermission(device)) {
             val ask = PendingIntent.getBroadcast(
                 context, 0, Intent(USB_PERMISSION).setPackage(context.packageName),

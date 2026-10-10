@@ -43,6 +43,17 @@ class LabelJobTest {
         assertTrue(LabelJob.escpos(listOf(LabelJob.Label(wide, 1)), 80).isSuccess)
     }
 
+    @Test fun `a run is wrapped in the language its printer speaks`() {
+        val t = LabelTemplates.byId("50x25-shop")
+        val run = listOf(LabelJob.Label(small, 1))
+        val sticker = LabelJob.bytes(LabelPrinter("Stickers", "usb"), run, t).getOrThrow()
+        assertTrue(String(sticker, Charsets.ISO_8859_1).startsWith("SIZE 50 mm,25 mm\r\nGAP 2 mm,0 mm\r\n"))
+        val receipt = LabelJob.bytes(LabelPrinter("Receipts", "network", "192.168.1.9", language = LabelPrinter.ESCPOS, paper = 58), run, t).getOrThrow()
+        assertArrayEquals(bytes(0x1B, 0x40), receipt.copyOf(2))
+        val wide = Raster(50, 1, ByteArray(50))
+        assertEquals(LabelJob.WIDER, LabelJob.bytes(LabelPrinter("Receipts", "usb", language = LabelPrinter.ESCPOS, paper = 58), listOf(LabelJob.Label(wide, 1)), t).exceptionOrNull()?.message)
+    }
+
     @Test fun `nothing to print is nothing sent`() {
         assertEquals(0, LabelJob.tspl(emptyList(), 40f, 30f, 2f).size)
         assertEquals(0, LabelJob.tspl(listOf(LabelJob.Label(small, 0)), 40f, 30f, 2f).size)

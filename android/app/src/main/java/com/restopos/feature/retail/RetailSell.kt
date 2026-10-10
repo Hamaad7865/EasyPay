@@ -275,7 +275,7 @@ private fun Line(l: SaleLine, open: Boolean, vm: RetailViewModel, onNote: (SaleL
 }
 
 @Composable
-private fun StepKey(sign: String, onClick: () -> Unit) {
+internal fun StepKey(sign: String, onClick: () -> Unit) {
     Box(Modifier.size(44.dp).press(0.92f, onClick).clip(RoundedCornerShape(12.dp)).background(V.Key), contentAlignment = Alignment.Center) { T(sign, 20.sp, 700) }
 }
 
@@ -334,7 +334,7 @@ private fun Products(vm: RetailViewModel, modifier: Modifier) {
 }
 
 @Composable
-private fun CatKey(label: String, on: Boolean, onClick: () -> Unit) {
+internal fun CatKey(label: String, on: Boolean, onClick: () -> Unit) {
     Box(Modifier.height(44.dp).press(onClick = onClick).clip(RoundedCornerShape(22.dp)).background(if (on) V.On else V.Panel).padding(horizontal = 18.dp), contentAlignment = Alignment.Center) {
         T(label, 14.sp, 700, if (on) V.OnText else V.Text2)
     }
@@ -343,7 +343,7 @@ private fun CatKey(label: String, on: Boolean, onClick: () -> Unit) {
 // A product: its category, its name, its price, and what is left of it.
 // "Not stocked" is a product whose stock nobody counts (a service, a bag).
 @Composable
-private fun Tile(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants: Int, onClick: () -> Unit) {
+internal fun Tile(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants: Int, onClick: () -> Unit) {
     val counted = i.track_stock || cat?.is_stock == true
     val weighed = i.sold_by == "weight"
     val qty = left ?: 0L

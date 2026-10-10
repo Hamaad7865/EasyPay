@@ -109,6 +109,9 @@ import com.restopos.feature.more.MoreSheets
 import com.restopos.feature.more.MoreViewModel
 import com.restopos.feature.receipts.ReceiptDialog
 import com.restopos.feature.receipts.ReceiptsViewModel
+import com.restopos.feature.retail.LabelPrinterSheet
+import com.restopos.feature.retail.LabelPrinterViewModel
+import com.restopos.feature.retail.labelConnection
 import com.restopos.feature.start.network
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -392,7 +395,7 @@ class SettingsViewModel @Inject constructor(
 
 private enum class Page(val label: String) {
     Till("This till"), Notices("Notifications"), Cash("Cash drawer"), Reports("Reports"), Payments("Payments"),
-    Printers("Printers"), Scanners("Scanners"), Display("Display"), Support("Support"), Help("Help"),
+    Printers("Printers"), Labels("Label printer"), Scanners("Scanners"), Display("Display"), Support("Support"), Help("Help"),
 }
 
 // a scanner's frame with a barcode in it, as on the scan key
@@ -401,7 +404,7 @@ private const val SCAN_ICON = "M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 9v6M11 9
 // The menu's cards, top to bottom.
 private val GROUPS = listOf(
     listOf(Page.Till, Page.Notices), listOf(Page.Cash), listOf(Page.Reports, Page.Payments),
-    listOf(Page.Printers, Page.Scanners, Page.Display), listOf(Page.Support, Page.Help),
+    listOf(Page.Printers, Page.Labels, Page.Scanners, Page.Display), listOf(Page.Support, Page.Help),
 )
 
 private fun icon(p: Page): String = when (p) {
@@ -411,6 +414,7 @@ private fun icon(p: Page): String = when (p) {
     Page.Reports -> VI.Bars
     Page.Payments -> VI.Card
     Page.Printers -> VI.Print
+    Page.Labels -> VI.Tag
     Page.Scanners -> SCAN_ICON
     Page.Display -> VI.Sun
     Page.Support -> VI.Help
@@ -510,7 +514,7 @@ fun SettingsScreen(
 
     Box(Modifier.fillMaxSize().background(V.Bg)) {
         Row(Modifier.fillMaxSize()) {
-            Menu(page, lock, standing.isNotEmpty() || notices.isNotEmpty(), printerTrouble, onPick = { page = it }, onLock = onLock)
+            Menu(page, lock, standing.isNotEmpty() || notices.isNotEmpty(), printerTrouble, shop, onPick = { page = it }, onLock = onLock)
             // each page starts at its own top
             key(page) {
                 Column(
@@ -528,6 +532,7 @@ fun SettingsScreen(
                             Page.Reports -> ReportsPage(vm, more, shop, keys.close) { sheet = "day" }
                             Page.Payments -> PaymentsPage(vm) { receipts.showId(it) }
                             Page.Printers -> PrintersPage(vm, more, retail)
+                            Page.Labels -> LabelPrinterPage()
                             Page.Scanners -> ScannersPage(vm, retail == true)
                             Page.Display -> DisplayPage(vm, retail)
                             Page.Support -> SupportPage(vm, shop, network, onSignIn, onRejected, onSignOut)
@@ -553,7 +558,7 @@ fun SettingsScreen(
 // The side list: every page of Settings, and the way out at its foot. A dot
 // says a page has something that wants looking at.
 @Composable
-private fun Menu(page: Page, lock: String, waiting: Boolean, printerTrouble: Boolean, onPick: (Page) -> Unit, onLock: () -> Unit) {
+private fun Menu(page: Page, lock: String, waiting: Boolean, printerTrouble: Boolean, shop: Boolean, onPick: (Page) -> Unit, onLock: () -> Unit) {
     Column(
         Modifier.width(250.dp).fillMaxHeight().background(V.Header)
             .drawBehind { drawRect(V.HeaderLine, Offset(size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height)) }
@@ -561,7 +566,8 @@ private fun Menu(page: Page, lock: String, waiting: Boolean, printerTrouble: Boo
     ) {
         T("Settings", 22.sp, 800, spacing = (-0.4).sp, modifier = Modifier.padding(start = 10.dp, bottom = 14.dp))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Page.entries.forEach { p ->
+            // labels are a shop's: a restaurant's till has no label printer
+            Page.entries.filter { shop || it != Page.Labels }.forEach { p ->
                 val on = p == page
                 val bg by animateColorAsState(if (on) V.Key else Color.Transparent, tween(140), label = "page")
                 Row(
@@ -1132,6 +1138,68 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
     }
 }
 
+// A shop's: the printer this tablet's price and barcode labels come out of.
+// It is the tablet's own, like a scanner, and nothing of it is in the back
+// office: it is added, tried and changed here (the form is the one the Print
+// labels screen opens too).
+@Composable
+private fun LabelPrinterPage() {
+    val vm: LabelPrinterViewModel = hiltViewModel()
+    val printer by vm.printer.collectAsState()
+    val there by vm.there.collectAsState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var open by remember { mutableStateOf(false) }
+    var testing by remember { mutableStateOf(false) }
+
+    Note("Price and barcode labels come out of a printer of their own: plugged into this tablet, paired with it, or on the network. It belongs to this tablet, so it is set up on each tablet that prints labels.")
+    val p = printer
+    if (p == null) {
+        Panel {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("No label printer is set up on this tablet.", Modifier.weight(1f).padding(end = 12.dp), color = Pos.Text, fontSize = 14.sp)
+                Small("Add a label printer") { open = true }
+            }
+        }
+    } else {
+        val usb = p.kind == "usb"
+        val bt = p.kind == "bluetooth"
+        Panel {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(p.name, color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        when (there) {
+                            null -> Tag("Checking", Pos.Text3, dot = true)
+                            true -> Tag(if (usb) "Plugged in" else if (bt) "Paired" else "Connected", Pos.Ok, dot = true)
+                            else -> Tag(if (usb) "Not plugged in" else if (bt) "Not paired" else "Not answering", Pos.Pink, dot = true)
+                        }
+                    }
+                    Text(
+                        labelConnection(p) + " · " + if (p.sticker) "sticker printer, ${p.dpi} dpi" else "receipt printer, ${p.paper} mm paper",
+                        Modifier.padding(top = 2.dp), color = Pos.Text3, fontSize = 13.sp,
+                    )
+                }
+                Small(if (testing) "Sending…" else "Test label", enabled = !testing) {
+                    testing = true
+                    scope.launch {
+                        com.restopos.core.ui.Toaster.say(vm.test(p) ?: "A test label was sent to ${p.name}.")
+                        testing = false
+                        vm.check()
+                    }
+                }
+            }
+            Box(Modifier.padding(vertical = 12.dp)) { Line() }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("The test label has a frame at its edge: all four sides should print.", Modifier.weight(1f), color = Pos.Text2, fontSize = 13.sp, lineHeight = 19.sp)
+                Small("Change") { open = true }
+                Small("Remove") { vm.remove() }
+            }
+        }
+    }
+    Note("Labels are printed from Print labels, in the side menu behind the key at the top left, or from a product's sheet on Products & stock.")
+    if (open) LabelPrinterSheet(vm) { open = false; vm.check() }
+}
+
 @Composable
 private fun DisplayPage(vm: SettingsViewModel, retail: Boolean?) {
     val leftHanded by vm.leftHanded.collectAsState()
@@ -1230,8 +1298,8 @@ internal fun helpFor(shop: Boolean, premium: Boolean): List<Pair<String, String>
 private val SHOP_HELP = listOf(
     "Starting the day" to "Clock in: tap Clock in/out, pick your name and enter your PIN. Then open the day: someone allowed to taps their name on the start screen and counts the cash in the drawer, which opens for the count. The till sells from then on.",
     "Ringing up a sale" to "On Sell, scan each product's barcode, or tap its tile on the right. The same product again adds one more to its line. To find a product, type its name, SKU or barcode in the box at the top, or tap its category under the box. On a line, − and + change how many, and tapping the number between them lets you type it. A code that no product carries adds nothing, and the till says so.",
-    "Scanning without the keyboard" to "Tap the scan key beside the search box, on Sell, Receipts, Products & stock or Stock check. While it is lit, the box gives way to a strip that says what the last scan did, and the tablet's keyboard does not come up. Tap the key off again to search by typing. It is one switch for all of these screens.",
-    "Adding a scanner" to "In Settings, under Scanners. Plug the scanner into the tablet, or pair it in the tablet's Bluetooth settings (the page has a key that opens them), scan any barcode, and tap Add this scanner. From then on what it reads goes straight to the sale on Sell, Receipts, Products & stock and Stock check, with the scan key lit or not, and is never typed into the search box. The page says whether each scanner is connected, and a barcode scanned there shows what it read. A scanner that was not added still works as before: it types what it reads.",
+    "Scanning without the keyboard" to "Tap the scan key beside the search box, on Sell, Receipts, Products & stock, Stock check or Print labels. While it is lit, the box gives way to a strip that says what the last scan did, and the tablet's keyboard does not come up. Tap the key off again to search by typing. It is one switch for all of these screens.",
+    "Adding a scanner" to "In Settings, under Scanners. Plug the scanner into the tablet, or pair it in the tablet's Bluetooth settings (the page has a key that opens them), scan any barcode, and tap Add this scanner. From then on what it reads goes straight to the sale on Sell, Receipts, Products & stock, Stock check and Print labels, with the scan key lit or not, and is never typed into the search box. The page says whether each scanner is connected, and a barcode scanned there shows what it read. A scanner that was not added still works as before: it types what it reads.",
     "Sizes, colours and other variants" to "A product that comes in variants asks which one when it is tapped: pick the size, the colour or whatever it has, then tap Add. Where its stock is counted, each choice says what is left. Scanning a variant's own barcode adds that variant at once.",
     "A product sold by weight" to "Tap or scan it, type the weight in kilos (0.350 for 350 grams) and tap Done. Each weighing is a line of its own. To weigh it again, tap the weight on its line.",
     "A discount, or another price, on one line" to "Tap the line on the sale. 10% off and 20% off are one tap; Other % and Rs off ask for the figure, and Rs off comes off each one on the line. Change price sets another price for this sale only. The price it was listed at stays on the line, crossed out, and on the receipt. No discount puts the listed price back.",
@@ -1257,6 +1325,8 @@ private val SHOP_HELP = listOf(
     "Handing the drawer to someone else" to "Open the side menu with the key at the top left and tap Cash drawer. Count the cash, type the amount and tap Record this count: a slip prints for both of you to sign, and the day carries on.",
     "Ending the day" to "Take payment for every parked sale and for the one on the screen, or clear them: the day does not close while a sale is unpaid. Then open the side menu with the key at the top left and tap Cash drawer. Count the cash and type the amount. If you may see the day's figures, the amount starts on what the drawer should hold: change it only if you counted something else. Tap Close the day & print Z report: the day's figures are fixed and the report prints. Then clock out.",
     "Setting the till up" to "A new shop is walked through it the first time a tablet is signed in: the products, the receipt printer, what prints at the top of a receipt, and staff PINs. Any step can be skipped. Afterwards, tap More on the top bar, then This till: Set-up shows what is done, and a tap on a line does it or changes it. More printers, variants, costs and tax are set in the back office. It needs a connection, and may need a manager; adding staff and setting a PIN needs the owner.",
+    "Printing price and barcode labels" to "Open the side menu with the key at the top left and tap Print labels, or tap Print label on a product's sheet on Products & stock. Tap each product to label on the right, or scan it: each tap is one more label, and a product with variants asks which ones. On the left, − and + change how many of a line, and tapping the number lets you type it. Under the list is the label that will print, drawn as it will come out: tap it to pick another ready-made label, in the size of the stickers in the printer. Then tap Print. A line that says it has no bars has neither a barcode nor a SKU, or its code is too wide for that label: it still prints, with the code as characters or without one.",
+    "Setting up the label printer" to "Labels come out of a printer of their own, set up on this tablet: tap More on the top bar, then Label printer, then Add a label printer. Give it a name, say whether it is a sticker printer or a receipt printer, and how it is connected: USB (tap it among what is plugged in), Bluetooth (pair it in the tablet's Bluetooth settings first, then tap it) or the network (type its address). Tap Print a test label before saving: the label has a frame at its edge, and all four sides should print. If the label comes out a third too small, pick 300 dpi.",
     "A printer does not print" to "Tap More on the top bar, then Printers. Check the printer says Connected and try a test print. A failed print has Try again next to it. A sale is recorded whether or not its receipt printed, and can be printed again once the printer answers. The cash drawer opens through the receipt printer, so it stays shut while that printer does not answer.",
     "No internet" to "Keep selling. Everything is saved on the tablet and sent by itself when the connection is back. What is left of each product, and the receipts of the shop's other tills, catch up then too. Printing does not need the internet, only the local network.",
 )

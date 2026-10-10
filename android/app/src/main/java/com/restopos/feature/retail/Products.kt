@@ -205,7 +205,7 @@ private const val BARS = "M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12"
 
 // Products & stock: look a product up, see what is left of it, change its price.
 @Composable
-fun ProductsScreen(vm: ProductsViewModel) {
+fun ProductsScreen(vm: ProductsViewModel, onLabel: (ItemEntity) -> Unit = {}) {
     val cats by vm.cats.collectAsState()
     val cat by vm.cat.collectAsState()
     val q by vm.query.collectAsState()
@@ -274,7 +274,7 @@ fun ProductsScreen(vm: ProductsViewModel) {
         }
     }
 
-    open?.let { ProductSheet(it, vm) }
+    open?.let { ProductSheet(it, vm, onLabel) }
     asking?.let { a -> NumSheet(a) { vm.closeAsk() } }
     editing?.let { com.restopos.feature.menu.ItemSheet(vm.items, it, cats, shop = true) }
     CategorySheets(vm.categories, cats, counts, shop = true)
@@ -295,7 +295,7 @@ private fun Cat(label: String, on: Boolean, dot: androidx.compose.ui.graphics.Co
 
 // One product: every line of its stock in this shop, with its code and price.
 @Composable
-private fun ProductSheet(p: ProductOpen, vm: ProductsViewModel) {
+private fun ProductSheet(p: ProductOpen, vm: ProductsViewModel, onLabel: (ItemEntity) -> Unit) {
     val i = p.item
     val weighed = i.sold_by == "weight"
     val tone = { n: Long -> when (LinePrice.stock(n)) { LinePrice.Stock.Plenty -> V.Text2; LinePrice.Stock.Few -> V.AmberText; LinePrice.Stock.None -> V.RedText } }
@@ -348,6 +348,8 @@ private fun ProductSheet(p: ProductOpen, vm: ProductsViewModel) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             // its name, category, barcode, and removing it: the product's own sheet
             VBtn("Edit product", height = 52.dp, radius = 14.dp) { vm.close(); vm.items.open(i, fixedPrice = p.variants.isNotEmpty() || weighed) }
+            // onto the Print labels list: its price and barcode on a sticker
+            VBtn("Print label", height = 52.dp, radius = 14.dp, icon = VI.Tag) { vm.close(); onLabel(i) }
             Gap()
             VBtn("Close", height = 52.dp, radius = 14.dp) { vm.close() }
         }

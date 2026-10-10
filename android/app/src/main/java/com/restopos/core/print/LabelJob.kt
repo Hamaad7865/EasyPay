@@ -13,6 +13,10 @@ object LabelJob {
 
     const val WIDER = "This label is wider than the printer's paper. Pick a smaller label, or a sticker printer."
 
+    // A run for the tablet's label printer, in the language it speaks.
+    fun bytes(p: LabelPrinter, labels: List<Label>, t: LabelTemplate): Result<ByteArray> =
+        if (p.sticker) Result.success(tspl(labels, t.widthMm, t.heightMm, t.gapMm)) else escpos(labels, p.paper)
+
     // A sticker printer has to be told the label's size and the gap to the
     // next one, or it cannot find where a label starts. The copies of one
     // label are the printer's to repeat, so they cost one picture.
