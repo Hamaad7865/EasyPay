@@ -8,8 +8,9 @@
 # Object with its own small store, holding the menu the till last published
 # and the orders that wait. EasyPay's database is never asked.
 #
-#   npx wrangler dev        try it on this PC (see README.md)
-#   npx wrangler deploy     put it live, on the owner's word only
+#   npx wrangler dev                          try it on this PC (see README.md)
+#   node cloudflare/relay/deploy.cjs --apply  put it live, on the owner's word only.
+#                                             NOT a plain `wrangler deploy`: see TILL_API below
 name = "easypay-relay"
 main = "src/index.js"
 compatibility_date = "2026-07-30"
@@ -26,9 +27,11 @@ custom_domain = true
 # Where EasyPay's till service is: the relay asks it whose till is connecting
 # (`GET /guest/pass`, with the till's own credential). Not a secret. It is the
 # address the till's release build syncs with (GitHub variable
-# TILL_FUNCTION_URL), filled in when this is first put live. Empty, no till
-# can connect and guests are told to ask a member of staff. On this PC the
-# `relay` launch entry gives the stand-in's address instead.
+# TILL_FUNCTION_URL), and deploy.cjs reads it from there and hands it to the
+# deploy, so it is left empty here. Empty on the live relay, no till can
+# connect and guests are told to ask a member of staff: that is what a plain
+# `wrangler deploy` from this folder would do. On this PC the `relay` launch
+# entry gives the stand-in's address instead.
 [vars]
 TILL_API = ""
 

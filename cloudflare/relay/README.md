@@ -18,6 +18,7 @@ test/demo-menu.mjs   a made-up restaurant's menu, as a till publishes one
 test/stand-in-api.mjs    EasyPay's till service played by a script (one question)
 test/stand-in-till.mjs   a till played by a script, to try the page with no tablet
 test/flow.mjs        the whole exchange, asserted, against the Worker running here
+deploy.cjs           puts it live, told where production's till service is (and its test)
 ```
 
 ## How it fits together
@@ -118,12 +119,29 @@ three seconds, and Accept and Decline were answered to the phone's side.
 
 ## Putting it live
 
-Not done, and only on the owner's word. It needs, first, migration 0093
-and the till service's `GET /guest/pass` on production (they are on the dev
-branch); then `TILL_API` in `wrangler.toml` set to the production till
-service's address; then `wrangler deploy` from this folder, which creates
-the Worker and the address `order.easypaypos.com` in the easypaypos.com
-zone. The address cannot change once cards are printed.
+Only on the owner's word. One command, from the repository's folder:
+
+```
+node cloudflare/relay/deploy.cjs            looks and checks, changes nothing
+node cloudflare/relay/deploy.cjs --apply    deploys, then asks the live address whether it answers
+```
+
+It reads where production's till service is from the repository's variable
+`TILL_FUNCTION_URL` and hands it to the deploy as `TILL_API`, so nothing is
+typed and `wrangler.toml` holds no address of production. A plain
+`wrangler deploy` from this folder would put the relay live with no address,
+and every till would be turned away; run without `--apply`, the script says
+so if that has happened. The first deploy creates the Worker and the address
+`order.easypaypos.com` in the easypaypos.com zone. The address cannot change
+once cards are printed.
+
+The order of a release, since a card is for good: this deploy first (a
+card's address then answers, and says to ask a member of staff); then the
+release's tag, which puts migration 0093, the till service's
+`GET /guest/pass`, the back office's switch and cards, and the till on
+production. Run again without `--apply` afterwards, the script's last line
+should say that a made-up till is turned away by EasyPay: the relay reaches
+the till service and the service answers.
 
 What Cloudflare's free plan allows, read in its documentation on 2026-10-10:
 100,000 Worker requests a day for the whole account (the back office shares

@@ -91,10 +91,12 @@ nothing of it until the owner has seen it working.
 
 ## The release, on the owner's word only
 
-In this order, since a card is for good: migration 0093 and the till service
-on production; `TILL_API` in `cloudflare/relay/wrangler.toml` set to the
-production till service and `wrangler deploy` there (which makes
-`order.easypaypos.com`); `TABLE_ORDERING_LIVE` true and the "Table cards"
-line back in `nav.ts`; then the tag, which carries the back office and the
-till. Before the tag, a real tablet and a real phone should be tried against
-the deployed relay.
+In this order, since a card is for good: `node cloudflare/relay/deploy.cjs
+--apply` (which makes `order.easypaypos.com` and tells the relay where
+production's till service is); then the tag, which carries migration 0093,
+the till service, the back office and the till. `TABLE_ORDERING_LIVE` is
+true and the "Table cards" line is back in `nav.ts` since 2026-10-11, when
+the owner asked to try it live with a demo restaurant: from that tag on, a
+restaurant on Premium or a trial sees the switch and the cards. A real
+tablet and a real phone are tried with the demo restaurant before any other
+restaurant is told of it.
