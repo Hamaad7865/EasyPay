@@ -301,7 +301,8 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
             }
             changes["employees"]?.let { rows ->
                 staff.upsertEmployees(rows.map {
-                    EmployeeEntity(id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", str(it, "pin_hash"), str(it, "role_id"), bool(it, "is_active", true), str(it, "deleted_at"), lng(it, "server_seq"))
+                    EmployeeEntity(id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", str(it, "pin_hash"), str(it, "role_id"), bool(it, "is_active", true), str(it, "deleted_at"), lng(it, "server_seq"),
+                        has_login = str(it, "auth_user_id") != null)
                 })
             }
             changes["employee_stores"]?.let { rows ->

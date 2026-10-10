@@ -67,6 +67,11 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             "tax.save" -> taxSave(p, tenant)
             "supplier.save" -> supplierSave(p, tenant)
             "supplier.remove" -> supplierRemove(p)
+            "role.save" -> roleSave(p, tenant)
+            "role.remove" -> roleRemove(p)
+            "staff.update" -> staffUpdate(p)
+            "discount.save" -> discountSave(p, tenant)
+            "discount.remove" -> discountRemove(p)
             else -> throw Refused("not-alone")
         }
     }
@@ -345,10 +350,89 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         if (was.deleted_at == null) dao.putSupplier(was.copy(deleted_at = now()))
     }
 
+    // ---- push_role_save, push_role_remove (0095) ----
+    private suspend fun roleSave(p: JsonObject, tenant: String) {
+        val id = p.id("id")
+        val ticked = (p["permissions"] as? JsonArray) ?: bad()
+        val offered = (p["offered"] as? JsonArray) ?: bad()
+        val name = (p.str("name") ?: "").trim().take(30)
+        if (name.isEmpty()) throw Refused("name-required")
+        // "*" is the owner's alone: it is neither offered nor ticked, whatever was sent
+        val offer = offered.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.filter { it != "*" && it.length in 1..60 }
+        val ticks = ticked.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.filter { it in offer }.toSet()
+        val all = dao.roles()
+        if (all.any { it.id != id && it.name.lowercase() == name.lowercase() }) throw Refused("name-taken")
+        val was = all.firstOrNull { it.id == id }
+        if (was != null) {
+            if (was.deleted_at != null) throw Refused("bad-role")
+            val had = RoleForm.held(was.permissions)
+            if ("*" in had) throw Refused("owner-role")
+            dao.putRole(was.copy(name = name, permissions = list(RoleForm.saved(had, ticks, offer))))
+        } else dao.putRole(com.restopos.core.database.RoleEntity(id, tenant, name, list(ticks.sorted())))
+    }
+
+    private fun list(perms: List<String>): String = JsonArray(perms.map { JsonPrimitive(it) }).toString()
+
+    private suspend fun roleRemove(p: JsonObject) {
+        val id = p.id("role_id")
+        val was = dao.roles().firstOrNull { it.id == id } ?: throw Refused("bad-role")
+        // removed already is removed
+        if (was.deleted_at != null) return
+        if (RoleForm.isOwner(was.permissions)) throw Refused("owner-role")
+        if (dao.staffOn(id) > 0) throw Refused("role-in-use")
+        dao.putRole(was.copy(deleted_at = now(), name = was.name.take(30) + " (removed " + stamp() + ")"))
+    }
+
+    // as the server writes it into a removed row's name, so that the name is free again
+    private fun stamp(): String = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(java.time.ZoneOffset.UTC).format(Instant.ofEpochMilli(clock()))
+
+    // ---- push_staff_update (0095) ----
+    private suspend fun staffUpdate(p: JsonObject) {
+        val id = p.id("employee_id")
+        val role = p.str("role_id")?.ifEmpty { null }
+        val active = p.bool("active")
+        val name = (p.str("name") ?: "").trim().take(80)
+        if ("name" in p && name.isEmpty()) throw Refused("name-required")
+        if ("role_id" in p && role == null) throw Refused("bad-role")
+        val was = dao.employee(id)?.takeIf { it.deleted_at == null } ?: throw Refused("unknown-staff")
+        // someone with a login of their own is not changed from a till
+        if (was.has_login) throw Refused("has-login")
+        if (role != null && dao.roles().none { it.id == role && it.deleted_at == null }) throw Refused("bad-role")
+        dao.putEmployee(was.copy(
+            name = if ("name" in p) name else was.name,
+            role_id = if ("role_id" in p) role else was.role_id,
+            is_active = if ("active" in p && active != null) active else was.is_active,
+        ))
+    }
+
+    // ---- push_discount_save, push_discount_remove (0095) ----
+    private suspend fun discountSave(p: JsonObject, tenant: String) {
+        val id = p.id("id")
+        val value = p.long("value")
+        val needs = p.bool("requires_approval") ?: false
+        val type = p.str("type")
+        if (type != "percent" && type != "amount") bad()
+        val name = (p.str("name") ?: "").trim().take(40)
+        if (name.isEmpty()) throw Refused("name-required")
+        if (value == null || value < 1 || (type == "percent" && value > 100) || value > 100_000_000L) throw Refused("bad-value")
+        val all = dao.discounts()
+        if (all.any { it.id != id && it.name.lowercase() == name.lowercase() }) throw Refused("name-taken")
+        val was = all.firstOrNull { it.id == id }
+        if (was != null && was.deleted_at != null) throw Refused("bad-discount")
+        dao.putDiscount((was ?: com.restopos.core.database.DiscountEntity(id, tenant, name, type!!, value)).copy(name = name, type = type!!, value = value, requires_approval = needs))
+    }
+
+    private suspend fun discountRemove(p: JsonObject) {
+        val id = p.id("discount_id")
+        val was = dao.discounts().firstOrNull { it.id == id } ?: throw Refused("bad-discount")
+        if (was.deleted_at == null) dao.putDiscount(was.copy(deleted_at = now(), name = was.name.take(40) + " (removed " + stamp() + ")"))
+    }
+
     companion object {
         val KINDS = setOf(
             "item.save", "item.remove", "category.save", "category.remove", "stock.adjust", "tables.add", "printer.save",
             "company.save", "staff.save", "staff.set_pin", "tax.save", "supplier.save", "supplier.remove",
+            "role.save", "role.remove", "staff.update", "discount.save", "discount.remove",
         )
         private val IN_REASONS = setOf("receive", "found")
         private val OUT_REASONS = setOf("damaged", "expired", "lost", "internal", "supplier_return")

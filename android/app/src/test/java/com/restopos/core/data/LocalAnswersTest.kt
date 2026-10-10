@@ -80,6 +80,12 @@ class FakeAlone : AloneDao {
     override suspend fun putEmployeeStores(rows: List<EmployeeStoreEntity>) { employeeStores += rows }
     override suspend fun role(id: String) = roles[id]
     override suspend fun storeIds() = stores.toList()
+    override suspend fun roles() = roles.values.toList()
+    override suspend fun putRole(row: RoleEntity) { roles[row.id] = row }
+    override suspend fun staffOn(role: String) = employees.values.count { it.role_id == role && it.deleted_at == null }
+    val discounts = LinkedHashMap<String, com.restopos.core.database.DiscountEntity>()
+    override suspend fun discounts() = discounts.values.toList()
+    override suspend fun putDiscount(row: com.restopos.core.database.DiscountEntity) { discounts[row.id] = row }
 }
 
 // A tablet that works on its own answers a change by the server's rules,
@@ -373,6 +379,103 @@ class LocalAnswersTest {
         assertEquals("unknown-supplier", ask("supplier.save", row(31, "Maurilait")))
         // its name is free again
         assertEquals("done", ask("supplier.save", row(33, "Maurilait")))
+    }
+
+    // ---- roles, staff, discounts (the server's 0095, sections S and D of its suite) ----
+    @Test fun `a role added, its ticks changed, and what the sheet did not offer kept`() {
+        val sent = fixture("role-save", mapOf("role-1" to id(42)))
+        assertEquals("done", ask("role.save", sent))
+        assertEquals("[\"payment.take\",\"sale.create\",\"sale.refund\"]", dao.roles[id(42)]!!.permissions)
+        assertEquals("done", ask("role.save", sent))
+        dao.roles[id(42)] = dao.roles[id(42)]!!.copy(permissions = "[\"payment.take\",\"sale.create\",\"sale.refund\",\"stock.count\"]")
+        val changed = JsonObject(sent + ("name" to JsonPrimitive("Shift lead")) + ("permissions" to Json.parseToJsonElement("[\"sale.create\",\"items.edit\"]")))
+        assertEquals("done", ask("role.save", changed))
+        assertEquals(listOf("Shift lead", "[\"items.edit\",\"sale.create\",\"stock.count\"]"), dao.roles[id(42)]!!.let { listOf(it.name, it.permissions) })
+        // the owner's star is never taken
+        val star = JsonObject(sent + ("name" to JsonPrimitive("Shift lead")) + ("permissions" to Json.parseToJsonElement("[\"*\",\"sale.create\"]")) + ("offered" to Json.parseToJsonElement("[\"*\",\"sale.create\"]")))
+        assertEquals("done", ask("role.save", star))
+        assertFalse(dao.roles[id(42)]!!.permissions.contains("*"))
+        assertEquals("name-taken", ask("role.save", JsonObject(sent + ("id" to JsonPrimitive(id(43))) + ("name" to JsonPrimitive("cashier")))))
+        assertEquals("name-required", ask("role.save", JsonObject(sent + ("name" to JsonPrimitive(" ")))))
+    }
+
+    @Test fun `the owner's role is not changed or removed, and a role staff hold is not removed`() {
+        dao.roles[id(44)] = RoleEntity(id(44), tenant, "Owner", "[\"*\"]")
+        val sent = fixture("role-save", mapOf("role-1" to id(44)))
+        assertEquals("owner-role", ask("role.save", sent))
+        assertEquals("owner-role", ask("role.remove", """{"role_id":"${id(44)}"}"""))
+        dao.employees[id(500)] = EmployeeEntity(id(500), tenant, "Ben", "x", role)
+        assertEquals("role-in-use", ask("role.remove", """{"role_id":"$role"}"""))
+        dao.employees[id(500)] = dao.employees[id(500)]!!.copy(role_id = id(44))
+        assertEquals("done", ask("role.remove", """{"role_id":"$role"}"""))
+        assertTrue(dao.roles[role]!!.let { it.deleted_at != null && it.name.startsWith("Cashier (removed ") })
+        assertEquals("done", ask("role.remove", """{"role_id":"$role"}"""))
+        assertEquals("bad-role", ask("role.remove", """{"role_id":"${id(49)}"}"""))
+        // its name is free, and it is not brought back
+        assertEquals("bad-role", ask("role.save", fixture("role-save", mapOf("role-1" to role))))
+        assertEquals("done", ask("role.save", JsonObject(fixture("role-save", mapOf("role-1" to id(45))) + ("name" to JsonPrimitive("Cashier")))))
+    }
+
+    @Test fun `a member of staff's name, role and whether they may use the tills`() {
+        dao.roles[id(42)] = RoleEntity(id(42), tenant, "Supervisor", "[]")
+        dao.employees[id(500)] = EmployeeEntity(id(500), tenant, "Ben", "x", role)
+        assertEquals("done", ask("staff.update", fixture("staff-update", mapOf("staff-1" to id(500), "role-1" to id(42)))))
+        assertEquals(listOf("Benjamin", id(42), true), dao.employees[id(500)]!!.let { listOf(it.name, it.role_id, it.is_active) })
+        assertEquals("done", ask("staff.update", """{"employee_id":"${id(500)}","active":false}"""))
+        assertEquals(listOf("Benjamin", id(42), false), dao.employees[id(500)]!!.let { listOf(it.name, it.role_id, it.is_active) })
+        assertEquals("bad-role", ask("staff.update", """{"employee_id":"${id(500)}","role_id":"${id(49)}"}"""))
+        assertEquals("name-required", ask("staff.update", """{"employee_id":"${id(500)}","name":"  "}"""))
+        assertEquals("unknown-staff", ask("staff.update", """{"employee_id":"${id(599)}","name":"Nobody"}"""))
+        dao.employees[id(501)] = EmployeeEntity(id(501), tenant, "Owner", "x", role, has_login = true)
+        assertEquals("has-login", ask("staff.update", """{"employee_id":"${id(501)}","active":false}"""))
+        assertTrue(dao.employees[id(501)]!!.is_active)
+    }
+
+    @Test fun `a discount added, changed and removed`() {
+        val sent = fixture("discount-save", mapOf("discount-1" to id(60)))
+        assertEquals("done", ask("discount.save", sent))
+        assertEquals(listOf("Staff meal", "percent", 20L, true), dao.discounts[id(60)]!!.let { listOf(it.name, it.type, it.value, it.requires_approval) })
+        assertEquals("done", ask("discount.save", JsonObject(sent + ("name" to JsonPrimitive("Loyal customer")) + ("type" to JsonPrimitive("amount")) + ("value" to JsonPrimitive(5000)) + ("requires_approval" to JsonPrimitive(false)))))
+        assertEquals(listOf("Loyal customer", "amount", 5000L, false), dao.discounts[id(60)]!!.let { listOf(it.name, it.type, it.value, it.requires_approval) })
+        assertEquals("bad-value", ask("discount.save", JsonObject(sent + ("value" to JsonPrimitive(101)))))
+        assertEquals("bad-value", ask("discount.save", JsonObject(sent + ("value" to JsonPrimitive(0)))))
+        assertEquals("bad-value", ask("discount.save", JsonObject(sent + ("type" to JsonPrimitive("amount")) + ("value" to JsonPrimitive(100000001)))))
+        assertEquals("name-required", ask("discount.save", JsonObject(sent + ("name" to JsonPrimitive("")))))
+        assertEquals("bad-payload", ask("discount.save", JsonObject(sent + ("type" to JsonPrimitive("half")))))
+        assertEquals("name-taken", ask("discount.save", JsonObject(sent + ("id" to JsonPrimitive(id(61))) + ("name" to JsonPrimitive("loyal CUSTOMER")))))
+        assertEquals("done", ask("discount.remove", """{"discount_id":"${id(60)}"}"""))
+        assertTrue(dao.discounts[id(60)]!!.let { it.deleted_at != null && it.name.startsWith("Loyal customer (removed ") })
+        assertEquals("done", ask("discount.remove", """{"discount_id":"${id(60)}"}"""))
+        assertEquals("bad-discount", ask("discount.save", sent))
+        assertEquals("bad-discount", ask("discount.remove", """{"discount_id":"${id(69)}"}"""))
+    }
+
+    @Test fun `what is sent for a role, a member of staff and a discount is the example the server was tested with`() {
+        assertEquals(OfficeFixtures.payload("role-save"), OfficePayloads.roleSave("role-1", "Supervisor", setOf("sale.refund", "sale.create", "payment.take"), listOf("sale.create", "payment.take", "sale.apply_discount", "sale.refund", "items.edit"), null))
+        assertEquals(OfficeFixtures.payload("role-remove"), OfficePayloads.roleRemove("role-1", null))
+        assertEquals(OfficeFixtures.payload("staff-update"), OfficePayloads.staffUpdate("staff-1", "Benjamin", "role-1", true, null))
+        assertEquals(setOf("employee_id", "active"), OfficePayloads.staffUpdate("staff-1", null, null, false, null).keys)
+        val d = DiscountForm.read(" Staff meal ", percent = true, value = "20", needsManager = true).getOrThrow()
+        assertEquals(OfficeFixtures.payload("discount-save"), OfficePayloads.discountSave("discount-1", d, null))
+        assertEquals(OfficeFixtures.payload("discount-remove"), OfficePayloads.discountRemove("discount-1", null))
+        assertEquals(DiscountForm.Discount("Rs off", false, 5050, false), DiscountForm.read("Rs off", false, "50.50", false).getOrThrow())
+        assertEquals("A percentage is a whole number from 1 to 100", DiscountForm.read("X", true, "12.5", false).exceptionOrNull()?.message)
+        assertEquals("Say how much the discount takes off", DiscountForm.read("X", false, "0", false).exceptionOrNull()?.message)
+    }
+
+    @Test fun `the permissions a role's sheet offers are the back office's, by kind of business`() {
+        val file = Json.parseToJsonElement(java.io.File("../../db/tests/fixtures/till-office/perms.json").readText()).jsonObject
+        fun of(kind: String) = (file[kind] as kotlinx.serialization.json.JsonArray).map { g ->
+            g.jsonObject["title"].toString().trim('"') to (g.jsonObject["perms"] as kotlinx.serialization.json.JsonArray).map { p ->
+                (p as kotlinx.serialization.json.JsonArray).let { (it[0] as JsonPrimitive).content to (it[1] as JsonPrimitive).content }
+            }
+        }
+        assertEquals(of("restaurant"), Perms.groups(shop = false).map { it.title to it.perms })
+        assertEquals(of("retail"), Perms.groups(shop = true).map { it.title to it.perms })
+        // what a role holds after a save: the ticks among what was offered, and what it held besides
+        assertEquals(listOf("items.edit", "sale.create", "stock.count"), RoleForm.saved(setOf("sale.create", "sale.refund", "stock.count"), setOf("sale.create", "items.edit"), listOf("sale.create", "sale.refund", "items.edit")))
+        assertEquals("Can do everything", RoleForm.says("[\"*\"]", shop = false))
+        assertEquals("2 of ${Perms.offered(false).size} permissions", RoleForm.says("[\"sale.create\",\"payment.take\",\"stock.count\"]", shop = false))
     }
 
     @Test fun `a change this tablet cannot answer by itself says so`() {

@@ -3,6 +3,8 @@ package com.restopos.core.data
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.add
 
 // What the tablet sends for the setting-up a till does as the back office
 // does (server 0094 on). Each is held against an example in
@@ -42,6 +44,41 @@ object OfficePayloads {
                 if (store != null && sent(ItemForm.REORDER)) { put("store_id", store); put("reorder_point", m.reorder); put("reorder_qty", m.orderQty) }
             }
         }
+        approvedBy?.let { put("approved_by", it) }
+    }
+
+    // A role's sheet: its ticks, and the list the sheet offered them from, in
+    // the sheet's order. What the role holds outside that list is kept by
+    // whoever takes this (the server, or LocalAnswers).
+    fun roleSave(id: String, name: String, ticked: Set<String>, offered: List<String>, approvedBy: String?): JsonObject = buildJsonObject {
+        put("id", id); put("name", name)
+        putJsonArray("permissions") { offered.filter { it in ticked }.forEach { add(it) } }
+        putJsonArray("offered") { offered.forEach { add(it) } }
+        approvedBy?.let { put("approved_by", it) }
+    }
+
+    fun roleRemove(id: String, approvedBy: String?): JsonObject = buildJsonObject {
+        put("role_id", id)
+        approvedBy?.let { put("approved_by", it) }
+    }
+
+    // A member of staff with no login: what is not given is left as it is.
+    fun staffUpdate(id: String, name: String?, roleId: String?, active: Boolean?, approvedBy: String?): JsonObject = buildJsonObject {
+        put("employee_id", id)
+        name?.let { put("name", it) }
+        roleId?.let { put("role_id", it) }
+        active?.let { put("active", it) }
+        approvedBy?.let { put("approved_by", it) }
+    }
+
+    fun discountSave(id: String, d: DiscountForm.Discount, approvedBy: String?): JsonObject = buildJsonObject {
+        put("id", id); put("name", d.name); put("type", if (d.percent) "percent" else "amount"); put("value", d.value)
+        put("requires_approval", d.needsManager)
+        approvedBy?.let { put("approved_by", it) }
+    }
+
+    fun discountRemove(id: String, approvedBy: String?): JsonObject = buildJsonObject {
+        put("discount_id", id)
         approvedBy?.let { put("approved_by", it) }
     }
 }

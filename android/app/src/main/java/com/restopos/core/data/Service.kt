@@ -372,6 +372,36 @@ class ServiceRepository @Inject constructor(
         })
     }
 
+    // ---- roles, staff and discounts (server 0095) ----
+    // Asked now and waited for, as an item is; on a tablet that works on its
+    // own, answered by the tablet (ask). Ids are the caller's, made when the
+    // sheet opened.
+    suspend fun saveRole(id: String, name: String, ticked: Set<String>, offered: List<String>, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("employees.edit", "change roles", approver)
+        ask("role.save", RoleForm::refused, OfficePayloads.roleSave(id, name, ticked, offered, staff.approvedBy("employees.edit", approver)))
+    }
+
+    suspend fun removeRole(id: String, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("employees.edit", "change roles", approver)
+        ask("role.remove", RoleForm::refused, OfficePayloads.roleRemove(id, staff.approvedBy("employees.edit", approver)))
+    }
+
+    // name, roleId, active: what is null is left as it is
+    suspend fun updateStaff(id: String, name: String?, roleId: String?, active: Boolean?, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("employees.edit", "change staff", approver)
+        ask("staff.update", StaffForm::refused, OfficePayloads.staffUpdate(id, name, roleId, active, staff.approvedBy("employees.edit", approver)))
+    }
+
+    suspend fun saveDiscount(id: String, d: DiscountForm.Discount, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("items.edit", "change the discounts", approver)
+        ask("discount.save", DiscountForm::refused, OfficePayloads.discountSave(id, d, staff.approvedBy("items.edit", approver)))
+    }
+
+    suspend fun removeDiscount(id: String, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("items.edit", "change the discounts", approver)
+        ask("discount.remove", DiscountForm::refused, OfficePayloads.discountRemove(id, staff.approvedBy("items.edit", approver)))
+    }
+
     // "Open the till": the set-up is finished, for every tablet of the
     // business. Queued like a sale and not waited for; this tablet remembers
     // it at once, so its start screen stops offering the set-up.

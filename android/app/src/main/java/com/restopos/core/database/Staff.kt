@@ -33,6 +33,9 @@ data class EmployeeEntity(
     val is_active: Boolean = true,
     val deleted_at: String? = null,
     val server_seq: Long? = null,
+    // they sign in to the back office with a login of their own (server 0095):
+    // their name, role and access are not changed from a till
+    val has_login: Boolean = false,
 )
 
 @Entity(tableName = "employee_stores", primaryKeys = ["employee_id", "store_id"])

@@ -268,4 +268,14 @@ object Migrations {
             db.execSQL("ALTER TABLE `items` ADD COLUMN `supplier_code` TEXT")
         }
     }
+
+    // 18: roles and staff from the till (server 0095). Whether someone has a
+    // login of their own always came with a pull and was dropped; the Staff
+    // page needs it, because such a person is not changed from a till. False
+    // until the next pull that carries them.
+    val V17_V18 = object : Migration(17, 18) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `employees` ADD COLUMN `has_login` INTEGER NOT NULL DEFAULT 0")
+        }
+    }
 }

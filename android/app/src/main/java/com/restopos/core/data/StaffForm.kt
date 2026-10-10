@@ -35,6 +35,7 @@ object StaffForm {
         "bad-role" -> "That role is no longer there. Pick another."
         "bad-pin" -> "That PIN could not be saved. Type it again."
         "unknown-staff" -> "That person is no longer there."
+        "has-login" -> "They sign in with a login of their own, which EasyPay looks after: they are not changed from a till."
         "conflict" -> "That did not work. Close this and try again."
         "unknown-op" -> "The server has to be updated before staff can be added from a till."
         null -> "The server refused it."
