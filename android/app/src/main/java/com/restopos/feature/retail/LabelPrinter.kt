@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -154,9 +155,14 @@ fun LabelPrinterSheet(vm: LabelPrinterViewModel, onDismiss: () -> Unit) {
     val ready = read.isSuccess && !twins
 
     Sheet(onDismiss = onDismiss, width = 640.dp, pad = 24.dp, gap = 16.dp, top = true) {
+        // The keyboard's own Done puts it away, so that the keys under it can be
+        // reached. Asked for in here: the sheet is a window of its own, and the
+        // keyboard that is up belongs to this window, not to the screen behind.
+        val keyboard = LocalSoftwareKeyboardController.current
+        val typed: () -> Unit = { keyboard?.hide() }
         SheetHead(if (was == null) "Add a label printer" else "Label printer", "The printer this tablet's labels come out of.", onDismiss)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Bottom) {
-            SetupField("Its name", name, { name = it.take(40); touched() }, "Labels", Modifier.weight(1f), enabled = !testing)
+            SetupField("Its name", name, { name = it.take(40); touched() }, "Labels", Modifier.weight(1f), enabled = !testing, onIme = typed)
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 T("What it is", 13.sp, 600, V.Text2)
                 Seg(listOf(SegOption("Sticker printer", sticker) { sticker = true; touched() }, SegOption("Receipt printer", !sticker) { sticker = false; touched() }), well = V.Well, height = 46.dp)
@@ -205,7 +211,7 @@ fun LabelPrinterSheet(vm: LabelPrinterViewModel, onDismiss: () -> Unit) {
                 }
             }
             else -> {
-                SetupField("Its address", address, { address = it.trim().take(40); touched() }, "192.168.1.60", enabled = !testing, keyboard = KeyboardType.Uri)
+                SetupField("Its address", address, { address = it.trim().take(40); touched() }, "192.168.1.60", enabled = !testing, keyboard = KeyboardType.Uri, onIme = typed)
                 T("A label printer prints its address on its self-test label. Hold its feed key while switching it on.", 13.sp, 500, V.Text3, lines = 2)
             }
         }
@@ -230,7 +236,7 @@ fun LabelPrinterSheet(vm: LabelPrinterViewModel, onDismiss: () -> Unit) {
         // until it can be saved, the form says what is missing
         if (said == null && !twins) read.exceptionOrNull()?.message?.let { T("$it.", 14.sp, 600, V.AmberText, lines = 2, height = 20.sp) }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            VBtn(if (testing) "Sending…" else "Print a test label", Modifier.weight(1f), height = 56.dp, radius = 16.dp, enabled = ready && !testing) {
+            VBtn(if (testing) "Sending…" else "Print a test label", Modifier.weight(1f), fg = if (ready) V.Text else V.Text3, height = 56.dp, radius = 16.dp, enabled = ready && !testing) {
                 val p = read.getOrNull() ?: return@VBtn
                 touched()
                 testing = true

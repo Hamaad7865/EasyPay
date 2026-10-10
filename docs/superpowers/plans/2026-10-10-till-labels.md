@@ -308,3 +308,50 @@ object LabelPaint {
 - [ ] `:app:testDebugUnitTest` and `:app:assembleDebug` pass.
 - [ ] Add a record at the end of this file: what was built, what was seen, what was not.
 - [ ] Commit. Do not tag: the release is the owner's.
+
+---
+
+## Record (2026-10-10)
+
+Built in the order above, on `restopos`. Till 0.9.0 (build 13); 342 unit tests pass, 34 of them new.
+
+**Where it left the plan**
+
+- The tests of tasks 3 to 6 were written before their code and first run with it. Only task 2's was
+  also run before its code existed.
+- `LabelJob.bytes(printer, labels, template)` wraps a run in the printer's language: both the test label
+  and a run go through it.
+- A single line of words too wide for its box is drawn smaller, down to half its size, and only then
+  cut. Seen on "Price only", where a price lost its end.
+- The 40 x 30 label's variant, price and bars moved a few tenths of a millimetre apart.
+- On Print labels a line just added is scrolled into view, and the sheet of ready-made labels puts the
+  two sizes that have one label on one row, so that all five are on screen.
+- The printer form's keyboard is put away by its own Done key. The keyboard has to be asked for inside
+  the sheet: a sheet is a window of its own, and the one asked for outside it is the screen's behind.
+- With no label printer the Print key opens the form itself (the design was changed to say so).
+
+**Seen running,** on a new emulator of my own (`easypay_claude_labels`, port 5590) holding the made-up
+shop, against a stand-in printer on this PC that keeps each job's bytes (`listen.cjs` and `decode.cjs`
+in the session's scratch folder; the second turns a job back into pictures):
+
+- More > Label printer: none, the form, a network printer added, its test label, Connected, Change.
+- The test label as the stand-in received it: the frame on four sides, the words, an EAN-13.
+- Print labels from the side menu and from a product's sheet; products tapped and scanned (`DEMO_SCAN`),
+  a code no product has; a product with eight variants (two picked, then all); a count typed as 500
+  held to 99; the list emptied after a run that was sent.
+- Each ready-made label as pictures: 40 x 30 (EAN-13 at 2 dots, a SKU as Code 128, a variant, a price by
+  the kilo), 50 x 25 (the shop's name, the variant after the name, bars at 3 dots), the three 25 x 15
+  (thirteen digits as characters, with the screen saying why).
+- The copies of one label sent as one picture (`PRINT 1,2`); a run of ten different labels in one job.
+- The same printer as a receipt-type printer: one raster and a cut for each copy.
+- A printer that does not answer: the till's sentence, the list kept, the dot red.
+- Both screens on a lower screen (about 1097 x 686 dp).
+
+**Not seen**
+
+- A real printer of any kind. So: that TSPL's bits are the way round the manual says, the gap and the
+  size on real stickers, whether a long run overruns a printer's buffer, USB (the device picked, the
+  two-printers refusal, Android's permission), Bluetooth, 300 dpi.
+- A product with neither barcode nor SKU, and a long accented name: the made-up shop has neither. Their
+  layout is unit-tested; their picture was not looked at.
+- A restaurant's till without the page and the screen (it is one condition in the menu and the shell).

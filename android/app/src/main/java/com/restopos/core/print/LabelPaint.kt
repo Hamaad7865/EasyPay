@@ -40,6 +40,12 @@ object LabelPaint {
                     textSize = i.px.toFloat()
                     typeface = Typeface.create(Typeface.SANS_SERIF, if (i.bold) Typeface.BOLD else Typeface.NORMAL)
                 }
+                // One line of words too wide for its box is drawn smaller, down to
+                // half its size, rather than cut: a price must not lose its end.
+                if (i.lines == 1) {
+                    val wide = paint.measureText(i.text)
+                    if (wide > i.w) paint.textSize = maxOf(i.px * 0.5f, kotlin.math.floor(i.px * i.w / wide))
+                }
                 // centred across its box; a name too long for its lines is cut with an ellipsis
                 val layout = StaticLayout.Builder.obtain(i.text, 0, i.text.length, paint, i.w.coerceAtLeast(1))
                     .setAlignment(Layout.Alignment.ALIGN_CENTER)

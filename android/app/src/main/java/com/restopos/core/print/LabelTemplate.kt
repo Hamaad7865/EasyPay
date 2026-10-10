@@ -63,10 +63,10 @@ object LabelTemplates {
         LabelTemplate(
             DEFAULT, "Name, price, barcode", 40f, 30f,
             elements = listOf(
-                text("name", 1.5f, 1.2f, 37f, 7.6f, 3.2f, bold = true, lines = 2),
-                text("variant", 1.5f, 8.9f, 37f, 3.2f, 2.6f),
-                text("price", 1.5f, 12.2f, 37f, 5.6f, 5f, bold = true),
-                LabelElement.Bars(2f, 18.3f, 36f, 10.2f),
+                text("name", 1.5f, 1f, 37f, 7.6f, 3.2f, bold = true, lines = 2),
+                text("variant", 1.5f, 8.8f, 37f, 3.1f, 2.6f),
+                text("price", 1.5f, 12.4f, 37f, 5.2f, 4.6f, bold = true),
+                LabelElement.Bars(2f, 18.5f, 36f, 10f),
             ),
         ),
         LabelTemplate(

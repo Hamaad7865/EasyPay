@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -359,7 +360,13 @@ private fun Run(vm: LabelsViewModel, printers: LabelPrinterViewModel, onLabel: (
                 T("Tap a product on the right, or scan it.\nEach tap is one more label of it.", 15.sp, 500, V.Text2, lines = 3, align = androidx.compose.ui.text.style.TextAlign.Center, height = 22.sp)
             }
         } else {
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            // a line just added, or tapped, is brought into view: the list is short and a run can be long
+            val list = rememberLazyListState()
+            LaunchedEffect(shown?.key, rows.size) {
+                val at = rows.indexOfFirst { it.key == shown?.key }
+                if (at >= 0) list.animateScrollToItem(at)
+            }
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), list, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(rows, key = { it.key }) { r -> RunLine(r, r.key == shown?.key, notes[r.key], vm) }
             }
         }
@@ -508,29 +515,45 @@ private fun WhichSheet(p: LabelPick, vm: LabelsViewModel) {
 }
 
 // The ready-made labels, by the size of sticker they are for, each drawn with
-// the selected line's own words.
+// the selected line's own words. The sizes that have one label share a row.
 @Composable
 private fun TemplateSheet(vm: LabelsViewModel, onDismiss: () -> Unit) {
     val current by vm.template.collectAsState()
+    val groups = remember { LabelTemplates.all.groupBy { it.size }.toList() }
+    val pick = { t: LabelTemplate -> vm.setTemplate(t.id); onDismiss() }
     Sheet(onDismiss = onDismiss, width = 760.dp, pad = 24.dp, gap = 14.dp) {
         SheetHead("Which label?", "Pick one in the size of the stickers that are in the printer.", onDismiss)
-        LabelTemplates.all.groupBy { it.size }.forEach { (size, group) ->
-            Caps("$size mm stickers")
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                group.forEach { t ->
-                    val on = t.id == current.id
-                    val picture = remember(t.id) { vm.picture(t) }
-                    Column(
-                        Modifier.width(226.dp).press(0.98f) { vm.setTemplate(t.id); onDismiss() }.clip(RoundedCornerShape(16.dp)).background(if (on) V.RowOn else V.Well)
-                            .border(1.5.dp, if (on) V.Green else Color.Transparent, RoundedCornerShape(16.dp)).padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Box(Modifier.height(112.dp).fillMaxWidth(), contentAlignment = Alignment.Center) { Picture(picture, t, Modifier.height(if (t.heightMm < 20f) 78.dp else 112.dp)) }
-                        T(t.name, 14.sp, 700, lines = 2, align = androidx.compose.ui.text.style.TextAlign.Center, height = 18.sp)
-                    }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            groups.filter { it.second.size == 1 }.forEach { (size, group) ->
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Caps("$size mm stickers")
+                    TemplateCard(group[0], group[0].id == current.id, vm, Modifier.fillMaxWidth(), pick)
                 }
-                Spacer(Modifier.weight(1f))
             }
         }
+        groups.filter { it.second.size > 1 }.forEach { (size, group) ->
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Caps("$size mm stickers")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    group.forEach { t -> TemplateCard(t, t.id == current.id, vm, Modifier.weight(1f), pick) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TemplateCard(t: LabelTemplate, on: Boolean, vm: LabelsViewModel, modifier: Modifier, onPick: (LabelTemplate) -> Unit) {
+    val picture = remember(t.id) { vm.picture(t) }
+    Column(
+        modifier.press(0.98f) { onPick(t) }.clip(RoundedCornerShape(16.dp)).background(if (on) V.RowOn else V.Well)
+            .border(1.5.dp, if (on) V.Green else Color.Transparent, RoundedCornerShape(16.dp)).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        // a small sticker is drawn a little larger for its size, so that its words can be read here
+        Box(Modifier.height(100.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Picture(picture, t, Modifier.height((t.heightMm * if (t.heightMm < 20f) 4.4f else 3.2f).dp))
+        }
+        T(t.name, 14.sp, 700, lines = 1)
     }
 }
