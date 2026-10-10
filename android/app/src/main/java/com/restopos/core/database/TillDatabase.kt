@@ -63,7 +63,7 @@ import androidx.room.RoomDatabase
         GuestOrderEntity::class,
         TillLogEntity::class,
     ],
-    version = 16,
+    version = 17,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {

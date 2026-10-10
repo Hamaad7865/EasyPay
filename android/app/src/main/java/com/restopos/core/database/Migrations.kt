@@ -259,4 +259,13 @@ object Migrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_till_log_at` ON `till_log` (`at`)")
         }
     }
+
+    // 17: the fuller product sheet (server 0094). The supplier's own code
+    // for a product always came with the product and was dropped; the sheet
+    // shows it now. Empty until the next pull that carries the product.
+    val V16_V17 = object : Migration(16, 17) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `items` ADD COLUMN `supplier_code` TEXT")
+        }
+    }
 }

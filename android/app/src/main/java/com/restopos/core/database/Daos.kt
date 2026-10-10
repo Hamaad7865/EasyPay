@@ -10,6 +10,9 @@ import androidx.room.Upsert
 // deletes the old row first, which loses whatever hangs off it.
 data class CategoryCount(val id: String, val n: Int)
 
+// How many live items carry a tax.
+data class TaxUse(val id: String, val n: Int)
+
 @Dao
 interface CatalogDao {
     // Sale grid + search read from Room with paging (spec 7.3, 2,000 items).
@@ -75,6 +78,14 @@ interface CatalogDao {
 
     @Query("SELECT t.* FROM taxes t JOIN item_taxes it ON it.tax_id = t.id WHERE it.item_id = :item AND t.deleted_at IS NULL")
     suspend fun taxesForItem(item: String): List<TaxEntity>
+
+    // The taxes as Settings lists them and a sheet offers them: the usual one first.
+    @Query("SELECT * FROM taxes WHERE deleted_at IS NULL ORDER BY is_default DESC, name COLLATE NOCASE")
+    fun taxes(): kotlinx.coroutines.flow.Flow<List<TaxEntity>>
+
+    // How many items carry each tax.
+    @Query("SELECT it.tax_id AS id, COUNT(*) AS n FROM item_taxes it JOIN items i ON i.id = it.item_id WHERE i.deleted_at IS NULL GROUP BY it.tax_id")
+    fun taxUse(): kotlinx.coroutines.flow.Flow<List<TaxUse>>
 
     @Upsert
     suspend fun upsertLineTaxes(rows: List<TicketLineTaxEntity>)

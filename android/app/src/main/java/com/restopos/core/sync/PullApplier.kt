@@ -94,7 +94,8 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         // and a tap rang it up at whatever its price field held instead of asking
                         open_price = bool(it, "open_price", false),
                         // a shop's stock papers (0092): they always arrived, and were dropped here until now
-                        cost = lng(it, "cost"), supplier_id = str(it, "supplier_id"), brand = str(it, "brand")?.trim()?.ifEmpty { null })
+                        cost = lng(it, "cost"), supplier_id = str(it, "supplier_id"), brand = str(it, "brand")?.trim()?.ifEmpty { null },
+                        supplier_code = str(it, "supplier_code")?.trim()?.ifEmpty { null })
                 })
             }
             // A shop's variants, and what this shop holds of each product. A

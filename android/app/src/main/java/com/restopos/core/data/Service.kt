@@ -24,6 +24,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -43,6 +44,13 @@ data class LineInfo(val line: TicketLineEntity, val mods: String, val amount: Lo
     // add-ons and the kitchen note on one line
     val detail: String get() = listOfNotNull(mods.ifBlank { null }, line.note?.ifBlank { null }).joinToString(" · ")
 }
+
+// What an item's sheet needs for its second page (ServiceRepository.itemMore).
+class ItemMore(
+    val taxes: List<com.restopos.core.database.TaxEntity>, val taxId: String?,
+    val suppliers: List<com.restopos.core.database.SupplierEntity>,
+    val reorder: Int?, val orderQty: Int?, val mayCost: Boolean, val variants: Boolean,
+)
 
 // An order that is still being served: open on a table or at the counter, or
 // a takeaway that is paid and waiting to be collected.
@@ -202,16 +210,36 @@ class ServiceRepository @Inject constructor(
     // this till, and the others have it at their next.
     // Returns the item's id.
     // countStock: whether its stock is counted, when the sheet says; null leaves it as it is.
-    suspend fun saveItem(id: String?, item: ItemForm.Item, categoryId: String?, available: Boolean, shop: Boolean, approver: StaffMember? = null, countStock: Boolean? = null): Result<String> = runCatching {
+    // more: the sheet's second page (its tax, and a shop's cost, SKU, brand, supplier and reorder level), when the sheet had one.
+    suspend fun saveItem(id: String?, item: ItemForm.Item, categoryId: String?, available: Boolean, shop: Boolean, approver: StaffMember? = null, countStock: Boolean? = null, more: ItemForm.More? = null): Result<String> = runCatching {
         staff.allow("items.edit", if (shop) "change the products" else "change the menu", approver)
         val itemId = id ?: Uuid7.next()
-        ask("item.save", { ItemForm.refused(it, shop) }, buildJsonObject {
-            put("id", itemId); put("name", item.name); put("price", item.price); put("open_price", item.open)
-            put("category_id", categoryId ?: ""); put("barcode", item.barcode ?: ""); put("available", available)
-            countStock?.let { put("track_stock", it) }
-            staff.approvedBy("items.edit", approver)?.let { put("approved_by", it) }
-        })
+        ask("item.save", { ItemForm.refused(it, shop) }, OfficePayloads.itemSave(itemId, item, categoryId, available, countStock, more, session.storeId(), staff.approvedBy("items.edit", approver)))
         itemId
+    }
+
+    // What the sheet's second page starts from: the taxes to pick from and
+    // the item's own (a new one starts on the usual tax), a shop's suppliers,
+    // the reorder figures of this till's store, and whether the person signed
+    // in may see cost. itemId: null for a new item.
+    suspend fun itemMore(itemId: String?): ItemMore {
+        val taxes = db.catalog().taxes().first()
+        val own = itemId?.let { db.catalog().taxesForItem(it).firstOrNull()?.id } ?: taxes.firstOrNull()?.id
+        val store = session.storeId()
+        val level = if (itemId != null && store != null) db.retail().levelsOf(store, itemId).firstOrNull() else null
+        return ItemMore(
+            taxes, own, db.stock().suppliers().first(), level?.reorder_point, level?.reorder_qty,
+            mayCost = staff.can("costs.view"), variants = itemId != null && db.retail().variantsOf(itemId).any { it.deleted_at == null },
+        )
+    }
+
+    // A tax made or changed from the till (server 0094), by someone allowed
+    // to edit the menu or with their approval. Asked now and waited for, as
+    // an item is. id: made when the sheet opened, so a second try after a
+    // lost answer sends the same one.
+    suspend fun saveTax(id: String, tax: TaxForm.Tax, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("items.edit", "change the taxes", approver)
+        ask("tax.save", TaxForm::refused, OfficePayloads.taxSave(id, tax, staff.approvedBy("items.edit", approver)))
     }
 
     // Removed from the menu, the same way. Receipts that sold it keep its name.

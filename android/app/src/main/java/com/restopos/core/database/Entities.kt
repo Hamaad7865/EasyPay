@@ -69,6 +69,8 @@ data class ItemEntity(
     val cost: Long? = null,
     val supplier_id: String? = null,
     val brand: String? = null,
+    // what its supplier calls it (server 0094: the till's sheet shows it now)
+    val supplier_code: String? = null,
 )
 
 @Entity(tableName = "modifier_groups")
