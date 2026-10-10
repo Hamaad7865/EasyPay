@@ -1243,7 +1243,22 @@ a.till:hover .till-go { border-color: var(--accent); color: var(--accent); }
 .paper .row { display: flex; justify-content: space-between; gap: 8px; }
 .paper hr { border: 0; border-top: 1px dashed #777; margin: 6px 0; }
 
+/* Table cards (backoffice/tables/cards): one for each table, to print and cut
+   out. A card is paper, so it is white with a black code whatever the look:
+   a phone reads dark squares on a light ground. */
+.tcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.tcard { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 20px 16px 16px; border: 1px dashed var(--line); border-radius: 12px; background: #fff; color: #000; text-align: center; break-inside: avoid; }
+.tcard svg { width: 100%; max-width: 190px; height: auto; margin: 6px 0 8px; fill: #000; }
+.tcard h2 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; color: #000; }
+.tcard p { margin: 0; }
+.tcard-place { font-size: 14px; font-weight: 700; }
+.tcard-area { font-size: 13px; }
+.tcard-how { margin-top: 6px !important; font-size: 12.5px; line-height: 1.4; max-width: 190px; }
+.tcard-site { margin-top: 6px !important; font-size: 11px; letter-spacing: 0.04em; }
+
 @media print {
+  .tcards { grid-template-columns: repeat(3, 1fr); gap: 0; }
+  .tcard { border: 1px dashed #999; border-radius: 0; }
   .rail, .bo-side, .filters, .page-actions, .no-print { display: none !important; }
   .bo { display: block; padding: 0; background: #fff; }
   .bo-main { padding: 0; max-width: none; }

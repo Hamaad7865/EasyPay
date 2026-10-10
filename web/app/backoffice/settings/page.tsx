@@ -3,6 +3,7 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, int, on, Refused, text, uuid } from "@/lib/action";
 import { loadSettings, money, saveSettings } from "@/lib/settings";
+import { PREMIUM_ONLY } from "@/lib/plan";
 import { Card, Flash, one, PageHead, type Search } from "../ui";
 import { Submit, Wait } from "../busy";
 
@@ -44,6 +45,8 @@ async function saveGeneral(f: FormData) {
             servicePct: int(f, "servicePct", 0, 30, 0),
             prepMinutes: int(f, "prepMinutes", 1, 180, 15),
             kitchenSound: on(f, "kitchenSound"),
+            // on another plan the form has no such switch: what was saved is left as it is
+            ...(ctx.premium ? { tableOrdering: on(f, "tableOrdering") } : {}),
             kitchenNotes: String(f.get("kitchenNotes") ?? "").split("\n").map((n) => n.trim().slice(0, 40)).filter(Boolean).slice(0, 12),
           }),
     });
@@ -349,6 +352,27 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                 Play it
               </label>
             </div>
+          </Card>
+          )}
+          {!shop && (
+          <Card title="Ordering from the table" lede="A guest scans the code on their table's card, sees the menu on their own phone and sends an order to the till, where a member of staff accepts it. Nothing is charged on the phone.">
+            {ctx.premium ? (
+              <div className="setting">
+                <div>
+                  <strong>Take orders from the tables</strong>
+                  <small>
+                    While it is on, a till that is in use and online shows guests its menu and what is sold out, and an order waits on the till until it is accepted or declined. Print a card for each table under{" "}
+                    <Link href="/backoffice/tables/cards">Table cards</Link>.
+                  </small>
+                </div>
+                <label className="check" style={{ margin: 0 }}>
+                  <input type="checkbox" name="tableOrdering" defaultChecked={s.tableOrdering} />
+                  Switch it on
+                </label>
+              </div>
+            ) : (
+              <p className="muted" style={{ margin: 0 }}>Ordering from the table is {PREMIUM_ONLY}. Ask EasyPay to switch Premium on.</p>
+            )}
           </Card>
           )}
           <Card title="Security">

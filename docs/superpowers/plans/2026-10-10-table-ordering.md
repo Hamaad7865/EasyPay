@@ -50,10 +50,20 @@ Room, the connection with back-off, the requests, accepting into lines); the
 count on Tables, the request's sheet, the chime; Help. JVM tests first, then
 the emulator against `wrangler dev` at 10.0.2.2.
 
-## Piece 4: the back office
+## Piece 4: the back office. DONE, not deployed
 
-The switch in POS settings and the page of table cards (Premium only), with
-one small library to draw the codes.
+The switch in POS settings (General, "Ordering from the table": a restaurant
+on Premium has the switch, another plan is told it is Premium's; saved as
+`pos_settings.data.tableOrdering` with the rest of the form). The page
+Table cards (`/backoffice/tables/cards`, in the menu under Tables and as a
+key on the Tables page, Premium only): a card for each table of a store with
+the restaurant's name, the table's and its floor's, and the QR code of
+`order.easypaypos.com/<store's public id>/<table's id>`, laid out three
+across for printing. `web/lib/guest.ts` makes the address and the code's
+squares (`qrcode-generator`, which the lock file already held for another
+package); the page is split into its questions (`page.tsx`) and its drawing
+(`view.tsx`). Until the till piece is released the switch changes nothing a
+guest can see: a card scanned before then says the code is not in use.
 
 ## After
 

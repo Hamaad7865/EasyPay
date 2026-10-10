@@ -30,6 +30,13 @@ export default async function FloorPlansPage({ searchParams }: { searchParams: P
     <div>
       <div className="page-head">
         <h1>Floor plan</h1>
+        {/* the cards guests scan to order from their table: a page of the premium tier */}
+        {data.store && ctx.premium && (
+          <Link className="btn-quiet" href={`/backoffice/tables/cards?store=${data.store.id}`}>
+            Table cards
+            <Wait />
+          </Link>
+        )}
         {data.store && data.may && <NewFloor storeId={data.store.id} existing={data.floors.map((f) => f.name)} />}
       </div>
       {data.stores.length > 1 && (

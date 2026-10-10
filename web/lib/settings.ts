@@ -22,6 +22,9 @@ export type PosSettings = {
   onePrinter: boolean;
   // the till's drawer is counted note by note and coin by coin, in place of typing the amount
   drawerByNotes: boolean;
+  // guests order from the code on their table's card (lib/guest.ts). A page of
+  // the premium tier: the till service gives the same answer (guest_pass, 0093)
+  tableOrdering: boolean;
   receipt: { header: string; footer: string; logo: string | null; showLogo: boolean };
   company: { name: string; brn: string; vat: string; address: string; phone: string };
 };
@@ -38,6 +41,7 @@ export const DEFAULT_SETTINGS: PosSettings = {
   kitchenSound: true,
   onePrinter: false,
   drawerByNotes: false,
+  tableOrdering: false,
   receipt: { header: "", footer: "Thank you. See you again soon.", logo: null, showLogo: true },
   company: { name: "", brn: "", vat: "", address: "", phone: "" },
 };
@@ -66,6 +70,7 @@ export function withDefaults(raw: unknown): PosSettings {
     kitchenSound: d.kitchenSound === false ? false : true,
     onePrinter: d.onePrinter === true,
     drawerByNotes: d.drawerByNotes === true,
+    tableOrdering: d.tableOrdering === true,
     receipt: {
       header: str(r.header, DEFAULT_SETTINGS.receipt.header),
       footer: str(r.footer, DEFAULT_SETTINGS.receipt.footer),
