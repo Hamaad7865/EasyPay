@@ -1,0 +1,4 @@
+{
+  "type": "role.remove",
+  "payload": { "role_id": "role-1" }
+}

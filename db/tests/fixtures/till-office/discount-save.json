@@ -1,0 +1,4 @@
+{
+  "type": "discount.save",
+  "payload": { "id": "discount-1", "name": "Staff meal", "type": "percent", "value": 20, "requires_approval": true }
+}

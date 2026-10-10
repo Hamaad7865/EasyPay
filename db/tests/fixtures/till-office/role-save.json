@@ -1,0 +1,8 @@
+{
+  "type": "role.save",
+  "payload": {
+    "id": "role-1", "name": "Supervisor",
+    "permissions": ["sale.create", "payment.take", "sale.refund"],
+    "offered": ["sale.create", "payment.take", "sale.apply_discount", "sale.refund", "items.edit"]
+  }
+}

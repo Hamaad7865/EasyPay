@@ -1,0 +1,4 @@
+{
+  "type": "discount.remove",
+  "payload": { "discount_id": "discount-1" }
+}

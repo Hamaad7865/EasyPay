@@ -204,6 +204,104 @@ const swap = (v, map) => (Array.isArray(v) ? v.map((x) => swap(x, map))
     check('R2 its item is made with that tax', r.said === 'applied' && JSON.stringify(dt) === JSON.stringify([restoTax]), r.said + ' ' + JSON.stringify(dt));
     r = await one(type, { ...payload, tax_id: taxA }, restoOwner, restoOwner, resto);
     check('R3 and cannot take the shop\'s', r.said === 'rejected:bad-tax', r.said);
+
+    // ---- S: roles and staff (0095) ----
+    const roleA = id(), staffA = id();
+    const sids = { 'role-1': roleA, 'staff-1': staffA };
+    const sx = (name, over = {}) => { const fxt = fixture(name); return [fxt.type, { ...swap(fxt.payload, sids), ...over }]; };
+    const roleRow = (x) => q1(`select name, permissions, deleted_at from roles where id = $1`, [x]);
+    const manager = await emp(tid, 'Manager', await role(tid, 'Manager', ['employees.edit', 'items.edit']));
+    r = await one(...sx('role-save'));
+    row = await roleRow(roleA);
+    check('S1 a role added with its ticks', r.said === 'applied' && r.data.created === true && row && row.name === 'Supervisor'
+      && JSON.stringify(row.permissions) === JSON.stringify(['payment.take', 'sale.create', 'sale.refund']), r.said + ' ' + JSON.stringify(row));
+    r = await one(...sx('role-save'));
+    check('S2 the same again makes no second role', r.said === 'applied' && r.data.created === false
+      && (await q1(`select count(*)::int as n from roles where tenant_id = $1 and name = 'Supervisor'`, [tid])).n === 1, r.said);
+    // what the sheet did not offer is kept; what it offered and left unticked is taken off
+    await c.query(`update roles set permissions = permissions || '["stock.count"]'::jsonb where id = $1`, [roleA]);
+    r = await one(...sx('role-save', { name: 'Shift lead', permissions: ['sale.create', 'items.edit'] }));
+    row = await roleRow(roleA);
+    check('S3 its ticks changed: what was not offered is kept, what was unticked is gone', r.said === 'applied' && row.name === 'Shift lead'
+      && JSON.stringify(row.permissions) === JSON.stringify(['items.edit', 'sale.create', 'stock.count']), JSON.stringify(row.permissions));
+    r = await one(...sx('role-save', { name: 'Shift lead', permissions: ['*', 'sale.create'], offered: ['*', 'sale.create'] }));
+    row = await roleRow(roleA);
+    check("S4 the owner's star is never taken", r.said === 'applied' && !row.permissions.includes('*'), JSON.stringify(row.permissions));
+    const ownerRole = (await q1(`select role_id from employees where id = $1`, [owner])).role_id;
+    r = await one(...sx('role-save', { id: ownerRole, name: 'Boss' }));
+    const r5 = await one(...sx('role-remove', { role_id: ownerRole }));
+    check("S5 the owner's role cannot be changed or removed", r.said === 'rejected:owner-role' && r5.said === 'rejected:owner-role', r.said + ' ' + r5.said);
+    r = await one(...sx('role-save', { id: id(), name: 'cashier' }));
+    check('S6 a name another role has is refused', r.said === 'rejected:name-taken', r.said);
+    r = await one(...sx('role-save', { name: ' ' }));
+    check('S7 a role needs a name', r.said === 'rejected:name-required', r.said);
+    r = await one(...sx('role-save', { id: id(), name: 'Sneaky' }), cashier);
+    check('S8 a cashier may not', r.said === 'rejected:forbidden', r.said);
+    r = await one(...sx('role-save', { id: id(), name: 'Floor' }), manager);
+    check('S9 someone who manages staff may', r.said === 'applied', r.said);
+
+    // a member of staff with no login
+    await c.query(`insert into employees (id, tenant_id, name, role_id, pin_hash) values ($1,$2,'Ben',(select role_id from employees where id = $3),'x')`, [staffA, tid, cashier]);
+    const person = (x) => q1(`select name, role_id, is_active from employees where id = $1`, [x]);
+    r = await one(...sx('staff-update'));
+    row = await person(staffA);
+    check('S10 their name and their role changed', r.said === 'applied' && row.name === 'Benjamin' && row.role_id === roleA && row.is_active === true, r.said + ' ' + JSON.stringify(row));
+    r = await one('staff.update', { employee_id: staffA, active: false });
+    row = await person(staffA);
+    check('S11 switched off, and nothing else touched', r.said === 'applied' && row.is_active === false && row.name === 'Benjamin' && row.role_id === roleA, JSON.stringify(row));
+    r = await one('staff.update', { employee_id: staffA, role_id: id() });
+    check('S12 a role that is not there is refused', r.said === 'rejected:bad-role', r.said);
+    r = await one('staff.update', { employee_id: staffA, name: '  ' });
+    check('S13 a name cannot be emptied', r.said === 'rejected:name-required', r.said);
+    await c.query(`update employees set auth_user_id = gen_random_uuid() where id = $1`, [manager]);
+    r = await one('staff.update', { employee_id: manager, active: false });
+    check('S14 someone with a login is not changed from a till', r.said === 'rejected:has-login' && (await person(manager)).is_active === true, r.said);
+    r = await one('staff.update', { employee_id: id(), name: 'Nobody' });
+    check('S15 someone who is not there is refused', r.said === 'rejected:unknown-staff', r.said);
+    r = await one(...sx('role-remove'));
+    check('S16 a role staff still hold is not removed', r.said === 'rejected:role-in-use' && (await roleRow(roleA)).deleted_at === null, r.said);
+    await c.query(`update employees set role_id = (select role_id from employees where id = $2) where id = $1`, [staffA, cashier]);
+    r = await one(...sx('role-remove'));
+    row = await roleRow(roleA);
+    const again = await one(...sx('role-remove'));
+    check('S17 removed, its name freed, and removed twice is done', r.said === 'applied' && row.deleted_at !== null && row.name.startsWith('Shift lead (removed ') && again.said === 'applied', r.said + ' ' + row.name);
+    r = await one(...sx('role-save', { name: 'Shift lead' }));
+    check('S18 a removed role is not brought back by a save that arrives late', r.said === 'rejected:bad-role', r.said);
+    r = await one(...sx('role-save', { id: id(), name: 'Shift lead' }));
+    check('S19 its name can be given to a new one', r.said === 'applied', r.said);
+    const pr2 = ((await pull()).changes || {});
+    check('S20 a pull carries the roles and the staff', (pr2.roles || []).some((x) => x.id === roleA && x.deleted_at) && (pr2.employees || []).some((x) => x.id === staffA && x.name === 'Benjamin' && x.is_active === false),
+      String((pr2.roles || []).length));
+
+    // ---- D: discounts (0095) ----
+    const discA = id();
+    const dx = (name, over = {}) => { const fxt = fixture(name); return [fxt.type, { ...swap(fxt.payload, { 'discount-1': discA }), ...over }]; };
+    const disc = (x) => q1(`select name, type, value, requires_approval, deleted_at from discounts where id = $1`, [x]);
+    r = await one(...dx('discount-save'));
+    row = await disc(discA);
+    check('D1 a discount added', r.said === 'applied' && r.data.created === true && row && row.name === 'Staff meal' && row.type === 'percent' && Number(row.value) === 20 && row.requires_approval === true, r.said + ' ' + JSON.stringify(row));
+    r = await one(...dx('discount-save', { name: 'Loyal customer', type: 'amount', value: 5000, requires_approval: false }));
+    row = await disc(discA);
+    check('D2 changed to an amount', r.said === 'applied' && r.data.created === false && row.name === 'Loyal customer' && row.type === 'amount' && Number(row.value) === 5000 && row.requires_approval === false, JSON.stringify(row));
+    const dbad = [];
+    for (const over of [{ type: 'percent', value: 101 }, { type: 'percent', value: 0 }, { type: 'amount', value: 100000001 }]) dbad.push((await one(...dx('discount-save', over))).said);
+    check('D3 a percentage over 100, nothing off, or an amount too large is refused', dbad.every((x) => x === 'rejected:bad-value'), dbad.join(' '));
+    r = await one(...dx('discount-save', { name: '' }));
+    const r6 = await one(...dx('discount-save', { type: 'half' }));
+    check('D4 it needs a name, and a kind that is one of the two', r.said === 'rejected:name-required' && r6.said === 'rejected:bad-payload', r.said + ' ' + r6.said);
+    r = await one(...dx('discount-save', { id: id(), name: 'loyal CUSTOMER' }));
+    check('D5 a name another discount has is refused', r.said === 'rejected:name-taken', r.said);
+    r = await one(...dx('discount-save', { id: id(), name: 'Cheeky' }), cashier);
+    check('D6 a cashier may not', r.said === 'rejected:forbidden', r.said);
+    r = await one(...dx('discount-remove'));
+    row = await disc(discA);
+    const dagain = await one(...dx('discount-remove'));
+    check('D7 removed, its name freed, and removed twice is done', r.said === 'applied' && row.deleted_at !== null && row.name.startsWith('Loyal customer (removed ') && dagain.said === 'applied', r.said + ' ' + row.name);
+    r = await one(...dx('discount-save', { name: 'Loyal customer' }));
+    const r7 = await one(...dx('discount-remove', { discount_id: id() }));
+    check('D8 a removed one is not brought back, and one that never was is refused', r.said === 'rejected:bad-discount' && r7.said === 'rejected:bad-discount', r.said + ' ' + r7.said);
+    const pd = ((await pull()).changes || {}).discounts || [];
+    check('D9 a pull carries the discount, removed', pd.some((x) => x.id === discA && x.deleted_at), String(pd.length));
     void restoStore; void theirOwner;
   } finally {
     try { await c.query('ROLLBACK'); } catch {}

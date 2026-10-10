@@ -1,6 +1,7 @@
 // perms.test.mjs — what the Roles page offers and saves (web/lib/perms.ts).
 // Usage: node web/lib/perms.test.mjs   (Node runs the .ts file itself)
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { permGroups, savedPerms } from "./perms.ts";
 
 let failures = 0;
@@ -61,6 +62,11 @@ check("a tick for something the page never offered is not saved", () => {
 });
 check("a permission is saved once", () => {
   assert.deepEqual(savedPerms("retail", ["sale.create"], ["sale.create", "sale.create"]), ["sale.create"]);
+});
+check("the list the tablet's Roles page is held against is this one (db/tests/fixtures/till-office/perms.json)", () => {
+  const f = JSON.parse(readFileSync(new URL("../../db/tests/fixtures/till-office/perms.json", import.meta.url), "utf8"));
+  assert.deepEqual(f.restaurant, permGroups("restaurant"));
+  assert.deepEqual(f.retail, permGroups("retail"));
 });
 
 process.exitCode = failures ? 1 : 0;

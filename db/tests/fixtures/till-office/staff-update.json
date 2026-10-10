@@ -1,0 +1,4 @@
+{
+  "type": "staff.update",
+  "payload": { "employee_id": "staff-1", "name": "Benjamin", "role_id": "role-1", "active": true }
+}
