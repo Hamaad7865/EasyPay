@@ -218,6 +218,8 @@ private val LEFT_HANDED = booleanPreferencesKey("left_handed")
 private val KEEP_AWAKE = booleanPreferencesKey("keep_awake")
 private val SCAN_MODE = booleanPreferencesKey("scan_mode")
 private val SCANNERS = stringPreferencesKey("scanners")
+private val LABEL_PRINTER = stringPreferencesKey("label_printer")
+private val LABEL_TEMPLATE = stringPreferencesKey("label_template")
 private val LIGHT = booleanPreferencesKey("light_mode_v2")
 private val LAST_PULL = longPreferencesKey("last_pull")
 private val LAST_USE = longPreferencesKey("last_use")
@@ -340,6 +342,15 @@ class SessionStore(private val context: Context) {
     suspend fun removeScanner(key: String) {
         store.edit { it[SCANNERS] = com.restopos.core.common.AddedScanners.write(com.restopos.core.common.AddedScanners.without(com.restopos.core.common.AddedScanners.read(it[SCANNERS]), key)) }
     }
+    // The printer this tablet's labels come out of (a shop's: More, Label
+    // printer), and the ready-made label last picked. The tablet's own, like
+    // the scanners: the printer is the one plugged into it or paired with it.
+    val labelPrinter: Flow<com.restopos.core.print.LabelPrinter?> = store.data.map { com.restopos.core.print.LabelPrinters.read(it[LABEL_PRINTER]) }
+    suspend fun setLabelPrinter(p: com.restopos.core.print.LabelPrinter?) {
+        store.edit { if (p == null) it.remove(LABEL_PRINTER) else it[LABEL_PRINTER] = com.restopos.core.print.LabelPrinters.write(p) }
+    }
+    val labelTemplate: Flow<String?> = store.data.map { it[LABEL_TEMPLATE] }
+    suspend fun setLabelTemplate(id: String) { store.edit { it[LABEL_TEMPLATE] = id } }
     val lightMode: Flow<Boolean> = store.data.map { it[LIGHT] ?: false }
     suspend fun setLightMode(on: Boolean) { store.edit { it[LIGHT] = on } }
     // When this tablet last heard from the server.
@@ -372,6 +383,14 @@ class SessionStore(private val context: Context) {
     }
 
     // Everything the tablet holds for the business it was set up for. What
-    // belongs to the tablet itself stays: the scanners added on it.
-    suspend fun clear() { store.edit { val scanners = it[SCANNERS]; it.clear(); if (scanners != null) it[SCANNERS] = scanners } }
+    // belongs to the tablet itself stays: the scanners added on it, and its
+    // label printer with the label last picked.
+    suspend fun clear() {
+        store.edit {
+            // (a key `to` a value is DataStore's own pair here, hence Pair)
+            val kept = listOf(SCANNERS, LABEL_PRINTER, LABEL_TEMPLATE).mapNotNull { key -> it[key]?.let { v -> Pair(key, v) } }
+            it.clear()
+            kept.forEach { (key, v) -> it[key] = v }
+        }
+    }
 }
