@@ -26,7 +26,17 @@ export default async function NotLinkedPage() {
           <img src="/logo-mark.png" alt="" className="bo-brand-logo" />
           <span>Easy<span className="bo-brand-pos">Pay</span></span>
         </div>
-        {standing === "no-access" ? (
+        {standing === "offline" ? (
+          <>
+            <h1>This business runs on its tablet</h1>
+            <p className="auth-lede">
+              {data.user.email} is signed in, and its business is on the offline plan: everything is set up and kept on
+              the tablet, and there is no back office to open. The back office, reports from anywhere and several tills
+              sharing one menu are part of EasyPay Premium. Contact us to switch it on: the tablet then sends what it
+              holds.
+            </p>
+          </>
+        ) : standing === "no-access" ? (
           <>
             <h1>No back office on this login</h1>
             <p className="auth-lede">

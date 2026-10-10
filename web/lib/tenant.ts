@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
 import { asMode, type Mode } from "@/lib/mode";
-import { hasPremium } from "@/lib/plan";
+import { hasPremium, isOffline } from "@/lib/plan";
 import { auth } from "@/lib/auth/server";
 import { ask } from "@/lib/db";
 
@@ -45,7 +45,8 @@ export const tenantContext = cache(async (): Promise<TenantContext> => {
       where e.auth_user_id = $1 and e.deleted_at is null and e.is_active`,
     [user.id],
   );
-  if (found.rowCount !== 1 || !found.rows[0].may_enter) redirect("/onboarding");
+  // a business on the offline plan has no back office: it runs on its tablet, and the page it lands on says so
+  if (found.rowCount !== 1 || !found.rows[0].may_enter || isOffline(found.rows[0].plan)) redirect("/onboarding");
   const row = found.rows[0];
   return {
     userId: user.id,
@@ -66,15 +67,17 @@ export const tenantContext = cache(async (): Promise<TenantContext> => {
 // logins, but its role does not hold "Sign in to the back office"; "none" it
 // is linked to no business, or was switched off. The same question
 // tenantContext asks, so the two cannot disagree and send someone round.
-export type Standing = "ok" | "no-access" | "none";
+// "offline": its business is on the offline plan, which has no back office.
+export type Standing = "ok" | "no-access" | "none" | "offline";
 export async function loginStanding(userId: string): Promise<Standing> {
   const found = await ask(
-    `select has_perm(e.id, 'backoffice.access') as may_enter
-       from employees e
+    `select has_perm(e.id, 'backoffice.access') as may_enter, t.plan
+       from employees e join tenants t on t.id = e.tenant_id
       where e.auth_user_id = $1 and e.deleted_at is null and e.is_active`,
     [userId],
   );
   if (found.rowCount !== 1) return "none";
+  if (isOffline(found.rows[0].plan)) return "offline";
   return found.rows[0].may_enter ? "ok" : "no-access";
 }
 

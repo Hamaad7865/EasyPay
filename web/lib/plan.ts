@@ -6,6 +6,13 @@ export const hasPremium = (plan: unknown): boolean => {
   return p === "premium" || p === "trial";
 };
 
+// The offline plan: the business runs on its tablet alone. The tablet does not
+// sync and answers every change itself; nothing of the business is kept on the
+// server, so there is no back office to open. Making it Premium in /admin is
+// what connects it: the tablet then sends what it kept.
+// (docs/superpowers/specs/2026-10-11-tablet-alone-design.md)
+export const isOffline = (plan: unknown): boolean => typeof plan === "string" && plan.trim().toLowerCase() === "offline";
+
 // What someone on another plan is told where a premium page would be.
 export const PREMIUM_ONLY = "part of EasyPay Premium";
 

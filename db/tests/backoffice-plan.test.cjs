@@ -35,6 +35,8 @@ check('N1 premium and trial carry the premium pages, however the plan was typed'
   plan.hasPremium('premium') && plan.hasPremium('trial') && plan.hasPremium(' Premium '));
 check('N1 standard, free, nothing and anything else do not',
   !plan.hasPremium('standard') && !plan.hasPremium('free') && !plan.hasPremium(null) && !plan.hasPremium(undefined) && !plan.hasPremium('gold'));
+check('the offline plan is told apart, and carries nothing of Premium',
+  plan.isOffline('offline') && plan.isOffline(' Offline ') && !plan.isOffline('standard') && !plan.isOffline('premium') && !plan.isOffline(null) && !plan.hasPremium('offline'));
 
 check('N2 a premium restaurant has Bookings in its menu', hrefs('restaurant', true).includes(BOOKINGS));
 check('N2 a standard restaurant does not', !hrefs('restaurant', false).includes(BOOKINGS));
