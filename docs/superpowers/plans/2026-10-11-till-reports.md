@@ -148,3 +148,54 @@ data class TillLogEntity(@PrimaryKey val id: String, val at: Long, val kind: Str
   Fail, write, pass.
 - [ ] On the emulator: a price changed on Products & stock and on a variant, a payment corrected on
   Receipts, each seen in its report with who did it; the database's step with data. Commit. Record.
+
+---
+
+## Record: as it was built (2026-10-11)
+
+Both parts are built and committed on `restopos` (`599020f` the arithmetic, `d5a6b64` the screen, the
+loading, the print and the log, then this commit). Nothing is pushed. No server change. The till's
+database is at 16.
+
+**Seen**, on a hidden emulator of mine with the made-up shop and a stand-in receipt printer on this PC
+(`DEMO_PRINTER --es address 10.0.2.2:9100`, the bytes turned back into text):
+- The database's step from 14 to 16, over the made-up shop with data: it opened, 13 products and 2
+  suppliers intact, `user_version` 16.
+- A sale of two mugs (their price typed down for the sale, Rs 640 to 600), a linen shirt M (10% off)
+  and 0.350 kg of rice, paid by card; a sale of a scarf and sandals in cash; the scarf refunded in cash;
+  the first sale's payment corrected from Card to Cash; the mug's own price changed from Rs 320 to 350;
+  the day closed with its drawer counted.
+- Each report read against that: Sales Summary (net Rs 3,679.00, two sales, one refund of Rs 590.00,
+  VAT Rs 479.86, discounts Rs 129.00, price changes Rs 40.00, all in cash after the correction);
+  Sales Analysis by category (Shoes 1,890, Clothing 1,161, Home 600, Food 28) and by staff; Item Sales
+  Rank; Hourly; Transaction Detail (three rows, the first receipt now saying Cash); Price Change (the
+  two lines sold at another price with why and who, and the mug's price change); Resettlement (the
+  refund naming its sale, the corrected payment); Shift Record (day closing No. 1, opened and closed by
+  whom, counted, "Drawer exact", its figures in a sheet); Tax Report.
+- **The Sales Summary and the Z report of the same day carry the same figures**, line for line, on
+  paper: receipts 2, sales 4,269.00, refunds 590.00, total 3,679.00, tax 479.86, discounts 129.00,
+  price changes 40.00.
+- Print of the Sales Summary and of the Tax Report, and "Print it again" of the closed day, arriving at
+  the stand-in printer; Today, Yesterday (nothing), This week, the dates sheet and Last 30 days; the
+  Reports key on Today; the cashier told the reports are not his, the owner's PIN letting him in; the
+  screen at 1024 x 600. A shop is not offered "By order type".
+
+**Found by running it, and changed.**
+- The VAT report's "including VAT" was 7 cents under the net sales, because each receipt's VAT is
+  rounded and the base was worked out from the sum. A few cents left over now go to the largest line,
+  so the report adds up to the sales; more than a rupee a rate is still "No VAT".
+- A product sold and wholly refunded in the period was listed as "0 sold, Rs 0.00". It is no row now.
+- "1 refunds".
+- The refund sheet's Refund key sits under the tablet's keyboard while a reason is typed (not this
+  work's; noted for the owner).
+
+**Not seen.** The made-up restaurant (order types in Sales Analysis). A period of several days with
+sales on more than one (the line a day and the hours added together are unit-tested only). A report
+longer than a screen. A real printer. A tablet signed in to a real client.
+
+**Decided along the way.**
+- Sales Analysis by category and Item Sales Rank add up lines as they printed, before a discount on
+  the whole sale; by staff and by order type are whole receipts. The screen says which.
+- A manager's word lasts while the screen is open and until someone else signs in, as on Stock.
+- `Docs.report` prints any report as a left and a right; the debug build has `DEMO_PRINTER`.
+- The three rule objects of plan 1's count of files are one file here too: `Reports.kt`.

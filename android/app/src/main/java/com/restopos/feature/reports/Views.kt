@@ -158,7 +158,7 @@ private fun Summary(d: ReportData, vm: ReportsViewModel) {
             }
         }
         item { Heading("How it is made up") }
-        item { Line("Sales", Money.format(f.gross), "${f.sales} receipts") }
+        item { Line("Sales", Money.format(f.gross), counted(f.sales, "receipt", "receipts")) }
         item { Line("Refunds", Money.format(-f.refunded), "${f.refunds}") }
         item { Line("Net sales", Money.format(f.net), bold = true) }
         item { Line("Of which VAT", Money.format(f.tax)) }
@@ -171,7 +171,7 @@ private fun Summary(d: ReportData, vm: ReportsViewModel) {
         item { Line("Cash taken out", Money.format(-f.cashOut)) }
         if (days.size > 1) {
             item { Heading("A line a day") }
-            items(days) { day -> Line(DAY.format(day.day), Money.format(day.net), "${day.sales} sales" + if (day.refunds > 0) ", ${day.refunds} refunded" else "") }
+            items(days) { day -> Line(DAY.format(day.day), Money.format(day.net), counted(day.sales, "sale", "sales") + if (day.refunds > 0) ", ${day.refunds} refunded" else "") }
         }
     }
 }
@@ -243,7 +243,7 @@ private fun Transactions(d: ReportData, vm: ReportsViewModel, onReceipt: (String
     Page {
         item {
             val total = rows.sumOf { if (it.refund) -it.total else it.total }
-            Line("${rows.count { !it.refund }} sales, ${rows.count { it.refund }} refunds", Money.format(total), bold = true, under = "Tap a receipt to open it as it printed.")
+            Line(counted(rows.count { !it.refund }, "sale", "sales") + ", " + counted(rows.count { it.refund }, "refund", "refunds"), Money.format(total), bold = true, under = "Tap a receipt to open it as it printed.")
         }
         items(rows, key = { it.id }) { t ->
             Line(

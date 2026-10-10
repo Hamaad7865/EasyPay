@@ -103,7 +103,8 @@ object Reports {
                 if (!s.refund && seen.add(k)) sum.count += 1
             }
         }
-        return cuts(sums, byQty)
+        // sold and wholly refunded in the period, it came to nothing: not a row
+        return cuts(sums.filterValues { it.qty != 0 || it.amount != 0L }, byQty)
     }
 
     // By what the receipt itself says: its whole total, discounts and all.
@@ -171,7 +172,8 @@ object Reports {
 
     // For each rate, the VAT is what the receipts printed. What it was charged
     // on is worked out from it and the rate: the tablet keeps no VAT line by
-    // line. What is left of the net sales carried no VAT, and is the last line.
+    // line. What is left of the net sales carried no VAT, and is the last line;
+    // a few cents left are rounding, and the lines are made to add up to the sales.
     // taxes: the period's VAT by rate (CashOps.period). net: sales less refunds.
     fun tax(taxes: List<DocTax>, net: Long): List<TaxLine> {
         val lines = taxes.filter { it.rateBp > 0 && it.amount != 0L }.sortedByDescending { it.rateBp }.map { t ->
@@ -179,8 +181,12 @@ object Reports {
             TaxLine(t.name, t.rateBp, excl, t.amount, excl + t.amount)
         }
         val rest = net - lines.sumOf { it.incl }
-        // a rupee of rounding is not a sale without VAT
-        return if (rest > lines.size.toLong() * 100 || (lines.isEmpty() && rest != 0L)) lines + TaxLine("No VAT", 0, rest, 0, rest) else lines
+        if (lines.isEmpty()) return if (rest != 0L) listOf(TaxLine("No VAT", 0, rest, 0, rest)) else lines
+        // more than a rupee a rate left over is sales that carried no VAT
+        if (rest > lines.size.toLong() * 100) return lines + TaxLine("No VAT", 0, rest, 0, rest)
+        // less is the rounding of each receipt's VAT: it goes to the largest line, so that the report adds up to the sales
+        val most = lines.maxBy { it.incl }
+        return lines.map { if (it === most) it.copy(excl = it.excl + rest, incl = it.incl + rest) else it }
     }
 
     // ---- what the tablet wrote down (till_log) ----

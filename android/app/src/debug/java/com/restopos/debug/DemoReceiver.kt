@@ -131,6 +131,24 @@ class DemoReceiver : BroadcastReceiver() {
                         deps.requests().run()
                         Log.i(TAG, "pulled: " + changes.filter { it.value.isNotEmpty() }.map { it.key + " " + it.value.size }.joinToString(", "))
                     }
+                } else if (intent.action == PRINTER) {
+                    // A receipt printer for the made-up business, at an address: a listener on this PC stands in for
+                    // one (from an emulator the PC is 10.0.2.2), so that what a report or a receipt prints can be read.
+                    //   adb shell am broadcast -n com.restopos.app/com.restopos.debug.DemoReceiver -a com.restopos.app.DEMO_PRINTER --es address 10.0.2.2:9100
+                    val shop = Json.parseToJsonElement(context.assets.open("demo-shop.json").bufferedReader().use { it.readText() })
+                    val store = deps.session().storeId()
+                    val address = intent.getStringExtra("address")?.trim()?.takeIf { it.isNotEmpty() }
+                    if (store == null || deps.session().tenantId() != shop.str("tenant")) Log.w(TAG, "refused: this tablet is not the made-up business")
+                    else if (address == null) Log.w(TAG, "refused: no address")
+                    else {
+                        deps.db().ops().upsertPrinters(listOf(
+                            com.restopos.core.database.PrinterEntity(
+                                id = "d0000000-0000-4000-8000-0000000000c2", tenant_id = shop.str("tenant")!!, store_id = store,
+                                name = "Receipts", kind = "network", address = address, is_receipt = true,
+                            ),
+                        ))
+                        Log.i(TAG, "the made-up business prints its receipts at $address")
+                    }
                 } else if (intent.action == STOCK) {
                     // The made-up shop's stock papers, onto a tablet that already holds the made-up shop from a build
                     // before there were any: its sales, its labels and its printers stay as they are.
@@ -332,6 +350,7 @@ class DemoReceiver : BroadcastReceiver() {
         const val PULL = "com.restopos.app.DEMO_PULL"
         const val SCAN = "com.restopos.app.DEMO_SCAN"
         const val STOCK = "com.restopos.app.DEMO_STOCK"
+        const val PRINTER = "com.restopos.app.DEMO_PRINTER"
         const val CHIME = "com.restopos.app.DEMO_CHIME"
         const val UPDATE = "com.restopos.app.DEMO_UPDATE"
     }

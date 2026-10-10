@@ -25,6 +25,9 @@ internal fun cutsOf(d: ReportData, cutting: Cutting): List<Reports.Cut> = when (
     Cutting.Order -> Reports.byOrderType(d.sales)
 }
 
+// "1 refund", "3 refunds"
+internal fun counted(n: Int, one: String, many: String) = if (n == 1) "1 $one" else "$n $many"
+
 private fun head(text: String) = ReportLine(text, kind = Kind.Head)
 private val RULE = ReportLine("", kind = Kind.Rule)
 
@@ -77,7 +80,7 @@ internal fun printed(r: Report, d: ReportData, cutting: Cutting, byQty: Boolean,
             val rows = Reports.transactions(d.sales)
             if (rows.isEmpty()) nothing else rows.map { t ->
                 ReportLine(listOfNotNull(stamp(t.at, zone), t.number, if (t.refund) "REFUND" else null, t.paid.ifEmpty { null }, t.who).joinToString(" "), n(if (t.refund) -t.total else t.total))
-            } + RULE + ReportLine("${rows.count { !it.refund }} sales, ${rows.count { it.refund }} refunds", n(rows.sumOf { if (it.refund) -it.total else it.total }), Kind.Total)
+            } + RULE + ReportLine(counted(rows.count { !it.refund }, "sale", "sales") + ", " + counted(rows.count { it.refund }, "refund", "refunds"), n(rows.sumOf { if (it.refund) -it.total else it.total }), Kind.Total)
         }
         Report.Prices -> {
             val rows = Reports.repriced(d.sales)
@@ -91,7 +94,7 @@ internal fun printed(r: Report, d: ReportData, cutting: Cutting, byQty: Boolean,
             val rows = Reports.refunds(d.sales)
             listOf(head("Refunds")) + (if (rows.isEmpty()) nothing else rows.map { x ->
                 ReportLine("${stamp(x.at, zone)} ${x.number}${x.of?.let { o -> " of $o" } ?: ""}${x.who?.let { w -> " ($w)" } ?: ""}", n(-x.amount))
-            } + RULE + ReportLine("${rows.size} refunds", n(-rows.sumOf { it.amount }), Kind.Total)) + RULE + head("Payments corrected") + (if (d.corrected.isEmpty()) nothing else d.corrected.map { c ->
+            } + RULE + ReportLine(counted(rows.size, "refund", "refunds"), n(-rows.sumOf { it.amount }), Kind.Total)) + RULE + head("Payments corrected") + (if (d.corrected.isEmpty()) nothing else d.corrected.map { c ->
                 ReportLine("${stamp(c.at, zone)} ${c.receipt}, was ${c.was}${c.who?.let { w -> " ($w)" } ?: ""}", c.now)
             })
         }

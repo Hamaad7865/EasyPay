@@ -108,6 +108,10 @@ class ReportsTest {
         assertEquals(listOf("Denim jacket", "Linen shirt, M", "Ceramic mug", "Basmati rice"), Reports.items(all, byQty = true).map { it.name })
         assertEquals(listOf("Ceramic mug", "Linen shirt, M"), Reports.items(listOf(s1), byQty = true).map { it.name })
         assertEquals(350, byAmount.last().qty)
+        // a product sold and wholly refunded in the period came to nothing, and is no row
+        val back = refund("8", at(8, 15), 2800, listOf(rice), of = "T1-4")
+        assertEquals(listOf("Denim jacket", "Linen shirt, M", "Ceramic mug"), Reports.items(all + back, byQty = false).map { it.name })
+        assertEquals(listOf("Clothing", "Home"), Reports.byCategory(all + back).map { it.name })
     }
 
     @Test fun `sales by the hour, the empty hours between kept`() {
@@ -187,8 +191,8 @@ class ReportsTest {
         assertEquals(listOf("VAT" to 23000L, "Reduced" to 10500L, "No VAT" to 4000L), two.map { it.name to it.incl })
         // a rate of nothing has no line of its own: its sales are the ones with no VAT
         assertEquals(listOf(Reports.TaxLine("No VAT", 0, 5000, 0, 5000)), Reports.tax(listOf(DocTax("Zero rated", 0, 0, true)), 5000))
-        // a cent or two of rounding is not a sale without VAT
-        assertEquals(1, Reports.tax(listOf(DocTax("VAT", 1500, 1304, true)), 10000).size)
+        // a few cents of rounding are not a sale without VAT: the line is made to add up to the sales
+        assertEquals(listOf(Reports.TaxLine("VAT", 1500, 8696, 1304, 10000)), Reports.tax(listOf(DocTax("VAT", 1500, 1304, true)), 10000))
         assertEquals(emptyList<Reports.TaxLine>(), Reports.tax(emptyList(), 0))
     }
 }
