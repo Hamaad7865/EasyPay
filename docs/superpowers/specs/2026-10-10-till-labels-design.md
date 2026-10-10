@@ -155,7 +155,8 @@ Arranged as the owner's first photo, in EasyPay's own look.
 
 **Print** sends the run to the label printer and waits for it. Sent: the list is emptied and the screen
 says how many went to which printer. Not sent: the list stays and the reason is shown, so Print can be
-pressed again. With no label printer set up, the key says so and opens its page.
+pressed again. With no label printer set up, the key says so and opens its set-up, the same form the
+page under More opens.
 
 The list is kept while the app is open, not through a restart.
 
@@ -189,7 +190,7 @@ bars (EAN-13 against the back office's own test codes, the quiet zones, the thin
 are none); both wrappings byte for byte (the header, the bytes across, every bit turned over for TSPL);
 telling USB devices apart; the list's limits.
 
-**On my emulator** (`easypay_claude_till`, the made-up shop): the two screens, and a run sent to a
+**On an emulator of my own** (the made-up shop): the two screens, and a run sent to a
 stand-in printer on this PC that keeps the bytes, which are turned back into a picture and looked at.
 
 **Not checked by me:** anything on a real sticker printer. No hardware is here. The owner prints the
