@@ -105,5 +105,6 @@ dependencies {
     implementation(libs.workmanager)
     implementation(libs.paging.runtime)
     implementation(libs.paging.compose)
+    implementation(libs.zxing.core)
     testImplementation(libs.junit)
 }
