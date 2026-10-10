@@ -1,0 +1,8 @@
+{
+  "type": "item.save",
+  "payload": {
+    "id": "item-1", "name": "Dholl puri", "price": 2500, "open_price": false, "category_id": "category-1",
+    "barcode": "", "available": true, "track_stock": false,
+    "tax_id": "tax-1"
+  }
+}

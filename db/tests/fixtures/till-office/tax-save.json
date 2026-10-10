@@ -1,0 +1,4 @@
+{
+  "type": "tax.save",
+  "payload": { "id": "tax-1", "name": "Tourist levy", "rate_bp": 750, "type": "added", "is_default": false }
+}

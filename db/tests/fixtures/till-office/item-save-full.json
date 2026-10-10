@@ -1,0 +1,10 @@
+{
+  "type": "item.save",
+  "payload": {
+    "id": "item-1", "name": "Polo shirt", "price": 49900, "open_price": false, "category_id": "category-1",
+    "barcode": "6091234500017", "available": true, "track_stock": true,
+    "tax_id": "tax-1", "sku": "POLO-01", "cost": 17000, "brand": "Maison",
+    "supplier_id": "supplier-1", "supplier_code": "M-POLO",
+    "store_id": "store-1", "reorder_point": 3000, "reorder_qty": 12000
+  }
+}
