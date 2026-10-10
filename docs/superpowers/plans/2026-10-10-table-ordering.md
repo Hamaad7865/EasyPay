@@ -7,14 +7,15 @@ without the owner's word.
 
 ## Piece 1: the relay and the guest's page (`cloudflare/relay/`)
 
-1. `src/rules.js`, plain functions with `node --test` beside them: a store's
-   public id from its key (SHA-256, first 80 bits, base32), a menu taken or
-   refused (shape, sizes), an order checked against a menu (table, dish,
-   options within a group's least and most, quantities, notes), the limits.
-2. `src/index.js`: the Worker (`/api/<store>/menu`, `/orders`, `/orders/<id>`,
-   `/till`) and the room, a Durable Object with SQLite and hibernating
-   sockets: a till proves the store's key, publishes the menu, is handed
-   orders and answers them; a guest's socket hears the answer.
+1. `src/rules.js`, plain functions with `node --test` beside them: a menu
+   taken or refused (shape, sizes), what of it a phone is sent, an order
+   checked against a menu (table, dish, options within a group's least and
+   most, quantities, notes), the limits.
+2. `src/index.js`: the Worker (`/api/<store>/menu/<table>`, `/orders`,
+   `/orders/<id>`, `/till`) and the room, a Durable Object with SQLite and
+   hibernating sockets: a till EasyPay's till service vouches for publishes
+   the menu, is handed orders and answers them; a guest's socket hears the
+   answer.
 3. `public/`: the guest's page from the canvas of 2026-10-06 (menu, options,
    your order, sent, confirmed, not taken), plain HTML, CSS and one script.
 4. `test/stand-in-till.mjs` (a till played by a script, with the demo menu)
@@ -25,9 +26,12 @@ without the owner's word.
 
 ## Piece 2: the server (one migration, 0092)
 
-`stores.guest_key` and `guest_id` made for every store and for new ones,
-handed to that store's tills in a pull; `pos_settings.data.tableOrdering`
-set by the back office's save; a suite on dev.
+`stores.guest_id` (sixteen letters and digits, random, for good) made for
+every store and for new ones, handed to that store's tills in a pull and read
+by the back office for the cards; `pos_settings.data.tableOrdering` set by
+the back office's save; the till service's `GET /guest/pass` (a till's own
+credential in, `{store, ordering}` out: ordering is Premium, a restaurant and
+the switch); a suite on dev.
 
 ## Piece 3: the till
 

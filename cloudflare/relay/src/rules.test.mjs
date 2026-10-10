@@ -1,23 +1,23 @@
 // node --test cloudflare/relay/src/rules.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { storeId, isStoreId, isKey, readMenu, readOrder, LIMITS } from "./rules.js";
-import { demoMenu, DEMO_KEY } from "../test/demo-menu.mjs";
+import { isStoreId, readMenu, readOrder, forPhones, LIMITS } from "./rules.js";
+import { demoMenu, DEMO_STORE, T7 } from "../test/demo-menu.mjs";
 
 const menu = () => readMenu(demoMenu()).menu;
-const order = (lines, table = "t0000007") => ({ table, lines });
+const order = (lines, table = T7) => ({ table, lines });
 
-test("a store's id is sixteen letters and digits worked out from its key, the same every time", async () => {
-  const a = await storeId(DEMO_KEY), b = await storeId(DEMO_KEY), c = await storeId(DEMO_KEY + "x");
-  assert.equal(a, b);
-  assert.notEqual(a, c);
-  assert.ok(isStoreId(a), a);
-  assert.ok(!isStoreId(a.toUpperCase()) && !isStoreId(a.slice(1)) && !isStoreId(a + "a"));
+test("a store's id is sixteen letters and digits", () => {
+  assert.ok(isStoreId(DEMO_STORE));
+  assert.ok(!isStoreId(DEMO_STORE.toUpperCase()) && !isStoreId(DEMO_STORE.slice(1)) && !isStoreId(DEMO_STORE + "a") && !isStoreId("demostore0000001") && !isStoreId(null));
 });
 
-test("a key is long, and of letters, digits, - and _ only", () => {
-  assert.ok(isKey(DEMO_KEY));
-  assert.ok(!isKey("short") && !isKey("x".repeat(31)) && !isKey("a b".repeat(20)) && !isKey(null));
+test("a phone is sent the menu without its tables", () => {
+  const m = menu(), sent = forPhones(m);
+  assert.equal(sent.tables, undefined);
+  assert.equal(sent.items.length, m.items.length);
+  assert.equal(m.tables.length, 3, "the menu itself keeps them");
+  assert.ok(!JSON.stringify(sent).includes(T7));
 });
 
 test("the demo menu is taken whole", () => {
@@ -64,7 +64,7 @@ test("an order of dishes with their options is taken, with nothing of a price in
     { item: "gp", qty: 1 },
   ]), menu());
   assert.equal(got.error, undefined);
-  assert.deepEqual(got.order, { table: "t0000007", lines: [
+  assert.deepEqual(got.order, { table: T7, lines: [
     { item: "cp", qty: 2, mods: ["cs2", "ca0"], note: "no onion" },
     { item: "gp", qty: 1, mods: [], note: "" },
   ] });
@@ -72,7 +72,8 @@ test("an order of dishes with their options is taken, with nothing of a price in
 
 test("an order is refused for a table, a dish or an option the menu does not have", () => {
   const m = menu();
-  assert.equal(readOrder(order([{ item: "gp", qty: 1 }], "t9999999"), m).code, "table");
+  assert.equal(readOrder(order([{ item: "gp", qty: 1 }], "5f0c2a9e-9999-4a11-8c01-000000000099"), m).code, "table");
+  assert.equal(readOrder(order([{ item: "gp", qty: 1 }], T7.slice(0, 8)), m).code, "table", "the start of a table's id is not the table");
   assert.equal(readOrder(order([{ item: "ghost", qty: 1 }]), m).code, "gone");
   assert.equal(readOrder(order([{ item: "gp", qty: 1, mods: ["cs1"] }]), m).code, "gone", "an option of another dish");
   assert.equal(readOrder(order([{ item: "cal", qty: 1 }]), m).code, "gone", "sold out");

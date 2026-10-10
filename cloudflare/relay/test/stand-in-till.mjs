@@ -6,19 +6,21 @@
 //
 // An order with a note that says "decline" is declined, to see that too. It
 // publishes the demo menu and prints the address of each table's page.
-import { demoMenu, DEMO_KEY } from "./demo-menu.mjs";
-import { storeId } from "../src/rules.js";
+import { demoMenu, DEMO_STORE, proofFor } from "./demo-menu.mjs";
+import { standInApi } from "./stand-in-api.mjs";
 
 const arg = (name) => process.argv.find((a) => a.startsWith("--" + name));
 const relay = (process.env.RELAY || "http://localhost:8787").replace(/\/$/, "");
 const after = arg("never") ? null : Number((arg("after") || "=4").split("=")[1]) * 1000;
-const store = await storeId(DEMO_KEY);
+const store = DEMO_STORE;
+// the relay asks EasyPay's till service whose till this is: a stand-in answers, unless one is running already
+if (await standInApi()) console.log("till: a stand-in for EasyPay's till service is answering on 8788");
 const menu = demoMenu();
 const items = new Map(menu.items.map((i) => [i.id, i]));
 const opts = new Map(menu.groups.flatMap((g) => g.opts.map((o) => [o.id, o])));
 
 function connect() {
-  const ws = new WebSocket(relay.replace(/^http/, "ws") + `/api/${store}/till`, { headers: { authorization: "Bearer " + DEMO_KEY } });
+  const ws = new WebSocket(relay.replace(/^http/, "ws") + `/api/${store}/till`, { headers: { authorization: proofFor(store) } });
   const say = (o) => ws.send(JSON.stringify(o));
   ws.addEventListener("open", () => {
     console.log("till: connected");

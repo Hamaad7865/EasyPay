@@ -31,17 +31,26 @@ apart from the public site's project on purpose: a deploy of one does not
 carry the other.
 
 **The address on a card** is for good once cards are printed:
-`https://order.easypaypos.com/<store>/<table>`. `<store>` is sixteen letters
-and digits worked out from the store's key (below); `<table>` is the first
-eight characters of the table's id. Neither is a secret: a card on a table is
-public. The owner chose this address by tap.
+`https://order.easypaypos.com/<store>/<table>`. `<store>` is the store's
+public id, sixteen letters and digits made once by the server; `<table>` is
+the table's id, whole (the start of an id is not sure to differ between two
+tables). Neither is a secret: a card on a table is public. The owner chose
+this address by tap. A phone is told its own table's name and no other
+table's code, so that an order cannot be sent to a table from a photograph of
+another's card.
 
-**A store's key.** The server makes a key for each store, which only that
-store's tills are sent (in a pull). The store's public id is the first 80 bits
-of the key's SHA-256. A till proves it is the store's by giving the key, and
-the relay works the id out again: it keeps no secret, asks no database, and
-nobody can take a store's room before its till does. A replacement tablet is
-sent the same key. Nothing is typed by anyone and no secret is set by hand.
+**Whose till it is.** A till gives the relay the credential it already syncs
+with, and the relay asks EasyPay's till service, once at each connection,
+which store that till is of and whether table ordering is on for it
+(`GET /guest/pass`; the database is awake then anyway, for the till's sync).
+So the relay keeps no secret and nothing is set by hand; a tablet that was
+deactivated is turned away here as it is there, and its cards go on working;
+Premium and the switch are the server's word, not the tablet's; and nobody
+who has read this repository can publish a menu. A till connected for more
+than twelve hours is asked about again. (A first version had the store's id
+worked out from a key only its tills held. Anyone could have made up a key
+and a store to go with it, and a lost tablet could not have been cut off
+without changing every card. It was replaced before any of it was live.)
 
 **The till** (restaurant, Premium, table ordering switched on in the back
 office's POS settings) keeps one connection open to its store's room while it
@@ -74,8 +83,10 @@ to print, one for each table with its code. Both Premium only.
 ## Limits it keeps
 
 A body of at most 16 KB, 40 lines an order, 20 of a dish, 140 characters a
-note; at most three orders waiting for a table and eight in ten minutes from
-one phone; an order nobody answered is dropped after two hours. Refused requests still count against the free plan,
+note; at most three orders waiting for a table; an order nobody answered is
+dropped after two hours. There is no limit by phone: the guests of one room
+share an address on its Wi-Fi, and the cashier's "accept" is what stands
+between an order and the kitchen. Refused requests still count against the free plan,
 so a flood can spend the day's allowance: see below.
 
 ## What it costs to run
@@ -83,8 +94,9 @@ so a flood can spend the day's allowance: see below.
 Cloudflare's free plan allows 100,000 requests a day for the whole account,
 which the back office shares, and for the rooms 100,000 requests and 13,000
 GB-seconds a day (read in their documentation on 2026-10-10). A guest who
-orders costs about three requests (menu, order, one connection to hear the
-answer) and one who only reads costs one; a till costs one for the day. So
+orders costs three requests (menu, order, one connection to hear the answer),
+up to six when the phone is locked while waiting, and one who only reads
+costs one; a till costs one for the day. So
 fifty restaurants with two hundred guests each are about 30,000 a day. When
 the allowance runs out, table ordering and the back office stop answering
 until midnight UTC (04:00 in Mauritius); tills go on selling. Workers Paid
@@ -99,7 +111,8 @@ cashier; anything on the public site about it, until it has been seen working.
 ## Order of work
 
 1. The relay and the guest's page, tried in a browser against a stand-in till.
-2. The server: the store's id and key, the switch (one migration).
+2. The server: the store's public id, the switch (one migration), and the
+   till service's `GET /guest/pass`.
 3. The till: the connection, the menu it publishes, the requests and accepting.
 4. The back office: the switch and the cards.
 

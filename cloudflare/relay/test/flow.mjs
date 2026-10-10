@@ -1,24 +1,29 @@
-// The whole exchange against a relay running on this PC (`wrangler dev`):
-// a till that proves its key and publishes, a phone that orders and is told
-// the answer. Run with the dev server up:
+// The whole exchange against a relay running on this PC (`wrangler dev`, see
+// README.md): a till that EasyPay vouches for and that publishes, a phone
+// that orders and is told the answer.
 //
 //   node test/flow.mjs            (RELAY=http://localhost:8787 by default)
 //
-// It uses a store of its own each run, so it can be run again and again.
+// It uses a store of its own each run, so it can be run again and again, and
+// starts the stand-in for EasyPay's till service unless one is running.
 import assert from "node:assert/strict";
-import { demoMenu } from "./demo-menu.mjs";
-import { storeId, LIMITS } from "../src/rules.js";
+import { demoMenu, proofFor, T1, T7, T12 } from "./demo-menu.mjs";
+import { standInApi } from "./stand-in-api.mjs";
+import { LIMITS } from "../src/rules.js";
 
+await standInApi();
 const relay = (process.env.RELAY || "http://localhost:8787").replace(/\/$/, "");
 const wsBase = relay.replace(/^http/, "ws");
-const key = "flow-" + crypto.randomUUID().replaceAll("-", "") + "-key";
-const store = await storeId(key);
+const B32 = "abcdefghijklmnopqrstuvwxyz234567";
+const newStore = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => B32[b & 31]).join("");
+const store = newStore();
 const api = (path, init) => fetch(`${relay}/api/${store}${path}`, init);
 const post = (body) => api("/orders", { method: "POST", headers: { "content-type": "application/json" }, body: typeof body === "string" ? body : JSON.stringify(body) });
+const menuOf = async (table = T7) => (await api("/menu/" + table)).json();
 
 // a socket whose messages can be awaited one at a time
-function line(url, headers) {
-  const ws = new WebSocket(url, headers ? { headers } : undefined);
+function line(url, proof) {
+  const ws = new WebSocket(url, proof ? { headers: { authorization: proof } } : undefined);
   const got = [], wanted = [];
   ws.addEventListener("message", (e) => { const m = JSON.parse(e.data); const w = wanted.shift(); w ? w.resolve(m) : got.push(m); });
   const opened = new Promise((resolve, reject) => { ws.addEventListener("open", resolve); ws.addEventListener("error", () => reject(new Error("refused"))); });
@@ -30,20 +35,28 @@ function line(url, headers) {
   });
   return { ws, opened, closed, next, say: (o) => ws.send(JSON.stringify(o)), quiet: () => got.length === 0 };
 }
-const till = () => line(`${wsBase}/api/${store}/till`, { authorization: "Bearer " + key });
+const tillUrl = `${wsBase}/api/${store}/till`;
+const till = () => line(tillUrl, proofFor(store));
 
 let n = 0;
 const step = async (what, run) => { await run(); console.log("ok  " + (++n) + ". " + what); };
 
 await step("a store nobody has published for has no menu, and takes no order", async () => {
-  assert.equal((await api("/menu")).status, 404);
-  assert.equal((await post({ table: "t0000007", lines: [{ item: "gp", qty: 1 }] })).status, 404);
+  const r = await api("/menu/" + T7);
+  assert.equal(r.status, 404);
+  assert.equal((await r.json()).code, "unknown");
+  assert.equal((await post({ table: T7, lines: [{ item: "gp", qty: 1 }] })).status, 404);
+  assert.equal((await api("/orders/aaaaaaaaaaaa")).status, 404);
 });
 
-await step("a till with another key, or none, is turned away before any room is opened", async () => {
-  await assert.rejects(line(`${wsBase}/api/${store}/till`, { authorization: "Bearer " + key + "x" }).opened);
-  await assert.rejects(line(`${wsBase}/api/${store}/till`).opened);
-  assert.equal((await api("/till", { headers: { authorization: "Bearer " + key } })).status, 426, "the right key, but not a socket");
+await step("only a till EasyPay vouches for, of this store, with ordering on, gets in", async () => {
+  await assert.rejects(line(tillUrl).opened, "no credential");
+  await assert.rejects(line(tillUrl, "Bearer made-up-key-0123456789abcdef0123456789").opened, "not a till's credential");
+  await assert.rejects(line(tillUrl, proofFor(store, "bad")).opened, "a till nobody knows");
+  await assert.rejects(line(tillUrl, proofFor(newStore())).opened, "another store's till");
+  await assert.rejects(line(tillUrl, proofFor(store, "off")).opened, "ordering switched off");
+  assert.equal((await api("/till", { headers: { authorization: proofFor(store) } })).status, 426, "the right till, but not a socket");
+  assert.equal((await api("/menu/" + T7)).status, 404, "none of them left a menu behind");
 });
 
 let t1 = till();
@@ -56,26 +69,32 @@ await step("the store's till connects and publishes its menu", async () => {
   assert.deepEqual(await t1.next(), { t: "menu.ok", items: 43, tables: 3 });
 });
 
-await step("a phone reads the menu and sees that orders are taken", async () => {
-  const r = await api("/menu");
+await step("a phone reads the menu and its own table, and no other table's code", async () => {
+  const r = await api("/menu/" + T7);
   assert.equal(r.status, 200);
   assert.match(r.headers.get("cache-control"), /no-store/);
-  const { open, menu } = await r.json();
+  const text = await r.text(), { open, table, menu } = JSON.parse(text);
   assert.equal(open, true);
+  assert.deepEqual(table, { c: T7, name: "Table 7", area: "Terrace" });
   assert.equal(menu.name, "Le Flamboyant");
   assert.equal(menu.items.length, 43);
+  assert.equal(menu.tables, undefined);
+  assert.ok(!text.includes(T1) && !text.includes(T12));
+  const none = await api("/menu/" + T7.slice(0, 8));
+  assert.equal(none.status, 404);
+  assert.equal((await none.json()).code, "table");
 });
 
 let first;
 await step("an order reaches the till as it was sent, with nothing of a price", async () => {
-  const r = await post({ table: "t0000007", lines: [{ item: "cp", qty: 2, mods: ["cs2", "ca0"], note: "no onion", price: 1 }, { item: "gp", qty: 1 }] });
+  const r = await post({ table: T7, lines: [{ item: "cp", qty: 2, mods: ["cs2", "ca0"], note: "no onion", price: 1 }, { item: "gp", qty: 1 }] });
   assert.equal(r.status, 200);
   first = (await r.json()).id;
   assert.match(first, /^[a-z2-7]{12}$/);
   const told = await t1.next();
   assert.equal(told.t, "order");
   assert.equal(told.order.id, first);
-  assert.equal(told.order.table, "t0000007");
+  assert.equal(told.order.table, T7);
   assert.deepEqual(told.order.lines, [{ item: "cp", qty: 2, mods: ["cs2", "ca0"], note: "no onion" }, { item: "gp", qty: 1, mods: [], note: "" }]);
   assert.deepEqual(await (await api("/orders/" + first)).json(), { id: first, status: "waiting", reason: "" });
 });
@@ -99,18 +118,18 @@ await step("an answer given twice changes nothing; the first one stands", async 
 });
 
 await step("what the menu does not have is refused, and says why", async () => {
-  const no = async (body, status, code) => { const r = await post(body); assert.equal(r.status, status, JSON.stringify(body)); assert.equal((await r.json()).code, code); };
-  await no({ table: "t9999999", lines: [{ item: "gp", qty: 1 }] }, 404, "table");
-  await no({ table: "t0000007", lines: [{ item: "cal", qty: 1 }] }, 400, "gone");
-  await no({ table: "t0000007", lines: [{ item: "cp", qty: 1 }] }, 400, "options");
-  await no({ table: "t0000007", lines: [] }, 400, "invalid");
+  const no = async (body, status, code) => { const r = await post(body); assert.equal(r.status, status, JSON.stringify(body).slice(0, 80)); assert.equal((await r.json()).code, code); };
+  await no({ table: "5f0c2a9e-9999-4a11-8c01-000000000099", lines: [{ item: "gp", qty: 1 }] }, 404, "table");
+  await no({ table: T7, lines: [{ item: "cal", qty: 1 }] }, 400, "gone");
+  await no({ table: T7, lines: [{ item: "cp", qty: 1 }] }, 400, "options");
+  await no({ table: T7, lines: [] }, 400, "invalid");
   await no("{not json", 400, "invalid");
-  await no({ table: "t0000007", lines: [{ item: "gp", qty: 1, note: "x".repeat(LIMITS.orderBytes) }] }, 413, "invalid");
+  await no({ table: T7, lines: [{ item: "gp", qty: 1, note: "x".repeat(LIMITS.orderBytes) }] }, 413, "invalid");
   assert.ok(t1.quiet(), "the till heard of none of them");
 });
 
 await step("a declined order carries the cashier's reason to the phone", async () => {
-  const id = (await (await post({ table: "t0000001", lines: [{ item: "alo", qty: 1, mods: ["ic1"] }] })).json()).id;
+  const id = (await (await post({ table: T1, lines: [{ item: "alo", qty: 1, mods: ["ic1"] }] })).json()).id;
   assert.equal((await t1.next()).order.id, id);
   t1.say({ t: "answer", id, status: "declined", reason: "  Sorry, the kitchen has just closed.  " });
   await t1.next();
@@ -118,27 +137,33 @@ await step("a declined order carries the cashier's reason to the phone", async (
 });
 
 const waiting = [];
-await step("a table may have three orders waiting, and no more", async () => {
+await step("a table may have three orders waiting, and no more; other tables are not held up", async () => {
   for (let i = 0; i < LIMITS.waiting; i++) {
-    const r = await post({ table: "t0000012", lines: [{ item: "gp", qty: i + 1 }] });
+    const r = await post({ table: T12, lines: [{ item: "gp", qty: i + 1 }] });
     assert.equal(r.status, 200);
     waiting.push((await r.json()).id);
     await t1.next();
   }
-  const r = await post({ table: "t0000012", lines: [{ item: "gp", qty: 1 }] });
+  const r = await post({ table: T12, lines: [{ item: "gp", qty: 1 }] });
   assert.equal(r.status, 429);
   assert.equal((await r.json()).code, "busy");
-  assert.equal((await post({ table: "t0000001", lines: [{ item: "gp", qty: 1 }] })).status, 200, "another table is not held up");
-  waiting.push((await t1.next()).order.id);
+  // a room's guests share one address on its Wi-Fi: many orders from it are an ordinary evening
+  for (const table of [T1, T7, T1, T7, T1]) {
+    const ok = await post({ table, lines: [{ item: "gp", qty: 1 }] });
+    assert.equal(ok.status, 200);
+    waiting.push((await t1.next()).order.id);
+    t1.say({ t: "answer", id: waiting.pop(), status: "accepted" });
+    await t1.next();
+  }
 });
 
 await step("with no till listening the menu still shows, and ordering says to ask staff", async () => {
   t1.ws.close();
   await t1.closed;
-  const { open, menu } = await (await api("/menu")).json();
+  const { open, menu } = await menuOf();
   assert.equal(open, false);
   assert.equal(menu.items.length, 43);
-  const r = await post({ table: "t0000007", lines: [{ item: "gp", qty: 1 }] });
+  const r = await post({ table: T7, lines: [{ item: "gp", qty: 1 }] });
   assert.equal(r.status, 409);
   assert.equal((await r.json()).code, "closed");
 });
@@ -148,7 +173,7 @@ await step("a till that comes back is handed what waited, oldest first", async (
   await t1.opened;
   assert.deepEqual(await t1.next(), { t: "hello", menu: true, waiting: waiting.length });
   for (const id of waiting) assert.equal((await t1.next()).order.id, id);
-  assert.equal((await (await api("/menu")).json()).open, true);
+  assert.equal((await menuOf()).open, true);
 });
 
 await step("with two tills, the one that did not answer is told the order is gone", async () => {
@@ -166,8 +191,8 @@ await step("with two tills, the one that did not answer is told the order is gon
 await step("a till that says it has stopped taking orders closes the table's ordering", async () => {
   t1.say({ t: "menu", menu: { ...demoMenu(), accepting: false } });
   await t1.next();
-  assert.equal((await (await api("/menu")).json()).open, false);
-  assert.equal((await post({ table: "t0000007", lines: [{ item: "gp", qty: 1 }] })).status, 409);
+  assert.equal((await menuOf()).open, false);
+  assert.equal((await post({ table: T7, lines: [{ item: "gp", qty: 1 }] })).status, 409);
 });
 
 await step("a guest's socket cannot speak for a till, and other addresses are not found", async () => {
@@ -178,10 +203,11 @@ await step("a guest's socket cannot speak for a till, and other addresses are no
   phone.say({ t: "menu", menu: { ...demoMenu(), name: "Taken over" } });
   await new Promise((r) => setTimeout(r, 300));
   assert.equal((await (await api("/orders/" + waiting[1])).json()).status, "waiting");
-  assert.equal((await (await api("/menu")).json()).menu.name, "Le Flamboyant");
+  assert.equal((await menuOf()).menu.name, "Le Flamboyant");
   phone.ws.close();
   assert.equal((await fetch(`${relay}/api/${store}/nothing`)).status, 404);
-  assert.equal((await fetch(`${relay}/api/NOT-A-STORE/menu`)).status, 404);
+  assert.equal((await fetch(`${relay}/api/${store}/menu`)).status, 404, "the menu is asked for with a table");
+  assert.equal((await fetch(`${relay}/api/NOT-A-STORE/menu/${T7}`)).status, 404);
 });
 
 t1.ws.close();

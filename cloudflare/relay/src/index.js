@@ -1,50 +1,24 @@
 // The relay between a guest's phone and a restaurant's till.
 //
-//   GET  /api/<store>/menu          the menu the till last published, and whether orders are taken
+//   GET  /api/<store>/menu/<table>  the menu the till last published, that table's name, and whether orders are taken
 //   POST /api/<store>/orders        an order from a table; answers its id
 //   GET  /api/<store>/orders/<id>   where that order stands; as a WebSocket, told the moment it is answered
-//   GET  /api/<store>/till          a till's WebSocket: it proves the store's key, publishes the menu,
-//                                   is handed each order and answers it
+//   GET  /api/<store>/till          a till's WebSocket: it publishes the menu, is handed each order and answers it
 //
-// <store> is worked out from the store's key (rules.js), so the Worker can
-// tell a till of that store from anyone else without keeping a secret or
-// asking a database. Everything of one store lives in one room.
+// <store> is the store's public id, made by EasyPay's server. A till is one
+// of that store's when EasyPay's till service says so: the relay hands it the
+// credential the till already syncs with and is told which store it belongs
+// to and whether table ordering is on for it (TILL_API, `GET /guest/pass`).
+// So the relay keeps no secret, a tablet that is deactivated is turned away
+// here as it is there, and nobody else can publish a menu.
 import { DurableObject } from "cloudflare:workers";
-import { LIMITS, storeId, isKey, readMenu, readOrder } from "./rules.js";
+import { LIMITS, readMenu, readOrder, forPhones } from "./rules.js";
 
 const json = (body, status = 200) =>
   new Response(typeof body === "string" ? body : JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" },
   });
-
-export default {
-  async fetch(request, env) {
-    const { pathname } = new URL(request.url);
-    const m = /^\/api\/([a-z2-7]{16})\/(menu|orders|till)(?:\/([a-z2-7]{12}))?$/.exec(pathname);
-    // A body is always read to its end before anything is answered, whatever
-    // it holds: an answer sent while one is still arriving stopped the local
-    // server. What is over an order's size is read and thrown away.
-    const drop = async (answer) => { await bodyText(request, 0); return answer; };
-    if (!m) return drop(json({ error: "not found" }, 404));
-    const [, store, what, id] = m;
-    const room = env.ROOMS.get(env.ROOMS.idFromName(store));
-    if (request.method === "POST") {
-      if (what !== "orders" || id) return drop(json({ error: "not found" }, 404));
-      // an order is read here, whole and within its size, and handed on as text
-      const text = await bodyText(request, LIMITS.orderBytes);
-      if (text === null) return json({ error: "the order is too long", code: "invalid" }, 413);
-      return room.fetch(new Request(request.url, { method: "POST", headers: { "x-from": request.headers.get("cf-connecting-ip") || "?" }, body: text }));
-    }
-    if (request.method !== "GET") return drop(json({ error: "not found" }, 404));
-    if (what === "till") {
-      // before a room is even reached: the key has to be this store's
-      const key = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
-      if (!isKey(key) || (await storeId(key)) !== store) return json({ error: "this is not the store's key" }, 401);
-    }
-    return room.fetch(request);
-  },
-};
 
 // A request's body as text when it is within `most` bytes, null when it is
 // longer. It is read to its end either way, keeping no more than `most`.
@@ -66,17 +40,83 @@ async function bodyText(request, most) {
   return new TextDecoder().decode(all);
 }
 
+// Is this till one of that store's, and is table ordering on for it? EasyPay's
+// till service is asked, with the till's own credential. Answers null when it
+// is, or what to tell the till.
+async function turnedAway(request, env, store) {
+  const proof = request.headers.get("authorization") || "";
+  if (!/^Device\s+\S{16,300}$/i.test(proof)) return json({ error: "a till gives its own credential" }, 401);
+  const api = String(env.TILL_API || "").replace(/\/$/, "");
+  if (!api) return json({ error: "the relay has not been told where EasyPay's till service is" }, 503);
+  let r;
+  try { r = await fetch(api + "/guest/pass", { headers: { authorization: proof } }); } catch { return json({ error: "EasyPay's till service did not answer" }, 503); }
+  if (r.status === 401 || r.status === 403) return json({ error: "this till is not known, or has been switched off" }, 401);
+  if (!r.ok) return json({ error: "EasyPay's till service did not answer" }, 503);
+  const pass = await r.json().catch(() => null);
+  if (!pass || pass.store !== store) return json({ error: "this till belongs to another store" }, 403);
+  if (pass.ordering !== true) return json({ error: "table ordering is not switched on for this store", code: "off" }, 403);
+  return null;
+}
+
+export default {
+  async fetch(request, env) {
+    const { pathname } = new URL(request.url);
+    const m = /^\/api\/([a-z2-7]{16})\/(menu|orders|till)(?:\/([A-Za-z0-9_-]{1,64}))?$/.exec(pathname);
+    // A body is always read to its end before anything is answered, whatever
+    // it holds: an answer sent while one is still arriving stopped the local
+    // server. What is over an order's size is read and thrown away.
+    const drop = async (answer) => { await bodyText(request, 0); return answer; };
+    if (!m) return drop(json({ error: "not found" }, 404));
+    const [, store, what, id] = m;
+    const room = env.ROOMS.get(env.ROOMS.idFromName(store));
+    if (request.method === "POST") {
+      if (what !== "orders" || id) return drop(json({ error: "not found" }, 404));
+      // an order is read here, whole and within its size, and handed on as text
+      const text = await bodyText(request, LIMITS.orderBytes);
+      if (text === null) return json({ error: "the order is too long", code: "invalid" }, 413);
+      return room.fetch(new Request(request.url, { method: "POST", body: text }));
+    }
+    if (request.method !== "GET") return drop(json({ error: "not found" }, 404));
+    if (what === "till") {
+      if (id) return json({ error: "not found" }, 404);
+      if (request.headers.get("upgrade") !== "websocket") return json({ error: "a till connects with a WebSocket" }, 426);
+      // before a room is reached: EasyPay says whose till this is
+      const no = await turnedAway(request, env, store);
+      if (no) return no;
+    }
+    return room.fetch(request);
+  },
+};
+
 const B32 = "abcdefghijklmnopqrstuvwxyz234567";
 const newId = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => B32[b & 31]).join("");
 
 // One store's room. Sockets are taken with the hibernation API: between
 // messages the room is not in memory and nothing is billed for the time, and
 // there are no timers or alarms here for the same reason. What has to outlast
-// a sleep is in the room's SQLite store or on the socket (its tags).
+// a sleep is in the room's SQLite store or on the socket (its tags and what
+// is attached to it).
+//
+// Nothing is written until a till publishes a menu: an address nobody was
+// given is answered "not in use" and leaves no store behind.
 export class Room extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
+    // a page or a till that says "ping" is answered without waking the room
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+    this.made = undefined; // whether the room's tables exist, asked once a waking
+    this.menu = undefined; // the menu with its tables, read once a waking
+  }
+
+  // ---- what is kept ----
+
+  inUse() {
+    if (this.made === undefined) this.made = this.sql.exec("select count(*) as n from sqlite_master where type = 'table' and name = 'meta'").one().n > 0;
+    return this.made;
+  }
+  make() {
+    if (this.inUse()) return;
     this.sql.exec(`
       create table if not exists meta (k text primary key, v text not null);
       create table if not exists orders (
@@ -84,20 +124,18 @@ export class Room extends DurableObject {
         status text not null default 'waiting', reason text not null default '', answered_at integer
       );
     `);
-    // a page or a till that says "ping" is answered without waking the room
-    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
-    this.menu = undefined; // the menu, read once a waking
-    this.recent = new Map(); // orders lately sent from one address; forgotten at each sleep, which is enough
+    this.made = true;
   }
-
-  // ---- what is kept ----
-
-  menuText() {
-    const row = this.sql.exec("select v from meta where k = 'menu'").toArray()[0];
+  kept(k) {
+    if (!this.inUse()) return null;
+    const row = this.sql.exec("select v from meta where k = ?", k).toArray()[0];
     return row ? row.v : null;
   }
   theMenu() {
-    if (this.menu === undefined) { const t = this.menuText(); this.menu = t ? JSON.parse(t) : null; }
+    if (this.menu === undefined) {
+      const text = this.kept("menu");
+      this.menu = text ? { ...JSON.parse(text), tables: JSON.parse(this.kept("tables") || "[]") } : null;
+    }
     return this.menu;
   }
   tills() { return this.ctx.getWebSockets("till"); }
@@ -105,6 +143,7 @@ export class Room extends DurableObject {
   open(menu) { return !!menu && menu.accepting && this.tills().length > 0; }
 
   order(id) {
+    if (!this.inUse()) return null;
     const row = this.sql.exec("select id, tbl, body, at, status, reason from orders where id = ?", id).toArray()[0];
     if (!row) return null;
     // one nobody answered in time is as good as not taken
@@ -122,19 +161,21 @@ export class Room extends DurableObject {
     const socket = request.headers.get("upgrade") === "websocket";
 
     if (what === "till") {
-      if (!socket) return json({ error: "a till connects with a WebSocket" }, 426);
       const [client, server] = Object.values(new WebSocketPair());
       this.ctx.acceptWebSocket(server, ["till"]);
-      const waiting = this.sql.exec("select id, tbl, body, at, status, reason from orders where status = 'waiting' and at >= ? order by at", Date.now() - LIMITS.staleMs).toArray();
-      server.send(JSON.stringify({ t: "hello", menu: this.menuText() !== null, waiting: waiting.length }));
+      server.serializeAttachment({ since: Date.now() });
+      const waiting = this.inUse() ? this.sql.exec("select id, tbl, body, at, status, reason from orders where status = 'waiting' and at >= ? order by at", Date.now() - LIMITS.staleMs).toArray() : [];
+      server.send(JSON.stringify({ t: "hello", menu: this.kept("menu") !== null, waiting: waiting.length }));
       for (const row of waiting) server.send(JSON.stringify(this.forTill(row)));
       return new Response(null, { status: 101, webSocket: client });
     }
 
-    if (what === "menu" && request.method === "GET") {
-      const text = this.menuText();
-      if (text === null) return json({ error: "this code is not in use", code: "unknown" }, 404);
-      return json(`{"open":${this.open(this.theMenu())},"menu":${text}}`);
+    if (what === "menu" && id && request.method === "GET") {
+      const menu = this.theMenu();
+      if (!menu) return json({ error: "this code is not in use", code: "unknown" }, 404);
+      const table = menu.tables.find((t) => t.c === id);
+      if (!table) return json({ error: "this table's code is not in use", code: "table" }, 404);
+      return json(`{"open":${this.open(menu)},"table":${JSON.stringify(table)},"menu":${this.kept("menu")}}`);
     }
 
     if (what === "orders" && !id && request.method === "POST") return this.place(request);
@@ -162,14 +203,12 @@ export class Room extends DurableObject {
     const got = readOrder(raw, menu);
     if (got.error) return json({ error: got.error, code: got.code }, got.code === "table" ? 404 : 400);
 
+    // A table may only have so many waiting. There is no count by phone: the
+    // guests of one room share an address on its Wi-Fi, and the cashier's
+    // "accept" is what stands between an order and the kitchen.
     const now = Date.now();
-    // one phone that sends order upon order is asked to wait
-    const from = request.headers.get("x-from") || "?";
-    const lately = (this.recent.get(from) || []).filter((t) => t > now - 10 * 60 * 1000);
-    if (lately.length >= 8) return json({ error: "Too many orders from this phone. Please ask a member of staff.", code: "busy" }, 429);
     const waiting = this.sql.exec("select count(*) as n from orders where tbl = ? and status = 'waiting' and at >= ?", got.order.table, now - LIMITS.staleMs).one().n;
     if (waiting >= LIMITS.waiting) return json({ error: "This table already has orders waiting for staff. Please give them a moment.", code: "busy" }, 429);
-    this.recent.set(from, [...lately, now]);
 
     // what is old is cleared as new orders come: there is no timer to do it
     this.sql.exec("delete from orders where at < ?", now - LIMITS.keepMs);
@@ -184,6 +223,10 @@ export class Room extends DurableObject {
 
   async webSocketMessage(ws, message) {
     if (!this.ctx.getTags(ws).includes("till")) return; // a guest's socket only listens
+    // A till that has been connected a long time proves again whose it is: it
+    // is told to come back, and is asked about at the door as it was the first time.
+    const held = ws.deserializeAttachment();
+    if (!held || Date.now() - held.since > LIMITS.proofMs) { try { ws.close(4001, "prove again"); } catch { /* gone */ } return; }
     const say = (o) => { try { ws.send(JSON.stringify(o)); } catch { /* gone */ } };
     if (typeof message !== "string" || message.length > LIMITS.menuBytes) return say({ t: "no", error: "too long" });
     let m;
@@ -192,7 +235,10 @@ export class Room extends DurableObject {
     if (m.t === "menu") {
       const got = readMenu(m.menu);
       if (got.error) return say({ t: "menu.no", error: got.error });
-      this.sql.exec("insert into meta (k, v) values ('menu', ?) on conflict (k) do update set v = excluded.v", JSON.stringify(got.menu));
+      this.make();
+      const put = "insert into meta (k, v) values (?, ?) on conflict (k) do update set v = excluded.v";
+      this.sql.exec(put, "menu", JSON.stringify(forPhones(got.menu)));
+      this.sql.exec(put, "tables", JSON.stringify(got.menu.tables));
       this.menu = got.menu;
       return say({ t: "menu.ok", items: got.menu.items.length, tables: got.menu.tables.length });
     }

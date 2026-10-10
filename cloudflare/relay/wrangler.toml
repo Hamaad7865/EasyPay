@@ -23,6 +23,15 @@ preview_urls = false
 pattern = "order.easypaypos.com"
 custom_domain = true
 
+# Where EasyPay's till service is: the relay asks it whose till is connecting
+# (`GET /guest/pass`, with the till's own credential). Not a secret. It is the
+# address the till's release build syncs with (GitHub variable
+# TILL_FUNCTION_URL), filled in when this is first put live. Empty, no till
+# can connect and guests are told to ask a member of staff. On this PC the
+# `relay` launch entry gives the stand-in's address instead.
+[vars]
+TILL_API = ""
+
 [assets]
 directory = "./public"
 binding = "ASSETS"

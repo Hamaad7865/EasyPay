@@ -100,11 +100,10 @@
   const tableName = () => (S.table ? S.table.name + (S.table.area ? " · " + S.table.area : "") : "");
 
   function take(body) {
-    S.menu = body.menu; S.open = !!body.open; S.at = Date.now();
+    S.menu = body.menu; S.open = !!body.open; S.table = body.table; S.at = Date.now();
     S.items = new Map(S.menu.items.map((i) => [i.id, i]));
     S.groups = new Map(S.menu.groups.map((g) => [g.id, g]));
     S.cats = new Map(S.menu.categories.map((c) => [c.id, { ...c, look: look(c.color), draw: drawingFor(c.name) }]));
-    S.table = S.menu.tables.find((t) => t.c === TABLE) || null;
     // what is no longer on the menu, or sold out since, leaves the order
     const before = S.cart.length;
     S.cart = S.cart.filter((l) => {
@@ -118,9 +117,12 @@
     return before !== S.cart.length;
   }
 
+  // The menu, and this table's name: a card's address names one table and the
+  // page is told of no other. Answers "ok", or why there is nothing to show:
+  // "unknown" (no restaurant at this address) or "table" (not one of its tables).
   async function load() {
-    const r = await api("/menu");
-    if (r.status === 404) return "unknown";
+    const r = await api("/menu/" + encodeURIComponent(TABLE));
+    if (r.status === 404) { S.table = null; return (await r.json().catch(() => ({}))).code === "table" ? "table" : "unknown"; }
     if (!r.ok) throw new Error("menu " + r.status);
     take(await r.json());
     return "ok";
@@ -389,8 +391,8 @@
   document.addEventListener("visibilitychange", async () => {
     if (document.hidden || !S.menu) return;
     if (waiting()) { await check(); if (waiting() && !sock) watch(); }
-    // a phone put down and picked up again reads the menu afresh
-    if (Date.now() - S.at > 45000 && !S.sheet && !S.sending) {
+    // a phone put down for a while and picked up again reads the menu afresh
+    if (Date.now() - S.at > 5 * 60 * 1000 && !S.sheet && !S.sending) {
       try { if ((await load()) === "ok" && S.table) { save(); S.screen === "menu" ? drawMenu() : S.screen === "order" ? (S.cart.length ? drawOrder() : drawMenu()) : 0; } } catch (e) { /* as it was */ }
     }
   });
@@ -415,8 +417,9 @@
     if (a === "order") {
       if (!S.cart.length) return;
       drawOrder();
-      // before sending, whether orders are taken is asked again when it was "no" or is not fresh
-      if (!S.open || Date.now() - S.at > 45000) load().then((found) => { if (found === "ok" && S.table && S.screen === "order") { save(); S.cart.length ? drawOrder() : drawMenu(); } }).catch(() => {});
+      // when orders were not being taken, that is asked again here; a menu that
+      // changed since is found out at sending, which says what is gone
+      if (!S.open) load().then((found) => { if (found === "ok" && S.table && S.screen === "order") { save(); S.cart.length ? drawOrder() : drawMenu(); } }).catch(() => {});
       return;
     }
     if (a === "menu") return drawMenu();
@@ -438,13 +441,13 @@
   // ---- start ----
 
   (async () => {
-    if (!/^[a-z2-7]{16}$/.test(STORE) || !TABLE) return says("Scan the code on your table", "This page opens from the code on a table. Scan it with your phone's camera.");
+    if (!/^[a-z2-7]{16}$/.test(STORE) || !/^[A-Za-z0-9_-]{1,64}$/.test(TABLE)) return says("Scan the code on your table", "This page opens from the code on a table. Scan it with your phone's camera.");
     let found;
     try { found = await load(); } catch (e) { return says("No connection", "The menu could not be opened. Check your signal and try again.", "Try again"); }
     if (found === "unknown") return says("This code is not in use", "Please ask a member of staff for the menu.");
-    if (!S.table) return says("This table's code is not in use", "Please ask a member of staff for the menu.");
+    if (found === "table") return says("This table's code is not in use", "Please ask a member of staff for the menu.");
     recall();
-    take({ menu: S.menu, open: S.open }); // what was kept is checked against today's menu
+    take({ menu: S.menu, open: S.open, table: S.table }); // what was kept is checked against today's menu
     if (S.last && S.last.status === "waiting") { drawStatus(); watch(); check(); } else drawMenu();
   })();
 })();

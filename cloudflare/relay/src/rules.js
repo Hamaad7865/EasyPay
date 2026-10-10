@@ -1,9 +1,10 @@
-// What the relay takes and refuses, as plain functions: a store's public id
-// from its key, a menu from a till, an order from a guest. Nothing here
+// What the relay takes and refuses, as plain functions: a menu from a till,
+// an order from a guest. Nothing here
 // touches the network or the room's store, so it is all tested by itself
 // (rules.test.mjs).
 
 export const LIMITS = {
+  proofMs: 12 * 60 * 60 * 1000, // a till proves again that it is the store's after this long
   menuBytes: 512 * 1024, // a menu as the till publishes it
   orderBytes: 16 * 1024, // an order as a phone sends it
   lines: 40, // lines in one order
@@ -16,25 +17,9 @@ export const LIMITS = {
   keepMs: 6 * 60 * 60 * 1000, // an answered one is forgotten after this
 };
 
-const B32 = "abcdefghijklmnopqrstuvwxyz234567";
-
-// The store's address on a card: the first 80 bits of SHA-256 of its key, in
-// sixteen letters and digits. A till proves it is the store's by giving the
-// key; the relay works the id out again and needs to keep no secret.
-export async function storeId(key) {
-  const sum = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(key))));
-  let bits = 0, held = 0, out = "";
-  for (let i = 0; i < 10; i++) {
-    held = (held << 8) | sum[i];
-    bits += 8;
-    while (bits >= 5) { out += B32[(held >>> (bits - 5)) & 31]; bits -= 5; }
-  }
-  return out;
-}
-
+// A store's address on a card: sixteen letters and digits, made by EasyPay's
+// server for the store and never changed (cards are printed with it).
 export const isStoreId = (s) => typeof s === "string" && /^[a-z2-7]{16}$/.test(s);
-// a key is made by the server: long enough that it cannot be guessed
-export const isKey = (s) => typeof s === "string" && /^[A-Za-z0-9_-]{32,128}$/.test(s);
 
 const text = (v, max) => typeof v === "string" && v.length > 0 && v.length <= max;
 const id = (v) => typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v);
@@ -140,4 +125,12 @@ export function readOrder(raw, menu) {
     lines.push({ item: item.id, qty: l.qty, mods, note });
   }
   return { order: { table: table.c, lines } };
+}
+
+// What a phone is sent: the menu without its tables. A card gives away its own
+// table's code and no other, so that an order cannot be sent to a table from a
+// photograph of another's card.
+export function forPhones(menu) {
+  const { tables, ...rest } = menu;
+  return rest;
 }

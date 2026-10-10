@@ -48,9 +48,9 @@ export function demoMenu() {
     note: "Prices in Mauritian rupees, VAT included.",
     accepting: true,
     tables: [
-      { c: "t0000001", name: "Table 1", area: "Main room" },
-      { c: "t0000007", name: "Table 7", area: "Terrace" },
-      { c: "t0000012", name: "Table 12", area: "Terrace" },
+      { c: T1, name: "Table 1", area: "Main room" },
+      { c: T7, name: "Table 7", area: "Terrace" },
+      { c: T12, name: "Table 12", area: "Terrace" },
     ],
     categories,
     groups: structuredClone(GROUPS), // a copy: whoever changes a menu changes their own
@@ -59,5 +59,13 @@ export function demoMenu() {
   };
 }
 
-// the key the stand-in till and the tests use: never a real store's
-export const DEMO_KEY = "demo-key-for-this-pc-only-0123456789abcdef";
+// a table's code on its card is its id, whole
+export const T1 = "5f0c2a9e-0001-4a11-8c01-000000000001";
+export const T7 = "5f0c2a9e-0007-4a11-8c01-000000000007";
+export const T12 = "5f0c2a9e-0012-4a11-8c01-000000000012";
+
+// The stand-in till's store, and the credential a stand-in gives: never a
+// real store's or a real till's. test/stand-in-api.mjs reads the store off the
+// credential itself, as EasyPay's till service would look it up.
+export const DEMO_STORE = "demostoreaaaaaaa";
+export const proofFor = (store, word = "good") => `Device ${store}:${word}-stand-in-credential`;
