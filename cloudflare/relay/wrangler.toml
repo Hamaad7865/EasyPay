@@ -1,0 +1,40 @@
+# order.easypaypos.com: the page a guest opens from the code on their table,
+# and the relay that carries their order to the restaurant's till.
+#
+# A Worker of its own, apart from the public site's project, so that a deploy
+# of one never carries the other. What is in `public/` is the guest's page,
+# served as it is (opening a table's address does not run the Worker at all);
+# `/api/*` is the Worker, which keeps one room for each store: a Durable
+# Object with its own small store, holding the menu the till last published
+# and the orders that wait. EasyPay's database is never asked.
+#
+#   npx wrangler dev        try it on this PC (see README.md)
+#   npx wrangler deploy     put it live, on the owner's word only
+name = "easypay-relay"
+main = "src/index.js"
+compatibility_date = "2026-07-30"
+# the address on the cards is the only one that answers
+workers_dev = false
+preview_urls = false
+
+# The address printed on every table card. It cannot change once cards are
+# printed. Deploying creates it in the easypaypos.com zone.
+[[routes]]
+pattern = "order.easypaypos.com"
+custom_domain = true
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+# any address that is not a file is a table's: the page works out which
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+# the free plan has only ever had SQLite-backed rooms
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]

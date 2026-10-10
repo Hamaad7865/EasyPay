@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Menu</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#2c5c2f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app/guest.css">
+</head>
+<body>
+<!-- The page a guest opens from the code on their table. Its address is
+     /<store>/<table>; app/guest.js reads the menu the restaurant's till
+     published and sends the order to it. -->
+<div id="app" class="app"><p class="wait" role="status">Opening the menu…</p></div>
+<noscript><p class="wait">This menu needs JavaScript. Please ask a member of staff for the menu.</p></noscript>
+<script src="/app/guest.js" defer></script>
+</body>
+</html>

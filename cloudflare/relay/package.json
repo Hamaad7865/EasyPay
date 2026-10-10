@@ -1,0 +1,10 @@
+{
+  "name": "easypay-relay",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test src/rules.test.mjs",
+    "dev": "wrangler dev",
+    "flow": "node test/flow.mjs"
+  }
+}
