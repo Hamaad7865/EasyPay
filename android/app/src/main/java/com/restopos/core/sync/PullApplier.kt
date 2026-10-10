@@ -14,7 +14,15 @@ import com.restopos.core.database.EmployeeEntity
 import com.restopos.core.database.EmployeeStoreEntity
 import com.restopos.core.database.ItemEntity
 import com.restopos.core.database.ItemVariantEntity
+import com.restopos.core.database.DeliveryEntity
+import com.restopos.core.database.DeliveryLineEntity
+import com.restopos.core.database.PurchaseOrderEntity
+import com.restopos.core.database.PurchaseOrderLineEntity
+import com.restopos.core.database.StockCountEntity
+import com.restopos.core.database.StockCountLineEntity
 import com.restopos.core.database.StockLevelEntity
+import com.restopos.core.database.StockMovementEntity
+import com.restopos.core.database.SupplierEntity
 import com.restopos.core.database.ItemModGroupCrossRef
 import com.restopos.core.database.ItemTaxCrossRef
 import com.restopos.core.database.ModifierEntity
@@ -39,6 +47,7 @@ import com.restopos.core.database.ReceiptPaymentEntity
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
@@ -58,6 +67,8 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
         fun id(e: JsonElement) = e.jsonObject["id"]!!.jsonPrimitive.content
         fun str(e: JsonElement, k: String) = e.jsonObject[k]?.jsonPrimitive?.contentOrNull
         fun lng(e: JsonElement, k: String) = e.jsonObject[k]?.jsonPrimitive?.longOrNull
+        // a figure the server keeps with decimals (an average cost: "4533.6000")
+        fun dbl(e: JsonElement, k: String) = e.jsonObject[k]?.jsonPrimitive?.doubleOrNull
         fun bool(e: JsonElement, k: String, d: Boolean) = e.jsonObject[k]?.jsonPrimitive?.booleanOrNull ?: d
         // a server timestamp ("2026-10-04T08:27:15.278+00:00") as epoch millis
         fun time(e: JsonElement, k: String): Long? =
@@ -81,7 +92,9 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         option_names = (it.jsonObject["option_names"] as? kotlinx.serialization.json.JsonArray)?.toString() ?: "[]",
                         // its price is typed at the sale: without this every product arrived as one with a fixed price,
                         // and a tap rang it up at whatever its price field held instead of asking
-                        open_price = bool(it, "open_price", false))
+                        open_price = bool(it, "open_price", false),
+                        // a shop's stock papers (0092): they always arrived, and were dropped here until now
+                        cost = lng(it, "cost"), supplier_id = str(it, "supplier_id"), brand = str(it, "brand")?.trim()?.ifEmpty { null })
                 })
             }
             // A shop's variants, and what this shop holds of each product. A
@@ -97,7 +110,7 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         id(it), str(it, "tenant_id") ?: "", item, str(it, "name") ?: "", lng(it, "price") ?: 0,
                         str(it, "sku")?.trim()?.ifEmpty { null }, str(it, "barcode")?.trim()?.ifEmpty { null },
                         (it.jsonObject["option_values"] as? kotlinx.serialization.json.JsonArray)?.toString() ?: "[]",
-                        str(it, "deleted_at"), lng(it, "server_seq"),
+                        str(it, "deleted_at"), lng(it, "server_seq"), cost = lng(it, "cost"),
                     )
                 })
             }
@@ -108,7 +121,10 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                     val at = str(it, "store_id") ?: store
                     val variant = str(it, "variant_id") ?: ""
                     if (str(it, "deleted_at") != null) retail.dropLevel(at, item, variant)
-                    else kept.add(StockLevelEntity(at, item, variant, (lng(it, "qty") ?: 0).toInt(), lng(it, "server_seq")))
+                    else kept.add(StockLevelEntity(
+                        at, item, variant, (lng(it, "qty") ?: 0).toInt(), lng(it, "server_seq"),
+                        avg_cost = dbl(it, "avg_cost") ?: 0.0, reorder_point = lng(it, "reorder_point")?.toInt(), reorder_qty = lng(it, "reorder_qty")?.toInt(),
+                    ))
                 }
                 retail.upsertLevels(kept)
             }
@@ -367,6 +383,84 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                 receipts.upsertLineMods(rows.mapNotNull {
                     val line = str(it, "receipt_line_id")?.let { l -> receipts.line(l) } ?: return@mapNotNull null
                     ReceiptLineModEntity(id(it), line.id, lng(it, "price") ?: 0)
+                })
+            }
+            // A shop's stock papers (server 0092). "No variant" is null on the
+            // server and "" here, as on stock_levels. An order and a delivery
+            // arrive with their lines inside the row, and those take the place
+            // of the lines kept: a draft saved again has other lines, not more.
+            val stock = db.stock()
+            changes["suppliers"]?.let { rows ->
+                stock.upsertSuppliers(rows.map {
+                    SupplierEntity(
+                        id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", str(it, "contact"), str(it, "phone"), str(it, "email"),
+                        str(it, "address"), str(it, "note"), str(it, "deleted_at"), lng(it, "server_seq"),
+                    )
+                })
+            }
+            fun lines(e: JsonElement) = (e.jsonObject["lines"] as? kotlinx.serialization.json.JsonArray).orEmpty()
+            changes["purchase_orders"]?.let { rows ->
+                stock.upsertOrders(rows.mapNotNull {
+                    val supplier = str(it, "supplier_id") ?: return@mapNotNull null
+                    PurchaseOrderEntity(
+                        id(it), str(it, "store_id") ?: store, str(it, "number") ?: "", supplier, str(it, "status") ?: "draft", str(it, "expected_on"),
+                        str(it, "note"), str(it, "created_by"), time(it, "sent_at"), time(it, "created_at") ?: 0, time(it, "updated_at") ?: 0,
+                        str(it, "deleted_at"), lng(it, "server_seq"),
+                    )
+                })
+                rows.forEach { o ->
+                    stock.replaceOrderLines(id(o), lines(o).mapNotNull { l ->
+                        val item = str(l, "item_id") ?: return@mapNotNull null
+                        PurchaseOrderLineEntity(id(o), item, str(l, "variant_id") ?: "", (lng(l, "qty") ?: 0).toInt(), lng(l, "unit_cost") ?: 0, (lng(l, "received") ?: 0).toInt())
+                    })
+                }
+            }
+            changes["deliveries"]?.let { rows ->
+                stock.upsertDeliveries(rows.map {
+                    DeliveryEntity(
+                        id(it), str(it, "store_id") ?: store, str(it, "number") ?: "", str(it, "order_id"), str(it, "supplier_id"), str(it, "arrived_on") ?: "",
+                        str(it, "invoice_no"), str(it, "note"), str(it, "received_by"), time(it, "created_at") ?: 0, lng(it, "server_seq"),
+                    )
+                })
+                rows.forEach { d ->
+                    stock.replaceDeliveryLines(id(d), lines(d).mapNotNull { l ->
+                        val item = str(l, "item_id") ?: return@mapNotNull null
+                        DeliveryLineEntity(id(d), item, str(l, "variant_id") ?: "", (lng(l, "qty") ?: 0).toInt(), lng(l, "unit_cost") ?: 0)
+                    })
+                }
+            }
+            // A count this tablet sent comes back under the same id with the
+            // server's number, and its lines under the same keys: the tablet's
+            // own rows are written over, not kept beside them.
+            changes["stock_counts"]?.let { rows ->
+                // what the tablet wrote for a count that has now been to the server: the server's lines follow
+                rows.forEach { stock.dropOwnCountLines(id(it)) }
+                stock.upsertCounts(rows.map {
+                    StockCountEntity(
+                        id(it), str(it, "store_id") ?: store, str(it, "number"), str(it, "scope_kind") ?: "all", str(it, "scope_id"), str(it, "scope_text"),
+                        str(it, "title") ?: "", str(it, "status") ?: "open", str(it, "uncounted"), str(it, "started_by"), str(it, "completed_by"),
+                        time(it, "completed_at"), time(it, "created_at") ?: 0, lng(it, "server_seq"),
+                    )
+                })
+            }
+            changes["stock_count_lines"]?.let { rows ->
+                stock.upsertCountLines(rows.mapNotNull {
+                    val count = str(it, "count_id") ?: return@mapNotNull null
+                    val item = str(it, "item_id") ?: return@mapNotNull null
+                    StockCountLineEntity(
+                        count, item, str(it, "variant_id") ?: "", lng(it, "counted")?.toInt(), time(it, "counted_at"), bool(it, "left_out", false),
+                        lng(it, "expected")?.toInt(), lng(it, "diff")?.toInt(), dbl(it, "unit_cost"), lng(it, "server_seq"),
+                    )
+                })
+            }
+            changes["stock_movements"]?.let { rows ->
+                stock.upsertMovements(rows.mapNotNull {
+                    val item = str(it, "item_id") ?: return@mapNotNull null
+                    StockMovementEntity(
+                        id(it), str(it, "store_id") ?: store, item, str(it, "variant_id") ?: "", (lng(it, "qty") ?: 0).toInt(), str(it, "reason") ?: "adjust",
+                        dbl(it, "unit_cost"), str(it, "ref_type"), str(it, "ref_id"), str(it, "receipt_id"), str(it, "employee_id"), str(it, "note"),
+                        time(it, "created_at") ?: 0, lng(it, "server_seq"),
+                    )
                 })
             }
             db.sync().saveCursor(SyncStateEntity(store, next, epochs))

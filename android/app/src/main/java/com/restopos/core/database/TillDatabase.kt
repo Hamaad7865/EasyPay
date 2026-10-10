@@ -30,6 +30,11 @@ import androidx.room.RoomDatabase
 // Version 12 changes no table: it makes a tablet read its products again.
 // Version 13 adds what the back office asked of a till (server 0091): close
 // its day, or write down cash taken out, which the till carries out itself.
+// Version 14 adds a shop's stock papers (server 0092): suppliers, orders,
+// deliveries, counts, every movement of stock and an order or delivery being
+// typed; and on a product, a variant and a line of stock, what the server
+// already sent and the till did not keep: cost, supplier, brand, the level
+// to order again at. The products are read again from the start for them.
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -47,8 +52,11 @@ import androidx.room.RoomDatabase
         ItemVariantEntity::class, StockLevelEntity::class, ReceiptLineTaxEntity::class, ReceiptLineModEntity::class,
         KdsPartEntity::class, KdsOutEntity::class, KdsScreenEntity::class,
         TillRequestEntity::class,
+        SupplierEntity::class, PurchaseOrderEntity::class, PurchaseOrderLineEntity::class,
+        DeliveryEntity::class, DeliveryLineEntity::class, StockCountEntity::class, StockCountLineEntity::class,
+        StockMovementEntity::class, StockDraftEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
@@ -63,4 +71,5 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun customers(): CustomerDao
     abstract fun service(): ServiceDao
     abstract fun retail(): RetailDao
+    abstract fun stock(): StockDao
 }

@@ -206,4 +206,38 @@ object Migrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_till_requests_device_id` ON `till_requests` (`device_id`)")
         }
     }
+
+    // A shop's stock papers (server 0092): suppliers, orders and deliveries
+    // with their lines, counts and theirs, every movement of stock, and an
+    // order or a delivery being typed. And three tables keep what the server
+    // already sent and the till dropped: a product's cost, supplier and brand,
+    // a variant's cost, and on a line of stock its average cost and the level
+    // to order again at. The products were stored without them, so everything
+    // is read again from the start.
+    val V13_V14 = object : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `items` ADD COLUMN `cost` INTEGER")
+            db.execSQL("ALTER TABLE `items` ADD COLUMN `supplier_id` TEXT")
+            db.execSQL("ALTER TABLE `items` ADD COLUMN `brand` TEXT")
+            db.execSQL("ALTER TABLE `item_variants` ADD COLUMN `cost` INTEGER")
+            db.execSQL("ALTER TABLE `stock_levels` ADD COLUMN `avg_cost` REAL NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `stock_levels` ADD COLUMN `reorder_point` INTEGER")
+            db.execSQL("ALTER TABLE `stock_levels` ADD COLUMN `reorder_qty` INTEGER")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `suppliers` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `name` TEXT NOT NULL, `contact` TEXT, `phone` TEXT, `email` TEXT, `address` TEXT, `note` TEXT, `deleted_at` TEXT, `server_seq` INTEGER, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `purchase_orders` (`id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `number` TEXT NOT NULL, `supplier_id` TEXT NOT NULL, `status` TEXT NOT NULL, `expected_on` TEXT, `note` TEXT, `created_by` TEXT, `sent_at` INTEGER, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, `deleted_at` TEXT, `server_seq` INTEGER, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_purchase_orders_store_id` ON `purchase_orders` (`store_id`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `purchase_order_lines` (`order_id` TEXT NOT NULL, `item_id` TEXT NOT NULL, `variant_id` TEXT NOT NULL, `qty` INTEGER NOT NULL, `unit_cost` INTEGER NOT NULL, `received` INTEGER NOT NULL, PRIMARY KEY(`order_id`, `item_id`, `variant_id`))")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `deliveries` (`id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `number` TEXT NOT NULL, `order_id` TEXT, `supplier_id` TEXT, `arrived_on` TEXT NOT NULL, `invoice_no` TEXT, `note` TEXT, `received_by` TEXT, `created_at` INTEGER NOT NULL, `server_seq` INTEGER, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_deliveries_store_id` ON `deliveries` (`store_id`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `delivery_lines` (`delivery_id` TEXT NOT NULL, `item_id` TEXT NOT NULL, `variant_id` TEXT NOT NULL, `qty` INTEGER NOT NULL, `unit_cost` INTEGER NOT NULL, PRIMARY KEY(`delivery_id`, `item_id`, `variant_id`))")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `stock_counts` (`id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `number` TEXT, `scope_kind` TEXT NOT NULL, `scope_id` TEXT, `scope_text` TEXT, `title` TEXT NOT NULL, `status` TEXT NOT NULL, `uncounted` TEXT, `started_by` TEXT, `completed_by` TEXT, `completed_at` INTEGER, `created_at` INTEGER NOT NULL, `server_seq` INTEGER, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_stock_counts_store_id` ON `stock_counts` (`store_id`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `stock_count_lines` (`count_id` TEXT NOT NULL, `item_id` TEXT NOT NULL, `variant_id` TEXT NOT NULL, `counted` INTEGER, `counted_at` INTEGER, `left_out` INTEGER NOT NULL, `expected` INTEGER, `diff` INTEGER, `unit_cost` REAL, `server_seq` INTEGER, PRIMARY KEY(`count_id`, `item_id`, `variant_id`))")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `stock_movements` (`id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `item_id` TEXT NOT NULL, `variant_id` TEXT NOT NULL, `qty` INTEGER NOT NULL, `reason` TEXT NOT NULL, `unit_cost` REAL, `ref_type` TEXT, `ref_id` TEXT, `receipt_id` TEXT, `employee_id` TEXT, `note` TEXT, `created_at` INTEGER NOT NULL, `server_seq` INTEGER, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_stock_movements_store_id_created_at` ON `stock_movements` (`store_id`, `created_at`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_stock_movements_item_id` ON `stock_movements` (`item_id`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `stock_drafts` (`kind` TEXT NOT NULL, `body` TEXT NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`kind`))")
+            db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
+        }
+    }
 }

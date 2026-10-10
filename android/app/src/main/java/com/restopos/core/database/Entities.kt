@@ -63,6 +63,12 @@ data class ItemEntity(
     // its price is typed at the sale, each time it is sold: a service, or
     // anything charged differently for each customer (server 0083)
     val open_price: Boolean = false,
+    // a shop's stock papers (server 0092): what it last cost, in cents, who
+    // it is bought from, and its brand. A product with variants keeps its
+    // costs on them.
+    val cost: Long? = null,
+    val supplier_id: String? = null,
+    val brand: String? = null,
 )
 
 @Entity(tableName = "modifier_groups")

@@ -26,6 +26,8 @@ data class ItemVariantEntity(
     val option_values: String = "[]",
     val deleted_at: String? = null,
     val server_seq: Long? = null,
+    // what it last cost, in cents (server 0092)
+    val cost: Long? = null,
 )
 
 // What this shop holds of one product, or of one variant of it, in
@@ -41,6 +43,13 @@ data class StockLevelEntity(
     val variant_id: String = "",
     val qty: Int = 0,
     val server_seq: Long? = null,
+    // The server's (0092): what a unit on the shelf cost on average, in cents
+    // and parts of a cent; the level at or under which it is to be ordered
+    // again, and how much to order then, both in thousandths. A line this
+    // till made by selling what the server had no level for has none.
+    val avg_cost: Double = 0.0,
+    val reorder_point: Int? = null,
+    val reorder_qty: Int? = null,
 )
 
 // What a product holds over all its variants, and how many lines of stock that is.

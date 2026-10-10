@@ -133,6 +133,8 @@ class PullWorker @AssistedInject constructor(
                         db.ops().clearPrinters()
                         db.ops().clearSettings()
                         db.customers().clear()
+                        // a shop's stock papers as the server sent them; a count or a draft of this tablet's own stays
+                        db.stock().clearFromServer()
                         db.sync().saveCursor(SyncStateEntity(store, 0, pageEpochs))
                     }
                     epochs = pageEpochs
