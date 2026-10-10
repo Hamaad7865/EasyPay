@@ -281,6 +281,8 @@ class ShellViewModel @Inject constructor(
     // The tablet works on its own (the offline plan): it does not sync, so
     // nothing here speaks of a sign-in that is wanted or of changes waiting.
     private val alone = db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).alone }
+    // the sheets say where a saved change goes by this (core/data/Journey)
+    init { viewModelScope.launch { alone.collect { com.restopos.core.data.Journey.alone = it } } }
     val needsSignIn: StateFlow<Boolean> = combine(session.needsSignIn, alone) { wanted, a -> wanted && !a }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     val pending: StateFlow<Long> = combine(db.outbox().pendingCountFlow(), alone) { n, a -> if (a) 0L else n }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val rejected: StateFlow<Long> = db.outbox().deadCountFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)

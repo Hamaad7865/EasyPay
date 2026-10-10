@@ -91,7 +91,7 @@ class CategoryEditor(
             } else out.fold(
                 {
                     editing.value = null
-                    Toaster.say(if (id == null) "${read.name} is added. The other tills have it at their next sync." else "${read.name} is saved. The other tills have it at their next sync.")
+                    Toaster.say(if (id == null) "${read.name} is added." + com.restopos.core.data.Journey.others else "${read.name} is saved." + com.restopos.core.data.Journey.others)
                 },
                 { Toaster.say(it.message ?: "That did not work") },
             )
@@ -172,14 +172,14 @@ private fun CategorySheet(editor: CategoryEditor, edit: CategoryEdit, items: Int
     // top: the keyboard takes the lower half of the screen
     Sheet(onDismiss = { editor.close() }, width = 560.dp, gap = 14.dp, top = true) {
         if (removing && was != null) {
-            SheetHead("Remove ${was.name}?", "It goes from every till at its next sync.") { editor.close() }
+            SheetHead("Remove ${was.name}?", if (com.restopos.core.data.Journey.alone) "It goes from this tablet." else "It goes from every till at its next sync.") { editor.close() }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 VBtn("Keep it", Modifier.weight(1f), height = 60.dp, enabled = !busy) { removing = false }
                 VBtn("Remove it", Modifier.weight(1f), V.Red, Color.White, 60.dp, weight = 800, enabled = !busy) { editor.remove() }
             }
             return@Sheet
         }
-        SheetHead(if (was == null) "New category" else was.name, "Needs a connection. Every till has it at its next sync.") { editor.close() }
+        SheetHead(if (was == null) "New category" else was.name, com.restopos.core.data.Journey.needs) { editor.close() }
 
         Caps("Name", V.Text2)
         Field(name, { name = it.take(60) }, "What the category is called", Modifier.fillMaxWidth(), height = 56.dp, size = 17.sp)

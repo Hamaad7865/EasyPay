@@ -61,6 +61,10 @@ function check(name, cond, extra) {
     for (const r of shop.roles) await c.query(`insert into roles (id, tenant_id, name, permissions) values ($1,$2,$3,$4::jsonb)`, [r.id, tid, r.name, JSON.stringify(r.permissions)]);
     for (const [i, e] of shop.staff.entries()) await c.query(`insert into employees (id, tenant_id, name, role_id, pin_hash) values ($1,$2,$3,$4,$5)`, [e.id, tid, e.name, e.role, pinHash(e.pin, i)]);
     await c.query(`insert into taxes (id, tenant_id, name, rate_bp, type, is_default) values ($1,$2,$3,$4,$5,true)`, [shop.tax.id, tid, shop.tax.name, shop.tax.rate_bp, shop.tax.type]);
+    // the made-up business's other taxes and its suppliers, as the debug build gives them to a tablet (DEMO_SHOP,
+    // DEMO_STOCK): a product a till saves may name one of either
+    for (const t of shop.more_taxes || []) await c.query(`insert into taxes (id, tenant_id, name, rate_bp, type, is_default) values ($1,$2,$3,$4,$5,false)`, [t.id, tid, t.name, t.rate_bp, t.type]);
+    if (!restaurant) for (const sp of shop.suppliers || []) await c.query(`insert into suppliers (id, tenant_id, name) values ($1,$2,$3)`, [sp.id, tid, sp.name]);
     if (restaurant) {
       for (const [i, d] of shop.restaurant.dining.entries()) {
         await c.query(`insert into dining_options (id, tenant_id, name, is_default, sort_order, needs_table, kitchen, kind) values ($1,$2,$3,$4,$5,$6,$7,$8)`, [d.id, tid, d.name, d.is_default, i, d.needs_table, d.kitchen, d.kind]);

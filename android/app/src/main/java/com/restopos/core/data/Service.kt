@@ -392,7 +392,8 @@ class ServiceRepository @Inject constructor(
         // the queue: the day the business goes Premium the server takes it
         // as it takes a linked till's. The change and its place in the queue
         // are one transaction, so neither is there without the other.
-        if (PosSettings.parse(db.ops().settings()).alone) {
+        Journey.alone = PosSettings.parse(db.ops().settings()).alone
+        if (Journey.alone) {
             val local = LocalAnswers(db.alone())
             if (!local.answers(type)) error("This tablet works on its own, and this is not something it can do by itself yet.")
             val tenant = session.tenantId() ?: error("This tablet is not set up")

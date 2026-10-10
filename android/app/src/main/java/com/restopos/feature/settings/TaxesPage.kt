@@ -86,7 +86,7 @@ class TaxesViewModel @Inject constructor(db: TillDatabase, private val service: 
             } else out.fold(
                 {
                     editing.value = null
-                    Toaster.say(if (edit.tax == null) "${read.name} is added. The other tills have it at their next sync." else "${read.name} is saved. Orders already open keep the tax they were rung up with.")
+                    Toaster.say(if (edit.tax == null) "${read.name} is added." + com.restopos.core.data.Journey.others else "${read.name} is saved. Orders already open keep the tax they were rung up with.")
                 },
                 { Toaster.say(it.message ?: "That did not work") },
             )
@@ -120,7 +120,7 @@ internal fun TaxesPage(vm: TaxesViewModel = hiltViewModel()) {
         }
     }
     Row { VBtn("Add a tax", bg = V.Blue, fg = Color.White, height = 52.dp, radius = 14.dp, weight = 800) { vm.new() } }
-    Note("A tax is not removed: receipts already printed name it. Change its rate, or move items onto another from their own sheet. Changing a tax needs a connection, and the other tills have it at their next sync.")
+    Note("A tax is not removed: receipts already printed name it. Change its rate, or move items onto another from their own sheet." + if (com.restopos.core.data.Journey.alone) "" else " Changing a tax needs a connection, and the other tills have it at their next sync.")
 
     editing?.let { TaxSheet(vm, it) }
 }

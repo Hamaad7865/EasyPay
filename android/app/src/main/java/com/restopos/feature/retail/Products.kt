@@ -170,7 +170,7 @@ class ProductsViewModel @Inject constructor(
 
     fun askPrice(item: ItemEntity, variant: ItemVariantEntity?) {
         val now = variant?.price ?: item.price
-        asking.value = NumAsk("New price", "${sales.nameOf(item, variant)} · now ${Money.format(now)}. It changes on every till at its next sync.", "Rs", 2, "") { typed -> setPrice(item, variant, typed) }
+        asking.value = NumAsk("New price", "${sales.nameOf(item, variant)} · now ${Money.format(now)}." + if (com.restopos.core.data.Journey.alone) "" else " It changes on every till at its next sync.", "Rs", 2, "") { typed -> setPrice(item, variant, typed) }
     }
 
     // Someone who may not change prices asks someone who may.

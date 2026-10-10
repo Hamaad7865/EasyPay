@@ -103,7 +103,7 @@ class ItemEditor(private val service: ServiceRepository, private val approvals: 
             } else out.fold(
                 {
                     editing.value = null
-                    Toaster.say(if (edit.item == null) "${read.name} is added. The other tills have it at their next sync." else "${read.name} is saved. The other tills have it at their next sync.")
+                    Toaster.say(if (edit.item == null) "${read.name} is added." + com.restopos.core.data.Journey.others else "${read.name} is saved." + com.restopos.core.data.Journey.others)
                     done()
                 },
                 { Toaster.say(it.message ?: "That did not work") },
@@ -192,7 +192,7 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             }
             return@Sheet
         }
-        SheetHead(if (was == null) "New $thing" else was.name, "Needs a connection. Every till has it at its next sync.") { editor.close() }
+        SheetHead(if (was == null) "New $thing" else was.name, com.restopos.core.data.Journey.needs) { editor.close() }
 
         Row {
             Seg(

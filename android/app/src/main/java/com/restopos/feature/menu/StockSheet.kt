@@ -105,7 +105,7 @@ internal fun StockSheet(editor: StockEditor, edit: StockEdit) {
 
     // top: the keyboard takes the lower half of the screen
     Sheet(onDismiss = { editor.close() }, width = 560.dp, gap = 14.dp, top = true) {
-        SheetHead("Stock of ${edit.name}", "Needs a connection. Kept in the stock history with who changed it.") { editor.close() }
+        SheetHead("Stock of ${edit.name}", (if (com.restopos.core.data.Journey.alone) "" else "Needs a connection. ") + "Kept in the stock history with who changed it.") { editor.close() }
 
         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(V.Well).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Way("Add stock", way == StockForm.Way.In, Modifier.weight(1f)) { way = StockForm.Way.In; reason = null }
