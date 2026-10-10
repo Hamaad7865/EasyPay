@@ -62,8 +62,13 @@ the restaurant's name, the table's and its floor's, and the QR code of
 across for printing. `web/lib/guest.ts` makes the address and the code's
 squares (`qrcode-generator`, which the lock file already held for another
 package); the page is split into its questions (`page.tsx`) and its drawing
-(`view.tsx`). Until the till piece is released the switch changes nothing a
-guest can see: a card scanned before then says the code is not in use.
+(`view.tsx`). All of it is hidden behind `TABLE_ORDERING_LIVE` in
+`web/lib/plan.ts`, which says false: one tag puts the whole branch live, and
+a card printed before the till's piece and the ordering site are live would
+send a guest to an address that does not answer, for good. Turning it on is
+part of the release that carries the till's piece: set it to true, and put
+the "Table cards" line back in `nav.ts` under Tables (`premium: true`,
+`only: "restaurant"`, the `QrCode` icon).
 
 ## After
 

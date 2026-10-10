@@ -1,7 +1,7 @@
 import { onlyFor } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { loadSettings } from "@/lib/settings";
-import { PREMIUM_ONLY } from "@/lib/plan";
+import { PREMIUM_ONLY, TABLE_ORDERING_LIVE } from "@/lib/plan";
 import { Card, PageHead } from "../../ui";
 import { CardsView, type CardStore, type CardTable } from "./view";
 
@@ -12,6 +12,18 @@ import { CardsView, type CardStore, type CardTable } from "./view";
 export default async function TableCardsPage({ searchParams }: { searchParams: Promise<{ store?: string }> }) {
   const sp = await searchParams;
   const ctx = await onlyFor("restaurant");
+  // Not live yet (lib/plan.ts): no card is drawn, so none can be printed that
+  // would send a guest to an address that does not answer.
+  if (!TABLE_ORDERING_LIVE) {
+    return (
+      <div>
+        <PageHead title="Table cards" lede="A card for each table, with the code a guest scans to see the menu and order." />
+        <Card title="Ordering from the table is not available yet">
+          <p>It is being finished. The cards for your tables will be here once it is.</p>
+        </Card>
+      </div>
+    );
+  }
   if (!ctx.premium) {
     return (
       <div>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { onlyFor } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
+import { TABLE_ORDERING_LIVE } from "@/lib/plan";
 import { Wait } from "../busy";
 import { NewFloor } from "./new-floor";
 
@@ -31,7 +32,7 @@ export default async function FloorPlansPage({ searchParams }: { searchParams: P
       <div className="page-head">
         <h1>Floor plan</h1>
         {/* the cards guests scan to order from their table: a page of the premium tier */}
-        {data.store && ctx.premium && (
+        {TABLE_ORDERING_LIVE && data.store && ctx.premium && (
           <Link className="btn-quiet" href={`/backoffice/tables/cards?store=${data.store.id}`}>
             Table cards
             <Wait />

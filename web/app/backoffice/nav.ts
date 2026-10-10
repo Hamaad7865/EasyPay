@@ -18,7 +18,6 @@ import {
   FileUp,
   LayoutDashboard,
   LayoutGrid,
-  QrCode,
   ListOrdered,
   type LucideIcon,
   PackageSearch,
@@ -132,7 +131,6 @@ export const GROUPS: NavGroup[] = [
     icon: Store,
     links: [
       { href: "/backoffice/tables", label: "Tables", only: "restaurant", icon: LayoutGrid, words: "floor plan rooms areas seats" },
-      { href: "/backoffice/tables/cards", label: "Table cards", only: "restaurant", premium: true, icon: QrCode, words: "qr code scan order from the table menu phone guests print" },
       { href: "/backoffice/bookings", label: "Bookings", only: "restaurant", premium: true, icon: CalendarClock, words: "reservations" },
       { href: "/backoffice/customers", label: "Customers", icon: Contact, words: "guests phone" },
       { href: "/backoffice/printers", label: "Printers", icon: Printer, words: "kitchen bar receipt ip usb" },
