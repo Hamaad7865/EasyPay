@@ -70,8 +70,24 @@ The screens read the tablet's own database and never the network. The sync fills
 
 ## 3. Saves
 
-Every save is a change that waits for the server's answer, like a product's today. Each id is made on
-the tablet, so the same change sent twice is written once.
+Every save is a change that waits for the server's answer, like a product's today.
+
+**Quantities are thousandths and money is cents**, on the server, in the back office and already on the
+till (`StockForm`, `moveStock`): three units are 3000, a scan adds 1000, a weight is its grams. Every
+payload, every table and every rule below is in those units; only what is shown is divided.
+
+**A save that is sent twice must be written once.** `ask()` gives each call a new change id, so the
+server's own "this change was already applied" does not cover a second tap after an answer that was
+lost on the way, and the till would report "needs a connection" for something that was in fact done.
+So each `push_*` function here is safe to repeat by what it carries:
+
+- every id is made on the tablet, and a save with an id the server already holds changes that row
+  instead of making a second one (a new supplier saved twice is one supplier, not a refusal that the
+  name is taken);
+- a change of state that finds the order already in the state asked for (sent, cancelled, closed)
+  answers done;
+- `delivery_receive` already answers a delivery it has with what was written, and `count_from_till`
+  does the same.
 
 | Change | Carries | Server rule behind it | Permission |
 |---|---|---|---|
@@ -104,9 +120,10 @@ Remove.
 - A new order: the supplier, an expected date, a note, and lines with a quantity and a cost each. The
   cost starts at what the product last cost.
 - **Add what is low** fills the draft with the supplier's products at or below their reorder point that
-  are not on it yet, each with its reorder quantity, or with what brings it back to its point when none
-  is set. It is worked out on the tablet from what it holds, by the server's own rule (`po_fill_low`),
-  so it needs no connection.
+  are not on it yet, each with its reorder quantity, or, when none is set, with what brings it back to
+  its point and never less than one unit; the cost is the line's average cost, rounded. It is worked
+  out on the tablet from what it holds, by the server's own rule (`po_fill_low`, and `web/lib/stock.ts`
+  says the same), so it needs no connection.
 - Save as a draft, Send, Cancel (while nothing has arrived), Close (the rest of a part-received order
   will not come). A sent order's lines cannot be changed, as on the server.
 - An order that is waiting has **Receive**, which opens a delivery for it.
@@ -122,7 +139,8 @@ Remove.
   cannot be changed once received. Goods sent back afterwards leave by a correction, "returned to
   supplier", as today.
 - Then **Print labels for this delivery**: the label screen opens with the delivery's lines as its run,
-  each with as many labels as arrived, within the label screen's own limits.
+  each with as many labels as whole units arrived, within the label screen's own limits. A product sold
+  by weight gets one label for its line, not one a gram.
 
 **A draft is not lost.** An order or a delivery being typed is kept on the tablet (`stock_drafts`: one
 per kind, as text) until it is sent or thrown away, so closing the app or losing the connection in the
@@ -151,12 +169,17 @@ been to the server and back.
   the line, with its own sales since the line was counted put back.
 - **Complete** needs a connection. The till first sends the sales it is still holding, then the count as
   one change. With no connection the count is kept and the till says to complete it when it is online.
-- **The server's figures are the ones that stand.** `count_from_till` makes the count, writes each
-  line with the moment the tablet counted it, and completes it by the rule the back office uses: a
-  line becomes what was counted plus what moved after it was counted, a sale being judged by its own
-  time on the till. The same count sent twice is answered with what was written. The tablet's review is
-  its best knowledge; in a shop with several tills another till's unsent sales are not in it, and the
-  review says so.
+- **The count is exactly the lines the tablet sends.** Every line the tablet showed goes up, the ones
+  nobody counted too (with no figure) and the ones left out (marked so). The server adds none of its
+  own: it does not work the scope out again. So "set them to nothing" touches only lines the person
+  saw on the tablet, and a product added in the back office after the tablet's last sync is not zeroed
+  behind their back.
+- **The server's figures are the ones that stand.** `count_from_till` makes the count from those
+  lines, each with the moment the tablet counted it, and completes it by the rule the back office uses
+  (`count_complete`): a line becomes what was counted plus what moved after it was counted, a sale
+  being judged by its own time on the till. The same count sent twice is answered with what was
+  written. The tablet's review is its best knowledge; in a shop with several tills another till's
+  unsent sales are not in it, and the review says so.
 - A count open in the back office shows in the list as open there and is not opened on the tablet. A
   finished count, wherever it was made, opens as a record: expected, counted, difference, and its worth
   for someone who may see costs.
@@ -178,6 +201,18 @@ Screens in a new `feature/stock`: the tabbed screen, one file a tab, and the sha
 Server, one migration (the next number, 0092 when this was written): `sync_pull` with the tables of section 2 for a shop; the `push_*`
 functions of section 3 and their lines in `sync_push`; `po_save` taking a new draft's id;
 `count_from_till`. Built from the live definitions, as every fix-forward migration here.
+
+Three things the build plans must carry, found while writing this:
+
+- **Whose clock.** A line's "when it was counted" is the tablet's clock. That is the right clock for
+  the sales it is set against, which a till stamps with its own; it is the wrong one for deliveries and
+  corrections, which the server stamps with its own. The till already notes how far its clock is from
+  the server's (`ApiClient.clockAhead`). The count carries that difference, and the server uses the
+  tablet's moment for sales and the corrected one for the rest.
+- **No variant.** The tablet writes "no variant" as an empty text. `doc_lines` and `push_stock_adjust`
+  already read that as none; `count_from_till` and every new function must too.
+- **Which line.** A refusal of a long order or delivery names the product it is about (one removed in
+  the back office since the tablet's last sync), so that sixty lines are not searched by hand.
 
 ## 8. For the offline edition later
 
@@ -225,6 +260,9 @@ first: an older till ignores what it does not know. Both tags are the owner's.
 - The tablet keeps what it is sent and removes nothing (section 2).
 - A product that was not ordered can be received on an order's delivery (section 4).
 - The review before completing is the tablet's estimate, and the server's figures stand (section 6).
+- A count is exactly the lines the tablet sends; the server adds none (section 6).
+- A save sent twice is answered as done, not refused (section 3).
+- Labels for a delivery: one a whole unit, and one for a line sold by weight (section 4).
 
 ## 12. Not in this piece
 
