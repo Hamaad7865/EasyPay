@@ -124,6 +124,8 @@ data class FloorUi(
     val tables: List<TableUi> = emptyList(),
     val orders: List<OrderInfo> = emptyList(), // what the open-orders list shows
     val upcoming: List<BookingEntity> = emptyList(),
+    // what stands in the rooms beside the tables: walls, doors, windows, a bar (server 0102)
+    val elements: List<com.restopos.core.database.FloorElementEntity> = emptyList(),
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -154,7 +156,7 @@ class FloorViewModel @Inject constructor(
 
     val ui: StateFlow<FloorUi> = flow { emit(session.storeId()) }.flatMapLatest { store ->
         if (store == null) flowOf(FloorUi(ready = true))
-        else combine(db.tables().tables(store), service.orders(store), service.bookingsToday(store), db.ops().settingsFlow()) { tables, orders, bookings, settings ->
+        else combine(db.tables().tables(store), service.orders(store), service.bookingsToday(store), db.ops().settingsFlow(), db.tables().elements(store)) { tables, orders, bookings, settings, elements ->
             // Bookings are the premium tier's (server 0085). On another plan no
             // table is held for one and none is marked as arrived when a table
             // is seated: the server would refuse that change.
@@ -176,6 +178,7 @@ class FloorViewModel @Inject constructor(
                 // a table's order always; another order once it has something on it
                 orders.filter { it.open && (it.table != null || it.lines.isNotEmpty()) },
                 waiting.take(3),
+                elements,
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), FloorUi())
@@ -379,16 +382,24 @@ fun FloorScreen(
                 // The back office draws on a 100 x 60 plan. What this room uses of
                 // it is fitted into the canvas and centred, up to a size at which
                 // a table for four is still a table and not a billboard.
-                val minX = here.minOfOrNull { it.table.x } ?: 0
-                val minY = here.minOfOrNull { it.table.y } ?: 0
-                val spanX = ((here.maxOfOrNull { it.table.x + it.table.w } ?: 100) - minX).coerceAtLeast(10)
-                val spanY = ((here.maxOfOrNull { it.table.y + it.table.h } ?: 60) - minY).coerceAtLeast(10)
+                // what stands in the room is part of what is fitted, so that its walls frame it
+                val standing = ui.elements.filter { it.area == zone }
+                val minX = minOf(here.minOfOrNull { it.table.x } ?: 100, standing.minOfOrNull { it.x } ?: 100).let { if (here.isEmpty() && standing.isEmpty()) 0 else it }
+                val minY = minOf(here.minOfOrNull { it.table.y } ?: 60, standing.minOfOrNull { it.y } ?: 60).let { if (here.isEmpty() && standing.isEmpty()) 0 else it }
+                val maxX = maxOf(here.maxOfOrNull { it.table.x + it.table.w } ?: 0, standing.maxOfOrNull { it.x + it.w } ?: 0).let { if (it == 0) 100 else it }
+                val maxY = maxOf(here.maxOfOrNull { it.table.y + it.table.h } ?: 0, standing.maxOfOrNull { it.y + it.h } ?: 0).let { if (it == 0) 60 else it }
+                val spanX = (maxX - minX).coerceAtLeast(10)
+                val spanY = (maxY - minY).coerceAtLeast(10)
                 val unit = minOf(cw / spanX.toFloat(), ch / spanY.toFloat(), 11.dp)
                 val ox = 48.dp + (cw - unit * spanX.toFloat()) / 2 - unit * minX.toFloat()
                 val oy = 44.dp + (ch - unit * spanY.toFloat()) / 2 - unit * minY.toFloat()
                 // chairs keep their size down to a point, then shrink with the tables of a big room
                 val k = (unit / 11.dp).coerceIn(0.62f, 1f)
                 Box(Modifier.fillMaxSize().graphicsLayer { alpha = enter.value; translationX = (1f - enter.value) * turn[1] * 28.dp.toPx() }) {
+                    // under the tables, and not to be tapped
+                    standing.forEach { e ->
+                        ElementView(e.kind, unit * e.w.toFloat(), unit * e.h.toFloat(), e.rotation, Modifier.offset(ox + unit * e.x.toFloat(), oy + unit * e.y.toFloat()))
+                    }
                     here.forEach { t ->
                         val w = unit * t.table.w.toFloat()
                         val h = unit * t.table.h.toFloat()
@@ -462,7 +473,8 @@ private class Seat(val x: Float, val y: Float, val out: Float)
 // the room each chair has along the edge, so a crowded table's are narrower.
 private fun seats(shape: String, n: Int, w: Float, h: Float, g: Float): Pair<List<Seat>, Float> {
     val out = ArrayList<Seat>()
-    if (n <= 0) return out to 0f
+    // a bar stool is the seat itself, and a booth has benches, drawn with the table
+    if (n <= 0 || shape == "stool" || shape == "booth") return out to 0f
     fun deg(x: Float, y: Float) = Math.toDegrees(atan2(y.toDouble(), x.toDouble())).toFloat()
     if (shape == "round") {
         val long = maxOf(w, h)
@@ -505,13 +517,37 @@ private fun seats(shape: String, n: Int, w: Float, h: Float, g: Float): Pair<Lis
     return out to h / (a + 1)
 }
 
+// What stands in a room beside its tables, drawn flat on the floor: a wall is
+// a solid line, a window a lighter one in the wall, a door an opening with
+// its leaf, a bar a counter with its name. None of them is tapped.
+@Composable
+internal fun ElementView(kind: String, w: Dp, h: Dp, rotation: Int, modifier: Modifier = Modifier, picked: Boolean = false) {
+    val r = RoundedCornerShape(if (kind == "bar") 8.dp else 3.dp)
+    Box(
+        modifier.size(w, h).graphicsLayer { rotationZ = rotation.toFloat() }.clip(r)
+            .background(when (kind) { "wall" -> V.Stroke2; "window" -> V.Cyan.copy(alpha = 0.55f); "door" -> V.Panel; else -> V.Key })
+            .then(when {
+                picked -> Modifier.border(2.dp, V.Blue, r)
+                kind == "door" -> Modifier.dashed(V.Text3, 3.dp, 1.5.dp)
+                kind == "bar" -> Modifier.border(1.dp, V.Stroke2, r)
+                else -> Modifier
+            }),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (kind == "bar" && w >= 44.dp && h >= 22.dp) T("BAR", 11.sp, 800, V.Text3, spacing = 1.2.sp)
+    }
+}
+
 // A table as a thing on the floor: a top that catches the light, its chairs
 // drawn up round its edge (filled for each guest seated), and what it is
 // doing in its colour, which fades to the next when that changes. It gives
 // under the finger, and the ring round the one that is picked closes in on it.
 @Composable
 private fun TableView(t: TableUi, w: Dp, h: Dp, k: Float, selected: Boolean, mins: Int, dim: Boolean = false, onTap: () -> Unit) {
-    val round = t.table.shape == "round"
+    val round = t.table.shape == "round" || t.table.shape == "stool"
+    val booth = t.table.shape == "booth"
+    // the angle the table is set at; its number and its minutes stay upright
+    val turn = t.table.rotation.toFloat()
     val shape = if (round) RoundedCornerShape(50) else RoundedCornerShape(14.dp)
     val fade = tween<Color>(280)
     val bg by animateColorAsState(when (t.status) { "open" -> V.Blue; "bill" -> V.Amber; "reserved" -> V.VioletDeep; else -> V.TableFree }, fade, label = "table")
@@ -529,10 +565,23 @@ private fun TableView(t: TableUi, w: Dp, h: Dp, k: Float, selected: Boolean, min
     val (chairs, room) = remember(t.table.shape, t.table.seats, w, h, k) { seats(t.table.shape, t.table.seats.coerceIn(0, 14), w.value, h.value, 7.5f * k) }
     Box(
         Modifier.size(w, h)
-            .graphicsLayer { val s = press.value * (1f + 0.03f * ring.value); scaleX = s; scaleY = s; alpha = faded.value }
+            .graphicsLayer { val s = press.value * (1f + 0.03f * ring.value); scaleX = s; scaleY = s; alpha = faded.value; rotationZ = turn }
             .drawBehind {
                 val long = minOf(22f * k, room - 4f).coerceAtLeast(8f).dp.toPx()
                 val deep = (9f * k).dp.toPx()
+                if (booth) {
+                    // a bench along each long side, lit when the booth has guests
+                    val lit = if (covers > 0 || t.status == "reserved") accent else idle
+                    val off = (7.5f * k).dp.toPx()
+                    val inset = 5.dp.toPx()
+                    if (size.width >= size.height) {
+                        drawRoundRect(lit, Offset(inset, -off - deep / 2), Size(size.width - 2 * inset, deep), CornerRadius(deep / 2, deep / 2))
+                        drawRoundRect(lit, Offset(inset, size.height + off - deep / 2), Size(size.width - 2 * inset, deep), CornerRadius(deep / 2, deep / 2))
+                    } else {
+                        drawRoundRect(lit, Offset(-off - deep / 2, inset), Size(deep, size.height - 2 * inset), CornerRadius(deep / 2, deep / 2))
+                        drawRoundRect(lit, Offset(size.width + off - deep / 2, inset), Size(deep, size.height - 2 * inset), CornerRadius(deep / 2, deep / 2))
+                    }
+                }
                 chairs.forEachIndexed { i, c ->
                     val at = Offset(c.x.dp.toPx(), c.y.dp.toPx())
                     rotate(c.out + 90f, at) {
@@ -566,8 +615,8 @@ private fun TableView(t: TableUi, w: Dp, h: Dp, k: Float, selected: Boolean, min
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
         ) {
             val small = minOf(w, h)
-            T(t.table.name, if (small >= 84.dp) 19.sp else if (small >= 60.dp) 17.sp else 15.sp, 800, fg, spacing = (-0.3).sp)
-            if (w >= 66.dp) {
+            T(t.table.name, if (small >= 84.dp) 19.sp else if (small >= 60.dp) 17.sp else 15.sp, 800, fg, Modifier.graphicsLayer { rotationZ = -turn }, spacing = (-0.3).sp)
+            if (w >= 66.dp && turn == 0f) {
                 T(
                     when (t.status) {
                         "free" -> "${t.table.seats} seat${if (t.table.seats == 1) "" else "s"}"
@@ -581,7 +630,7 @@ private fun TableView(t: TableUi, w: Dp, h: Dp, k: Float, selected: Boolean, min
         if (t.order != null) {
             val late = mins >= 60
             Box(
-                Modifier.align(Alignment.TopEnd).offset(14.dp, (-11).dp).height(23.dp).clip(RoundedCornerShape(12.dp))
+                Modifier.align(Alignment.TopEnd).offset(14.dp, (-11).dp).graphicsLayer { rotationZ = -turn }.height(23.dp).clip(RoundedCornerShape(12.dp))
                     .background(if (late) V.Red else V.OnText).border(1.5.dp, if (late) V.Red else V.Stroke2, RoundedCornerShape(12.dp)).padding(horizontal = 8.dp),
                 contentAlignment = Alignment.Center,
             ) { T("${mins}m", 11.sp, 800, if (late) Color.White else V.On) }

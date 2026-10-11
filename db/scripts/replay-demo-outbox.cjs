@@ -163,11 +163,19 @@ function check(name, cond, extra) {
     // the floor: every table the till holds is on the server where the till has it, and the ones it removed are
     // removed there (a plan changed on the tablet: floor.save, room.rename, room.remove)
     if (compare && restaurant && till.tables) {
-      const rows = (await c.query(`select id, name, area, seats, shape, x, y, w, h, sort_order, deleted_at is not null as gone from tables where tenant_id = $1 and store_id = $2`, [tid, store])).rows;
-      const one = (t) => t.id + ' ' + (t.gone ? 'removed' : [t.name, t.area, t.seats, t.shape, t.x, t.y, t.w, t.h, t.sort_order].join('|'));
+      const rows = (await c.query(`select id, name, area, seats, shape, x, y, w, h, rotation, sort_order, deleted_at is not null as gone from tables where tenant_id = $1 and store_id = $2`, [tid, store])).rows;
+      // a state read by a build before 0102 has no angle: it is nought
+      const one = (t) => t.id + ' ' + (t.gone ? 'removed' : [t.name, t.area, t.seats, t.shape, t.x, t.y, t.w, t.h, t.rotation ?? 0, t.sort_order].join('|'));
       const here = till.tables.map((t) => one({ ...t, gone: !!t.gone })).sort().join('\n     ');
       const there = rows.map(one).sort().join('\n     ');
       check(`the floor: the till's ${till.tables.length} tables are the server's, each where the till has it`, here === there, here === there ? '' : '\n   till:\n     ' + here + '\n   server:\n     ' + there);
+    }
+    if (compare && restaurant && till.elements) {
+      const rows = (await c.query(`select id, area, kind, x, y, w, h, rotation, deleted_at is not null as gone from floor_elements where tenant_id = $1 and store_id = $2`, [tid, store])).rows;
+      const one = (e) => e.id + ' ' + (e.gone ? 'removed' : [e.area, e.kind, e.x, e.y, e.w, e.h, e.rotation].join('|'));
+      const here = till.elements.map((e) => one({ ...e, gone: !!e.gone })).sort().join('\n     ');
+      const there = rows.map(one).sort().join('\n     ');
+      check(`the floor: the till's ${till.elements.length} walls, doors, windows and bars are the server's, each where the till has it`, here === there, here === there ? '' : '\n   till:\n     ' + here + '\n   server:\n     ' + there);
     }
     // a return not put back: it came back and left again as damaged
     for (const r of till.receipts.filter((x) => x.type === 'refund')) {

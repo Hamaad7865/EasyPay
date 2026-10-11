@@ -8,11 +8,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -33,9 +34,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
@@ -80,12 +83,17 @@ import kotlin.math.roundToInt
 // change: the queue the tablet keeps for the day it is connected holds one
 // line a save, not one a finger's move.
 //
+// Since server 0102 a table may be set at an angle (two keys turn it, a
+// finger cannot work a small handle), it may be a booth or a bar stool, and
+// the room has what stands in it: walls, doors, windows, a bar. One of those
+// is added at its usual size and then moved, sized and turned like a table.
+//
 // The plan being changed is kept by the screen's view model, not by the
 // screen: going to an order and coming back finds it as it was left.
 
 // A room as it stands on the screen. made: rooms named here that hold no
 // saved table yet (a room is the name its tables share: with none it is only
-// here until one is saved in it).
+// here until one is saved in it). selected: a table's id, or an element's.
 data class FloorEdit(
     val room: String,
     val tables: List<FloorPlan.Table> = emptyList(),
@@ -94,6 +102,8 @@ data class FloorEdit(
     val selected: String? = null,
     val made: List<String> = emptyList(),
     val saving: Boolean = false,
+    val elements: List<FloorPlan.Element> = emptyList(),
+    val removedElements: List<String> = emptyList(),
 )
 
 class FloorEditing(
@@ -105,21 +115,26 @@ class FloorEditing(
     val state = MutableStateFlow<FloorEdit?>(null)
 
     private fun saved(room: String) = floor().tables.filter { it.table.area == room }
-        .map { it.table }.map { FloorPlan.Table(it.id, it.name, it.seats, it.shape, it.x, it.y, it.w, it.h) }
+        .map { it.table }.map { FloorPlan.Table(it.id, it.name, it.seats, FloorPlan.shape(it.shape), it.x, it.y, it.w, it.h, it.rotation) }
+    private fun standing(room: String) = floor().elements.filter { it.area == room }
+        .map { FloorPlan.Element(it.id, it.kind, it.x, it.y, it.w, it.h, it.rotation) }
     private fun busy(): Set<String> = floor().tables.filter { it.order != null }.map { it.table.id }.toSet()
     // the store's table names in the other rooms, in small letters
     private fun elsewhere(room: String) = floor().tables.filter { it.table.area != room }.map { it.table.name.trim().lowercase() }.toSet()
+    private fun plan(room: String, made: List<String> = emptyList()) = FloorEdit(room, saved(room), elements = standing(room), made = made)
 
     fun rooms(e: FloorEdit): List<String> = (floor().zones + e.made + e.room).distinct()
+    // an element, as room a new piece has to leave: it stands on the plan as a table does
+    private fun block(p: FloorPlan.Element) = FloorPlan.Table(p.id, "", 1, "square", p.x, p.y, p.w, p.h)
 
     fun open(room: String?) {
         val r = room ?: floor().zones.firstOrNull() ?: "Main"
-        state.value = FloorEdit(r, saved(r), made = if (r in floor().zones) emptyList() else listOf(r))
+        state.value = plan(r, if (r in floor().zones) emptyList() else listOf(r))
     }
     fun close() { state.value = null }
 
     // Another room's plan, as it was last saved. The caller has asked about changes not saved.
-    fun show(room: String) { state.update { it?.copy(room = room, tables = saved(room), removed = emptyList(), dirty = false, selected = null) } }
+    fun show(room: String) { state.update { it?.let { e -> plan(room, e.made) } } }
     fun select(id: String?) { state.update { it?.copy(selected = id) } }
 
     fun change(id: String, how: (FloorPlan.Table) -> FloorPlan.Table) {
@@ -129,13 +144,33 @@ class FloorEditing(
             if (next == e.tables) e else e.copy(tables = next, dirty = true)
         }
     }
+    fun changeElement(id: String, how: (FloorPlan.Element) -> FloorPlan.Element) {
+        state.update { e ->
+            if (e == null) return@update null
+            val next = e.elements.map { if (it.id == id) how(it) else it }
+            if (next == e.elements) e else e.copy(elements = next, dirty = true)
+        }
+    }
+    // What is picked, a table or an element, turned by so many degrees.
+    fun turn(id: String, by: Int) {
+        change(id) { it.copy(rotation = FloorPlan.turned(it.rotation, by)) }
+        changeElement(id) { it.copy(rotation = FloorPlan.turned(it.rotation, by)) }
+    }
 
     fun add(count: Int, seats: Int, shape: String, first: String) {
         state.update { e ->
             if (e == null) return@update null
             val taken = elsewhere(e.room) + e.tables.map { it.name.trim().lowercase() }
-            val made = FloorPlan.add(e.tables, taken, count, seats, shape, first, Uuid7::next)
+            val made = FloorPlan.add(e.tables + e.elements.map(::block), taken, count, seats, shape, first, Uuid7::next)
             e.copy(tables = e.tables + made, dirty = true, selected = made.singleOrNull()?.id)
+        }
+    }
+    // A wall, a door, a window or a bar, at its usual size where the tables leave room.
+    fun addElement(kind: String) {
+        state.update { e ->
+            if (e == null) return@update null
+            val made = FloorPlan.element(kind, e.tables + e.elements.map(::block), Uuid7::next)
+            e.copy(elements = e.elements + made, dirty = true, selected = made.id)
         }
     }
 
@@ -147,6 +182,12 @@ class FloorEditing(
 
     fun remove(id: String) {
         val e = state.value ?: return
+        val piece = e.elements.firstOrNull { it.id == id }
+        if (piece != null) {
+            val was = floor().elements.any { it.id == id }
+            state.value = e.copy(elements = e.elements - piece, removedElements = if (was) e.removedElements + id else e.removedElements, dirty = true, selected = null)
+            return
+        }
         val t = e.tables.firstOrNull { it.id == id } ?: return
         if (hasOrder(id)) { Toaster.say("${tableLabel(t.name)} has an open order. Pay it, or move it to another table, first."); return }
         val was = floor().tables.any { it.table.id == id }
@@ -166,17 +207,25 @@ class FloorEditing(
     fun save(approver: StaffMember? = null) {
         val e = state.value ?: return
         if (e.saving || !e.dirty) return
-        val problem = FloorPlan.problem(e.tables, elsewhere(e.room), floor().tables.count { it.table.area != e.room })
+        val problem = FloorPlan.problem(
+            e.tables, elsewhere(e.room), floor().tables.count { it.table.area != e.room },
+            e.elements.size, floor().elements.count { it.area != e.room },
+        )
         if (problem != null) { Toaster.say(problem); return }
+        // a room is the name its tables share: with none, what stands in it would be in no room at all
+        if (e.tables.isEmpty() && e.elements.isNotEmpty()) { Toaster.say("Add a table to ${e.room} first: a room with no table is not kept."); return }
         state.value = e.copy(saving = true)
         scope.launch {
-            val out = service.saveFloor(e.room, e.tables, e.removed, emptyList(), emptyList(), approver)
+            val out = service.saveFloor(e.room, e.tables, e.removed, e.elements, e.removedElements, approver)
             val need = out.exceptionOrNull() as? NeedsApproval
             state.update { now ->
                 when {
                     now == null -> null
                     // what was dragged meanwhile is still to be saved
-                    out.isSuccess -> now.copy(saving = false, removed = now.removed - e.removed.toSet(), dirty = now.tables != e.tables, made = now.made - e.room)
+                    out.isSuccess -> now.copy(
+                        saving = false, removed = now.removed - e.removed.toSet(), removedElements = now.removedElements - e.removedElements.toSet(),
+                        dirty = now.tables != e.tables || now.elements != e.elements, made = now.made - e.room,
+                    )
                     else -> now.copy(saving = false)
                 }
             }
@@ -216,7 +265,7 @@ class FloorEditing(
         // a room with nothing saved in it is only here: it is let go
         if (e.room !in floor().zones) {
             val next = left().firstOrNull() ?: "Main"
-            state.value = FloorEdit(next, saved(next), made = e.made - e.room)
+            state.value = plan(next, e.made - e.room)
             return
         }
         if (openIn(e).isNotEmpty()) { Toaster.say("${e.room} has tables with an open order. Pay them, or move them, first."); return }
@@ -226,7 +275,7 @@ class FloorEditing(
             when {
                 out.isSuccess -> {
                     val next = left().firstOrNull() ?: "Main"
-                    state.value = FloorEdit(next, saved(next), made = (e.made - e.room).let { m -> if (next in floor().zones || next in m) m else m + next })
+                    state.value = plan(next, (e.made - e.room).let { m -> if (next in floor().zones || next in m) m else m + next })
                     Toaster.say("${e.room} removed")
                 }
                 need != null -> approvals.ask(need.permission, need.what) { removeRoom(it) }
@@ -237,6 +286,7 @@ class FloorEditing(
 }
 
 // The editor: the room's plan on the left, what is picked on the right.
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FloorEditor(plan: FloorEditing, e: FloorEdit) {
     var adding by remember { mutableStateOf(false) }
@@ -246,6 +296,7 @@ fun FloorEditor(plan: FloorEditing, e: FloorEdit) {
     var leaving by remember { mutableStateOf<(() -> Unit)?>(null) }
     val careful = { then: () -> Unit -> if (e.dirty) leaving = then else then() }
     val picked = e.tables.firstOrNull { it.id == e.selected }
+    val piece = e.elements.firstOrNull { it.id == e.selected }
     val rooms = plan.rooms(e)
 
     Row(Modifier.fillMaxSize()) {
@@ -285,16 +336,23 @@ fun FloorEditor(plan: FloorEditing, e: FloorEdit) {
                                 while (y < size.height - 1f) { drawRect(line.copy(alpha = 0.5f), Offset(0f, y), Size(size.width, 1f)); y += step }
                             },
                     )
-                    if (e.tables.isEmpty()) {
+                    if (e.tables.isEmpty() && e.elements.isEmpty()) {
                         T("No tables in ${e.room} yet. Tap Add table, then drag them into place.", 15.sp, 600, V.Text2, Modifier.align(Alignment.Center).padding(40.dp), lines = 3, align = TextAlign.Center)
+                    }
+                    // what stands in the room is under its tables, here as on the floor
+                    e.elements.forEach { p ->
+                        key(p.id) {
+                            PlanElement(p, unit, ox, oy, p.id == e.selected, onPick = { plan.select(p.id) }) { x, y -> plan.changeElement(p.id) { FloorPlan.moved(it, x, y) } }
+                        }
                     }
                     e.tables.forEach { t ->
                         key(t.id) {
                             PlanTable(t, unit, ox, oy, t.id == e.selected, plan.hasOrder(t.id), onPick = { plan.select(t.id) }) { x, y -> plan.change(t.id) { FloorPlan.moved(it, x, y) } }
                         }
                     }
-                    // the corner of the picked table: drag it to make the table bigger or smaller
-                    picked?.let { t -> key("corner-" + t.id) { Corner(t, unit, ox, oy) { w, h -> plan.change(t.id) { FloorPlan.sized(it, w, h) } } } }
+                    // the corner of what is picked: drag it to make it bigger or smaller
+                    picked?.let { t -> key("corner-" + t.id) { Corner(t.x + t.w, t.y + t.h, t.w, t.h, unit, ox, oy) { w, h -> plan.change(t.id) { FloorPlan.sized(it, w, h) } } } }
+                    piece?.let { p -> key("corner-" + p.id) { Corner(p.x + p.w, p.y + p.h, p.w, p.h, unit, ox, oy) { w, h -> plan.changeElement(p.id) { FloorPlan.sized(it, w, h) } } } }
                 }
             }
         }
@@ -305,43 +363,46 @@ fun FloorEditor(plan: FloorEditing, e: FloorEdit) {
                     val covers = e.tables.sumOf { it.seats }
                     T("${e.tables.size} ${if (e.tables.size == 1) "table" else "tables"} · $covers covers", 13.sp, 600, V.Text2)
                 }
-                if (picked == null) {
-                    T("Drag a table to place it. Drag its corner to make it bigger or smaller. Tap a table to change its number, covers or shape.", 14.sp, 500, V.Text2, lines = 6, height = 20.sp)
-                    T("Nothing changes for the till until Save plan.", 13.sp, 500, V.Text3, lines = 2)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        VBtn("Rename room", Modifier.weight(1f), height = 48.dp, radius = 12.dp, size = 14.sp, pad = 8.dp) { careful { naming = "rename" } }
-                        VBtn("Remove room", Modifier.weight(1f), V.RedWash, V.RedText, 48.dp, radius = 12.dp, size = 14.sp, pad = 8.dp) { careful { removing = true } }
-                    }
-                } else {
+                if (picked != null) {
                     // Each name close to its control, so that Remove table is in sight on a low screen.
                     if (plan.hasOrder(picked.id)) T("This table has an open order.", 13.sp, 700, V.AmberText)
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Caps("Table number")
-                        Field(picked.name, { v -> plan.change(picked.id) { it.copy(name = v.take(30)) } }, "1", Modifier.fillMaxWidth())
-                    }
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Caps("Covers")
-                        Stepper(picked.seats.toString(), key = 44.dp, width = 64.dp, onDown = { plan.change(picked.id) { it.copy(seats = (it.seats - 1).coerceAtLeast(1)) } }, onUp = { plan.change(picked.id) { it.copy(seats = (it.seats + 1).coerceAtMost(99)) } })
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Caps("Table number")
+                            Field(picked.name, { v -> plan.change(picked.id) { it.copy(name = v.take(30)) } }, "1", Modifier.fillMaxWidth())
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Caps("Covers")
+                            Stepper(picked.seats.toString(), key = 40.dp, width = 40.dp, onDown = { plan.change(picked.id) { it.copy(seats = (it.seats - 1).coerceAtLeast(1)) } }, onUp = { plan.change(picked.id) { it.copy(seats = (it.seats + 1).coerceAtMost(99)) } })
+                        }
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Caps("Shape")
                         Seg(
-                            listOf(
-                                SegOption("Square", picked.shape != "round") { plan.change(picked.id) { it.copy(shape = "square") } },
-                                SegOption("Round", picked.shape == "round") { plan.change(picked.id) { it.copy(shape = "round") } },
-                            ),
-                            Modifier.fillMaxWidth(), V.Well, 40.dp, 12.dp, fill = true, size = 14.sp,
+                            listOf("square" to "Square", "round" to "Round", "booth" to "Booth", "stool" to "Stool").map { (s, label) -> SegOption(label, picked.shape == s) { plan.change(picked.id) { it.copy(shape = s) } } },
+                            Modifier.fillMaxWidth(), V.Well, 40.dp, 12.dp, fill = true, size = 13.sp,
                         )
                     }
-                    // for a finger that finds the corner small
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Caps("Size")
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Stepper(picked.w.toString(), "WIDE", key = 40.dp, width = 40.dp, onDown = { plan.change(picked.id) { FloorPlan.sized(it, it.w - 1, it.h) } }, onUp = { plan.change(picked.id) { FloorPlan.sized(it, it.w + 1, it.h) } })
-                            Stepper(picked.h.toString(), "DEEP", key = 40.dp, width = 40.dp, onDown = { plan.change(picked.id) { FloorPlan.sized(it, it.w, it.h - 1) } }, onUp = { plan.change(picked.id) { FloorPlan.sized(it, it.w, it.h + 1) } })
+                    SizeAndTurn(picked.w, picked.h, picked.rotation, onSize = { w, h -> plan.change(picked.id) { FloorPlan.sized(it, w, h) } }) { plan.turn(picked.id, it) }
+                    VBtn("Remove table", Modifier.fillMaxWidth(), V.RedWash, V.RedText, 48.dp, radius = 12.dp, size = 14.sp) { plan.remove(picked.id) }
+                } else if (piece != null) {
+                    T(FloorPlan.kindName(piece.kind), 16.sp, 800)
+                    T("It is drawn on the plan and on the Tables screen. It takes no orders.", 13.sp, 500, V.Text2, lines = 3)
+                    SizeAndTurn(piece.w, piece.h, piece.rotation, onSize = { w, h -> plan.changeElement(piece.id) { FloorPlan.sized(it, w, h) } }) { plan.turn(piece.id, it) }
+                    VBtn("Remove it", Modifier.fillMaxWidth(), V.RedWash, V.RedText, 48.dp, radius = 12.dp, size = 14.sp) { plan.remove(piece.id) }
+                } else {
+                    T("Drag a table to place it. Drag its corner to make it bigger or smaller. Tap a table to change its number, covers, shape or angle.", 14.sp, 500, V.Text2, lines = 6, height = 20.sp)
+                    T("Nothing changes for the till until Save plan.", 13.sp, 500, V.Text3, lines = 2)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Caps("Add to the room")
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FloorPlan.KINDS.forEach { k -> VBtn(FloorPlan.kindName(k), height = 44.dp, radius = 12.dp, size = 14.sp, icon = VI.Plus, pad = 12.dp) { plan.addElement(k) } }
                         }
                     }
-                    VBtn("Remove table", Modifier.fillMaxWidth(), V.RedWash, V.RedText, 48.dp, radius = 12.dp, size = 14.sp) { plan.remove(picked.id) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        VBtn("Rename room", Modifier.weight(1f), height = 48.dp, radius = 12.dp, size = 14.sp, pad = 8.dp) { careful { naming = "rename" } }
+                        VBtn("Remove room", Modifier.weight(1f), V.RedWash, V.RedText, 48.dp, radius = 12.dp, size = 14.sp, pad = 8.dp) { careful { removing = true } }
+                    }
                 }
             }
         }
@@ -360,7 +421,7 @@ fun FloorEditor(plan: FloorEditing, e: FloorEdit) {
     if (removing) {
         val n = e.tables.size
         Ask(
-            "Remove ${e.room}?", if (n == 0) "The room has no tables." else "Its $n ${if (n == 1) "table goes" else "tables go"} with it. This cannot be undone.",
+            "Remove ${e.room}?", if (n == 0) "The room has no tables." else "Its $n ${if (n == 1) "table goes" else "tables go"} with it, and what stands in it. This cannot be undone.",
             "Keep it", "Remove the room", onClose = { removing = false },
         ) { removing = false; plan.removeRoom() }
     }
@@ -372,14 +433,35 @@ fun FloorEditor(plan: FloorEditing, e: FloorEdit) {
     }
 }
 
-// One table on the plan: dragged, it moves by whole units of the plan.
+// How wide and deep the picked piece is, and the angle it is set at: for a
+// finger that finds the corner small, and because a handle to turn by is
+// smaller still.
+@Composable
+private fun SizeAndTurn(w: Int, h: Int, rotation: Int, onSize: (Int, Int) -> Unit, onTurn: (Int) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Caps("Size")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Stepper(w.toString(), "WIDE", key = 40.dp, width = 40.dp, onDown = { onSize(w - 1, h) }, onUp = { onSize(w + 1, h) })
+            Stepper(h.toString(), "DEEP", key = 40.dp, width = 40.dp, onDown = { onSize(w, h - 1) }, onUp = { onSize(w, h + 1) })
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Caps("Angle")
+        Stepper("$rotation°", key = 40.dp, width = 64.dp, onDown = { onTurn(-FloorPlan.TURN) }, onUp = { onTurn(FloorPlan.TURN) })
+    }
+}
+
+// One table on the plan: dragged, it moves by whole units of the plan. What
+// is turned is the drawing; the finger's own box stays straight, so a drag
+// to the right moves it to the right whatever its angle.
 @Composable
 private fun PlanTable(t: FloorPlan.Table, unit: Dp, ox: Dp, oy: Dp, picked: Boolean, busy: Boolean, onPick: () -> Unit, onMove: (Int, Int) -> Unit) {
     val px = with(LocalDensity.current) { unit.toPx() }
     val now by rememberUpdatedState(t)
     val move by rememberUpdatedState(onMove)
     val pick by rememberUpdatedState(onPick)
-    val shape = if (t.shape == "round") RoundedCornerShape(50) else RoundedCornerShape(10.dp)
+    val shape = if (t.shape == "round" || t.shape == "stool") RoundedCornerShape(50) else RoundedCornerShape(10.dp)
+    val bench = V.Stroke2
     Box(
         Modifier.offset(ox + unit * t.x, oy + unit * t.y).size(unit * t.w, unit * t.h)
             .pointerInput(t.id, px) {
@@ -390,29 +472,81 @@ private fun PlanTable(t: FloorPlan.Table, unit: Dp, ox: Dp, oy: Dp, picked: Bool
                     move(fromX + (dx / px).roundToInt(), fromY + (dy / px).roundToInt())
                 }
             }
-            .quietTap(onPick).clip(shape).background(V.TableFree).border(if (picked) 2.dp else 1.dp, if (picked) V.Blue else V.TableFreeLine, shape),
-        contentAlignment = Alignment.Center,
+            .quietTap(onPick),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            T(t.name.ifBlank { "?" }, 15.sp, 800)
-            if (unit * t.h >= 52.dp) T("${t.seats} ${if (t.seats == 1) "seat" else "seats"}", 11.sp, 600, V.Text2)
+        Box(
+            Modifier.fillMaxSize().graphicsLayer { rotationZ = t.rotation.toFloat() }
+                .drawBehind {
+                    if (t.shape == "booth") {
+                        // a bench along each long side
+                        val deep = 6.dp.toPx(); val off = 5.dp.toPx(); val inset = 4.dp.toPx()
+                        val r = CornerRadius(deep / 2, deep / 2)
+                        if (size.width >= size.height) {
+                            drawRoundRect(bench, Offset(inset, -off - deep), Size(size.width - 2 * inset, deep), r)
+                            drawRoundRect(bench, Offset(inset, size.height + off), Size(size.width - 2 * inset, deep), r)
+                        } else {
+                            drawRoundRect(bench, Offset(-off - deep, inset), Size(deep, size.height - 2 * inset), r)
+                            drawRoundRect(bench, Offset(size.width + off, inset), Size(deep, size.height - 2 * inset), r)
+                        }
+                    }
+                }
+                .clip(shape).background(V.TableFree).border(if (picked) 2.dp else 1.dp, if (picked) V.Blue else V.TableFreeLine, shape),
+            contentAlignment = Alignment.Center,
+        ) {
+            // its number stays upright, as on the Tables screen
+            Column(Modifier.graphicsLayer { rotationZ = -t.rotation.toFloat() }, horizontalAlignment = Alignment.CenterHorizontally) {
+                T(t.name.ifBlank { "?" }, 15.sp, 800)
+                if (unit * t.h >= 52.dp && unit * t.w >= 52.dp) T("${t.seats} ${if (t.seats == 1) "seat" else "seats"}", 11.sp, 600, V.Text2)
+            }
+            // an order is open on it: at the top in the middle, where a round table does not cut it off
+            if (busy) Box(Modifier.align(Alignment.TopCenter).padding(top = 7.dp).size(9.dp).clip(CircleShape).background(V.Amber))
         }
-        // an order is open on it: at the top in the middle, where a round table does not cut it off
-        if (busy) Box(Modifier.align(Alignment.TopCenter).padding(top = 7.dp).size(9.dp).clip(CircleShape).background(V.Amber))
     }
 }
 
-// The picked table's corner. What is seen is small; what takes the finger is not.
+// A wall, a door, a window or a bar on the plan. A wall is one unit thick,
+// which is less than a finger: what takes the finger is never thinner than a
+// key, whatever is drawn in it.
 @Composable
-private fun Corner(t: FloorPlan.Table, unit: Dp, ox: Dp, oy: Dp, onSize: (Int, Int) -> Unit) {
+private fun PlanElement(p: FloorPlan.Element, unit: Dp, ox: Dp, oy: Dp, picked: Boolean, onPick: () -> Unit, onMove: (Int, Int) -> Unit) {
     val px = with(LocalDensity.current) { unit.toPx() }
-    val now by rememberUpdatedState(t)
+    val now by rememberUpdatedState(p)
+    val move by rememberUpdatedState(onMove)
+    val pick by rememberUpdatedState(onPick)
+    val w = unit * p.w
+    val h = unit * p.h
+    val reach = 30.dp
+    val bw = maxOf(w, reach)
+    val bh = maxOf(h, reach)
+    Box(
+        Modifier.offset(ox + unit * p.x - (bw - w) / 2, oy + unit * p.y - (bh - h) / 2).size(bw, bh)
+            .pointerInput(p.id, px) {
+                var fromX = 0; var fromY = 0; var dx = 0f; var dy = 0f
+                detectDragGestures(onDragStart = { pick(); fromX = now.x; fromY = now.y; dx = 0f; dy = 0f }) { change, by ->
+                    change.consume()
+                    dx += by.x; dy += by.y
+                    move(fromX + (dx / px).roundToInt(), fromY + (dy / px).roundToInt())
+                }
+            }
+            .quietTap(onPick),
+        contentAlignment = Alignment.Center,
+    ) {
+        ElementView(p.kind, w, h, p.rotation, picked = picked)
+    }
+}
+
+// The picked piece's corner. What is seen is small; what takes the finger is not.
+@Composable
+private fun Corner(right: Int, bottom: Int, w: Int, h: Int, unit: Dp, ox: Dp, oy: Dp, onSize: (Int, Int) -> Unit) {
+    val px = with(LocalDensity.current) { unit.toPx() }
+    val nowW by rememberUpdatedState(w)
+    val nowH by rememberUpdatedState(h)
     val size by rememberUpdatedState(onSize)
     Box(
-        Modifier.offset(ox + unit * (t.x + t.w) - 24.dp, oy + unit * (t.y + t.h) - 24.dp).size(48.dp)
-            .pointerInput(t.id, px) {
+        Modifier.offset(ox + unit * right - 24.dp, oy + unit * bottom - 24.dp).size(48.dp)
+            .pointerInput(px) {
                 var fromW = 0; var fromH = 0; var dx = 0f; var dy = 0f
-                detectDragGestures(onDragStart = { fromW = now.w; fromH = now.h; dx = 0f; dy = 0f }) { change, by ->
+                detectDragGestures(onDragStart = { fromW = nowW; fromH = nowH; dx = 0f; dy = 0f }) { change, by ->
                     change.consume()
                     dx += by.x; dy += by.y
                     size(fromW + (dx / px).roundToInt(), fromH + (dy / px).roundToInt())
@@ -445,7 +579,13 @@ private fun AddTables(first: String, onClose: () -> Unit, onDone: (count: Int, s
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Caps("Shape")
-            Seg(listOf(SegOption("Square", shape == "square") { shape = "square" }, SegOption("Round", shape == "round") { shape = "round" }), Modifier.fillMaxWidth(), V.Well, 44.dp, 12.dp, fill = true)
+            Seg(
+                // a bar stool seats one: choosing it says so, and choosing another puts four back
+                listOf("square" to "Square", "round" to "Round", "booth" to "Booth", "stool" to "Bar stool").map { (s, label) ->
+                    SegOption(label, shape == s) { if (s == "stool") seats = 1 else if (shape == "stool") seats = 4; shape = s }
+                },
+                Modifier.fillMaxWidth(), V.Well, 44.dp, 12.dp, fill = true, size = 14.sp,
+            )
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Caps(if (count > 1) "Number of the first" else "Table number")
