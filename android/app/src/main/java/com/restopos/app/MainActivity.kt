@@ -26,6 +26,7 @@ import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.SyncScheduler
 import com.restopos.core.ui.Pos
 import com.restopos.core.ui.PosTheme
+import com.restopos.core.ui.ScreenFit
 import com.restopos.feature.staff.ApprovalHost
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
@@ -47,22 +48,46 @@ class MainActivity : ComponentActivity() {
 
     // The screens are drawn for a 1280 x 720dp landscape tablet and scaled to
     // the tablet they run on: a 15-inch till shows the same layout larger,
-    // instead of the same sizes lost in empty space. The smaller of the two
-    // ratios is used, so a wide 16:10 tablet keeps the height the order list
-    // and keypad need. Done on the activity's configuration rather than in
-    // Compose, so dialogs and menus (separate windows) scale as well.
+    // instead of the same sizes lost in empty space, and a 10-inch is never
+    // drawn at Android's own small sizes (core/ui/ScreenFit says how large).
+    // Done on the activity's configuration rather than in Compose, so dialogs
+    // and menus (separate windows) scale as well.
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(newBase)
         val base = newBase.resources.configuration
-        val width = maxOf(base.screenWidthDp, base.screenHeightDp)
-        val height = minOf(base.screenWidthDp, base.screenHeightDp)
-        val scale = minOf(width / 1280f, height / 720f).coerceIn(0.6f, 2f)
+        val (width, height) = room(newBase)
+        val scale = ScreenFit.scale(width, height)
         applyOverrideConfiguration(Configuration().apply {
             densityDpi = (base.densityDpi * scale).toInt()
             screenWidthDp = (base.screenWidthDp / scale).toInt()
             screenHeightDp = (base.screenHeightDp / scale).toInt()
             smallestScreenWidthDp = (base.smallestScreenWidthDp / scale).toInt()
         })
+    }
+
+    // The room the screens have, in Android's dp: the tablet's screen less the
+    // status bar and the bar of keys along the bottom, which the till does not
+    // draw under. Android 15 counts those bars in the sizes it gives an app,
+    // earlier versions leave them out, so where the tablet can be asked what
+    // its bars take (Android 11) it is, and the smaller answer is believed: a
+    // till drawn for more height than it has would lose its last row of keys.
+    private fun room(context: Context): Pair<Float, Float> {
+        val c = context.resources.configuration
+        // the long side and the short one: the till is held one way only, and may be opened the other
+        var long = maxOf(c.screenWidthDp, c.screenHeightDp).toFloat()
+        var short = minOf(c.screenWidthDp, c.screenHeightDp).toFloat()
+        if (android.os.Build.VERSION.SDK_INT >= 30) runCatching {
+            val metrics = context.getSystemService(WindowManager::class.java).currentWindowMetrics
+            val bars = metrics.windowInsets.getInsetsIgnoringVisibility(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+            val px = c.densityDpi / 160f
+            val w = (metrics.bounds.width() - bars.left - bars.right) / px
+            val h = (metrics.bounds.height() - bars.top - bars.bottom) / px
+            if (minOf(w, h) > 0f) {
+                long = minOf(long, maxOf(w, h))
+                short = minOf(short, minOf(w, h))
+            }
+        }
+        return long to short
     }
 
     // Keys from a keyboard or a scanner go to the screen as always. The Enter
