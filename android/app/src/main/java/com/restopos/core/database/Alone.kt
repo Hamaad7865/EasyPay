@@ -58,6 +58,10 @@ interface AloneDao {
     // any table of that id: another store's, or one that was removed
     @Query("SELECT * FROM tables WHERE id = :id") suspend fun table(id: String): TableEntity?
     @Upsert suspend fun putTables(rows: List<TableEntity>)
+    // what stands in a store's rooms beside the tables (0102)
+    @Query("SELECT * FROM floor_elements WHERE store_id = :store AND deleted_at IS NULL") suspend fun elements(store: String): List<FloorElementEntity>
+    @Query("SELECT * FROM floor_elements WHERE id = :id") suspend fun element(id: String): FloorElementEntity?
+    @Upsert suspend fun putElements(rows: List<FloorElementEntity>)
 
     // ---- printers ----
     @Query("SELECT * FROM printers WHERE id = :id") suspend fun printer(id: String): PrinterEntity?

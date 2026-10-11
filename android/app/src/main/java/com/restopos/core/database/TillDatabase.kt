@@ -62,8 +62,9 @@ import androidx.room.RoomDatabase
         StockMovementEntity::class, StockDraftEntity::class,
         GuestOrderEntity::class,
         TillLogEntity::class,
+        FloorElementEntity::class,
     ],
-    version = 18,
+    version = 19,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {

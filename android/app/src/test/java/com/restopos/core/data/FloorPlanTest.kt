@@ -22,13 +22,23 @@ class FloorPlanTest {
         FloorPlan.Table(id, name, seats, shape, x, y, w, h)
 
     @Test fun `what is sent is what the server was tested with`() {
-        val tables = listOf(t("table-1", "1"), t("table-2", " 2 ", x = 20, y = 4, w = 16, h = 14, seats = 6, shape = "round"))
-        assertEquals(payload("floor-save"), FloorPlan.save("store-1", "Main", tables, listOf("table-3"), null))
+        val tables = listOf(
+            t("table-1", "1").copy(rotation = 45), t("table-2", " B1 ", x = 20, y = 4, w = 16, h = 10, shape = "booth"),
+            t("table-3", "S1", x = 40, y = 4, w = 5, h = 5, seats = 1, shape = "stool"),
+        )
+        val elements = listOf(
+            FloorPlan.Element("element-1", "wall", 0, 0, 60, 1), FloorPlan.Element("element-2", "door", 30, 58, 8, 2),
+            FloorPlan.Element("element-3", "bar", 70, 10, 24, 6, 90),
+        )
+        assertEquals(payload("floor-save-pieces"), FloorPlan.save("store-1", "Main", tables, emptyList(), elements, listOf("element-4"), null))
+        // with nothing to say of the elements, it says nothing of them: the server leaves them where they stand
+        val quiet = FloorPlan.save("store-1", "Main", tables, emptyList(), null, emptyList(), null)
+        assertNull(quiet["elements"]); assertNull(quiet["removed_elements"])
         assertEquals(payload("room-rename"), FloorPlan.rename("store-1", "Main", " Dining room ", null))
         assertEquals(payload("room-remove"), FloorPlan.remove("store-1", "Terrace", null))
         // with the word of someone who may, it says whose
-        assertEquals("\"m-1\"", FloorPlan.save("store-1", "Main", tables, emptyList(), "m-1")["approved_by"].toString())
-        assertNull(FloorPlan.save("store-1", "Main", tables, emptyList(), null)["approved_by"])
+        assertEquals("\"m-1\"", FloorPlan.save("store-1", "Main", tables, emptyList(), null, emptyList(), "m-1")["approved_by"].toString())
+        assertNull(quiet["approved_by"])
     }
 
     @Test fun `a table is moved as far as the plan goes and no further`() {
@@ -72,6 +82,23 @@ class FloorPlanTest {
         // never fewer than one, never more than fifty at once
         assertEquals(1, FloorPlan.add(emptyList(), emptySet(), 0, 4, "square", "1", ids).size)
         assertEquals(50, FloorPlan.add(emptyList(), emptySet(), 500, 4, "square", "1", ids).size)
+    }
+
+    @Test fun `a piece is turned within the circle, and an element is sized down to one unit`() {
+        assertEquals(15, FloorPlan.turned(0, 15))
+        assertEquals(0, FloorPlan.turned(345, 15))
+        assertEquals(345, FloorPlan.turned(0, -15))
+        val wall = FloorPlan.Element("w", "wall", 10, 10, 30, 1)
+        assertEquals(1 to 1, FloorPlan.sized(wall, 0, 0).let { it.w to it.h })
+        assertEquals(90 to 50, FloorPlan.sized(wall, 500, 500).let { it.w to it.h })
+        assertEquals(70 to 59, FloorPlan.moved(wall, 500, 500).let { it.x to it.y })
+        // a stool starts small and seats one; a booth is longer than it is deep
+        assertEquals(Triple(FloorPlan.MIN, FloorPlan.MIN, 1), FloorPlan.tableStarts("stool"))
+        assertTrue(FloorPlan.tableStarts("booth").let { it.first > it.second })
+        // an element is put where the tables leave room
+        val bar = FloorPlan.element("bar", listOf(t("a", "1")), { "new" })
+        assertEquals("bar" to 24, bar.kind to bar.w)
+        assertTrue(bar.x >= 14 || bar.y >= 14)
     }
 
     @Test fun `the next number is the lowest no table has`() {

@@ -278,4 +278,20 @@ object Migrations {
             db.execSQL("ALTER TABLE `employees` ADD COLUMN `has_login` INTEGER NOT NULL DEFAULT 0")
         }
     }
+
+    // 19: the floor plan's new pieces (server 0102). A table may be set at an
+    // angle, and a room has what stands in it beside the tables: walls, doors,
+    // windows, a bar. Every table there is straight, and no room has anything,
+    // until a plan is saved or a pull brings them.
+    val V18_V19 = object : Migration(18, 19) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `tables` ADD COLUMN `rotation` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `floor_elements` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `store_id` TEXT NOT NULL, " +
+                    "`area` TEXT NOT NULL, `kind` TEXT NOT NULL, `x` INTEGER NOT NULL, `y` INTEGER NOT NULL, `w` INTEGER NOT NULL, `h` INTEGER NOT NULL, " +
+                    "`rotation` INTEGER NOT NULL, `sort_order` INTEGER NOT NULL, `deleted_at` TEXT, `server_seq` INTEGER, PRIMARY KEY(`id`))",
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_floor_elements_store_id` ON `floor_elements` (`store_id`)")
+        }
+    }
 }

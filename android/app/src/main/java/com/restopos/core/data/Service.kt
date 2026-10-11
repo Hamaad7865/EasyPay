@@ -327,10 +327,13 @@ class ServiceRepository @Inject constructor(
     // none. One room as its plan stands when Save is pressed: the whole room
     // is one change, so a second try after a lost answer leaves what the
     // first left.
-    suspend fun saveFloor(room: String, tables: List<FloorPlan.Table>, removed: List<String>, approver: StaffMember? = null): Result<Unit> = runCatching {
+    suspend fun saveFloor(
+        room: String, tables: List<FloorPlan.Table>, removed: List<String>,
+        elements: List<FloorPlan.Element>, removedElements: List<String>, approver: StaffMember? = null,
+    ): Result<Unit> = runCatching {
         staff.allow("settings.device", "change the floor plan", approver)
         val store = session.storeId() ?: error("This till is not set up for a store yet.")
-        ask("floor.save", ::floorRefused, FloorPlan.save(store, room, tables, removed, staff.approvedBy("settings.device", approver)))
+        ask("floor.save", ::floorRefused, FloorPlan.save(store, room, tables, removed, elements, removedElements, staff.approvedBy("settings.device", approver)))
     }
 
     suspend fun renameRoom(from: String, to: String, approver: StaffMember? = null): Result<Unit> = runCatching {
@@ -348,7 +351,7 @@ class ServiceRepository @Inject constructor(
     private fun floorRefused(code: String?): String = when (code) {
         "name-taken" -> "Another table in this store already has one of those numbers. It may be in another room."
         "room-exists" -> "There is already a room of that name."
-        "too-many" -> "A store holds 300 tables at most."
+        "too-many" -> "A store holds 300 tables at most, and 200 walls, doors, windows and bars."
         "bad-store" -> "This till's store is no longer there."
         "conflict" -> "That did not work. Close the plan and open it again."
         "forbidden" -> "You are not allowed to change the floor plan. Ask a manager."

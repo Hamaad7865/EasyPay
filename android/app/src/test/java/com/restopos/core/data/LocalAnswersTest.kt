@@ -74,6 +74,10 @@ class FakeAlone : AloneDao {
     override suspend fun putSupplier(row: SupplierEntity) { suppliers[row.id] = row }
     override suspend fun tables(store: String) = tables.values.filter { it.store_id == store && it.deleted_at == null }
     override suspend fun table(id: String) = tables[id]
+    val elements = LinkedHashMap<String, com.restopos.core.database.FloorElementEntity>()
+    override suspend fun elements(store: String) = elements.values.filter { it.store_id == store && it.deleted_at == null }
+    override suspend fun element(id: String) = elements[id]
+    override suspend fun putElements(rows: List<com.restopos.core.database.FloorElementEntity>) { rows.forEach { elements[it.id] = it } }
     override suspend fun putTables(rows: List<TableEntity>) { rows.forEach { tables[it.id] = it } }
     override suspend fun printer(id: String) = printers[id]
     override suspend fun printers() = printers.values.filter { it.deleted_at == null }
@@ -427,6 +431,57 @@ class LocalAnswersTest {
         // an id that is nobody's table removes nothing
         assertEquals("done", ask("floor.save", save("Main", "", "\"${id(999)}\"")))
         assertEquals(still, live().toString())
+    }
+
+    @Test fun `an angle, a booth and a stool, and what stands in the room`() {
+        fun t(n: Int, name: String, x: Int = 0, more: String = "") = """{"id":"${id(n)}","name":"$name","seats":4,"shape":"square","x":$x,"y":0,"w":10,"h":10$more}"""
+        fun e(n: Int, kind: String, x: Int, y: Int, w: Int, h: Int, rot: Int = 0) = """{"id":"${id(n)}","kind":"$kind","x":$x,"y":$y,"w":$w,"h":$h,"rotation":$rot}"""
+        fun save(rows: String, more: String = "") = """{"store_id":"$store","area":"Main","tables":[$rows],"removed":[]$more}"""
+        fun live() = dao.elements.values.filter { it.deleted_at == null }
+        assertEquals("done", ask("floor.save", save(t(300, "1", 0, ",\"rotation\":45") + "," + t(301, "B1", 12).replace("square", "booth") + "," + t(302, "S1", 24).replace("square", "stool"),
+            ",\"elements\":[${e(400, "wall", 0, 20, 60, 1)},${e(401, "bar", 70, 10, 24, 6, 90)},${e(402, "window", 90, 0, 8, 1)}]")))
+        assertEquals(45, dao.tables[id(300)]!!.rotation)
+        assertEquals("booth" to "stool", dao.tables[id(301)]!!.shape to dao.tables[id(302)]!!.shape)
+        assertEquals(listOf("wall", "bar", "window"), live().map { it.kind })
+        assertEquals(90 to "Main", dao.elements[id(401)]!!.let { it.rotation to it.area })
+        // a save that names no angle and no elements turns nothing back and moves nothing
+        val was = live().toString()
+        assertEquals("done", ask("floor.save", save(t(300, "1"))))
+        assertEquals(45, dao.tables[id(300)]!!.rotation)
+        assertEquals(was, live().toString())
+        // nor does one that names none
+        assertEquals("done", ask("floor.save", save("", ",\"elements\":[]")))
+        assertEquals(was, live().toString())
+        // an angle of nought is an angle
+        assertEquals("done", ask("floor.save", save(t(300, "1", 0, ",\"rotation\":0"))))
+        assertEquals(0, dao.tables[id(300)]!!.rotation)
+        // one taken off, one moved; sent again it leaves what one sending left
+        val change = save("", ",\"elements\":[${e(400, "wall", 0, 30, 60, 1)}],\"removed_elements\":[\"${id(402)}\"]")
+        assertEquals("done", ask("floor.save", change))
+        assertEquals(30, dao.elements[id(400)]!!.y)
+        assertNotNull(dao.elements[id(402)]!!.deleted_at)
+        val then = live().toString()
+        assertEquals("done", ask("floor.save", change))
+        assertEquals(then, live().toString())
+
+        assertEquals("bad-payload", ask("floor.save", save("", ",\"elements\":[${e(410, "pillar", 2, 2, 2, 2)}]")))
+        assertEquals("bad-payload", ask("floor.save", save("", ",\"elements\":[${e(410, "wall", 95, 0, 10, 1)}]")))
+        assertEquals("bad-payload", ask("floor.save", save("", ",\"elements\":[${e(410, "wall", 2, 2, 10, 0)}]")))
+        assertEquals("bad-payload", ask("floor.save", save("", ",\"elements\":[${e(410, "door", 2, 2, 8, 2, 360)}]")))
+        assertEquals("bad-payload", ask("floor.save", save(t(300, "1", 0, ",\"rotation\":400"))))
+        assertEquals("bad-payload", ask("floor.save", save(t(300, "1").replace("square", "sofa"))))
+        assertEquals("bad-payload", ask("floor.save", save("", ",\"elements\":[${e(410, "wall", 2, 40, 10, 1)},${e(410, "wall", 2, 42, 10, 1)}]")))
+        assertEquals("bad-payload", ask("floor.save", save("", ",\"elements\":[${e(410, "wall", 2, 40, 10, 1)}],\"removed_elements\":[\"${id(410)}\"]")))
+        assertEquals("bad-payload", ask("floor.save", save("", ",\"elements\":\"all\"")))
+        // an element that was removed does not come back by its id
+        assertEquals("conflict", ask("floor.save", save("", ",\"elements\":[${e(402, "window", 90, 0, 8, 1)}]")))
+        assertEquals(then, live().toString())
+
+        // a room renamed takes what stands in it; removed, it takes that too
+        assertEquals("done", ask("room.rename", """{"store_id":"$store","from":"Main","to":"Hall"}"""))
+        assertEquals(setOf("Hall"), live().map { it.area }.toSet())
+        assertEquals("done", ask("room.remove", """{"store_id":"$store","area":"Hall"}"""))
+        assertEquals(0, live().size)
     }
 
     @Test fun `a room renamed, and a room removed`() {

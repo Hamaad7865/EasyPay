@@ -170,7 +170,7 @@ class FloorEditing(
         if (problem != null) { Toaster.say(problem); return }
         state.value = e.copy(saving = true)
         scope.launch {
-            val out = service.saveFloor(e.room, e.tables, e.removed, approver)
+            val out = service.saveFloor(e.room, e.tables, e.removed, emptyList(), emptyList(), approver)
             val need = out.exceptionOrNull() as? NeedsApproval
             state.update { now ->
                 when {

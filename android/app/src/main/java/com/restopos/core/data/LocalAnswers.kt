@@ -5,6 +5,7 @@ import com.restopos.core.database.AloneDao
 import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.EmployeeEntity
 import com.restopos.core.database.EmployeeStoreEntity
+import com.restopos.core.database.FloorElementEntity
 import com.restopos.core.database.ItemEntity
 import com.restopos.core.database.ItemTaxCrossRef
 import com.restopos.core.database.PrinterEntity
@@ -318,36 +319,64 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         dao.putTables(new.map { it.copy(sort_order = ++place) })
     }
 
-    // ---- push_floor_save (0101) ----
+    // ---- push_floor_save (0101, 0102) ----
     // One room as the plan holds it: its tables written as they stand, the
-    // ones taken off removed, no other room touched.
+    // ones taken off removed, no other room touched. And what stands in the
+    // room (0102), when the plan says: not named, it is left where it stands.
     private suspend fun floorSave(p: JsonObject, tenant: String) {
         val store = p.id("store_id")
         val area = (p.str("area") ?: "").trim().take(30)
         val rows = (p["tables"] as? JsonArray) ?: bad()
         val listed = p["removed"]
-        if (area.isEmpty() || rows.size > 300 || (listed != null && listed !is JsonArray)) bad()
+        val pieces = p["elements"]
+        val piecesGone = p["removed_elements"]
+        if (area.isEmpty() || rows.size > 300 || (listed != null && listed !is JsonArray)
+            || (pieces != null && pieces !is JsonArray) || (piecesGone != null && piecesGone !is JsonArray)) bad()
+        if (pieces is JsonArray && pieces.size > 200) bad()
         if (store !in dao.storeIds()) throw Refused("bad-store")
         val ids = ArrayList<String>()
         val names = ArrayList<String>()
         val sent = ArrayList<TableEntity>()
+        // the angle each was sent with; one sent with none keeps the angle it has
+        val angles = HashMap<String, Int?>()
         for (row in rows) {
             val t = (row as? JsonObject) ?: bad()
             val id = t.id("id")
             val name = (t.str("name") ?: "").trim().take(30)
             val seats = t.long("seats"); val x = t.long("x"); val y = t.long("y"); val w = t.long("w"); val h = t.long("h")
             val shape = t.str("shape") ?: "square"
-            if (name.isEmpty() || seats == null || seats !in 1..99 || shape !in setOf("square", "round")
+            val rot = t.long("rotation")
+            if (name.isEmpty() || seats == null || seats !in 1..99 || shape !in setOf("square", "round", "booth", "stool")
                 || w == null || w !in 4..100 || h == null || h !in 4..60 || x == null || x < 0 || x + w > 100 || y == null || y < 0 || y + h > 60
+                || (rot != null && rot !in 0..359)
                 || id in ids) bad()
             if (name.lowercase() in names) throw Refused("name-taken")
             ids += id
             names += name.lowercase()
-            sent += TableEntity(id, tenant, store, name, area, seats.toInt(), shape, x.toInt(), y.toInt(), w.toInt(), h.toInt())
+            angles[id] = rot?.toInt()
+            sent += TableEntity(id, tenant, store, name, area, seats.toInt(), shape, x.toInt(), y.toInt(), w.toInt(), h.toInt(), rotation = rot?.toInt() ?: 0)
         }
-        val gone = (listed as? JsonArray)?.map { ((it as? JsonPrimitive)?.takeIf { v -> v !is JsonNull }?.contentOrNull)?.takeIf { v -> UUID.matches(v) } ?: bad() } ?: emptyList()
+        fun idList(of: JsonArray?) = of?.map { ((it as? JsonPrimitive)?.takeIf { v -> v !is JsonNull }?.contentOrNull)?.takeIf { v -> UUID.matches(v) } ?: bad() } ?: emptyList()
+        val gone = idList(listed as? JsonArray)
         // a table cannot be both on the plan and taken off it
         if (gone.any { it in ids }) bad()
+        // the room's walls, doors, windows and bar, read before anything is written
+        val elementsGone = idList(piecesGone as? JsonArray)
+        val elementIds = ArrayList<String>()
+        val elements = ArrayList<FloorElementEntity>()
+        for (row in (pieces as? JsonArray) ?: JsonArray(emptyList())) {
+            val e = (row as? JsonObject) ?: bad()
+            val id = e.id("id")
+            val kind = e.str("kind") ?: ""
+            val x = e.long("x"); val y = e.long("y"); val w = e.long("w"); val h = e.long("h")
+            val rot = e.long("rotation") ?: 0
+            // an element is one unit thick at least, and whole on the plan before it is turned
+            if (kind !in setOf("wall", "door", "window", "bar")
+                || w == null || w !in 1..100 || h == null || h !in 1..60 || x == null || x < 0 || x + w > 100 || y == null || y < 0 || y + h > 60
+                || rot !in 0..359 || id in elementIds || id in elementsGone) bad()
+            elementIds += id
+            elements += FloorElementEntity(id, tenant, store, area, kind, x.toInt(), y.toInt(), w.toInt(), h.toInt(), rot.toInt(), sort_order = elements.size)
+        }
         val there = dao.tables(store)
         val leaving = there.filter { it.id in gone }
         val staying = there.filter { it.id !in gone }
@@ -360,10 +389,26 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             val was = staying.firstOrNull { it.id == t.id }
             // the id is another store's table, or one that was removed
             if (was == null && dao.table(t.id) != null) throw Refused("conflict")
-            // a table that is there keeps its place in the order; a new one goes after the last
-            if (was != null) t.copy(sort_order = was.sort_order, server_seq = was.server_seq) else t.copy(sort_order = ++place)
+            // a table that is there keeps its place in the order, and its angle when none was sent; a new one goes after the last
+            if (was != null) t.copy(sort_order = was.sort_order, server_seq = was.server_seq, rotation = angles[t.id] ?: was.rotation) else t.copy(sort_order = ++place)
         }
-        dao.putTables(leaving.map { it.copy(deleted_at = now()) } + written)
+        // the elements: the ones taken off removed, the ones sent written as they stand; any other is left alone
+        val standing = dao.elements(store)
+        val elementsLeaving = standing.filter { it.id in elementsGone }
+        val writtenElements = ArrayList<FloorElementEntity>()
+        if (pieces != null) {
+            val others = standing.count { it.id !in elementsGone && it.id !in elementIds }
+            if (others + elements.size > 200) throw Refused("too-many")
+            for (e in elements) {
+                val was = standing.firstOrNull { it.id == e.id && it.id !in elementsGone }
+                // the id is another store's element, or one that was removed
+                if (was == null && dao.element(e.id) != null) throw Refused("conflict")
+                writtenElements += if (was != null) e.copy(server_seq = was.server_seq) else e
+            }
+        }
+        val at = now()
+        dao.putTables(leaving.map { it.copy(deleted_at = at) } + written)
+        dao.putElements(elementsLeaving.map { it.copy(deleted_at = at) } + writtenElements)
     }
 
     // ---- push_room_rename (0101) ----
@@ -379,6 +424,8 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         if (to == from || room.isEmpty()) return
         if (there.any { it.area.lowercase() == to.lowercase() && it.area != from }) throw Refused("room-exists")
         dao.putTables(room.map { it.copy(area = to) })
+        // its walls, doors, windows and bar go with it (0102)
+        dao.putElements(dao.elements(store).filter { it.area == from }.map { it.copy(area = to) })
     }
 
     // ---- push_room_remove (0101) ----
@@ -390,6 +437,8 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         if (store !in dao.storeIds()) throw Refused("bad-store")
         val at = now()
         dao.putTables(dao.tables(store).filter { it.area == area }.map { it.copy(deleted_at = at) })
+        // and what stood in it (0102)
+        dao.putElements(dao.elements(store).filter { it.area == area }.map { it.copy(deleted_at = at) })
     }
 
     // ---- push_printer_save (0089, 0088) ----

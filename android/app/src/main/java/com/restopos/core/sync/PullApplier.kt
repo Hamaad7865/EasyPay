@@ -10,6 +10,7 @@ import com.restopos.core.database.DeviceEntity
 import com.restopos.core.database.DiningOptionEntity
 import com.restopos.core.database.DiscountEntity
 import com.restopos.core.database.DrawerCountEntity
+import com.restopos.core.database.FloorElementEntity
 import com.restopos.core.database.EmployeeEntity
 import com.restopos.core.database.EmployeeStoreEntity
 import com.restopos.core.database.ItemEntity
@@ -293,6 +294,17 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         (lng(it, "seats") ?: 4).toInt(), str(it, "shape") ?: "square",
                         (lng(it, "x") ?: 0).toInt(), (lng(it, "y") ?: 0).toInt(), (lng(it, "w") ?: 10).toInt(), (lng(it, "h") ?: 10).toInt(),
                         (lng(it, "sort_order") ?: 0).toInt(), str(it, "deleted_at"), lng(it, "server_seq"),
+                        (lng(it, "rotation") ?: 0).toInt(),
+                    )
+                })
+            }
+            // what stands in the store's rooms beside the tables (server 0102)
+            changes["floor_elements"]?.let { rows ->
+                db.tables().upsertElements(rows.map {
+                    FloorElementEntity(
+                        id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "area") ?: "Main", str(it, "kind") ?: "wall",
+                        (lng(it, "x") ?: 0).toInt(), (lng(it, "y") ?: 0).toInt(), (lng(it, "w") ?: 10).toInt(), (lng(it, "h") ?: 1).toInt(),
+                        (lng(it, "rotation") ?: 0).toInt(), (lng(it, "sort_order") ?: 0).toInt(), str(it, "deleted_at"), lng(it, "server_seq"),
                     )
                 })
             }

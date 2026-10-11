@@ -152,6 +152,7 @@ class PullWorker @AssistedInject constructor(
                             db.retail().clearLevels()
                             db.staff().clearStaff()
                             db.tables().clearTables()
+                            db.tables().clearElements()
                             db.ops().clearPrinters()
                             db.ops().clearSettings()
                             db.customers().clear()
