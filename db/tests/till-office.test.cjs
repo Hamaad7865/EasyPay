@@ -382,6 +382,62 @@ const swap = (v, map) => (Array.isArray(v) ? v.map((x) => swap(x, map))
     check('Z4 a waiter may not', r.said === 'rejected:forbidden' && (await settings(resto)).servicePct === 10, r.said);
     r = await rone('settings.save', { something: 'else' });
     check('Z5 a key that is not one of these changes nothing', r.said === 'applied' && r.data.saved === 0, r.said + ' ' + JSON.stringify(r.data));
+
+    // ---- V: a product's variants (0097). A shop's. ----
+    const polo = id(), v1 = id(), v2 = id(), v3 = id(), v4 = id();
+    await c.query(`insert into items (id, tenant_id, name, price, cost, track_stock) values ($1,$2,'Polo',49900,17000,true)`, [polo, tid]);
+    const vids = { 'item-1': polo, 'variant-1': v1, 'variant-2': v2, 'variant-3': v3, 'variant-4': v4 };
+    const vx = (name, over = {}) => { const fxt = fixture(name); return [fxt.type, { ...swap(fxt.payload, vids), ...over }]; };
+    const lines = async (i) => (await all(`select id, name, price, cost, sku, barcode from item_variants where item_id = $1 and deleted_at is null order by name`, [i]));
+    r = await one(...vx('variants-make'));
+    let ls = await lines(polo);
+    check('V1 four lines made under the tablet\'s ids, at the product\'s price and cost', r.said === 'applied' && r.data.created === 4 && ls.length === 4
+      && ls.map((x) => x.name).join('|') === 'M / Navy|M / White|S / Navy|S / White' && ls.every((x) => Number(x.price) === 49900 && Number(x.cost) === 17000)
+      && ls.find((x) => x.name === 'S / White').id === v1, r.said + ' ' + JSON.stringify(ls.map((x) => x.name)));
+    check('V2 the product carries its options', JSON.stringify((await q1(`select option_names from items where id = $1`, [polo])).option_names) === JSON.stringify(['Size', 'Colour']));
+    r = await one(...vx('variants-make'));
+    check('V3 the same again makes nothing more', r.said === 'applied' && r.data.created === 0 && r.data.existing === 4 && (await lines(polo)).length === 4, r.said + ' ' + JSON.stringify(r.data));
+    const v5 = id(), v6 = id();
+    r = await one('variants.make', { item_id: polo, names: ['Size', 'Colour'], lines: [{ id: v5, values: ['L', 'White'] }, { id: v6, values: ['L', 'Navy'] }, { id: id(), values: ['s', 'white'] }] });
+    check('V4 a size added later makes its lines only', r.said === 'applied' && r.data.created === 2 && r.data.existing === 1 && (await lines(polo)).length === 6, JSON.stringify(r.data));
+    r = await one('variants.make', { item_id: polo, names: ['Size'], lines: [{ id: id(), values: ['XL'] }] });
+    const vb = await one('variants.make', { item_id: polo, names: ['Size', 'size'], lines: [{ id: id(), values: ['XL', 'x'] }] });
+    const vc = await one('variants.make', { item_id: polo, names: ['Size', 'Colour'], lines: [{ id: id(), values: ['XL'] }] });
+    const vd = await one('variants.make', { item_id: polo, names: ['Size', 'Colour'], lines: [{ id: id(), values: ['XL', 'Red'] }, { id: id(), values: ['xl', 'red'] }] });
+    check('V5 another number of options, an option named twice, a line short of a value, a line twice: refused', [r, vb, vc, vd].every((x) => x.said === 'rejected:bad-options'), [r, vb, vc, vd].map((x) => x.said).join(' '));
+    const stocked = id();
+    await c.query(`insert into items (id, tenant_id, name, price, track_stock) values ($1,$2,'Stocked',1000,true)`, [stocked, tid]);
+    await c.query(`select stock_move($1,$2,$3,null,5000,'receive',1000,'delivery',$4,$5,null)`, [tid, store, stocked, id(), owner]);
+    r = await one('variants.make', { item_id: stocked, names: ['Size'], lines: [{ id: id(), values: ['S'] }] });
+    check('V6 a product with stock of its own is not given variants', r.said === 'rejected:has-stock', r.said);
+    r = await one('variants.make', { item_id: id(), names: ['Size'], lines: [{ id: id(), values: ['S'] }] });
+    const ve = await one(...vx('variants-make'), cashier);
+    check('V7 a product that is not there, and a cashier, are refused', r.said === 'rejected:unknown-item' && ve.said === 'rejected:forbidden', r.said + ' ' + ve.said);
+
+    r = await one(...vx('variants-save'));
+    let line1 = (await lines(polo)).find((x) => x.id === v1);
+    check('V8 a line\'s barcode, SKU and cost saved', r.said === 'applied' && line1.barcode === '6091234500024' && line1.sku === 'POLO-S-WH' && Number(line1.cost) === 17500, r.said + ' ' + JSON.stringify(line1));
+    r = await one('variants.save', { item_id: polo, lines: [{ id: v1, sku: 'POLO-S-WH', barcode: '6091234500024', cost: 99900 }] }, editor);
+    line1 = (await lines(polo)).find((x) => x.id === v1);
+    check('V9 from someone who may not see cost, the cost is left as it was', r.said === 'applied' && Number(line1.cost) === 17500, JSON.stringify(line1));
+    r = await one('variants.save', { item_id: polo, lines: [{ id: v2, barcode: '6091234500024' }] });
+    const vf = await one('variants.save', { item_id: polo, lines: [{ id: v2, sku: 'polo-s-wh' }] });
+    check('V10 a barcode or a SKU another line has is refused', r.said === 'rejected:barcode-taken' && vf.said === 'rejected:sku-taken', r.said + ' ' + vf.said);
+    r = await one('variants.save', { item_id: polo, lines: [{ id: id(), sku: 'X' }] });
+    check('V11 a line that is not the product\'s is refused', r.said === 'rejected:unknown-variant', r.said);
+    r = await one('variants.save', { item_id: polo, lines: [{ id: v1, barcode: '', sku: '' }] });
+    line1 = (await lines(polo)).find((x) => x.id === v1);
+    check('V12 emptied: no barcode, no SKU, its cost untouched', r.said === 'applied' && line1.barcode === null && line1.sku === null && Number(line1.cost) === 17500, JSON.stringify(line1));
+
+    await c.query(`select stock_move($1,$2,$3,$4,3000,'receive',17000,'delivery',$5,$6,null)`, [tid, store, polo, v2, id(), owner]);
+    r = await one('variant.remove', { variant_id: v2 });
+    check('V13 a line that holds stock is not removed', r.said === 'rejected:has-stock' && (await lines(polo)).length === 6, r.said);
+    r = await one(...vx('variant-remove'));
+    const vg = await one(...vx('variant-remove'));
+    const vh = await one('variant.remove', { variant_id: id() });
+    check('V14 a line removed; removed twice is done; one that never was is refused', r.said === 'applied' && (await lines(polo)).length === 5 && vg.said === 'applied' && vh.said === 'rejected:unknown-variant', r.said + ' ' + vg.said + ' ' + vh.said);
+    const pv = ((await pull()).changes || {}).item_variants || [];
+    check('V15 a pull carries the lines, the removed one too', pv.some((x) => x.id === v5 && !x.deleted_at) && pv.some((x) => x.id === v1 && x.deleted_at), String(pv.length));
     void restoStore; void theirOwner;
   } finally {
     try { await c.query('ROLLBACK'); } catch {}

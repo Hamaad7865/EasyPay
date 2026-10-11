@@ -1,4 +1,12 @@
 {
   "type": "variants.make",
-  "payload": { "item_id": "item-1", "names": ["Size", "Colour"], "values": [["S", "M"], ["White", "Navy"]] }
+  "payload": {
+    "item_id": "item-1", "names": ["Size", "Colour"],
+    "lines": [
+      { "id": "variant-1", "values": ["S", "White"] },
+      { "id": "variant-2", "values": ["S", "Navy"] },
+      { "id": "variant-3", "values": ["M", "White"] },
+      { "id": "variant-4", "values": ["M", "Navy"] }
+    ]
+  }
 }
