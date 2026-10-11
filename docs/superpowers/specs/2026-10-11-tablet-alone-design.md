@@ -91,3 +91,59 @@ and Bookings are Premium's and are left out.
 - Trimming the history that goes up with Premium.
 - A product's EasyPay barcode made by itself on an offline tablet (the server makes it when the
   product arrives there).
+
+## 6. Record: what is built and what was seen (the night of 2026-10-11)
+
+Nobody watched any of this: the owner was asleep. Every tablet run was on a hidden emulator of mine
+(`easypay_claude_kitchen`, port 5588), with the debug build's made-up shop and restaurant on the
+offline plan (`DEMO_SHOP --es plan offline`). Nothing is pushed; production is untouched; migrations
+0094 and 0095 are on the dev branch only.
+
+**Built**
+
+- The core: `PosSettings.alone`, `LocalAnswers` behind `AloneDao`, the gate in `ServiceRepository.ask`,
+  no sync while alone, `SyncScheduler.connect` and the key Connect to the cloud, the sync's words
+  hidden, `Journey` for what the sheets say.
+- Answered alone: an item with all of its sheet and its removal, a category and its removal, stock in
+  and out, the tables of a room, a printer, the business's details, a member of staff and a PIN, a
+  tax, a supplier and its removal, a role and its removal, a change to a member of staff, a discount
+  and its removal. 26 tests against a stand-in for the tablet's database.
+- New on the server (0095) and in Settings: Staff, Roles, Discounts.
+- /admin: the plan Offline; the back office turns an offline client away with its own sentence.
+- Backup: Save a backup (Settings > Support), a warning on This till when there is none or it is a
+  week old, Restore from a backup on the first screen.
+
+**Seen**
+
+- A shop alone: a tax, a product with its second page, stock in, a category, a supplier, a sale; then
+  a role, a member of staff added and switched off, a discount. Its queue of 14 changes replayed
+  against the dev server (`db/scripts/replay-demo-outbox.cjs`, rolled back): every one taken, the
+  sale's figures the till's to the cent, the stock figures equal.
+- A restaurant alone: a second room of three tables and a printer added from Set-up, the kitchen
+  order and the receipt printed on that printer (a stand-in on this PC), a table of the new room
+  served and paid. Its 8 changes replayed: every one taken.
+- A backup saved to Downloads, the app cleared, and the tablet filled again from the file: products,
+  receipt, staff and the 14 kept changes all back. A file whose note does not say what it is was
+  turned away.
+
+**Not seen by anyone**
+
+- Connect to the cloud against a real server. It needs a client that is really on the offline plan
+  and a tablet set up with its login, which is the owner's to do: make a client in /admin with the
+  plan Offline, set a tablet up with its login, sell, set the plan to Premium, tap Connect to the
+  cloud. The replay above is the proof that the server takes what such a tablet kept.
+- A first start on the offline plan from a real sign-in.
+- A restored tablet connecting later (it has to sign in once more for its key).
+- Anything on a real tablet or a real printer.
+
+**Known and left**
+
+- An offline shop's stock history shows what was put in and taken out by hand, not each sale.
+- A removed role's or discount's freed name carries the tablet's clock on the tablet and the
+  server's on the server; the rows are removed ones.
+- A product made offline gets its EasyPay barcode only when it reaches the server.
+- The whole queue goes up with Premium: years of sales are years of rows.
+- One login can set up a second offline tablet; each is alone.
+- `db/tests/backoffice-plan.test.cjs` had one check failing before any of this ("N2 and loses
+  nothing else"); it is not this work's and is not fixed here.
+

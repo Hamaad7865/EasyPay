@@ -212,7 +212,7 @@ private fun Summary(facts: SetupFacts, business: String, open: Boolean, steps: L
         val office = runCatching { java.net.URI(BuildConfig.BACK_OFFICE_URL.trim()).host }.getOrNull()?.takeIf { it.isNotBlank() }
         T(
             // what the tablet does not set: a shop has no add-ons and no plan
-            (if (facts.retail) "Taxes, discounts, variants, costs, the receipt's logo and more printers are set in the back office"
+            if (com.restopos.core.data.Journey.alone) "Taxes, discounts, staff and roles are in Settings. A backup of this tablet is saved from Settings, under Support." else (if (facts.retail) "Taxes, discounts, variants, costs, the receipt's logo and more printers are set in the back office"
             else "Taxes, discounts, add-ons, the receipt's logo, more printers and the plan's exact layout are set in the back office") + (office?.let { ": $it" } ?: "."),
             13.sp, 500, V.Text3, lines = 3, height = 19.sp,
         )
