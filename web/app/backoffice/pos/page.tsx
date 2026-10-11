@@ -139,7 +139,7 @@ export default async function PointOfSale({ searchParams }: { searchParams: Sear
   return (
     <div>
       <PageHead
-        title="Point of sale"
+        title="Tills"
         lede={`Every till of this ${w.place}. Open one for what it took today, its settings, its cash flow and everything it did. A till syncs each sale as it is made and checks in about every 15 minutes while someone is using it; left untouched for half an hour it stops asking, so a till that has said nothing for a while is one no one is at, or a tablet that is off.`}
       />
       <Flash sp={sp} />

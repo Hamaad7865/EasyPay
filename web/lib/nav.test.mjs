@@ -36,7 +36,7 @@ check("on the products list and on a product's own page, Products is lit; on the
 check("a page under another keeps its parent lit when it has no line of its own", () => {
   assert.deepEqual(lit("retail", "/backoffice/purchase-orders/receive"), ["Purchase orders"]);
   assert.deepEqual(lit("retail", "/backoffice/stock-counts/abc"), ["Counts"]);
-  assert.deepEqual(lit("restaurant", "/backoffice/tables/plan"), ["Tables"]);
+  assert.deepEqual(lit("restaurant", "/backoffice/tables/plan"), ["Floor plan"]);
 });
 check("pages whose addresses begin alike do not light each other", () => {
   assert.deepEqual(lit("retail", "/backoffice/stock"), ["Stock on hand"]);

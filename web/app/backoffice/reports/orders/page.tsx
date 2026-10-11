@@ -70,7 +70,7 @@ export default async function OrderDetails({ searchParams }: { searchParams: Sea
       discs: await rows<Disc>(`select receipt_id, name_snapshot as name, amount from receipt_discounts where tenant_id = $1 and receipt_id = any($2::uuid[])`),
     };
   });
-  const head = <PageHead title="Order details" lede="Every receipt in full: what was ordered, by whom, the discounts, the tax and how it was paid. Open a line to see it all." />;
+  const head = <PageHead title="Orders" lede="Every receipt in full: what was ordered, by whom, the discounts, the tax and how it was paid. Open a line to see it all." />;
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;
   const m = (v: string | number) => money(Number(v), d.s.decimals);
   const at = clock(d.l.tz);

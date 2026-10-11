@@ -26,10 +26,10 @@ import {
   Printer,
   Receipt,
   ReceiptText,
+  Settings,
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
-  Store,
   TabletSmartphone,
   Tags,
   TrendingUp,
@@ -37,52 +37,161 @@ import {
   UserRoundCheck,
   Users,
   UtensilsCrossed,
+  Wallet,
 } from "lucide-react";
 import type { Mode } from "@/lib/mode";
 
-// Every page of the back office, once. The side menu draws its groups from
-// this list and the search finds pages in it, so the two cannot drift apart.
-// Only what exists: a page is added here when it is built. `words` are other
-// things someone might type when looking for the page.
+// Every page of the back office, once. The side menu draws its sections and
+// groups from this list and the search finds pages in it, so the two cannot
+// drift apart. Only what exists: a page is added here when it is built. `words`
+// are other things someone might type when looking for the page.
 // `only`: the one kind of business that has this page (none: both have it).
 // `retail`: what a shop calls it, when that differs.
 // `premium`: a page of the premium tier, which another plan does not have.
+//
+// The menu is in three sections under the day's page: Counter (what happens
+// at the counter: orders, bookings, customers, the menu), Finance and stock
+// (figures, money, stock) and Admin (people, set-up, tables, devices). In a
+// section a line is either a page or a group that opens onto its pages. A
+// group marked `flat` is one page and is drawn as that page's own line; so is
+// a group left with one page for this business and plan.
 export type NavLink = { href: string; label: string; icon: LucideIcon; words?: string; only?: Mode; retail?: string; premium?: true };
-export type NavGroup = { id: string; title: string; icon: LucideIcon; links: NavLink[]; retail?: string };
+export type SectionId = "counter" | "money" | "admin";
+export type NavGroup = { id: string; section: SectionId; title: string; icon: LucideIcon; links: NavLink[]; retail?: string; flat?: true };
+export type NavSection = { id: SectionId; title: string; groups: NavGroup[] };
 // The number beside a page in the menu, and what it counts, said in full (counts/route.ts).
 export type NavCount = { n: number; say: string; tone?: "red" };
 
-export const HOME: NavLink = { href: "/backoffice", label: "Dashboard", icon: LayoutDashboard, words: "home today overview right now" };
+export const HOME: NavLink = { href: "/backoffice", label: "Today", icon: LayoutDashboard, words: "dashboard home overview right now" };
+
+const SECTIONS: { id: SectionId; title: string }[] = [
+  { id: "counter", title: "Counter" },
+  { id: "money", title: "Finance and stock" },
+  { id: "admin", title: "Admin" },
+];
 
 export const GROUPS: NavGroup[] = [
+  // ---- Counter ----
+  {
+    id: "orders",
+    section: "counter",
+    title: "Orders",
+    icon: ClipboardList,
+    flat: true,
+    links: [{ href: "/backoffice/reports/orders", label: "Orders", icon: ClipboardList, words: "order details tickets bills checks reports open closed" }],
+  },
+  {
+    id: "bookings",
+    section: "counter",
+    title: "Bookings",
+    icon: CalendarClock,
+    flat: true,
+    links: [{ href: "/backoffice/bookings", label: "Bookings", only: "restaurant", premium: true, icon: CalendarClock, words: "reservations" }],
+  },
+  {
+    id: "customers",
+    section: "counter",
+    title: "Customers",
+    icon: Contact,
+    flat: true,
+    links: [{ href: "/backoffice/customers", label: "Customers", icon: Contact, words: "guests phone" }],
+  },
+  {
+    id: "menu",
+    section: "counter",
+    title: "Menu",
+    retail: "Catalog",
+    icon: UtensilsCrossed,
+    links: [
+      { href: "/backoffice/categories", label: "Categories", icon: Tags, words: "groups colours kitchen bar printer" },
+      { href: "/backoffice/items", label: "Items", retail: "Products", icon: UtensilsCrossed, words: "products dishes prices barcode" },
+      { href: "/backoffice/items/import", label: "Import products", only: "retail", icon: FileUp, words: "excel xlsx csv spreadsheet upload supplier file bulk add many catalog" },
+      { href: "/backoffice/items/labels", label: "Barcode labels", only: "retail", icon: Barcode, words: "print stickers price tags ean scan label roll a4 sheet" },
+      { href: "/backoffice/addons", label: "Add-ons", only: "restaurant", icon: SlidersHorizontal, words: "options modifiers extras" },
+      { href: "/backoffice/discounts", label: "Discounts", icon: BadgePercent, words: "promotions percent off" },
+    ],
+  },
+  // ---- Finance and stock ----
   {
     id: "insights",
+    section: "money",
     title: "Insights",
     icon: ChartNoAxesCombined,
     links: [
       { href: "/backoffice/insights/sales", label: "Sales patterns", icon: CalendarRange, words: "busiest day hour peak heatmap trend compare average check" },
       { href: "/backoffice/insights/menu", label: "Menu performance", retail: "Product performance", icon: TrendingUp, words: "best sellers popular slow items not selling ranking" },
-      { href: "/backoffice/insights/staff", label: "Staff performance", icon: UserRoundCheck, words: "servers waiters average check covers discounts refunds turn time" },
+      { href: "/backoffice/insights/staff", label: "Staff performance", icon: UserRoundCheck, words: "servers waiters average check covers discounts refunds turn time team" },
     ],
   },
   {
-    id: "reports",
-    title: "Reports",
-    icon: BarChart3,
+    id: "finance",
+    section: "money",
+    title: "Finance",
+    icon: Wallet,
     links: [
-      { href: "/backoffice/reports/sales", label: "Sales summary", icon: BarChart3, words: "revenue gross net totals payments" },
-      { href: "/backoffice/reports/items", label: "Item sales", icon: ListOrdered, words: "products quantity sold categories cost profit margin" },
+      { href: "/backoffice/reports/sales", label: "Sales summary", icon: BarChart3, words: "reports overview revenue gross net totals payments takings" },
+      { href: "/backoffice/reports/items", label: "Item sales", icon: ListOrdered, words: "reports products quantity sold categories cost profit margin" },
       { href: "/backoffice/reports/stock", label: "Stock reports", only: "retail", icon: PackageSearch, words: "stock value worth inventory valuation reorder list low to order losses damaged expired lost stolen shrinkage written off not selling slow dead stock" },
-      { href: "/backoffice/reports/orders", label: "Order details", icon: ClipboardList, words: "tickets bills checks" },
-      { href: "/backoffice/reports/tax", label: "Tax", icon: Percent, words: "vat report" },
-      { href: "/backoffice/reports/day-close", label: "Day closing", icon: CalendarCheck, words: "z report end of day open day close day cash drawer count float shifts x report sales period" },
-      { href: "/backoffice/reports/timecards", label: "Time cards", icon: Clock, words: "clock in out hours worked" },
-      { href: "/backoffice/receipts", label: "Receipts", icon: Receipt, words: "refund reprint payment correction bills" },
+      { href: "/backoffice/receipts", label: "Receipts", icon: Receipt, words: "refund reprint payment correction bills paid orders" },
+      { href: "/backoffice/reports/day-close", label: "Day closing", icon: CalendarCheck, words: "reports z report end of day open day close day cash drawer count float shifts x report sales period till counts" },
+      { href: "/backoffice/reports/tax", label: "Tax", icon: Percent, words: "reports vat report returns" },
+    ],
+  },
+  // A restaurant's stock is one page, a shop's is five: each kind of business
+  // gets its own page at the first address.
+  {
+    id: "stock",
+    section: "money",
+    title: "Stock",
+    icon: Boxes,
+    links: [
+      { href: "/backoffice/stock", label: "Stock", only: "restaurant", icon: Boxes, words: "inventory quantity low" },
+      { href: "/backoffice/stock", label: "Stock on hand", only: "retail", icon: Boxes, words: "inventory quantity low out below zero value reorder adjust damaged expired lost found" },
+      { href: "/backoffice/purchase-orders", label: "Purchase orders", only: "retail", icon: ClipboardList, words: "buy order supplier receive delivery arrived invoice po" },
+      { href: "/backoffice/suppliers", label: "Suppliers", only: "retail", icon: Truck, words: "vendors wholesalers contacts who we buy from" },
+      { href: "/backoffice/stock-counts", label: "Counts", only: "retail", icon: ClipboardCheck, words: "stocktake stock take count inventory audit shelves scan difference variance" },
+      { href: "/backoffice/stock-movements", label: "Movements", only: "retail", icon: ArrowLeftRight, words: "history log stock in out sold received adjusted counted" },
+    ],
+  },
+  // ---- Admin ----
+  {
+    id: "team",
+    section: "admin",
+    title: "Team",
+    icon: Users,
+    links: [
+      { href: "/backoffice/staff", label: "Staff", icon: Users, words: "people employees users pin logins" },
+      { href: "/backoffice/roles", label: "Roles and permissions", icon: ShieldCheck, words: "access rights manager cashier security" },
+      { href: "/backoffice/reports/timecards", label: "Time cards", icon: Clock, words: "reports time clock in out hours worked" },
     ],
   },
   {
-    id: "pos",
-    title: "Point of sale",
+    id: "setup",
+    section: "admin",
+    title: "Setup",
+    icon: Settings,
+    links: [
+      { href: "/backoffice/settings", label: "POS settings", icon: Settings2, words: "settings payment types service charge order types lock takeaway" },
+      { href: "/backoffice/company", label: "Company details", icon: Building2, words: "settings address brn vat number business" },
+      { href: "/backoffice/taxes", label: "Taxes", icon: FileText, words: "vat zero rated exempt tax and charges" },
+      { href: "/backoffice/receipt-design", label: "Receipt design", icon: ReceiptText, words: "logo header footer paper" },
+      { href: "/backoffice/data", label: "Backup and data", icon: Database, words: "settings export download delete transactions" },
+    ],
+  },
+  {
+    id: "tables",
+    section: "admin",
+    title: "Tables and QR codes",
+    icon: QrCode,
+    links: [
+      { href: "/backoffice/tables", label: "Floor plan", only: "restaurant", icon: LayoutGrid, words: "tables rooms areas seats designer walls booths" },
+      { href: "/backoffice/tables/cards", label: "Table cards", only: "restaurant", premium: true, icon: QrCode, words: "qr code scan order from the table menu phone guests print" },
+    ],
+  },
+  {
+    id: "devices",
+    section: "admin",
+    title: "Devices and printers",
     icon: TabletSmartphone,
     links: [
       // one page of till cards; each till's own page has its activity (Traceability) and its cash flow
@@ -93,62 +202,7 @@ export const GROUPS: NavGroup[] = [
         words:
           "point of sale pos devices tablets terminals connected online offline last sync version rename deactivate till activity traceability log history events what happened late crash cash flow drawer cash in out float ledger balance movements money cash-ups variance",
       },
-    ],
-  },
-  {
-    id: "menu",
-    title: "Menu",
-    retail: "Catalog",
-    icon: UtensilsCrossed,
-    links: [
-      { href: "/backoffice/categories", label: "Categories", icon: Tags, words: "groups colours kitchen bar printer" },
-      { href: "/backoffice/items", label: "Items", retail: "Products", icon: UtensilsCrossed, words: "products dishes prices barcode" },
-      { href: "/backoffice/items/import", label: "Import products", only: "retail", icon: FileUp, words: "excel xlsx csv spreadsheet upload supplier file bulk add many catalog" },
-      { href: "/backoffice/items/labels", label: "Barcode labels", only: "retail", icon: Barcode, words: "print stickers price tags ean scan label roll a4 sheet" },
-      { href: "/backoffice/addons", label: "Add-ons", only: "restaurant", icon: SlidersHorizontal, words: "options modifiers extras" },
-      { href: "/backoffice/taxes", label: "Taxes", icon: FileText, words: "vat zero rated exempt" },
-      { href: "/backoffice/discounts", label: "Discounts", icon: BadgePercent, words: "promotions percent off" },
-      { href: "/backoffice/stock", label: "Stock", only: "restaurant", icon: Boxes, words: "inventory quantity low" },
-    ],
-  },
-  // A shop's stock is a group of its own. Its first page has the address of
-  // a restaurant's Stock page: each kind of business gets its own page there.
-  {
-    id: "stock",
-    title: "Stock",
-    icon: Boxes,
-    links: [
-      { href: "/backoffice/stock", label: "Stock on hand", only: "retail", icon: Boxes, words: "inventory quantity low out below zero value reorder adjust damaged expired lost found" },
-      { href: "/backoffice/purchase-orders", label: "Purchase orders", only: "retail", icon: ClipboardList, words: "buy order supplier receive delivery arrived invoice po" },
-      { href: "/backoffice/suppliers", label: "Suppliers", only: "retail", icon: Truck, words: "vendors wholesalers contacts who we buy from" },
-      { href: "/backoffice/stock-counts", label: "Counts", only: "retail", icon: ClipboardCheck, words: "stocktake stock take count inventory audit shelves scan difference variance" },
-      { href: "/backoffice/stock-movements", label: "Movements", only: "retail", icon: ArrowLeftRight, words: "history log stock in out sold received adjusted counted" },
-    ],
-  },
-  {
-    id: "restaurant",
-    title: "Restaurant",
-    retail: "Shop",
-    icon: Store,
-    links: [
-      { href: "/backoffice/tables", label: "Tables", only: "restaurant", icon: LayoutGrid, words: "floor plan rooms areas seats" },
-      { href: "/backoffice/tables/cards", label: "Table cards", only: "restaurant", premium: true, icon: QrCode, words: "qr code scan order from the table menu phone guests print" },
-      { href: "/backoffice/bookings", label: "Bookings", only: "restaurant", premium: true, icon: CalendarClock, words: "reservations" },
-      { href: "/backoffice/customers", label: "Customers", icon: Contact, words: "guests phone" },
-      { href: "/backoffice/printers", label: "Printers", icon: Printer, words: "kitchen bar receipt ip usb" },
-      { href: "/backoffice/receipt-design", label: "Receipt design", icon: ReceiptText, words: "logo header footer paper" },
-    ],
-  },
-  {
-    id: "settings",
-    title: "Settings",
-    icon: Settings2,
-    links: [
-      { href: "/backoffice/settings", label: "POS settings", icon: Settings2, words: "payment types service charge order types lock takeaway" },
-      { href: "/backoffice/company", label: "Company details", icon: Building2, words: "address brn vat number business" },
-      { href: "/backoffice/staff", label: "Staff", icon: Users, words: "employees users pin logins" },
-      { href: "/backoffice/roles", label: "Roles and permissions", icon: ShieldCheck, words: "access rights manager cashier" },
-      { href: "/backoffice/data", label: "Backup and data", icon: Database, words: "export download delete transactions" },
+      { href: "/backoffice/printers", label: "Printers", icon: Printer, words: "kitchen bar receipt ip usb stations" },
     ],
   },
 ];
@@ -169,19 +223,39 @@ export const groupOf = (path: string, mode: Mode, premium: boolean) =>
 
 // The groups one kind of business has on its plan, under the names it uses.
 // The menu and the search both draw from this, so they cannot disagree about
-// what exists.
+// what exists. A group left with one page is drawn as that page (`flat`), under
+// the page's own name.
 export function groupsFor(mode: Mode, premium: boolean): NavGroup[] {
-  return GROUPS.map((g) => ({
-    ...g,
-    title: mode === "retail" && g.retail ? g.retail : g.title,
-    links: g.links
+  return GROUPS.map((g) => {
+    const links = g.links
       .filter((l) => (!l.only || l.only === mode) && (!l.premium || premium))
-      .map((l) => (mode === "retail" && l.retail ? { ...l, label: l.retail } : l)),
-  })).filter((g) => g.links.length > 0);
+      .map((l) => (mode === "retail" && l.retail ? { ...l, label: l.retail } : l));
+    const flat = g.flat || links.length === 1 ? (true as const) : undefined;
+    return {
+      ...g,
+      flat,
+      title: flat && links[0] ? links[0].label : mode === "retail" && g.retail ? g.retail : g.title,
+      icon: flat && !g.flat && links[0] ? links[0].icon : g.icon,
+      links,
+    };
+  }).filter((g) => g.links.length > 0);
+}
+
+// The menu's sections, each with the groups this business has in it.
+export function sectionsFor(mode: Mode, premium: boolean): NavSection[] {
+  const groups = groupsFor(mode, premium);
+  return SECTIONS.map((s) => ({ ...s, groups: groups.filter((g) => g.section === s.id) })).filter((s) => s.groups.length > 0);
+}
+
+// What a page's heading has above it: the group it sits in, where that is not
+// the page itself. Null on the day's page and on a page that is its own line.
+export function over(path: string, mode: Mode, premium: boolean): string | null {
+  const g = groupsFor(mode, premium).find((x) => x.links.some((l) => isOn(l.href, path)));
+  return g && !g.flat ? g.title : null;
 }
 
 // Every page with the group it sits in, for the search.
 export const pagesOf = (mode: Mode, premium: boolean): (NavLink & { group: string | null })[] => [
   { ...HOME, group: null },
-  ...groupsFor(mode, premium).flatMap((g) => g.links.map((l) => ({ ...l, group: g.title }))),
+  ...groupsFor(mode, premium).flatMap((g) => g.links.map((l) => ({ ...l, group: g.flat ? SECTIONS.find((x) => x.id === g.section)!.title : g.title }))),
 ];

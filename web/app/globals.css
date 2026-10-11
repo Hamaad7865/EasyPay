@@ -1,7 +1,8 @@
 /* EasyPay back office. One stylesheet, no UI library. The page is warm paper;
-   the menu is a rounded pane of deep green, the one dark thing on it; the
-   pages are white rounded panels with a soft shadow, buttons are pills (the
-   main one the menu's green), and the logo's green is the accent. The pages
+   the menu is a pane of deep green the height of the window, flush with its
+   left edge, the one dark thing on the page; the pages are white panels with
+   a fine line round them and corners barely rounded, buttons are the same
+   shape (the main one the menu's green), and the logo's green is the accent. The pages
    are written with plain headings, tables, forms and buttons; the classes
    below are the few components they share. There is a dark look too, for
    whoever chooses it or whose device is set to dark: the same rules, with
@@ -60,8 +61,8 @@
   /* The main button, the page that is on, a tip: the page's opposite, and
      what is written on it. Not --ink: lettering and this fill change places
      on a dark page, where the pill is the light thing. */
-  --strong: #12382a;
-  --strong-hover: #1b4a38;
+  --strong: #103322;
+  --strong-hover: #1a4633;
   --on-strong: #fff;
   --on-strong-dim: rgba(255, 255, 255, 0.18);
   --on-strong-ring: rgba(255, 255, 255, 0.3);
@@ -130,7 +131,7 @@
      under the pointer, its cards and keys, the open page (a pill of the
      page's own paper) and the marks that take the accent. Left out of the
      dark look on purpose: the pane is the same there. */
-  --menu: #12382a;
+  --menu: #103322;
   --menu-line: rgba(255, 255, 255, 0.09);
   --menu-ink: #f3f6f2;
   --menu-ink2: #c6d4cb;
@@ -140,13 +141,17 @@
   --menu-key: rgba(255, 255, 255, 0.09);
   --menu-lit: rgba(255, 255, 255, 0.16);
   --menu-chip: rgba(255, 255, 255, 0.13);
-  --menu-on: #f6f3ea;
-  --menu-on-ink: #12281f;
+  --menu-on: #f4f1e9;
+  --menu-on-ink: #10261b;
   --menu-on-mark: #2f7a3b;
   --menu-accent: #9bd8a4;
-  --radius: 18px;
-  --radius-sm: 10px;
-  --shadow-sm: 0 1px 2px rgba(22, 28, 45, 0.04), 0 10px 28px -14px rgba(22, 28, 45, 0.14);
+  /* the square with two letters at the menu's head, a stronger line in it, and the chip under a name */
+  --menu-tile: #148a7e;
+  --menu-line-2: rgba(255, 255, 255, 0.16);
+  --menu-chip-2: rgba(155, 216, 164, 0.16);
+  --radius: 10px;
+  --radius-sm: 8px;
+  --shadow-sm: 0 1px 2px rgba(22, 28, 45, 0.04);
   --shadow-md: 0 12px 32px -10px rgba(22, 28, 45, 0.2);
   --shadow-lg: 0 24px 64px rgba(16, 24, 40, 0.22);
   /* the names the older pages use */
@@ -258,7 +263,7 @@
     --sk: rgba(255, 255, 255, 0.07);
     --sk-lit: rgba(255, 255, 255, 0.14);
     --wait-ring: rgba(255, 255, 255, 0.16);
-    --shadow-sm: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px -14px rgba(0, 0, 0, 0.55);
+    --shadow-sm: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 12px 32px -10px rgba(0, 0, 0, 0.6);
     --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.6);
   }
@@ -350,7 +355,7 @@
     --sk: rgba(255, 255, 255, 0.07);
     --sk-lit: rgba(255, 255, 255, 0.14);
     --wait-ring: rgba(255, 255, 255, 0.16);
-    --shadow-sm: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px -14px rgba(0, 0, 0, 0.55);
+    --shadow-sm: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 12px 32px -10px rgba(0, 0, 0, 0.6);
     --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.6);
   }
@@ -361,13 +366,12 @@
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
-  font-family: var(--font-sans, Inter), "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  font-family: var(--font-sans, "Hanken Grotesk"), "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
   font-size: 14px;
   line-height: 1.45;
   color: var(--ink);
   background: var(--body);
   -webkit-font-smoothing: antialiased;
-  font-feature-settings: "cv11", "ss01";
 }
 
 /* ---- sign-in ---- */
@@ -419,17 +423,9 @@ body {
 
 /* ---- shell ---- */
 
-/* The backdrop: a cool mist, with the logo's green rising from one corner and
-   a soft blue from the other. It stays put while the page scrolls. */
-.bo {
-  display: grid; grid-template-columns: auto auto minmax(0, 1fr); min-height: 100vh; padding: 14px 0 0 14px;
-  background:
-    radial-gradient(62vw 58vh at 0% 100%, var(--glow-a), transparent 70%),
-    radial-gradient(58vw 62vh at 100% 100%, var(--glow-b), transparent 70%),
-    radial-gradient(60vw 44vh at 55% 0%, var(--glow-top), transparent 72%),
-    var(--canvas);
-  background-attachment: fixed;
-}
+/* The backdrop: plain paper. The menu stands against the window's left edge
+   and the page takes the rest. */
+.bo { display: grid; grid-template-columns: auto auto minmax(0, 1fr); min-height: 100vh; background: var(--canvas); }
 
 /* The rail: what the menu folds into. Round signs down the far left, one for
    the dashboard and one for each group of pages (the one you are in is
@@ -437,13 +433,13 @@ body {
    brings the menu back. With the menu showing it is closed to nothing, the
    same way the menu closes when it is folded, so the page never jumps. */
 .rail {
-  position: sticky; top: 14px; z-index: 6; height: calc(100vh - 28px); width: 0; margin-right: 0;
+  position: sticky; top: 14px; z-index: 6; height: calc(100vh - 28px); width: 0; margin: 14px 0 0;
   display: flex; flex-direction: column; align-items: center; gap: 8px;
   opacity: 0; visibility: hidden; pointer-events: none;
   transition: width 0.42s var(--glide), margin 0.42s var(--glide), opacity 0.16s ease, visibility 0s 0.42s;
 }
 .rail[data-folded] {
-  width: 46px; margin-right: 12px; opacity: 1; visibility: visible; pointer-events: auto;
+  width: 46px; margin: 14px 12px 0 14px; opacity: 1; visibility: visible; pointer-events: auto;
   transition: width 0.42s var(--glide), margin 0.42s var(--glide), opacity 0.2s ease 0.1s, visibility 0s;
 }
 /* the menu turns into the signs: each pops into place a moment after the one above */
@@ -452,6 +448,26 @@ body {
   animation: sign-in 0.5s var(--spring) backwards; animation-delay: calc(var(--i, 0) * 32ms + 120ms);
 }
 .rail.dev, .bo-side.dev { padding-bottom: 58px; }
+/* The rail has a sign for the day, one for each line of the menu and three
+   keys at its foot: on a low window they are made smaller, so the key that
+   brings the menu back is never below the screen. */
+@media (min-width: 1001px) and (max-height: 900px) {
+  .rail { gap: 4px; }
+  .rail .rail-sign { width: 38px; height: 38px; }
+  .rail .rail-logo { width: 38px; height: 38px; margin-bottom: 4px; }
+  .rail .rail-logo img { height: 24px; }
+}
+@media (min-width: 1001px) and (max-height: 720px) {
+  .rail { gap: 3px; top: 8px; height: calc(100vh - 16px); margin-top: 8px; }
+  .rail .rail-sign { width: 32px; height: 32px; }
+  .rail .rail-sign svg { width: 16px; height: 16px; }
+  .rail .rail-logo { display: none; }
+}
+@media (min-width: 1001px) and (max-height: 540px) {
+  .rail { gap: 2px; }
+  .rail .rail-sign { width: 26px; height: 26px; }
+  .rail .rail-sign svg { width: 14px; height: 14px; }
+}
 .rail-logo { width: 46px; height: 46px; flex: none; margin-bottom: 8px; display: grid; place-items: center; border-radius: 50%; background: var(--raised); box-shadow: var(--shadow-sm); }
 .rail-logo img { height: 30px; width: auto; display: block; }
 .rail-item { position: relative; display: grid; }
@@ -508,11 +524,12 @@ body {
 .rail-who small { font-size: 12px; color: var(--ink3); }
 .rail-who form { display: contents; }
 
-/* The menu: a pane of frosted glass floating on the backdrop. Folded away it
-   closes to nothing, and the page takes the room; what is in it keeps its own
-   width meanwhile, so nothing inside is squeezed on the way. */
+/* The menu: a pane of deep green the height of the window, flush with its
+   left edge. Folded away it closes to nothing, and the page takes the room;
+   what is in it keeps its own width meanwhile, so nothing inside is squeezed
+   on the way. */
 .bo-side {
-  position: sticky; top: 14px; height: calc(100vh - 28px); width: 268px; overflow: hidden;
+  position: sticky; top: 0; height: 100vh; width: 272px; overflow: hidden;
   padding: 16px 12px 12px;
   /* inside the pane the names its rules use mean the menu's own colours */
   --ink: var(--menu-ink); --ink2: var(--menu-ink2); --ink3: var(--menu-ink3); --ink4: var(--menu-ink3); --placeholder: var(--menu-ink3);
@@ -521,165 +538,141 @@ body {
   --raised: var(--menu-on); --accent: var(--menu-accent); --accent-hover: var(--menu-ink); --accent-soft: var(--menu-lit);
   --strong: var(--menu-on); --on-strong: var(--menu-on-ink); --bg: var(--menu-hover);
   color: var(--menu-ink);
-  background: var(--glass); -webkit-backdrop-filter: blur(22px) saturate(1.3); backdrop-filter: blur(22px) saturate(1.3);
-  border: 1px solid var(--glass-line); border-radius: 26px;
-  box-shadow: var(--shadow-sm);
-  transition: width 0.42s var(--glide), padding 0.42s var(--glide), opacity 0.22s ease, border-color 0.2s;
+  background: var(--menu);
+  transition: width 0.42s var(--glide), padding 0.42s var(--glide), opacity 0.22s ease;
 }
-.bo-side-in { width: 242px; height: 100%; display: flex; flex-direction: column; transition: transform 0.42s var(--glide); }
+.bo-side-in { width: 248px; height: 100%; display: flex; flex-direction: column; transition: transform 0.42s var(--glide); }
 @media (min-width: 1001px) {
-  .bo-side[data-folded] { width: 0; padding-left: 0; padding-right: 0; border-left-width: 0; border-right-width: 0; opacity: 0; box-shadow: none; }
+  .bo-side[data-folded] { width: 0; padding-left: 0; padding-right: 0; opacity: 0; }
   .bo-side[data-folded] .bo-side-in { transform: translateX(-24px); }
-  /* with the menu away the page starts nearer the rail */
-  .bo:has(> .bo-side[data-folded]) .bo-main { padding-left: 14px; }
 }
-/* the name, the restaurant, the search and who is signed in stay put; only
-   the list of pages scrolls, with no bar */
-.bo-brand, .bo-restaurant, .bo-user { flex: none; }
+/* the name, whose back office it is, the keys at the foot and who is signed
+   in stay put; only the list of pages scrolls, with no bar */
+.bo-brand, .bo-restaurant, .bo-foot, .bo-user { flex: none; }
 .bo-main { transition: padding 0.42s var(--glide); }
 /* with several groups open the list is longer than the pane: it fades out at
    the foot, which says there is more below */
 .bo-nav {
-  flex: 1; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 2px 4px 30px; scrollbar-width: none;
-  -webkit-mask-image: linear-gradient(#000 calc(100% - 30px), transparent); mask-image: linear-gradient(#000 calc(100% - 30px), transparent);
+  flex: 1; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 2px 4px 26px; scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(#000 calc(100% - 26px), transparent); mask-image: linear-gradient(#000 calc(100% - 26px), transparent);
 }
 .bo-nav::-webkit-scrollbar { display: none; }
-.bo-brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 14px; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
-.bo-brand-logo { height: 34px; width: auto; display: block; }
+.bo-brand { display: flex; align-items: center; gap: 9px; padding: 2px 6px 14px; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.bo-brand-logo { height: 28px; width: auto; display: block; }
 /* the green of the logo's ring */
 .bo-brand-pos { color: var(--accent); }
-/* the switch that folds the menu into the rail, in its top corner */
-.bo-fold {
-  margin-left: auto; width: 34px; height: 34px; flex: none; padding: 0; display: grid; place-items: center; cursor: pointer;
-  border: 0; border-radius: 50%; background: transparent; color: var(--ink3);
-  transition: background-color 0.15s, color 0.15s, transform 0.2s var(--spring);
-}
-.bo-fold:hover { background: var(--glass-lit); color: var(--ink); }
-.bo-fold:active { transform: scale(0.9); }
-.bo-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.bo-fold svg { width: 17px; height: 17px; }
 .bo-brand, .auth-brand { font-weight: 800; }
 .bo-brand-mark { width: 30px; height: 30px; border-radius: 9px; background: var(--accent-fill); color: var(--on-accent); display: grid; place-items: center; font-size: 15px; font-weight: 800; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.16); }
+/* a square with two letters: the business at the head, who is signed in at the foot */
+.bo-tile {
+  width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 8px;
+  background: var(--menu-tile); color: #fff; font-size: 13.5px; font-weight: 600; letter-spacing: 0.02em;
+}
 /* whose back office this is, and the id to quote to EasyPay support */
 .bo-restaurant {
-  display: flex; align-items: center; gap: 10px; min-width: 0;
-  padding: 8px 10px; margin-bottom: 10px;
-  border: 1px solid var(--glass-line); border-radius: 16px; background: var(--glass-card);
+  display: flex; align-items: center; gap: 11px; min-width: 0;
+  padding: 9px 10px; margin-bottom: 8px;
+  border: 1px solid var(--menu-line); border-radius: 10px; background: var(--menu-card);
 }
-.bo-restaurant > svg { width: 32px; height: 32px; padding: 8px; flex: none; border-radius: 50%; background: var(--strong); color: var(--on-strong); }
-.bo-restaurant > span { min-width: 0; display: grid; }
-.bo-restaurant b { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bo-restaurant small { font-size: 11px; color: var(--ink3); letter-spacing: 0.03em; font-variant-numeric: tabular-nums; }
+.bo-restaurant > span:last-child { min-width: 0; display: grid; }
+.bo-restaurant b { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bo-restaurant small { font-size: 12px; color: var(--ink3); letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
 
+/* a line of the menu: a page, or the head of a group */
 .bo-nav a, .bo-group-head {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 10px; margin: 1px 0; border-radius: 12px;
-  color: var(--ink2); text-decoration: none; font-size: 13.5px; font-weight: 500;
-  transition: background-color 0.15s, color 0.15s, box-shadow 0.2s;
+  display: flex; align-items: center; gap: 11px;
+  padding: 8px 10px; margin: 1px 0; border-radius: 8px;
+  color: var(--ink); text-decoration: none; font-size: 14px; font-weight: 500;
+  transition: background-color 0.15s, color 0.15s;
 }
-.bo-nav a:hover, .bo-group-head:hover { background: var(--glass-hover); color: var(--ink); }
-/* the page that is open: a white pill lifted off the glass */
-.bo-nav a.on { background: var(--raised); color: var(--menu-on-ink); font-weight: 600; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.06), 0 8px 18px -10px rgba(22, 28, 45, 0.28); }
-.bo-nav a.on svg { color: var(--menu-on-mark); }
-.bo-nav svg { width: 17px; height: 17px; flex: none; }
+.bo-nav a > span:first-of-type, .bo-group-head > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bo-nav a:hover, .bo-group-head:hover { background: var(--glass-hover); }
+.bo-nav svg { width: 18px; height: 18px; flex: none; color: var(--ink2); }
+/* the page that is open: a pill of the page's own paper */
+.bo-nav a.on { background: var(--menu-on); color: var(--menu-on-ink); font-weight: 600; }
+.bo-nav a.on svg { color: var(--menu-on-ink); }
 .bo-nav a:focus-visible, .bo-group-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* a section's name, small, over its lines */
+.bo-section-title { margin: 0; padding: 16px 10px 6px; font-size: 12px; font-weight: 500; line-height: 1.2; color: var(--ink3); }
 
 /* A group of pages: one line that opens. The line is a button, so it starts
    from nothing of the browser's own. */
-.bo-group-head { width: 100%; border: 0; background: none; font-family: inherit; text-align: left; cursor: pointer; font-weight: 600; color: var(--ink); }
-.bo-group-head span { flex: 1; min-width: 0; }
-/* the group holding the open page: its sign takes the accent; closed, so does its name */
-.bo-group.here > .bo-group-head > svg:first-child { color: var(--accent); }
-.bo-group.here:not(.open) > .bo-group-head { color: var(--accent); }
-.bo-nav .bo-group-chev { width: 15px; height: 15px; color: var(--ink3); transition: transform 0.5s var(--spring); }
+.bo-group-head { width: 100%; border: 0; background: none; font-family: inherit; text-align: left; cursor: pointer; }
+.bo-nav .bo-group-chev { width: 15px; height: 15px; color: var(--ink3); transition: transform 0.25s ease; }
 .bo-group.open > .bo-group-head .bo-group-chev { transform: rotate(180deg); }
-
-/* The pages come down: the room for them opens, and each drops into place a
-   moment after the one above, going a little too far and coming back. Closing
-   is quick and plain. */
-.bo-group-panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.26s cubic-bezier(0.4, 0, 0.2, 1); }
-.bo-group.open > .bo-group-panel { grid-template-rows: 1fr; transition-duration: 0.34s; transition-timing-function: var(--glide); }
-.bo-group-list { min-height: 0; overflow: hidden; margin-left: 18px; padding: 0 4px 0 14px; }
-.bo-group.open .bo-group-list { padding-bottom: 8px; }
-.bo-group-list a { position: relative; padding: 7px 10px; opacity: 0; transform: translateY(-16px); transition: opacity 0.14s ease, transform 0.14s ease; }
-.bo-group.open .bo-group-list a {
-  opacity: 1; transform: none;
-  transition: opacity 0.24s ease calc(var(--i) * 32ms + 50ms), transform 0.6s cubic-bezier(0.34, 1.7, 0.64, 1) calc(var(--i) * 32ms + 50ms), background-color 0.15s, color 0.15s, box-shadow 0.2s;
-}
-/* each page hangs off the group's line by a rounded elbow; the line stops at the last one */
-.bo-group-list a::before {
-  content: ""; position: absolute; left: -14px; top: -12px; width: 11px; height: calc(50% + 12px);
-  border: solid var(--line-strong); border-width: 0 0 1.5px 1.5px; border-bottom-left-radius: 9px; pointer-events: none;
-}
-.bo-group-list a:not(:last-child)::after { content: ""; position: absolute; left: -14px; top: 50%; bottom: -3px; border-left: 1.5px solid var(--line-strong); pointer-events: none; }
+.bo-group-panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.22s ease; }
+.bo-group.open > .bo-group-panel { grid-template-rows: 1fr; }
+/* its pages are set in under its name, with a rule down their left; the one
+   that is open is a pill the width of the menu, drawn over the rule */
+.bo-group-list { position: relative; min-height: 0; overflow: hidden; }
+.bo-group-list::before { content: ""; position: absolute; left: 19px; top: 3px; bottom: 6px; border-left: 1px solid var(--menu-line-2); pointer-events: none; }
+.bo-group.open .bo-group-list { padding-bottom: 4px; }
+.bo-group-list a { position: relative; padding: 7px 10px 7px 40px; font-size: 13.5px; font-weight: 400; color: var(--ink2); }
+.bo-group-list a:hover { color: var(--ink); }
+.bo-group-list a.on { font-weight: 600; }
 /* The number beside a page: how many rows its list holds. It arrives a moment
    after the page and pops into place; one in red is something to see to. */
 @keyframes n-in { from { opacity: 0; transform: scale(0.6); } }
 .nav-n {
   flex: none; margin-left: auto; min-width: 22px; height: 20px; padding: 0 6px; display: inline-grid; place-items: center;
-  border-radius: 999px; background: var(--glass-chip); color: var(--ink2);
+  border-radius: 6px; background: var(--glass-chip); color: var(--ink2);
   font-size: 11.5px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: 0;
-  box-shadow: 0 1px 2px rgba(22, 28, 45, 0.08);
   animation: n-in 0.32s var(--spring) backwards;
 }
-.nav-n.zero { background: transparent; color: var(--ink3); box-shadow: none; }
-.nav-n.red { background: var(--red-bg); color: var(--red); box-shadow: none; }
-/* on the white of the open page, and in the cards beside the rail, it is a grey chip */
-.bo-nav a.on .nav-n:not(.red), .rail-card a .nav-n:not(.red) { background: var(--bg); box-shadow: none; }
+.nav-n.zero { background: transparent; color: var(--ink3); }
+.nav-n.red { background: var(--red-bg); color: var(--red); }
+/* on the paper of the open page, and in the cards beside the rail, it is a grey chip */
+.bo-nav a.on .nav-n:not(.red) { background: rgba(16, 38, 27, 0.09); color: var(--menu-on-ink); }
+.rail-card a .nav-n:not(.red) { background: var(--bg); }
 .rail-card a.on .nav-n:not(.red) { background: var(--on-strong-dim); color: var(--on-strong); }
 .bo-nav a .nav-n.zero, .rail-card a .nav-n.zero { background: transparent; }
 
-/* what is below the group someone has just opened gives a little and settles
-   (that group only: the ones already open stay still) */
-@keyframes nav-settle { 0%, 40% { margin-bottom: 0; } 68% { margin-bottom: 7px; } 86% { margin-bottom: -1px; } 100% { margin-bottom: 0; } }
-.bo-group[data-fresh].open > .bo-group-panel { animation: nav-settle 0.6s ease-out; }
 @media (prefers-reduced-motion: reduce) {
-  .bo-group-panel, .bo-group-list a, .bo-group.open .bo-group-list a, .bo-nav .bo-group-chev, .bo-side, .bo-side-in, .rail, .rail[data-folded], .rail-sign, .rail-sign[data-tip]::after, .bo-fold { transition: none; }
+  .bo-group-panel, .bo-nav .bo-group-chev, .bo-side, .bo-side-in, .rail, .rail[data-folded], .rail-sign, .rail-sign[data-tip]::after { transition: none; }
   .rail[data-folded] > * { animation: none; }
-  .bo-group[data-fresh].open > .bo-group-panel, .rail-card:popover-open, .rail-card:popover-open a, .nav-n { animation: none; }
+  .rail-card:popover-open, .rail-card:popover-open a, .nav-n { animation: none; }
 }
 
-/* who is signed in, and the way out */
-.bo-user {
-  display: flex; align-items: center; gap: 10px; min-width: 0; margin-top: 8px; padding: 7px 7px 7px 9px;
-  border: 1px solid var(--glass-line); border-radius: 999px; background: var(--glass-card);
+/* the small keys at the foot, two to a line: the search, folding the menu
+   away, the look, the way out */
+.bo-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 6px; padding: 10px 0 8px; border-top: 1px solid var(--menu-line); }
+.bo-foot form { display: contents; }
+.bo-foot button {
+  display: flex; align-items: center; gap: 9px; min-width: 0; height: 30px; padding: 0 8px;
+  border: 0; border-radius: 7px; background: none; color: var(--ink2);
+  font: inherit; font-size: 12.5px; font-weight: 500; text-align: left; white-space: nowrap; cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
 }
-.bo-user > span:nth-child(2) { flex: 1; min-width: 0; display: grid; }
-.bo-user b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bo-user small { font-size: 11.5px; color: var(--ink3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bo-user form { display: contents; }
-.bo-user button, .rail-who button {
+.bo-foot button:hover { background: var(--glass-hover); color: var(--ink); }
+.bo-foot button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.bo-foot button svg { width: 15px; height: 15px; flex: none; }
+/* who is signed in: two letters, the name, and the role on a chip */
+.bo-user { display: flex; align-items: center; gap: 11px; min-width: 0; padding: 12px 6px 2px; border-top: 1px solid var(--menu-line); }
+.bo-user .bo-tile { background: var(--menu-card); border: 1px solid var(--menu-line-2); color: var(--menu-ink); }
+.bo-user > span:last-child { min-width: 0; display: grid; justify-items: start; gap: 3px; }
+.bo-user b { max-width: 100%; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bo-user small { max-width: 100%; padding: 1px 7px; border-radius: 5px; background: var(--menu-chip-2); color: var(--menu-accent); font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* in the card beside the rail: the look and the way out are round keys */
+.rail-who button {
   width: 34px; height: 34px; flex: none; padding: 0; display: grid; place-items: center; cursor: pointer;
   border: 0; border-radius: 50%; background: transparent; color: var(--ink2);
   transition: background-color 0.15s, color 0.15s, transform 0.2s var(--spring);
 }
-.bo-user button:hover, .rail-who button:hover { background: var(--strong); color: var(--on-strong); }
-.bo-user button:active, .rail-who button:active { transform: scale(0.9); }
-.bo-user button:focus-visible, .rail-who button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.bo-user button svg, .rail-who button svg { width: 16px; height: 16px; }
+.rail-who button:hover { background: var(--strong); color: var(--on-strong); }
+.rail-who button:active { transform: scale(0.9); }
+.rail-who button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rail-who button svg { width: 16px; height: 16px; }
 .bo-avatar { width: 32px; height: 32px; flex: none; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 700; font-size: 13px; }
 
 .bo-body { min-width: 0; display: flex; flex-direction: column; }
 
 /* ---- the search ---- */
 
-/* in the menu: it looks like a field and opens the search */
-.bo-side button.search-trigger {
-  flex: none; width: 100%; min-width: 0; height: 40px; margin-bottom: 10px; padding: 0 8px 0 14px; display: flex; align-items: center; gap: 10px;
-  border: 1px solid var(--glass-line); border-radius: 999px; background: var(--glass-key); color: var(--ink3);
-  font: inherit; font-size: 13.5px; font-weight: 400; cursor: text; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.04);
-  transition: background-color 0.15s, color 0.15s, box-shadow 0.2s;
-}
-.bo-side button.search-trigger:hover { background: var(--menu-lit); color: var(--menu-ink); }
-.bo-side button.search-trigger:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
-.search-trigger svg { width: 16px; height: 16px; flex: none; }
-.search-trigger span { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.search-trigger kbd, .search-foot kbd {
+.search-foot kbd {
   font: inherit; font-size: 11.5px; font-weight: 600; color: var(--ink2); padding: 2px 7px; border-radius: 999px;
   background: var(--surface); border: 1px solid var(--line); box-shadow: 0 1px 0 var(--line);
 }
 /* on the menu's pane the key is a chip of the pane, not of the page */
-.bo-side .search-trigger kbd { background: var(--menu-chip); border-color: transparent; box-shadow: none; color: var(--menu-ink2); }
 
 .search-dialog { width: min(640px, calc(100vw - 32px)); max-height: none; margin: 11vh auto 0; padding: 0; border: 0; background: transparent; color: var(--ink); overflow: visible; }
 /* What dims the page behind a dialog. --scrim has a value on a dark page only,
@@ -688,7 +681,7 @@ body {
 .search-dialog::backdrop { background: var(--scrim, rgba(17, 24, 39, 0.38)); backdrop-filter: blur(3px); }
 @keyframes search-in { from { opacity: 0; transform: translateY(-10px) scale(0.985); } }
 .search-dialog[open] .search-panel { animation: search-in 0.22s cubic-bezier(0.22, 1, 0.36, 1); }
-.search-panel { background: var(--surface); border-radius: 16px; box-shadow: 0 0 0 1px var(--hairline), var(--shadow-lg); overflow: hidden; }
+.search-panel { background: var(--surface); border-radius: 12px; box-shadow: 0 0 0 1px var(--hairline), var(--shadow-lg); overflow: hidden; }
 .search-field { display: flex; align-items: center; gap: 12px; padding: 0 18px; border-bottom: 1px solid var(--line); }
 .search-field svg { width: 19px; height: 19px; flex: none; color: var(--ink3); }
 .search-field input { flex: 1; min-width: 0; height: 56px; border: 0; outline: 0; background: none; font: inherit; font-size: 16px; color: var(--ink); }
@@ -716,7 +709,11 @@ body {
 /* The page uses the width of the window. The cap only comes in on a very wide
    monitor, where a table three metres across helps nobody; fields and
    paragraphs keep their own, narrower limits. */
-.bo-main { padding: 18px 32px 64px 30px; max-width: 1800px; width: 100%; }
+.bo-main { padding: 26px 36px 64px; max-width: 1800px; width: 100%; }
+@media (min-width: 1001px) { .bo:has(> .bo-side[data-folded]) .bo-main { padding-left: 14px; } }
+/* over a page's heading: the group it sits in */
+.bo-over { margin: 0 0 3px !important; font-size: 13px; font-weight: 500; color: var(--ink3); }
+.bo-main:has(> .crumb) > .bo-over { display: none; }
 
 /* ---- notices ---- */
 
@@ -737,22 +734,22 @@ body {
 
 /* ---- base elements inside the content area ---- */
 
-.bo-main h1 { font-size: 26px; font-weight: 650; letter-spacing: -0.028em; margin: 0 0 4px; }
-.bo-main h2 { font-size: 15px; font-weight: 650; margin: 0 0 12px; letter-spacing: -0.005em; }
+.bo-main h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; margin: 0 0 4px; }
+.bo-main h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; letter-spacing: -0.005em; }
 .bo-main h3 { font-size: 13px; font-weight: 650; margin: 0 0 8px; }
 .bo-main a { color: var(--accent); text-decoration: none; }
 .bo-main a:hover { text-decoration: underline; }
 .bo-main p { line-height: 1.55; margin: 0 0 12px; }
 .lede { color: var(--ink2); margin: 0 0 22px !important; max-width: 720px; }
-.bo-main h1 + table, .bo-main h1 + form, .bo-main h1 + .card, .bo-main h1 + .bo-chips { margin-top: 20px; }
+.bo-main h1 + table, .bo-main h1 + form, .bo-main h1 + .card, .bo-main h1 + .bo-chips, .bo-main h1 + .note { margin-top: 20px; }
 
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
 .page-head .lede { margin-bottom: 0 !important; }
 .page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .crumb { margin: 0 0 6px !important; font-size: 12.5px; color: var(--ink3); }
 
-/* a white panel floating on the backdrop: no line round it, a soft shadow under it */
-.card { background: var(--surface); border: 1px solid var(--glass-line); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-sm); margin-bottom: 20px; }
+/* a white panel on the paper: a fine line round it and next to no shadow */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-sm); margin-bottom: 20px; }
 .card.flush { padding: 0; overflow: hidden; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
 .bo-main .card-head h2 { margin: 0; }
@@ -764,12 +761,12 @@ body {
 
 .bo-main table {
   width: 100%; border-collapse: separate; border-spacing: 0;
-  background: var(--surface); border: 1px solid var(--glass-line); border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
   box-shadow: var(--shadow-sm); font-size: 13.5px; overflow: hidden; margin-bottom: 20px;
 }
 .bo-main th {
-  text-align: left; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
-  color: var(--ink3); padding: 11px 16px; background: var(--surface-2); border-bottom: 1px solid var(--line); white-space: nowrap;
+  text-align: left; font-size: 12.5px; font-weight: 500;
+  color: var(--ink3); padding: 11px 16px; background: var(--surface-3); border-bottom: 1px solid var(--line); white-space: nowrap;
 }
 .bo-main td { padding: 12px 16px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .bo-main tr:last-child td { border-bottom: 0; }
@@ -801,10 +798,10 @@ body {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   font: inherit; font-size: 13.5px; font-weight: 600; line-height: 1;
   height: 36px; padding: 0 16px;
-  border: 1px solid var(--strong); border-radius: 999px;
+  border: 1px solid var(--strong); border-radius: var(--radius-sm);
   background: var(--strong); color: var(--on-strong);
   cursor: pointer; white-space: nowrap; text-decoration: none !important;
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.2), 0 8px 16px -10px rgba(17, 24, 39, 0.55);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.16);
   transition: background-color 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.2s, transform 0.2s var(--spring);
 }
 .bo-main button:hover, .btn:hover { background: var(--strong-hover); border-color: var(--strong-hover); }
@@ -816,7 +813,7 @@ body {
   display: inline-flex; align-items: center; gap: 7px;
   font: inherit; font-size: 13.5px; font-weight: 600; line-height: 1;
   height: 36px; padding: 0 15px;
-  border: 1px solid var(--line); border-radius: 999px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
   background: var(--raised); color: var(--ink) !important;
   cursor: pointer; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.05); text-decoration: none !important;
 }
@@ -836,14 +833,14 @@ body {
 .row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 
 .bo-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 20px; }
-.bo-chips a { text-decoration: none !important; padding: 6px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--ink2); font-size: 13px; font-weight: 500; }
+.bo-chips a { text-decoration: none !important; padding: 6px 12px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--line); color: var(--ink2); font-size: 13px; font-weight: 500; }
 .bo-chips a:hover { border-color: var(--line-strong); color: var(--ink); }
 .bo-chips a.on { background: var(--strong); border-color: var(--strong); color: var(--on-strong); }
 .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 8px; border: 1px solid rgba(0, 0, 0, 0.1); }
 .muted { color: var(--ink3); }
 .flag { color: var(--red); font-weight: 600; }
 
-.badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--well); color: var(--ink2); white-space: nowrap; }
+.badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; background: var(--well); color: var(--ink2); white-space: nowrap; }
 .badge.green { background: var(--green-bg); color: var(--green); }
 .badge.amber { background: var(--amber-bg); color: var(--amber); }
 .badge.red { background: var(--red-bg); color: var(--red); }
@@ -877,21 +874,21 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 .setting textarea { max-width: 460px; }
 .setting strong { display: block; font-size: 13.5px; }
 .setting small { display: block; color: var(--ink3); font-size: 12.5px; margin-top: 2px; line-height: 1.45; }
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--field); box-shadow: 0 1px 2px rgba(22, 28, 45, 0.05); }
-.seg label { display: flex; align-items: center; padding: 0 14px; height: 34px; font-size: 13px; font-weight: 500; color: var(--ink2); cursor: pointer; border-left: 1px solid var(--line); }
-.seg label:first-child { border-left: 0; }
+.seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--radius-sm); background: var(--well); }
+.seg label { display: flex; align-items: center; padding: 0 12px; height: 30px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--ink2); cursor: pointer; }
 .seg input { position: absolute; opacity: 0; pointer-events: none; }
-.seg label:has(input:checked) { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.seg label:has(input:checked) { background: var(--raised); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.14); }
+.seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* ---- filters and report pieces ---- */
 
 .filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 20px; box-shadow: var(--shadow-sm); }
-.filters label { display: block; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink3); }
+.filters label { display: block; font-size: 12.5px; font-weight: 500; color: var(--ink3); }
 .filters label > input, .filters label > select { display: block; margin-top: 5px; min-width: 150px; }
 .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
 .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow-sm); min-width: 0; }
 .stat-label { font-size: 12.5px; color: var(--ink3); font-weight: 500; }
-.stat-value { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.stat-value { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .stat-note { font-size: 12px; color: var(--ink3); margin-top: 2px; }
 .bar { display: block; height: 6px; border-radius: 999px; background: var(--well); overflow: hidden; min-width: 80px; }
 .bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
@@ -908,7 +905,7 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 .tabs a.on { color: var(--accent) !important; border-bottom-color: var(--accent); font-weight: 600; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: var(--scrim, rgba(17, 24, 39, 0.45)); backdrop-filter: blur(2px); }
-.modal { width: min(540px, 92vw); max-height: 90vh; overflow: auto; background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-lg); }
+.modal { width: min(540px, 92vw); max-height: 90vh; overflow: auto; background: var(--surface); border-radius: 12px; box-shadow: var(--shadow-lg); }
 .modal.wide { width: min(740px, 92vw); }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--line); }
 .bo-main .modal-head h2 { margin: 0; font-size: 16px; }
@@ -935,13 +932,13 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 
 .fd { display: flex; flex-direction: column; gap: 14px; }
 .fd-areas { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.fd-tabs { display: inline-flex; gap: 2px; padding: 4px; border-radius: 13px; background: var(--well); max-width: 100%; overflow-x: auto; }
-.bo-main .fd-tabs button { height: 34px; padding: 0 14px; min-height: 0; border: 0; border-radius: 10px; background: transparent; color: var(--ink2); font-size: 13.5px; font-weight: 500; box-shadow: none; white-space: nowrap; }
+.fd-tabs { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--radius-sm); background: var(--well); max-width: 100%; overflow-x: auto; }
+.bo-main .fd-tabs button { height: 30px; padding: 0 12px; min-height: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ink2); font-size: 13.5px; font-weight: 500; box-shadow: none; white-space: nowrap; }
 .bo-main .fd-tabs button:hover { background: var(--glass-hover); color: var(--ink); }
 .bo-main .fd-tabs button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: var(--shadow-sm); }
 .fd-areas .btn-quiet svg, .fd-remove svg { width: 15px; height: 15px; }
 
-.fd-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-sm); }
+.fd-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
 .fd-group { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--well); margin-right: 6px; }
 .bo-main .fd-group button, .bo-main .fd-key, .bo-main .fd-align button {
   width: 34px; height: 34px; min-height: 0; padding: 0; display: grid; place-items: center; border: 0; border-radius: 8px;
@@ -961,7 +958,7 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 
 .fd-body { display: grid; grid-template-columns: 148px minmax(0, 1fr) 240px; gap: 14px; align-items: start; }
 .fd-body.view { grid-template-columns: minmax(0, 1fr) 240px; }
-.fd-kinds, .fd-side { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; box-shadow: var(--shadow-sm); }
+.fd-kinds, .fd-side { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; box-shadow: var(--shadow-sm); }
 .bo-main .fd-kinds h3 { margin: 0 0 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3); }
 .fd-kind-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .bo-main .fd-kind-list button {
@@ -974,7 +971,7 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 .fd-kinds p { margin: 12px 0 0; font-size: 12px; line-height: 1.45; color: var(--ink3); }
 
 /* the plan sits on a sheet of its own; larger than the sheet, it scrolls */
-.fd-stage { overflow: auto; padding: 22px; background: var(--well); border: 1px solid var(--line); border-radius: 14px; max-height: calc(100vh - 250px); min-height: 320px; outline: none; }
+.fd-stage { overflow: auto; padding: 22px; background: var(--well); border: 1px solid var(--line); border-radius: var(--radius); max-height: calc(100vh - 250px); min-height: 320px; outline: none; }
 .fd-stage:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
 .fd-stage.pan { cursor: grab; }
 .fd-stage.pan:active { cursor: grabbing; }
@@ -1066,8 +1063,8 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 .range > summary {
   list-style: none; cursor: pointer;
   display: flex; align-items: center; gap: 10px;
-  background: var(--surface); border: 1px solid var(--glass-line); border-radius: 999px;
-  height: 40px; padding: 0 16px; font-size: 13.5px; font-weight: 600; min-width: 260px; box-shadow: var(--shadow-sm);
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  height: 38px; padding: 0 14px; font-size: 13.5px; font-weight: 600; min-width: 260px; box-shadow: var(--shadow-sm);
 }
 .range > summary::-webkit-details-marker { display: none; }
 .range > summary svg { width: 16px; height: 16px; fill: var(--ink3); }
@@ -1089,9 +1086,9 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 .switch.on::after { left: 18px; }
 
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
-.kpi { background: var(--surface); border: 1px solid var(--glass-line); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow-sm); min-width: 0; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow-sm); min-width: 0; }
 .kpi-label { font-size: 12.5px; color: var(--ink3); font-weight: 500; }
-.kpi-value { font-size: 27px; font-weight: 600; letter-spacing: -0.03em; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.kpi-value { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .kpi-note { font-size: 12px; color: var(--ink3); margin-top: 4px; }
 .kpi-prev { font-size: 12.5px; color: var(--ink2); margin-top: 6px; }
 .up { color: var(--green); font-weight: 600; }
@@ -1121,7 +1118,7 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 .dash-sub { display: flex; align-items: baseline; gap: 10px; margin: 26px 0 12px; }
 .dash-sub h2 { margin: 0; }
 .dash-sub span { color: var(--ink3); font-size: 12.5px; }
-.delta { font-style: normal; font-size: 11.5px; font-weight: 700; letter-spacing: 0; padding: 3px 8px; border-radius: 999px; }
+.delta { font-style: normal; font-size: 11.5px; font-weight: 700; letter-spacing: 0; padding: 3px 8px; border-radius: 6px; }
 .delta.up { background: var(--lime); color: var(--lime-ink); }
 .delta.down { background: var(--amber-bg); color: var(--amber); }
 
@@ -1131,7 +1128,7 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
    white panel set into it. */
 .home-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px 32px; flex-wrap: wrap; margin: 2px 0 22px; }
 .home-where { margin: 0 0 12px !important; font-size: 12.5px; color: var(--ink3); }
-.bo-main .home-head h1 { font-size: 36px; font-weight: 600; letter-spacing: -0.04em; line-height: 1.08; margin: 0 0 9px; }
+.bo-main .home-head h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.15; margin: 0 0 6px; }
 .home-status { margin: 0 !important; font-size: 14.5px; color: var(--ink2); }
 .home-side { display: flex; align-items: center; gap: 14px 30px; flex-wrap: wrap; }
 .home-fig, .bo-main a.home-fig { display: block; min-width: 0; color: var(--ink); text-decoration: none; }
@@ -1144,17 +1141,16 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 
 .home-top { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; align-items: stretch; }
 .pane {
-  display: flex; flex-direction: column; min-width: 0; padding: 6px;
-  background: var(--glass); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
-  border: 1px solid var(--glass-line); border-radius: 26px; box-shadow: var(--shadow-sm);
+  display: flex; flex-direction: column; min-width: 0; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm);
 }
-.pane-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 16px 14px; }
+.pane-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 20px 14px; border-bottom: 1px solid var(--line); }
 .bo-main .pane-head h2 { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 16.5px; font-weight: 600; letter-spacing: -0.02em; }
 .pane-head h2 svg { width: 17px; height: 17px; color: var(--accent); }
 .pane-head p { margin: 3px 0 0 !important; font-size: 12.5px; color: var(--ink2); }
-.pane-count { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--raised); font-size: 12px; font-weight: 600; letter-spacing: 0; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.1); }
+.pane-count { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px; background: var(--raised); font-size: 12px; font-weight: 600; letter-spacing: 0; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.1); }
 .bo-main .pane-head a.card-link { margin-top: 3px; color: var(--ink); }
-.pane-in { flex: 1; min-width: 0; padding: 4px 20px; background: var(--surface); border-radius: 20px; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.04); }
+.pane-in { flex: 1; min-width: 0; padding: 4px 20px; background: var(--surface); }
 
 /* one thing that needs a look: what it is, how much of it, and the way to it */
 .need { display: flex; align-items: center; gap: 16px; padding: 18px 0; border-bottom: 1px solid var(--line); }
@@ -1167,12 +1163,12 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 .need-text { flex: 1; min-width: 0; }
 .need-text b { display: block; font-size: 14.5px; font-weight: 600; letter-spacing: -0.008em; }
 .need-text span { display: block; margin-top: 2px; max-width: 58ch; font-size: 12.5px; line-height: 1.45; color: var(--ink2); }
-.chip { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: var(--bg); color: var(--ink2); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.chip { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 6px; background: var(--bg); color: var(--ink2); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .chip.red { background: var(--red-bg); color: var(--red); }
 .chip.amber { background: var(--amber-bg); color: var(--amber); }
 .chip.lime { background: var(--lime); color: var(--lime-ink); }
 .bo-main a.go {
-  flex: none; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 999px;
+  flex: none; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: var(--radius-sm);
   background: var(--bg); color: var(--ink); font-size: 12.5px; font-weight: 600; white-space: nowrap; text-decoration: none;
   transition: background-color 0.15s, color 0.15s, transform 0.2s var(--spring);
 }
@@ -1257,7 +1253,7 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
    so the page is as long as the list and no longer. */
 .table-search { position: relative; display: block; flex: none; }
 .table-search svg { position: absolute; left: 12px; top: 50%; width: 15px; height: 15px; transform: translateY(-50%); color: var(--ink3); pointer-events: none; }
-.bo-main .table-search input { width: 280px; padding-left: 34px !important; border-radius: 999px; }
+.bo-main .table-search input { width: 280px; padding-left: 34px !important; }
 .rows-open tr.row { cursor: pointer; }
 .rows-open tr.row > td:first-child, .rows-open thead th:first-child { width: 44px; padding-right: 0; }
 .bo-main .rows-open button.chev {
@@ -1413,14 +1409,15 @@ a.till:hover .till-go { border-color: var(--accent); color: var(--accent); }
 }
 
 @media (max-width: 1000px) {
-  .bo { grid-template-columns: 1fr; padding: 12px 12px 0; }
-  .rail, .bo-fold { display: none; }
+  .bo { grid-template-columns: minmax(0, 1fr); }
+  .rail { display: none; }
   .bo-side { position: static; height: auto; width: auto; }
+  .bo-foot button[aria-controls="bo-menu"] { display: none; }
   .bo-side.dev { padding-bottom: 12px; }
   .bo-side-in { width: auto; height: auto; display: block; }
   .bo-nav { -webkit-mask-image: none; mask-image: none; padding-bottom: 12px; }
   .bo-nav { overflow: visible; }
-  .bo-main { padding: 20px 4px 40px; }
+  .bo-main { padding: 20px 16px 40px; }
   .fd-body, .fd-body.view, .grid-2, .grid-3, .form-row, .tills { grid-template-columns: 1fr; }
   .kpis, .kpis.six, .stats, .stats.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dash-split { grid-template-columns: 1fr; }
@@ -1712,7 +1709,7 @@ button[aria-busy="true"]::after {
 
 /* "Are you sure?" before suspending a client or deactivating a till (admin/confirm.tsx):
    a small panel in the middle of the dimmed page, the way out first */
-.confirm { width: min(420px, calc(100vw - 32px)); margin: auto; padding: 0; border: 0; border-radius: 22px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); white-space: normal; text-align: left; }
+.confirm { width: min(420px, calc(100vw - 32px)); margin: auto; padding: 0; border: 0; border-radius: 12px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); white-space: normal; text-align: left; }
 .confirm::backdrop { background: var(--scrim, rgba(17, 24, 39, 0.38)); backdrop-filter: blur(2px); }
 .confirm[open] { animation: search-in 0.22s var(--glide); }
 .confirm[open]::backdrop { animation: drawer-dim 0.2s ease; }

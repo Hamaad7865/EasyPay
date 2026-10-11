@@ -134,7 +134,7 @@ export function General({ d, mode, now }: { d: Base & { taken: Taken[]; days: Ti
       </div>
       <p className="muted" style={{ fontSize: 12.5 }}>
         Figures are as of the till&apos;s last sync. A sale counts as late when it reached the server more than two minutes after the till rang it up: the till had no network then, and sent it
-        when it came back. This {words(mode).place}&apos;s other tills are under Point of sale.
+        when it came back. This {words(mode).place}&apos;s other tills are under Devices and printers, Tills.
       </p>
     </div>
   );

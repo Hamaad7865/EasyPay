@@ -125,7 +125,7 @@ export default async function TillPage({ params, searchParams }: { params: Promi
   return (
     <div>
       <p className="crumb">
-        <Link href="/backoffice/pos">Point of sale</Link> ›
+        <Link href="/backoffice/pos">Tills</Link> ›
       </p>
       <div className="till-head">
         <span className="till-ico" aria-hidden="true">

@@ -163,7 +163,7 @@ export default async function ReceiptsPage({ searchParams }: { searchParams: Sea
   return (
     <div>
       <PageHead title="Receipts" lede="The latest 100 receipts and refunds. Correct a payment type that was rung up wrong, and sign off the ones the system flagged.">
-        <Link href="/backoffice/reports/orders" className="btn-quiet">Order details report</Link>
+        <Link href="/backoffice/reports/orders" className="btn-quiet">Orders, in full</Link>
       </PageHead>
       <Flash sp={sp} />
       {open > 0 && <div className="note warn"><strong>{open} {open === 1 ? "receipt needs" : "receipts need"} a look</strong>The till took the money, or gave it back, and kept selling; the reason is in the last column.</div>}

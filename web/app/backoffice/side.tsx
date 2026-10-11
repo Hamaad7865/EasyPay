@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, LogOut, PanelLeftClose, PanelLeftOpen, Search, Store } from "lucide-react";
+import { ChevronDown, LogOut, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Search, Sun } from "lucide-react";
 import { Submit, Wait } from "./busy";
-import { groupsFor, HOME, groupOf, isOn, type NavCount } from "./nav";
+import { groupsFor, HOME, groupOf, isOn, over, sectionsFor, type NavCount } from "./nav";
 import type { Mode } from "@/lib/mode";
 import type { Theme } from "@/lib/theme";
 import { ThemeButton, useTheme } from "../theme";
@@ -13,10 +13,11 @@ import { openSearch, SearchBox, useSearchKey } from "./search-box";
 
 // The way round the back office, which has two shapes.
 //
-// The menu: a pane of frosted glass down the left with the restaurant, the
-// search, every page under its group, and who is signed in. A group opens to
-// show its pages (they drop in one after the other); as many can be open at
-// once as someone likes.
+// The menu: a pane the height of the window down the left edge. At its head
+// the name and whose back office this is; then the day's page and three
+// sections of pages (Counter, Finance and stock, Admin), where a line is a
+// page or a group that opens onto its pages, as many open at once as someone
+// likes; at its foot the search, the look, the way out, and who is signed in.
 //
 // The rail: what the menu folds into. A column of round signs, one for the
 // dashboard and one for each group of pages, then the search, who is signed
@@ -53,6 +54,11 @@ function place(sign: HTMLElement, cardId: string, fromBottom = false) {
     if (box.bottom > window.innerHeight - 12) card.style.top = `${Math.round(Math.max(12, window.innerHeight - 12 - box.height))}px`;
   });
 }
+const initials = (name: string) => {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const two = words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? "?").slice(0, 2);
+  return two.toUpperCase();
+};
 const shut = () => document.querySelectorAll<HTMLElement>(".rail-card:popover-open").forEach((c) => c.hidePopover());
 
 // The number beside a page: how many rows its list holds. Past 999 it is
@@ -65,6 +71,14 @@ function Count({ c }: { c: NavCount | undefined }) {
       {short}
     </span>
   );
+}
+
+// Over a page’s heading: the group the page sits in ("Insights" over Sales
+// patterns). Nothing on the day’s page, nor on a page that is its own line of
+// the menu.
+export function Over({ mode, premium }: { mode: Mode; premium: boolean }) {
+  const name = over(usePathname(), mode, premium);
+  return name ? <p className="bo-over">{name}</p> : null;
 }
 
 export function Side({
@@ -94,6 +108,7 @@ export function Side({
   const path = usePathname();
   const here = groupOf(path, mode, premium);
   const groups = useMemo(() => groupsFor(mode, premium), [mode, premium]);
+  const sections = useMemo(() => sectionsFor(mode, premium), [mode, premium]);
   const key = useSearchKey();
   const [away, setAway] = useState(folded);
   // The group holding the page that is open is open, on the server and in the
@@ -105,9 +120,6 @@ export function Side({
     setSeen(path);
     if (here && !open.has(here)) setOpen(new Set([...open, here]));
   }
-  // The settling bounce is for the group someone has just opened: not for the
-  // page loading, and not for the groups that were open already.
-  const [fresh, setFresh] = useState<string | null>(null);
 
   // On a narrow screen there is no rail and the menu is never folded away,
   // whatever was chosen on a wide one.
@@ -157,11 +169,7 @@ export function Side({
   };
   const toggle = (g: string) => {
     const next = new Set(open);
-    if (next.delete(g)) setFresh(null);
-    else {
-      next.add(g);
-      setFresh(g);
-    }
+    if (!next.delete(g)) next.add(g);
     keep(next);
   };
   // The signs pop in when someone folds the menu into them, not every time a
@@ -176,6 +184,9 @@ export function Side({
   // the switch is drawn twice, in the menu and in the rail's card: one choice behind both
   const [theme, turn] = useTheme(look);
   const initial = (employee ?? "?").trim().slice(0, 1).toUpperCase();
+  const Look = theme === "dark" ? Moon : theme === "light" ? Sun : Monitor;
+  const look_ = theme === "dark" ? "Dark look" : theme === "light" ? "Light look" : "Device's look";
+  const lookSay = `Look: ${theme === "dark" ? "dark" : theme === "light" ? "light" : "the same as this device"}. Press to change it.`;
   const dev = process.env.NODE_ENV === "development" ? " dev" : "";
   // the signs come in one after the other when the menu folds into them
   let nth = 0;
@@ -197,31 +208,37 @@ export function Side({
         <Link href={HOME.href} className={"rail-sign" + (isOn(HOME.href, path) ? " on" : "")} aria-label={HOME.label} data-tip={HOME.label} style={pop()}>
           <HOME.icon aria-hidden="true" strokeWidth={1.9} />
         </Link>
-        {groups.map((g) => (
-          <div key={g.id} className="rail-item" style={pop()}>
-            <button
-              type="button"
-              className={"rail-sign" + (here === g.id ? " on" : "")}
-              aria-label={g.title}
-              data-tip={g.title}
-              popoverTarget={`rail-${g.id}`}
-              onClick={(e) => place(e.currentTarget, `rail-${g.id}`)}
-            >
+        {groups.map((g) =>
+          g.flat ? (
+            <Link key={g.id} href={g.links[0].href} className={"rail-sign" + (here === g.id ? " on" : "")} aria-label={g.title} data-tip={g.title} style={pop()}>
               <g.icon aria-hidden="true" strokeWidth={1.9} />
-            </button>
-            <div id={`rail-${g.id}`} popover="auto" className="rail-card">
-              <b>{g.title}</b>
-              {g.links.map((l, i) => (
-                <Link key={l.href} href={l.href} className={isOn(l.href, path) ? "on" : undefined} style={{ "--i": i } as React.CSSProperties} onClick={shut}>
-                  <l.icon aria-hidden="true" strokeWidth={1.9} />
-                  {l.label}
-                  <Wait />
-                  <Count c={counts[l.href]} />
-                </Link>
-              ))}
+            </Link>
+          ) : (
+            <div key={g.id} className="rail-item" style={pop()}>
+              <button
+                type="button"
+                className={"rail-sign" + (here === g.id ? " on" : "")}
+                aria-label={g.title}
+                data-tip={g.title}
+                popoverTarget={`rail-${g.id}`}
+                onClick={(e) => place(e.currentTarget, `rail-${g.id}`)}
+              >
+                <g.icon aria-hidden="true" strokeWidth={1.9} />
+              </button>
+              <div id={`rail-${g.id}`} popover="auto" className="rail-card">
+                <b>{g.title}</b>
+                {g.links.map((l, i) => (
+                  <Link key={l.href} href={l.href} className={isOn(l.href, path) ? "on" : undefined} style={{ "--i": i } as React.CSSProperties} onClick={shut}>
+                    <l.icon aria-hidden="true" strokeWidth={1.9} />
+                    {l.label}
+                    <Wait />
+                    <Count c={counts[l.href]} />
+                  </Link>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ),
+        )}
         <span className="rail-gap" />
         <button type="button" className="rail-sign" aria-label="Search" data-tip={`Search (${key})`} style={pop()} onClick={openSearch}>
           <Search aria-hidden="true" strokeWidth={1.9} />
@@ -254,61 +271,88 @@ export function Side({
             <span>
               Easy<span className="bo-brand-pos">Pay</span>
             </span>
-            <button type="button" className="bo-fold" aria-label="Fold the menu away" title="Fold the menu away" aria-expanded={true} aria-controls="bo-menu" onClick={fold}>
-              <PanelLeftClose aria-hidden="true" strokeWidth={1.9} />
-            </button>
           </div>
           <div className="bo-restaurant" title={restaurant}>
-            <Store aria-hidden="true" />
+            <span className="bo-tile" aria-hidden="true">{initials(restaurant)}</span>
             <span>
               <b>{restaurant}</b>
               <small>ID {id}</small>
             </span>
           </div>
-          <button type="button" className="search-trigger" onClick={openSearch} aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K">
-            <Search aria-hidden="true" />
-            <span>Search</span>
-            <kbd>{key}</kbd>
-          </button>
           <nav className="bo-nav" ref={nav} aria-label="Back office">
             <Link href={HOME.href} className={"bo-nav-top" + (isOn(HOME.href, path) ? " on" : "")}>
-              <HOME.icon aria-hidden="true" strokeWidth={1.9} />
-              {HOME.label}
+              <HOME.icon aria-hidden="true" strokeWidth={1.8} />
+              <span>{HOME.label}</span>
               <Wait />
             </Link>
-            {groups.map((g) => {
-              const isOpen = open.has(g.id);
-              return (
-                <div key={g.id} className={"bo-group" + (isOpen ? " open" : "") + (here === g.id ? " here" : "")} data-fresh={fresh === g.id || undefined}>
-                  <button type="button" id={`nav-head-${g.id}`} className="bo-group-head" aria-expanded={isOpen} aria-controls={`nav-${g.id}`} onClick={() => toggle(g.id)}>
-                    <g.icon aria-hidden="true" strokeWidth={1.9} />
-                    <span>{g.title}</span>
-                    <ChevronDown aria-hidden="true" className="bo-group-chev" strokeWidth={2.2} />
-                  </button>
-                  {/* a closed group's pages are out of reach of the Tab key too */}
-                  <div id={`nav-${g.id}`} className="bo-group-panel" inert={!isOpen}>
-                    <div className="bo-group-list">
-                      {g.links.map((l, i) => (
-                        <Link key={l.href} href={l.href} className={isOn(l.href, path) ? "on" : undefined} style={{ "--i": i } as React.CSSProperties}>
-                          {l.label}
-                          <Wait />
-                          <Count c={counts[l.href]} />
-                        </Link>
-                      ))}
+            {sections.map((sec) => (
+              <div key={sec.id} className="bo-section" role="group" aria-label={sec.title}>
+                <p className="bo-section-title">{sec.title}</p>
+                {sec.groups.map((g) => {
+                  if (g.flat) {
+                    const l = g.links[0];
+                    return (
+                      <Link key={g.id} href={l.href} className={"bo-nav-top" + (isOn(l.href, path) ? " on" : "")}>
+                        <g.icon aria-hidden="true" strokeWidth={1.8} />
+                        <span>{g.title}</span>
+                        <Wait />
+                        <Count c={counts[l.href]} />
+                      </Link>
+                    );
+                  }
+                  const isOpen = open.has(g.id);
+                  return (
+                    <div key={g.id} className={"bo-group" + (isOpen ? " open" : "") + (here === g.id ? " here" : "")}>
+                      <button type="button" id={`nav-head-${g.id}`} className="bo-group-head" aria-expanded={isOpen} aria-controls={`nav-${g.id}`} onClick={() => toggle(g.id)}>
+                        <g.icon aria-hidden="true" strokeWidth={1.8} />
+                        <span>{g.title}</span>
+                        <ChevronDown aria-hidden="true" className="bo-group-chev" strokeWidth={2} />
+                      </button>
+                      {/* a closed group's pages are out of reach of the Tab key too */}
+                      <div id={`nav-${g.id}`} className="bo-group-panel" inert={!isOpen}>
+                        <div className="bo-group-list">
+                          {g.links.map((l) => (
+                            <Link key={l.href} href={l.href} className={isOn(l.href, path) ? "on" : undefined}>
+                              <span>{l.label}</span>
+                              <Wait />
+                              <Count c={counts[l.href]} />
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            ))}
           </nav>
+          {/* the small keys at the foot, two to a line */}
+          <div className="bo-foot">
+            <button type="button" onClick={openSearch} aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K" title={`Search (${key})`}>
+              <Search aria-hidden="true" strokeWidth={1.8} />
+              Search
+            </button>
+            <button type="button" aria-expanded={true} aria-controls="bo-menu" onClick={fold} title="Fold the menu away">
+              <PanelLeftClose aria-hidden="true" strokeWidth={1.8} />
+              Hide menu
+            </button>
+            <button type="button" onClick={turn} title={lookSay} aria-label={lookSay}>
+              <Look aria-hidden="true" strokeWidth={1.8} />
+              {look_}
+            </button>
+            <form action={signOut}>
+              <Submit>
+                <LogOut aria-hidden="true" strokeWidth={1.8} />
+                Sign out
+              </Submit>
+            </form>
+          </div>
           <div className="bo-user">
-            <span className="bo-avatar" aria-hidden="true">{initial}</span>
+            <span className="bo-tile" aria-hidden="true">{initials(employee ?? "?")}</span>
             <span>
               <b>{employee ?? "Signed in"}</b>
               {role && <small>{role}</small>}
             </span>
-            <ThemeButton theme={theme} turn={turn} />
-            {leave}
           </div>
         </div>
       </aside>

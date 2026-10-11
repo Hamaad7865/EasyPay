@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth/server";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { GROUPS } from "./nav";
-import { Side } from "./side";
+import { Over, Side } from "./side";
 import { words } from "@/lib/mode";
 import { THEME_COOKIE, themeOf } from "@/lib/theme";
 
@@ -63,6 +63,7 @@ export default async function BackofficeLayout({ children }: { children: React.R
               here. Contact EasyPay to reactivate.
             </div>
           )}
+          <Over mode={ctx.mode} premium={ctx.premium} />
           {children}
         </main>
       </div>

@@ -40,14 +40,16 @@ check('the offline plan is told apart, and carries nothing of Premium',
 
 check('N2 a premium restaurant has Bookings in its menu', hrefs('restaurant', true).includes(BOOKINGS));
 check('N2 a standard restaurant does not', !hrefs('restaurant', false).includes(BOOKINGS));
-check('N2 and loses nothing else', hrefs('restaurant', true).filter((h) => h !== BOOKINGS).join() === hrefs('restaurant', false).join());
+// the other premium page is the table cards (QR ordering)
+const CARDS = '/backoffice/tables/cards';
+check('N2 and loses nothing else but the table cards, premium too', hrefs('restaurant', true).filter((h) => h !== BOOKINGS && h !== CARDS).join() === hrefs('restaurant', false).join());
 check('N3 a shop has no Bookings on any plan', !hrefs('retail', true).includes(BOOKINGS) && !hrefs('retail', false).includes(BOOKINGS));
 check('N3 and a shop\'s menu does not depend on its plan', hrefs('retail', true).join() === hrefs('retail', false).join());
 
 const found = (mode, premium) => nav.pagesOf(mode, premium).some((p) => p.href === BOOKINGS);
 check('N4 the search finds Bookings for a premium restaurant only', found('restaurant', true) && !found('restaurant', false) && !found('retail', true));
 check('N5 the Bookings address lights no group for a restaurant that does not have it',
-  nav.groupOf(BOOKINGS, 'restaurant', true) === 'restaurant' && nav.groupOf(BOOKINGS, 'restaurant', false) === null);
+  nav.groupOf(BOOKINGS, 'restaurant', true) === 'bookings' && nav.groupOf(BOOKINGS, 'restaurant', false) === null);
 
 // What the Printers page says of a category that prints nowhere. With the
 // kitchen display its orders are on the display; a plan without the display

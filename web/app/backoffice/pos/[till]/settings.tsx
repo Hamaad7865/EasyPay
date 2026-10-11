@@ -37,7 +37,7 @@ export function Settings({ d, rename, setActive }: { d: Base & { can: boolean };
       ) : (
         <Card
           title="Deactivate this till"
-          lede="For a tablet that is no longer used as a till. It leaves the tills of Point of sale, its key stops working, and it cannot be set up as this till again. A tablet that is still signed in carries on selling and syncing under that login until it is signed out, and nothing it has sold is lost: to stop a tablet that was lost, also switch off the login signed in on it, under Staff. It can be reactivated here."
+          lede="For a tablet that is no longer used as a till. It leaves the list of tills, its key stops working, and it cannot be set up as this till again. A tablet that is still signed in carries on selling and syncing under that login until it is signed out, and nothing it has sold is lost: to stop a tablet that was lost, also switch off the login signed in on it, under Staff. It can be reactivated here."
         >
           <form action={setActive}>
             <input type="hidden" name="till" value={t.id} />
