@@ -1,0 +1,4 @@
+{
+  "type": "settings.save",
+  "payload": { "receipt": { "header": "Open every day, 9 to 9", "footer": "Thank you. See you again soon." }, "servicePct": 10 }
+}

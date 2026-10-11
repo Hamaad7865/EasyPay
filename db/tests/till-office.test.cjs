@@ -302,6 +302,86 @@ const swap = (v, map) => (Array.isArray(v) ? v.map((x) => swap(x, map))
     check('D8 a removed one is not brought back, and one that never was is refused', r.said === 'rejected:bad-discount' && r7.said === 'rejected:bad-discount', r.said + ' ' + r7.said);
     const pd = ((await pull()).changes || {}).discounts || [];
     check('D9 a pull carries the discount, removed', pd.some((x) => x.id === discA && x.deleted_at), String(pd.length));
+
+    // ---- A: add-on groups, and the items that carry them (0096). A restaurant's. ----
+    const grpA = id(), chA = id(), chB = id(), dishA = id();
+    const aids = { 'group-1': grpA, 'choice-1': chA, 'choice-2': chB, 'item-1': dishA, 'category-1': restoCat };
+    const ax = (name, over = {}) => { const fxt = fixture(name); return [fxt.type, { ...swap(fxt.payload, aids), ...over }]; };
+    const rone = (type, payload, who) => one(type, payload, who || restoOwner, restoOwner, resto);
+    const grp = (x) => q1(`select name, min_select, max_select, deleted_at from modifier_groups where id = $1`, [x]);
+    const choices = async (x) => (await all(`select id, name, price from modifiers where group_id = $1 and deleted_at is null order by name`, [x])).map((m) => m.name + ':' + Number(m.price));
+    r = await rone(...ax('addon-save'));
+    row = await grp(grpA);
+    check('A1 a group added with its choices', r.said === 'applied' && r.data.created === true && row && row.name === 'Extras' && row.min_select === 0 && row.max_select === 2
+      && JSON.stringify(await choices(grpA)) === JSON.stringify(['Cheese:2500', 'Chilli:0']), r.said + ' ' + JSON.stringify(await choices(grpA)));
+    r = await rone(...ax('addon-save'));
+    check('A2 the same again makes nothing twice', r.said === 'applied' && r.data.created === false && (await q1(`select count(*)::int as n from modifiers where group_id = $1`, [grpA])).n === 2, r.said);
+    const chC = id();
+    r = await rone(...ax('addon-save', { name: 'Toppings', min: 1, max: 3, choices: [{ id: chA, name: 'Cheddar', price: 3000 }, { id: chC, name: 'Egg', price: 1500 }] }));
+    row = await grp(grpA);
+    check('A3 changed: a choice renamed, one dropped, one added', r.said === 'applied' && row.name === 'Toppings' && row.min_select === 1 && row.max_select === 3
+      && JSON.stringify(await choices(grpA)) === JSON.stringify(['Cheddar:3000', 'Egg:1500']), JSON.stringify(await choices(grpA)));
+    r = await rone(...ax('addon-save', { min: 3, max: 2 }));
+    const a4 = await rone(...ax('addon-save', { max: 21 }));
+    check('A4 the most cannot be less than the fewest, nor more than 20', r.said === 'rejected:bad-limits' && a4.said === 'rejected:bad-limits', r.said + ' ' + a4.said);
+    r = await rone(...ax('addon-save', { name: ' ' }));
+    const a5 = await rone(...ax('addon-save', { choices: [{ id: id(), name: '', price: 0 }] }));
+    check('A5 a group and each choice need a name', r.said === 'rejected:name-required' && a5.said === 'rejected:name-required', r.said + ' ' + a5.said);
+    r = await rone(...ax('addon-save', { id: id(), name: 'toppings', choices: [] }));
+    check('A6 a name another group has is refused', r.said === 'rejected:name-taken', r.said);
+    // a cashier of the restaurant
+    const restoCashier = await emp(resto, 'Waiter', await role(resto, 'Waiter', ['sale.create']));
+    r = await rone(...ax('addon-save', { id: id(), name: 'Sauces', choices: [] }), restoCashier);
+    check('A7 a waiter may not', r.said === 'rejected:forbidden', r.said);
+
+    // an item that carries the group
+    r = await rone(...ax('item-save-groups'));
+    const linked = async (i) => (await all(`select group_id from item_modifier_groups where item_id = $1 and deleted_at is null`, [i])).map((x) => x.group_id);
+    check('A8 a new item made with its add-on group', r.said === 'applied' && JSON.stringify(await linked(dishA)) === JSON.stringify([grpA]), r.said + ' ' + JSON.stringify(await linked(dishA)));
+    const grpB = id();
+    await rone('addon.save', { id: grpB, name: 'Cooking', min: 1, max: 1, choices: [{ id: id(), name: 'Rare', price: 0 }, { id: id(), name: 'Well done', price: 0 }] });
+    const [it, itemPayload] = ax('item-save-groups');
+    r = await rone(it, { ...itemPayload, groups: [grpB] });
+    check('A9 its groups changed: the other taken off', r.said === 'applied' && JSON.stringify(await linked(dishA)) === JSON.stringify([grpB]), JSON.stringify(await linked(dishA)));
+    r = await rone(it, { ...itemPayload, groups: [grpA, grpB] });
+    check('A10 both, the first put back on the link it had', r.said === 'applied' && (await linked(dishA)).length === 2
+      && (await q1(`select count(*)::int as n from item_modifier_groups where item_id = $1`, [dishA])).n === 2, JSON.stringify(await linked(dishA)));
+    const noGroups = { ...itemPayload }; delete noGroups.groups;
+    r = await rone(it, noGroups);
+    check('A11 a save that names no groups leaves them', r.said === 'applied' && (await linked(dishA)).length === 2, JSON.stringify(await linked(dishA)));
+    r = await rone(it, { ...itemPayload, groups: [id()] });
+    check('A12 a group that is not there is refused, and the item keeps its own', r.said === 'rejected:bad-group' && (await linked(dishA)).length === 2, r.said);
+    r = await rone(...ax('addon-remove'));
+    row = await grp(grpA);
+    const a13 = await rone(...ax('addon-remove'));
+    check('A13 removed: off its items, its choices gone, its name freed; removed twice is done', r.said === 'applied' && row.deleted_at !== null && row.name.startsWith('Toppings (removed ')
+      && (await choices(grpA)).length === 0 && JSON.stringify(await linked(dishA)) === JSON.stringify([grpB]) && a13.said === 'applied', r.said + ' ' + row.name);
+    r = await rone(...ax('addon-save'));
+    const a14 = await rone(...ax('addon-remove', { group_id: id() }));
+    check('A14 a removed group is not brought back, and one that never was is refused', r.said === 'rejected:bad-group' && a14.said === 'rejected:bad-group', r.said + ' ' + a14.said);
+    r = await rone(it, { ...itemPayload, groups: [] });
+    check('A15 emptied: the item carries none', r.said === 'applied' && (await linked(dishA)).length === 0, JSON.stringify(await linked(dishA)));
+    const pa = ((await pull(restoStore, resto)).changes || {});
+    check('A16 a pull carries the groups, the choices and the links', (pa.modifier_groups || []).some((x) => x.id === grpB) && (pa.modifiers || []).some((x) => x.group_id === grpB)
+      && (pa.item_modifier_groups || []).some((x) => x.item_id === dishA), String((pa.modifier_groups || []).length));
+
+    // ---- Z: the receipt's notes and the service charge (0096) ----
+    const settings = async (t) => (await q1(`select data from pos_settings where tenant_id = $1`, [t])).data;
+    await c.query(`update pos_settings set data = data || '{"receipt":{"header":"Old","footer":"Old foot","logo":"data:image/png;base64,AAAA","showLogo":false},"quickPay":"cash"}'::jsonb where tenant_id = $1`, [resto]);
+    r = await rone(...ax('settings-save'));
+    let st = await settings(resto);
+    check('Z1 the two notes and the service charge saved; the logo and the rest left', r.said === 'applied' && st.receipt.header === 'Open every day, 9 to 9' && st.receipt.footer === 'Thank you. See you again soon.'
+      && st.receipt.logo === 'data:image/png;base64,AAAA' && st.receipt.showLogo === false && st.servicePct === 10 && st.quickPay === 'cash', JSON.stringify(st.receipt) + ' ' + st.servicePct);
+    r = await rone('settings.save', { servicePct: 31 });
+    const z2 = await rone('settings.save', { servicePct: -1 });
+    check('Z2 a service charge over 30 % or below nothing is refused', r.said === 'rejected:bad-value' && z2.said === 'rejected:bad-value' && (await settings(resto)).servicePct === 10, r.said + ' ' + z2.said);
+    r = await rone('settings.save', { receipt: { footer: 'x'.repeat(400) } });
+    st = await settings(resto);
+    check('Z3 one note alone, cut to 300; the other stays', r.said === 'applied' && st.receipt.footer.length === 300 && st.receipt.header === 'Open every day, 9 to 9', String(st.receipt.footer.length));
+    r = await rone('settings.save', { servicePct: 0 }, restoCashier);
+    check('Z4 a waiter may not', r.said === 'rejected:forbidden' && (await settings(resto)).servicePct === 10, r.said);
+    r = await rone('settings.save', { something: 'else' });
+    check('Z5 a key that is not one of these changes nothing', r.said === 'applied' && r.data.saved === 0, r.said + ' ' + JSON.stringify(r.data));
     void restoStore; void theirOwner;
   } finally {
     try { await c.query('ROLLBACK'); } catch {}
