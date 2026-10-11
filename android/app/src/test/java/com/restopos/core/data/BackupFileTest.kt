@@ -84,5 +84,17 @@ class BackupFileTest {
         assertEquals("EasyPay backup Chez Aisha 2026-10-11.easypay", BackupFile.name("Chez Aisha", "2026-10-11"))
         assertEquals("EasyPay backup A B C 2026-10-11.easypay", BackupFile.name("A/B:C", "2026-10-11"))
         assertEquals("EasyPay backup till 2026-10-11.easypay", BackupFile.name("  ", "2026-10-11"))
+        assertTrue(BackupFile.name("Chez Aisha", "2026-10-11").endsWith(BackupFile.ENDING))
+    }
+
+    @Test fun `a backup the till placed itself says where it is and that it must be copied off the tablet`() {
+        // the owner chose the place: where it is, they know
+        assertEquals("Backup saved (1 KB). Keep the file somewhere that is not this tablet.", BackupFile.saved(1, null))
+        assertEquals("Backup saved (813 KB). Keep the file somewhere that is not this tablet.", BackupFile.saved(832_000, null))
+        // a tablet with no screen to choose a place on: the till chose, so it names the place
+        val said = BackupFile.saved(832_000, BackupFile.IN_DOWNLOADS)
+        assertTrue(said.startsWith("Backup saved in this tablet's Download folder, under EasyPay (813 KB)."))
+        assertTrue(said.contains("Copy that file to a USB stick or a Drive"))
+        assertTrue(BackupFile.saved(10, BackupFile.inOwnFolder("Android/data/com.restopos.app/files/Backups")).contains("in Android/data/com.restopos.app/files/Backups"))
     }
 }

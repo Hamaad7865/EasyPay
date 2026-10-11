@@ -1,9 +1,13 @@
 package com.restopos.core.data
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.room.withTransaction
 import com.restopos.app.BuildConfig
 import com.restopos.core.database.TillDatabase
@@ -49,12 +53,63 @@ class Backup @Inject constructor(
             )
             // nothing is written to the database while its files are copied: the copy is of one moment
             db.withTransaction {
-                val out = context.contentResolver.openOutputStream(to, "w") ?: error("That place cannot be written to.")
+                // over whatever a file of that name held: since Android 10 a plain "w" leaves the end of a longer
+                // file in place. A place that does not know "wt" is asked the plain way.
+                val out = runCatching { context.contentResolver.openOutputStream(to, "wt") }.getOrNull()
+                    ?: context.contentResolver.openOutputStream(to, "w") ?: error("That place cannot be written to.")
                 out.use { BackupFile.write(note, mapOf(DB to file, WAL to File(file.path + "-wal"), PREFS to prefs(context)), it) }
             }
             session.setLastBackup(note.madeAt)
             context.contentResolver.openFileDescriptor(to, "r")?.use { it.statSize } ?: 0L
         }.recoverCatching { throw IllegalStateException(it.message?.takeIf { m -> m.length < 120 } ?: "The backup could not be saved there.") }
+    }
+
+    // Saves a backup on a tablet that has no screen to choose a place on.
+    // Android's "save where?" is an app of its own, and some tablets do not
+    // have it, or have it switched off: asking for it there stopped the till
+    // (a Huawei, 0.9.2). The file goes to the tablet's Download folder, under
+    // EasyPay, where its Files app shows it (Android 10 on). Where that is
+    // refused, and on an older Android, which keeps that folder shut to an
+    // app nobody let in, it goes to the till's own folder on the tablet's
+    // storage. Returns how large the file is and where it was put, in words.
+    suspend fun saveOnTablet(name: String): Result<Pair<Long, String>> {
+        if (Build.VERSION.SDK_INT >= 29) {
+            val resolver = context.contentResolver
+            val made = withContext(Dispatchers.IO) {
+                runCatching {
+                    resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                        put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/EasyPay")
+                    })
+                }.getOrNull()
+            }
+            if (made != null) {
+                val saved = save(made)
+                if (saved.isSuccess) return saved.map { it to BackupFile.IN_DOWNLOADS }.also { session.setLastBackupPlace(BackupFile.IN_DOWNLOADS) }
+                // what a try that did not work left there
+                withContext(Dispatchers.IO) { runCatching { resolver.delete(made, null, null) } }
+            }
+        }
+        val folder = withContext(Dispatchers.IO) { ownFolder(context) }
+            ?: return Result.failure(IllegalStateException("This tablet has nowhere of its own to keep a backup. Plug in a USB stick and try again."))
+        val file = File(folder, name)
+        val place = BackupFile.inOwnFolder(ownPath())
+        return save(Uri.fromFile(file)).map { it to place }
+            .onSuccess { session.setLastBackupPlace(place) }
+            .onFailure { withContext(Dispatchers.IO) { file.delete() } }
+    }
+
+    // The till's own folder as someone looking through the tablet's storage finds it.
+    fun ownPath(): String = "Android/data/" + context.packageName + "/files/" + OWN
+
+    // The newest backup in the till's own folder, for a tablet with no screen
+    // to pick a file on: a backup copied there from a computer, over the
+    // tablet's cable, or one this tablet saved there itself.
+    suspend fun newestOwn(): Uri? = withContext(Dispatchers.IO) {
+        runCatching {
+            ownFolder(context)?.listFiles { f -> f.isFile && f.name.endsWith(BackupFile.ENDING, ignoreCase = true) }?.maxByOrNull { it.lastModified() }?.let { Uri.fromFile(it) }
+        }.getOrNull()
     }
 
     // Reads a backup into the waiting place and says what it is of. Nothing is changed yet.
@@ -92,6 +147,12 @@ class Backup @Inject constructor(
         private const val WAL = "till.db-wal"
         private const val PREFS = "device.preferences_pb"
         private const val READY = "ready"
+        private const val OWN = "Backups"
+        // The till's own folder on the tablet's storage. No screen and no
+        // permission stands between the till and it, a computer on the
+        // tablet's cable sees it, and it goes when EasyPay is removed.
+        private fun ownFolder(context: Context): File? =
+            runCatching { context.getExternalFilesDir(null)?.let { File(it, OWN) }?.also { it.mkdirs() }?.takeIf { it.isDirectory } }.getOrNull()
         private fun waiting(context: Context) = File(context.filesDir, "restore")
         private fun prefs(context: Context) = File(context.filesDir, "datastore/$PREFS")
 

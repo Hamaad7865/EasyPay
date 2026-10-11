@@ -43,7 +43,24 @@ object BackupFile {
 
     // The backup's name: "EasyPay backup Chez Aisha 2026-10-11.easypay"
     fun name(business: String, day: String): String =
-        "EasyPay backup " + business.replace(Regex("""[\\/:*?"<>|\p{Cntrl}]"""), " ").trim().ifEmpty { "till" }.take(40) + " " + day + ".easypay"
+        "EasyPay backup " + business.replace(Regex("""[\\/:*?"<>|\p{Cntrl}]"""), " ").trim().ifEmpty { "till" }.take(40) + " " + day + ENDING
+
+    // what a backup's name ends in
+    const val ENDING = ".easypay"
+
+    // Where a backup went on a tablet with no screen to choose a place on
+    // (Backup.saveOnTablet), as the till says it and as Support shows it.
+    const val IN_DOWNLOADS = "this tablet's Download folder, under EasyPay"
+    fun inOwnFolder(path: String): String = "this tablet's storage, in $path"
+
+    // What the till says once a backup is saved. A place the owner chose is
+    // theirs to know; one the till chose is named, and so is what is wrong
+    // with it: a backup that stays on the tablet is lost with the tablet.
+    fun saved(bytes: Long, place: String?): String {
+        val size = "${(bytes + 1023) / 1024} KB"
+        return if (place == null) "Backup saved ($size). Keep the file somewhere that is not this tablet."
+        else "Backup saved in $place ($size). Copy that file to a USB stick or a Drive: on the tablet alone, it is lost with the tablet."
+    }
 
     // files: what each is called inside the backup, and where it is now. One that is not there is left out.
     fun write(note: Note, files: Map<String, File>, out: OutputStream) {

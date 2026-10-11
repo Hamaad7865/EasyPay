@@ -68,6 +68,15 @@ class AuthViewModel @Inject constructor(
         backupSaid.value = "Reading the backup…"
         backups.read(from).fold({ backup.value = it; backupSaid.value = null }, { backupSaid.value = it.message ?: "That file could not be read." })
     }
+    // A tablet with no screen to pick a file on: the newest backup in the
+    // till's own folder is the one read, and with none there the tablet says
+    // where to put it.
+    fun readOwnBackup() = viewModelScope.launch {
+        val found = backups.newestOwn()
+        if (found != null) readBackup(found)
+        else backupSaid.value = "This tablet has no screen to pick a file on. Copy the backup file into " + backups.ownPath() +
+            " on this tablet, from a computer on its cable, then tap Restore from a backup again."
+    }
     fun leaveBackup() { backup.value = null; backupSaid.value = null; restoring.value = false; backups.forget() }
     // A backup is a till, and a tablet is that till only with the code
     // EasyPay made for its replacement: without one, a backup file would set

@@ -401,12 +401,22 @@ class SettingsViewModel @Inject constructor(
 
     // ---- a backup of this tablet, saved to a file the owner keeps ----
     val lastBackup = session.lastBackup.held(null)
-    suspend fun backupName(): String = backups.name(session.businessName())
+    val lastBackupPlace = session.lastBackupPlace.held(null)
+    suspend fun backupName(): String = backups.name(runCatching { session.businessName() }.getOrNull())
     fun backup(to: android.net.Uri) = viewModelScope.launch {
         com.restopos.core.ui.Toaster.say("Saving the backup…")
         backups.save(to).fold(
-            { bytes -> com.restopos.core.ui.Toaster.say("Backup saved (${(bytes + 1023) / 1024} KB). Keep the file somewhere that is not this tablet.") },
+            { bytes -> com.restopos.core.ui.Toaster.say(com.restopos.core.data.BackupFile.saved(bytes, null)) },
             { com.restopos.core.ui.Toaster.say(it.message ?: "The backup could not be saved there.") },
+        )
+    }
+    // On a tablet with no screen to choose a place on: the till keeps the
+    // file on the tablet itself and says where (Backup.saveOnTablet).
+    fun backupOnTablet(name: String) = viewModelScope.launch {
+        com.restopos.core.ui.Toaster.say("Saving the backup…")
+        backups.saveOnTablet(name).fold(
+            { (bytes, place) -> com.restopos.core.ui.Toaster.say(com.restopos.core.data.BackupFile.saved(bytes, place)) },
+            { com.restopos.core.ui.Toaster.say(it.message ?: "The backup could not be saved.") },
         )
     }
 
@@ -1318,6 +1328,7 @@ private fun SupportPage(vm: SettingsViewModel, shop: Boolean, network: String, o
     val alone by vm.alone.collectAsState()
     val kept by vm.kept.collectAsState()
     val lastBackup by vm.lastBackup.collectAsState()
+    val lastBackupPlace by vm.lastBackupPlace.collectAsState()
     val signInWanted by vm.signInWanted.collectAsState()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     // the file is saved where the owner picks: a USB stick, the tablet's Downloads, a Drive
@@ -1332,6 +1343,8 @@ private fun SupportPage(vm: SettingsViewModel, shop: Boolean, network: String, o
         Figure("Tablet", "${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}")
         Figure("Network", network)
         Figure("Last backup saved", lastBackup?.let { stamp.format(Date(it)) } ?: "Never")
+        // only where the till chose the place itself: the owner has to find the file to copy it off the tablet
+        if (lastBackup != null) lastBackupPlace?.let { Note("That backup is in $it.") }
         if (alone) {
             Figure("Plan", "Works on its own (offline)")
             Figure("Changes kept for the cloud", kept.toString())
@@ -1345,7 +1358,14 @@ private fun SupportPage(vm: SettingsViewModel, shop: Boolean, network: String, o
         if (alone && signInWanted) Action("Sign in", primary = true, onClick = onSignIn)
         if (alone) Action("Connect to the cloud") { vm.connect() }
         else if (needsSignIn) Action("Sign in", primary = true, onClick = onSignIn) else Action("Sync now") { vm.sync() }
-        Action("Save a backup", primary = alone) { scope.launch { saveTo.launch(vm.backupName()) } }
+        Action("Save a backup", primary = alone) {
+            scope.launch {
+                val name = vm.backupName()
+                // Android's own "save where?" screen. Some tablets have none, and asking for it there
+                // stopped the till: on those the backup is kept on the tablet itself, and the till says where.
+                if (runCatching { saveTo.launch(name) }.isFailure) vm.backupOnTablet(name)
+            }
+        }
         Action(if (rejected > 0) "Refused changes ($rejected)" else "Refused changes", onClick = onRejected)
     }
     Note(

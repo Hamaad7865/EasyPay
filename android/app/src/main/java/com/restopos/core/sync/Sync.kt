@@ -260,6 +260,7 @@ private val LABEL_TEMPLATES = stringPreferencesKey("label_templates")
 private val LIGHT = booleanPreferencesKey("light_mode_v2")
 private val LAST_PULL = longPreferencesKey("last_pull")
 private val LAST_BACKUP = longPreferencesKey("last_backup")
+private val LAST_BACKUP_PLACE = stringPreferencesKey("last_backup_place")
 private val LAST_USE = longPreferencesKey("last_use")
 private val LANG = stringPreferencesKey("lang")
 private val MODE = stringPreferencesKey("mode")
@@ -405,7 +406,12 @@ class SessionStore(private val context: Context) {
     suspend fun setLastPull(at: Long) { store.edit { it[LAST_PULL] = at } }
     // when this tablet's backup was last saved to a file (core/data/Backup)
     val lastBackup: Flow<Long?> = store.data.map { it[LAST_BACKUP] }
-    suspend fun setLastBackup(at: Long) { store.edit { it[LAST_BACKUP] = at } }
+    suspend fun setLastBackup(at: Long) { store.edit { it[LAST_BACKUP] = at; it.remove(LAST_BACKUP_PLACE) } }
+    // Where the till put it, when it was the till that chose: a tablet with
+    // no screen to choose a place on (Backup.saveOnTablet). Null when the
+    // owner chose the place.
+    val lastBackupPlace: Flow<String?> = store.data.map { it[LAST_BACKUP_PLACE] }
+    suspend fun setLastBackupPlace(place: String) { store.edit { it[LAST_BACKUP_PLACE] = place } }
     // When someone was last at this till (a touch, a key, a scan), written
     // once a minute at most. The sync every 15 minutes reads it: left alone,
     // a till stops asking the server for news (Quiet).

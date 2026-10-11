@@ -213,13 +213,19 @@ fun AuthScreen(
             val waiting by vm.backup.collectAsStateWithLifecycle()
             val said by vm.backupSaid.collectAsStateWithLifecycle()
             val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.readBackup(uri) }
+            // Android's screen to pick a file is an app of its own, and some tablets have none: asking for it
+            // there stops the till (as Save a backup did on one). Such a tablet is asked the older way, which
+            // its Files app answers; with neither, the backup is looked for in the till's own folder.
+            val pickOld = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri -> if (uri != null) vm.readBackup(uri) }
             Column(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(V.Well).padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 val found = waiting
                 if (found == null) {
-                    QuietLink("Restore from a backup", enabled = !busy) { pick.launch(arrayOf("*/*")) }
+                    QuietLink("Restore from a backup", enabled = !busy) {
+                        if (runCatching { pick.launch(arrayOf("*/*")) }.isFailure && runCatching { pickOld.launch("*/*") }.isFailure) vm.readOwnBackup()
+                    }
                     T(said ?: "For a tablet that replaces another: pick the backup file its owner saved, then type the code EasyPay gave for the replacement.", 12.sp, 500, if (said != null) V.AmberText else V.Text3, lines = 3, align = TextAlign.Center, height = 17.sp)
                 } else {
                     // A backup is a till, and this tablet is that till only with the code made for its
