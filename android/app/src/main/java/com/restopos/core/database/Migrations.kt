@@ -294,4 +294,13 @@ object Migrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_floor_elements_store_id` ON `floor_elements` (`store_id`)")
         }
     }
+
+    // 20: a product's picture for its card on the till (item_pictures). The
+    // tablet's own: nothing of the server's is touched, and no product has a
+    // picture until one is chosen for it on its sheet.
+    val V19_V20 = object : Migration(19, 20) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `item_pictures` (`item_id` TEXT NOT NULL, `jpeg` BLOB NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`item_id`))")
+        }
+    }
 }

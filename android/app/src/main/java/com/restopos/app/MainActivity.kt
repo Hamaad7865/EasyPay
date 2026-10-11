@@ -45,6 +45,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var staff: com.restopos.core.data.StaffSession
     @Inject lateinit var staffRepo: com.restopos.core.data.StaffRepository
     @Inject lateinit var db: com.restopos.core.database.TillDatabase
+    @Inject lateinit var pictures: com.restopos.core.data.Pictures
 
     // The screens are drawn for a 1280 x 720dp landscape tablet and scaled to
     // the tablet they run on: a 15-inch till shows the same layout larger,
@@ -193,8 +194,13 @@ class MainActivity : ComponentActivity() {
                 WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = light
                 WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = light
             }
+            // the pictures on the product cards, and which products have one: given once, to every screen and sheet
+            val pictured by pictures.stamps.collectAsState(initial = emptyMap())
             PosTheme {
                 // clear of the status bar and the gesture bar
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.restopos.core.ui.LocalPictures provides pictures, com.restopos.core.ui.LocalPictureStamps provides pictured,
+                ) {
                 Box(Modifier.fillMaxSize().background(Pos.Bg).safeDrawingPadding()) {
                 Surface(color = Pos.Bg) {
                     AppNav(
@@ -255,6 +261,7 @@ class MainActivity : ComponentActivity() {
                     }
                     // someone else's PIN, over whatever screen asked for it
                     ApprovalHost()
+                }
                 }
                 }
             }

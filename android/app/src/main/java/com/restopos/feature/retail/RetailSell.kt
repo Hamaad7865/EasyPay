@@ -67,6 +67,7 @@ import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.VI
 import com.restopos.core.ui.VIcon
 import com.restopos.core.ui.inSight
+import com.restopos.core.ui.picture
 import com.restopos.core.ui.press
 import com.restopos.feature.customers.CustomerPicker
 import com.restopos.feature.more.MoreSheets
@@ -370,18 +371,23 @@ internal fun Tile(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants: In
         !counted -> "Not stocked" to V.Text2
         else -> LinePrice.left(qty, weighed) to when (LinePrice.stock(qty)) { LinePrice.Stock.Plenty -> V.Text2; LinePrice.Stock.Few -> V.AmberText; LinePrice.Stock.None -> V.RedText }
     }
+    // Its picture, when it has one, fills the card behind the words, which are then white on the shade over it.
+    val pic = com.restopos.core.ui.pictureOf(i.id)
+    val over = pic != null
+    val ink = if (over) com.restopos.core.ui.OverPicture.Text else if (i.is_available) V.Text else V.Text3
     Column(
-        Modifier.height(118.dp).press(0.97f, onClick).clip(RoundedCornerShape(18.dp)).background(V.Panel).padding(14.dp),
+        Modifier.height(118.dp).press(0.97f, onClick).clip(RoundedCornerShape(18.dp)).background(V.Panel).picture(pic).padding(14.dp),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            T(cat?.name ?: "", 12.sp, 600, V.Text2)
-            T(i.name, 15.sp, 700, if (i.is_available) V.Text else V.Text3, lines = 2, height = 19.sp)
+            T(cat?.name ?: "", 12.sp, 600, if (over) com.restopos.core.ui.OverPicture.Soft else V.Text2)
+            T(i.name, 15.sp, 700, ink, lines = 2, height = 19.sp)
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            T(if (i.open_price) "Enter price" else Money.format(i.price) + if (weighed) " /kg" else "", 16.sp, 800, if (i.is_available) V.Text else V.Text3)
+            T(if (i.open_price) "Enter price" else Money.format(i.price) + if (weighed) " /kg" else "", 16.sp, 800, ink)
             Gap()
-            T(note, 12.sp, 700, tone, align = TextAlign.End, lines = 2, height = 15.sp)
+            val shade = if (!over) tone else when (tone) { V.AmberText -> com.restopos.core.ui.OverPicture.Amber; V.RedText -> com.restopos.core.ui.OverPicture.Red; else -> com.restopos.core.ui.OverPicture.Soft }
+            T(note, 12.sp, 700, shade, align = TextAlign.End, lines = 2, height = 15.sp)
         }
     }
 }

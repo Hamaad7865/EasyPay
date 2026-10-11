@@ -63,8 +63,9 @@ import androidx.room.RoomDatabase
         GuestOrderEntity::class,
         TillLogEntity::class,
         FloorElementEntity::class,
+        ItemPictureEntity::class,
     ],
-    version = 19,
+    version = 20,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
@@ -83,4 +84,5 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun guest(): GuestDao
     abstract fun log(): TillLogDao
     abstract fun alone(): AloneDao
+    abstract fun pictures(): PictureDao
 }

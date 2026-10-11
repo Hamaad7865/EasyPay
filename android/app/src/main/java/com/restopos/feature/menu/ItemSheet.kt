@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -147,6 +148,7 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
     val was = edit.item
     val thing = if (shop) "product" else "item"
     val busy by editor.busy.collectAsState()
+    val pictures = com.restopos.core.ui.LocalPictures.current as? com.restopos.core.data.Pictures
     var name by remember(edit) { mutableStateOf(was?.name ?: "") }
     var price by remember(edit) { mutableStateOf(if (was == null || was.open_price) "" else rupees(was.price)) }
     var open by remember(edit) { mutableStateOf(was?.open_price ?: false) }
@@ -190,7 +192,8 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             SheetHead("Remove ${was.name}?", "It goes from every till. Receipts that sold it keep its name, and an order that still holds it is taken as it is.") { editor.close() }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 VBtn("Keep it", Modifier.weight(1f), height = 60.dp, enabled = !busy) { removing = false }
-                VBtn("Remove it", Modifier.weight(1f), V.Red, Color.White, 60.dp, weight = 800, enabled = !busy) { editor.remove(done = done) }
+                // its picture goes with it, once it is removed
+                VBtn("Remove it", Modifier.weight(1f), V.Red, Color.White, 60.dp, weight = 800, enabled = !busy) { editor.remove(done = { pictures?.remove(was.id); done() }) }
             }
             return@Sheet
         }
@@ -201,6 +204,8 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
                 listOf(
                     SegOption("Basics", page == 0) { page = 0 },
                     SegOption(if (!shop) "Tax and add-ons" else if (costShown) "Tax, cost and supplier" else "Tax and supplier", page == 1) { page = 1 },
+                    // the picture on its card: the tablet's own, kept at once and apart from Save
+                    SegOption("Picture", page == 2) { page = 2 },
                 ),
                 well = V.Key, height = 36.dp, radius = 12.dp, size = 14.sp,
             )
@@ -263,6 +268,8 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             Picks {
                 (listOf<CategoryEntity?>(null) + cats).forEach { c -> Pick(c?.name ?: "No category", c?.id == cat) { cat = c?.id } }
             }
+        } else if (page == 2) {
+            PicturePage(was?.id ?: edit.newId, thing)
         } else if (more == null) {
             T("One moment…", 14.sp, 500, V.Text2)
         } else {
@@ -361,4 +368,40 @@ private fun Pick(text: String, on: Boolean, onClick: () -> Unit) {
             .press(onClick = onClick).padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) { T(text, 14.sp, 700, if (on) V.OnText else V.Text) }
+}
+
+// The third page: the picture on this product's card. It is chosen from the
+// tablet's gallery or taken with its camera, and kept at once: it is the
+// tablet's own, so it does not wait for Save and nothing sends it anywhere.
+// A tablet with no app to choose a picture with, or none to take one, says
+// so: asking for one that is not there used to stop the till (Save a backup).
+@Composable
+private fun PicturePage(item: String, thing: String) {
+    val pictures = com.restopos.core.ui.LocalPictures.current as? com.restopos.core.data.Pictures
+    val pic = com.restopos.core.ui.pictureOf(item)
+    val choose = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) pictures?.choose(item, uri)
+    }
+    val shoot = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicturePreview()) { photo ->
+        if (photo != null) pictures?.taken(item, photo)
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.foundation.layout.Box(
+            Modifier.width(236.dp).height(158.dp).clip(RoundedCornerShape(18.dp)).background(V.Well),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (pic == null) T("No picture yet", 14.sp, 600, V.Text3)
+            else androidx.compose.foundation.Image(pic, null, Modifier.matchParentSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            VBtn("Choose a picture", Modifier.fillMaxWidth(), height = 50.dp) {
+                if (runCatching { choose.launch("image/*") }.isFailure) Toaster.say("This tablet has no app to choose a picture with.")
+            }
+            VBtn("Take a photo", Modifier.fillMaxWidth(), height = 50.dp) {
+                if (runCatching { shoot.launch(null) }.isFailure) Toaster.say("This tablet has no camera app to take one with.")
+            }
+            if (pic != null) VBtn("Remove the picture", Modifier.fillMaxWidth(), height = 50.dp, fg = V.Red) { pictures?.remove(item) }
+        }
+    }
+    T("It shows on this $thing's card. It is kept on this tablet and in its backup; another till of the business does not get it.", 13.sp, 500, V.Text3, lines = 3)
 }

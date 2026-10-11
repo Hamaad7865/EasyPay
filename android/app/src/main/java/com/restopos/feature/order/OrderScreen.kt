@@ -87,6 +87,7 @@ import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.VI
 import com.restopos.core.ui.VIcon
 import com.restopos.core.ui.inSight
+import com.restopos.core.ui.picture
 import com.restopos.core.ui.press
 import com.restopos.core.ui.rememberPress
 import com.restopos.feature.customers.CustomerPicker
@@ -410,24 +411,28 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
                         }
                     }
                 }
+                // Its picture, when it has one, fills the card behind the words, which are then white on the
+                // shade over it; the category's colour stays as the rail down its side.
+                val pic = com.restopos.core.ui.pictureOf(i.id)
+                val over = pic != null
                 Box(
                     Modifier.height(104.dp).graphicsLayer { scaleX = press.value; scaleY = press.value }
-                        .clip(RoundedCornerShape(14.dp)).background(V.Panel)
+                        .clip(RoundedCornerShape(14.dp)).background(V.Panel).picture(pic)
                         .drawBehind {
-                            if (!out) drawRect(Brush.horizontalGradient(0f to hue.copy(alpha = 0.20f), 0.8f to hue.copy(alpha = 0.03f)))
+                            if (!out && !over) drawRect(Brush.horizontalGradient(0f to hue.copy(alpha = 0.20f), 0.8f to hue.copy(alpha = 0.03f)))
                             drawRect(rail, size = Size(4.dp.toPx(), size.height))
                         }
                         .border(1.dp, V.Stroke, RoundedCornerShape(14.dp))
                         .combinedClickable(interactionSource = source, indication = null, onClick = { vm.tap(i) }, onLongClick = { vm.tap(i, ask = true) })
                         .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 11.dp),
                 ) {
-                    T(i.name, 15.sp, 700, if (out) V.Text3 else V.Text, Modifier.align(Alignment.TopStart).padding(end = if (n > 0) 30.dp else 0.dp), lines = 3, height = 19.sp)
+                    T(i.name, 15.sp, 700, if (over) com.restopos.core.ui.OverPicture.Text else if (out) V.Text3 else V.Text, Modifier.align(Alignment.TopStart).padding(end = if (n > 0) 30.dp else 0.dp), lines = 3, height = 19.sp)
                     Row(Modifier.align(Alignment.BottomStart).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        T(if (i.open_price) "Enter price" else Money.format(i.price), 14.sp, 700, if (out) V.Text3 else V.Text2)
+                        T(if (i.open_price) "Enter price" else Money.format(i.price), 14.sp, 700, if (over) com.restopos.core.ui.OverPicture.Text else if (out) V.Text3 else V.Text2)
                         Gap()
                         // what else there is to know about it, said quietly
                         val note = if (out) "Sold out" else listOfNotNull(tag, if (withOptions.contains(i.id)) "Options" else null).joinToString(" · ")
-                        if (note.isNotEmpty()) T(note, 12.sp, if (out) 700 else 600, if (out) V.RedText else V.Text3)
+                        if (note.isNotEmpty()) T(note, 12.sp, if (out) 700 else 600, if (over) (if (out) com.restopos.core.ui.OverPicture.Red else com.restopos.core.ui.OverPicture.Soft) else if (out) V.RedText else V.Text3)
                     }
                     // how many of it are on the order and not sent yet
                     if (n > 0) {
