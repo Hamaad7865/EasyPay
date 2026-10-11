@@ -7,6 +7,11 @@ import org.junit.Test
 
 // The box a tablet's code is typed into.
 class CodeFormTest {
+    @Test fun the_code_itself_is_its_capitals_and_digits() {
+        assertEquals("ABCDEFGHJKMN", CodeForm.plain(" abcd-efgh jkmn "))
+        assertEquals("", CodeForm.plain(" - "))
+    }
+
     @Test fun typed_any_way_it_reads_in_three_groups_of_four() {
         assertEquals("ABCD-EFGH-JKMN", CodeForm.typed("abcdefghjkmn"))
         assertEquals("ABCD-EFGH-JKMN", CodeForm.typed(" abcd efgh-jkmn "))
@@ -28,6 +33,8 @@ class CodeFormTest {
         assertFalse(CodeForm.ready(""))
         assertFalse(CodeForm.ready("ABCD-EFGH-JKM"))
         assertTrue(CodeForm.ready("ABCD-EFGH-JKMN"))
-        assertTrue(CodeForm.ready(CodeForm.typed("abcd efgh 2345")))
+        assertTrue(CodeForm.ready("abcd efgh 2345"))
+        // one too many is not a code, though its first twelve would read as one
+        assertFalse(CodeForm.ready("abcdefghjkmnp"))
     }
 }

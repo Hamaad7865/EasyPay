@@ -42,7 +42,9 @@ class SecretStore(context: Context) {
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.ENCRYPT_MODE, secretKey) // the Keystore picks a fresh IV
             val sealed = cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8))
-            prefs.edit().putString(name, Base64.encodeToString(sealed, Base64.NO_WRAP)).apply()
+            // written before this returns, not a moment later: a tablet filled from a backup starts
+            // again as soon as it has its key, and a key still on its way to the disk was lost with it
+            prefs.edit().putString(name, Base64.encodeToString(sealed, Base64.NO_WRAP)).commit()
         }
     }
 

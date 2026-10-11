@@ -108,15 +108,20 @@ fun AuthScreen(
                     vm.useCode(code)
                 }
             }
-            Heading("Set up with a code", "Type the code EasyPay gave for this tablet. It needs the internet for a moment, and not again after.")
+            if (reauth) Heading("Use this tablet's code", "Type the code this tablet was set up with, or the one EasyPay gave for it since. It needs the internet for a moment.")
+            else Heading("Set up with a code", "Type the code EasyPay gave for this tablet. It needs the internet for a moment, and not again after.")
             problem?.let { Problem(it) }
             SetupField(
-                "Code", code, { code = CodeForm.typed(it) }, "XXXX-XXXX-XXXX", enabled = !busy,
-                keyboard = KeyboardType.Ascii, ime = ImeAction.Done, onIme = useCode,
+                "Code", code, { code = it.take(24) }, "XXXX-XXXX-XXXX", enabled = !busy,
+                keyboard = KeyboardType.Ascii, ime = ImeAction.Done, onIme = useCode, caps = true,
             )
-            MainKey(if (CodeForm.ready(code)) "Set up this tablet" else "Enter the code", ready = CodeForm.ready(code), busy = busy, onClick = useCode)
+            // how it reads, to hold against the paper it was written on
+            if (code.isNotBlank()) T(CodeForm.typed(code), 22.sp, 800, if (CodeForm.ready(code)) V.Text else V.Text2, Modifier.fillMaxWidth(), align = TextAlign.Center)
+            MainKey(if (!CodeForm.ready(code)) "Enter the code" else if (reauth) "Use this code" else "Set up this tablet", ready = CodeForm.ready(code), busy = busy, onClick = useCode)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 QuietLink("Back to sign in", enabled = !busy) { byCode = false; vm.onAction(AuthAction.Clear) }
+                Gap()
+                onCancel?.let { QuietLink("Back to the till", enabled = !busy, onClick = it) }
             }
             T(
                 "One code sets up one tablet. A tablet that replaces another needs a code of its own from EasyPay.",
@@ -168,6 +173,17 @@ fun AuthScreen(
                 12.sp, 500, V.Text3, Modifier.fillMaxWidth(), lines = 2, align = TextAlign.Center, height = 17.sp,
             )
         }
+        // A tablet set up with a code has no login to sign in with again: its
+        // code, or the one EasyPay made for it since, does what a sign-in does.
+        if (!forgot && reauth) {
+            Column(
+                Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(12.dp)).background(V.Well).padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                QuietLink("Use a code from EasyPay", enabled = !busy) { byCode = true; vm.onAction(AuthAction.Clear) }
+                T("For a tablet that was set up with a code: that code, or the one EasyPay gave for it since. It needs no login.", 12.sp, 500, V.Text3, lines = 3, align = TextAlign.Center, height = 17.sp)
+            }
+        }
         // The other thing a tablet can be: a screen in the kitchen that shows
         // the orders the tills send it. It needs no login.
         if (!forgot && !reauth && onKitchen != null) {
@@ -214,9 +230,10 @@ fun AuthScreen(
                     T("This tablet becomes that till, with everything the backup holds. Sales made on the old tablet after the backup was saved are not in it.", 12.sp, 500, V.Text3, lines = 3, align = TextAlign.Center, height = 17.sp)
                     said?.let { T(it, 12.sp, 600, V.AmberText, lines = 4, align = TextAlign.Center, height = 17.sp) }
                     SetupField(
-                        "The code for the replacement tablet", replace, { replace = CodeForm.typed(it) }, "XXXX-XXXX-XXXX", enabled = !restoring,
-                        keyboard = KeyboardType.Ascii, ime = ImeAction.Done, onIme = { if (CodeForm.ready(replace)) vm.useBackup(replace) },
+                        "The code for the replacement tablet", replace, { replace = it.take(24) }, "XXXX-XXXX-XXXX", enabled = !restoring,
+                        keyboard = KeyboardType.Ascii, ime = ImeAction.Done, onIme = { if (CodeForm.ready(replace)) vm.useBackup(replace) }, caps = true,
                     )
+                    if (replace.isNotBlank()) T(CodeForm.typed(replace), 18.sp, 800, if (CodeForm.ready(replace)) V.Text else V.Text2, align = TextAlign.Center)
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         QuietLink("Not this one", enabled = !restoring) { vm.leaveBackup() }
                         if (restoring) CircularProgressIndicator(Modifier.size(18.dp), color = V.Cyan, strokeWidth = 2.dp)

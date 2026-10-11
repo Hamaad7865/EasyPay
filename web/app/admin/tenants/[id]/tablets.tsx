@@ -99,7 +99,7 @@ export function Tablets({
           <ConfirmSubmit
             className="btn-sm"
             title="Replace this till's tablet?"
-            text="From this moment the tablet that is this till can no longer sync. A tablet that works on its own is not stopped by this: it keeps selling. The tablet set up with the new code becomes this till, with its receipt numbers, and can be filled from the old tablet's backup."
+            text="From this moment the tablet that is this till can no longer sync. A tablet that works on its own is not stopped by this: it keeps selling. The tablet set up with the new code becomes this till. Filled from the old tablet's backup, it has everything that backup holds; with no backup, a tablet that worked on its own starts again from nothing."
             yes="Make the code"
           >
             Code for a replacement tablet

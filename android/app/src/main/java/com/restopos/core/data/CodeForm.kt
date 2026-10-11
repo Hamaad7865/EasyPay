@@ -5,12 +5,15 @@ package com.restopos.core.data
 object CodeForm {
     const val LENGTH = 12
 
-    // What the box shows as it is typed: capitals and digits only, a dash
-    // after every four, and no more than a code holds. Typed with or without
-    // the dashes, in small letters, pasted with spaces: it comes out the same.
-    fun typed(text: String): String =
-        text.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' }.take(LENGTH).chunked(4).joinToString("-")
+    // The code itself: capitals and digits, whatever was typed between them.
+    fun plain(text: String): String = text.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' }
 
-    // A whole code is in the box.
-    fun ready(text: String): Boolean = text.count { it != '-' } == LENGTH
+    // How it reads, to hold against the paper: a dash after every four.
+    // Typed with or without the dashes, in small letters, pasted with
+    // spaces: it reads the same. The box itself is never rewritten while it
+    // is typed in: a box that changes under the keyboard loses letters.
+    fun typed(text: String): String = plain(text).take(LENGTH).chunked(4).joinToString("-")
+
+    // A whole code is in the box, and nothing more.
+    fun ready(text: String): Boolean = plain(text).length == LENGTH
 }

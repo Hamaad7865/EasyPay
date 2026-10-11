@@ -416,7 +416,7 @@ app.post("/devices/redeem", async (c) => {
     if (why === "suspended") return c.json({ error: "This account is suspended. Contact EasyPay to reactivate.", why }, 403);
     if (why === "till-off") return c.json({ error: "The till this code is for was deactivated. Contact EasyPay.", why }, 403);
     if (why === "no-owner") return c.json({ error: "This business has no owner login, so its tablets cannot be set up yet. Contact EasyPay.", why }, 409);
-    if (why === "other-till") return c.json({ error: "This code is not for the till in this backup. Ask EasyPay for a code for the replacement of that till's tablet.", why }, 409);
+    if (why === "other-till") return c.json({ error: "This code is not this till's. Ask EasyPay for the code made for this till's tablet.", why }, 409);
     if (why === "bad-device") return c.json({ error: "This tablet could not be set up as a new till. Contact EasyPay.", why }, 409);
     return c.json({ error: "That is not a code EasyPay gave. Check it and type it again.", why: "bad-code" }, 404);
   }

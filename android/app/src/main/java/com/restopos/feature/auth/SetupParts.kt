@@ -107,6 +107,8 @@ internal fun SetupField(
     label: String, value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier, enabled: Boolean = true,
     keyboard: KeyboardType = KeyboardType.Text, ime: ImeAction = ImeAction.Done, onIme: () -> Unit = {}, masked: Boolean = false,
     lines: Int = 1, requester: FocusRequester? = null,
+    // caps: the keyboard comes up in capitals (a code). What is typed is never changed under the keyboard.
+    caps: Boolean = false,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -130,7 +132,10 @@ internal fun SetupField(
                     cursorBrush = SolidColor(V.Cyan),
                     visualTransformation = if (masked) PasswordVisualTransformation() else VisualTransformation.None,
                     // a box of several lines keeps the keyboard's own Enter for a new line
-                    keyboardOptions = KeyboardOptions(keyboardType = keyboard, imeAction = if (one) ime else ImeAction.Default),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = if (caps) androidx.compose.ui.text.input.KeyboardCapitalization.Characters else androidx.compose.ui.text.input.KeyboardCapitalization.None,
+                        keyboardType = keyboard, imeAction = if (one) ime else ImeAction.Default,
+                    ),
                     keyboardActions = KeyboardActions(onDone = { onIme() }),
                 )
             }

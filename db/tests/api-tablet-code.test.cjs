@@ -76,7 +76,7 @@ function check(name, cond, extra) {
     // a tablet filled from a backup says which till it has to be
     const spare = await make();
     const notIt = await call('POST', '/devices/redeem', null, { code: spare.code, deviceId: device, tablet: 'tablet-c', mustBe: device });
-    check('C3 a code for a new tablet does not fill a tablet from a backup, and says so', notIt.status === 409 && notIt.json.why === 'other-till' && /replacement/.test(notIt.json.error), notIt.status + ' ' + notIt.text.slice(0, 140));
+    check('C3 a code for a new tablet does not fill a tablet from a backup, and says so', notIt.status === 409 && notIt.json.why === 'other-till' && /not this till/.test(notIt.json.error), notIt.status + ' ' + notIt.text.slice(0, 140));
     const badMust = await call('POST', '/devices/redeem', null, { code: spare.code, deviceId: device, tablet: 'tablet-c', mustBe: 'nonsense' });
     check('C3 and a till that is not an id is 400', badMust.status === 400, String(badMust.status));
     const olds = await call('POST', '/devices/redeem', null, { code: first.code, deviceId: device, tablet: tabletA });

@@ -84,7 +84,7 @@ class AuthViewModel @Inject constructor(
         }
         restoring.value = true
         backupSaid.value = null
-        runCatching { api.redeem(code, note.device, BuildConfig.VERSION_NAME, mustBe = note.device) }
+        runCatching { api.redeem(com.restopos.core.data.CodeForm.plain(code), note.device, BuildConfig.VERSION_NAME, mustBe = note.device) }
             .onSuccess { backups.restart() }
             .onFailure { backupSaid.value = codeProblem(it); restoring.value = false }
     }
@@ -96,8 +96,25 @@ class AuthViewModel @Inject constructor(
     fun useCode(code: String) = viewModelScope.launch {
         if (_state.value == AuthUiState.Busy) return@launch
         _state.value = AuthUiState.Busy
+        // A tablet that is a till already and is asked to sign in: its key was
+        // ended, or lost. One set up with a code has no login to sign in with.
+        // The code it was set up with, or the one made since for its
+        // replacement, gives it a key again. Only a code of this very till will
+        // do (mustBe): any other would make it another till over its own sales.
+        val till = session.deviceId()
+        if (session.tenantId() != null && till != null) {
+            runCatching { api.redeem(com.restopos.core.data.CodeForm.plain(code), till, BuildConfig.VERSION_NAME, mustBe = till) }
+                .onSuccess {
+                    session.setNeedsSignIn(false)
+                    pushNow(appContext)
+                    SyncScheduler.pullNow(appContext)
+                    _state.value = AuthUiState.SignedIn
+                }
+                .onFailure { _state.value = AuthUiState.Error(codeProblem(it)) }
+            return@launch
+        }
         runCatching {
-            val out = api.redeem(code, session.deviceId() ?: com.restopos.core.common.Uuid7.next(), BuildConfig.VERSION_NAME)
+            val out = api.redeem(com.restopos.core.data.CodeForm.plain(code), session.deviceId() ?: com.restopos.core.common.Uuid7.next(), BuildConfig.VERSION_NAME)
             session.save(out.tenantId, out.storeId, out.deviceId)
             // what the tablet does next waits for a whole pull after this moment (SetupSteps.after)
             session.setRegisteredAt(System.currentTimeMillis())
