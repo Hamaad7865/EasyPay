@@ -73,7 +73,14 @@ never reaches a tablet whose owner once drew on it, since an offline tablet's qu
 It has a version of its own, 0.9.4 (build 17), so that a tag named for 0.9.3 on this commit is refused.
 It goes out with a `v*` tag, which carries migration 0102, the back office and the tablets' build
 together. Not with a `live-*` tag: that would put the back office's booths, stools and walls in front of
-offline tablets still on 0.9.3 or older, whose own rules know two shapes and no elements.
+offline tablets still on 0.9.3 or older, whose own rules know two shapes and no elements. A `v*` tag does
+not close that gap, it shortens it: the new build is offered to tablets at the same moment, and a tablet
+that has not taken it yet can still fetch a booth. Such a tablet draws it as a square table, and its Edit
+plan would save it back as one. So for an offline business: its tablet is updated first, then its plan is
+given booths, stools or walls in the back office.
+
+Neither 0101 nor 0102 writes to a row that is already there (read: they add a column with a default and
+two checks, which stamp nothing), so reaching production they send no tablet its tables again.
 
 ## Not in this piece
 
