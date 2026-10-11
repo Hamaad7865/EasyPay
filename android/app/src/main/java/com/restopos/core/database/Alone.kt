@@ -68,6 +68,17 @@ interface AloneDao {
     @Upsert suspend fun putRole(row: RoleEntity)
     @Query("SELECT COUNT(*) FROM employees WHERE role_id = :role AND deleted_at IS NULL") suspend fun staffOn(role: String): Int
 
+    // ---- add-ons ----
+    @Query("SELECT * FROM modifier_groups") suspend fun groups(): List<ModifierGroupEntity>
+    @Upsert suspend fun putGroup(row: ModifierGroupEntity)
+    @Query("SELECT * FROM modifiers WHERE group_id = :group") suspend fun choicesOf(group: String): List<ModifierEntity>
+    @Query("SELECT * FROM modifiers WHERE id = :id") suspend fun choice(id: String): ModifierEntity?
+    @Upsert suspend fun putChoices(rows: List<ModifierEntity>)
+    @Query("SELECT group_id FROM item_modifier_groups WHERE item_id = :item") suspend fun groupsOf(item: String): List<String>
+    @Query("DELETE FROM item_modifier_groups WHERE item_id = :item") suspend fun dropGroupsOf(item: String)
+    @Query("DELETE FROM item_modifier_groups WHERE group_id = :group") suspend fun dropLinksTo(group: String)
+    @Upsert suspend fun putItemGroups(rows: List<ItemModGroupCrossRef>)
+
     // ---- discounts ----
     @Query("SELECT * FROM discounts") suspend fun discounts(): List<DiscountEntity>
     @Upsert suspend fun putDiscount(row: DiscountEntity)

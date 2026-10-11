@@ -50,6 +50,8 @@ class ItemMore(
     val taxes: List<com.restopos.core.database.TaxEntity>, val taxId: String?,
     val suppliers: List<com.restopos.core.database.SupplierEntity>,
     val reorder: Int?, val orderQty: Int?, val mayCost: Boolean, val variants: Boolean,
+    // the add-on groups there are, and the ones the item carries
+    val groups: List<com.restopos.core.database.ModifierGroupEntity> = emptyList(), val groupIds: Set<String> = emptySet(),
 )
 
 // An order that is still being served: open on a table or at the counter, or
@@ -231,6 +233,7 @@ class ServiceRepository @Inject constructor(
         return ItemMore(
             taxes, own, db.stock().suppliers().first(), level?.reorder_point, level?.reorder_qty,
             mayCost = staff.can("costs.view"), variants = itemId != null && db.retail().variantsOf(itemId).any { it.deleted_at == null },
+            groups = db.catalog().groupsFlow().first(), groupIds = itemId?.let { db.alone().groupsOf(it).toSet() } ?: emptySet(),
         )
     }
 
@@ -400,6 +403,31 @@ class ServiceRepository @Inject constructor(
     suspend fun removeDiscount(id: String, approver: StaffMember? = null): Result<Unit> = runCatching {
         staff.allow("items.edit", "change the discounts", approver)
         ask("discount.remove", DiscountForm::refused, OfficePayloads.discountRemove(id, staff.approvedBy("items.edit", approver)))
+    }
+
+    // ---- add-ons and a few settings (server 0096) ----
+    suspend fun saveAddon(id: String, g: AddonForm.Group, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("items.edit", "change the add-ons", approver)
+        ask("addon.save", AddonForm::refused, OfficePayloads.addonSave(id, g, staff.approvedBy("items.edit", approver)))
+    }
+
+    suspend fun removeAddon(id: String, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("items.edit", "change the add-ons", approver)
+        ask("addon.remove", AddonForm::refused, OfficePayloads.addonRemove(id, staff.approvedBy("items.edit", approver)))
+    }
+
+    // The receipt's two notes and the service charge; what is null is left as it is.
+    suspend fun saveSettings(header: String?, footer: String?, servicePct: Int?, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("settings.device", "change the settings", approver)
+        ask("settings.save", { code ->
+            when (code) {
+                "bad-value" -> "A service charge is a whole number from 0 to 30."
+                "forbidden" -> "You are not allowed to change the settings. Ask a manager."
+                "unknown-op" -> "The server has to be updated before this can be changed from a till."
+                null -> "The server refused it."
+                else -> "The server refused it ($code)."
+            }
+        }, OfficePayloads.settingsSave(header, footer, servicePct, staff.approvedBy("settings.device", approver)))
     }
 
     // "Open the till": the set-up is finished, for every tablet of the

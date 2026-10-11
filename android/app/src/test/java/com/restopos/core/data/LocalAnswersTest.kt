@@ -86,6 +86,18 @@ class FakeAlone : AloneDao {
     val discounts = LinkedHashMap<String, com.restopos.core.database.DiscountEntity>()
     override suspend fun discounts() = discounts.values.toList()
     override suspend fun putDiscount(row: com.restopos.core.database.DiscountEntity) { discounts[row.id] = row }
+    val groups = LinkedHashMap<String, com.restopos.core.database.ModifierGroupEntity>()
+    val choices = LinkedHashMap<String, com.restopos.core.database.ModifierEntity>()
+    val itemGroups = ArrayList<com.restopos.core.database.ItemModGroupCrossRef>()
+    override suspend fun groups() = groups.values.toList()
+    override suspend fun putGroup(row: com.restopos.core.database.ModifierGroupEntity) { groups[row.id] = row }
+    override suspend fun choicesOf(group: String) = choices.values.filter { it.group_id == group }
+    override suspend fun choice(id: String) = choices[id]
+    override suspend fun putChoices(rows: List<com.restopos.core.database.ModifierEntity>) { rows.forEach { choices[it.id] = it } }
+    override suspend fun groupsOf(item: String) = itemGroups.filter { it.item_id == item }.map { it.group_id }
+    override suspend fun dropGroupsOf(item: String) { itemGroups.removeAll { it.item_id == item } }
+    override suspend fun dropLinksTo(group: String) { itemGroups.removeAll { it.group_id == group } }
+    override suspend fun putItemGroups(rows: List<com.restopos.core.database.ItemModGroupCrossRef>) { rows.forEach { r -> if (itemGroups.none { it.item_id == r.item_id && it.group_id == r.group_id }) itemGroups += r } }
 }
 
 // A tablet that works on its own answers a change by the server's rules,
@@ -476,6 +488,85 @@ class LocalAnswersTest {
         assertEquals(listOf("items.edit", "sale.create", "stock.count"), RoleForm.saved(setOf("sale.create", "sale.refund", "stock.count"), setOf("sale.create", "items.edit"), listOf("sale.create", "sale.refund", "items.edit")))
         assertEquals("Can do everything", RoleForm.says("[\"*\"]", shop = false))
         assertEquals("2 of ${Perms.offered(false).size} permissions", RoleForm.says("[\"sale.create\",\"payment.take\",\"stock.count\"]", shop = false))
+    }
+
+    // ---- add-ons, an item's groups, a few settings (the server's 0096, sections A and Z of its suite) ----
+    private val addonIds = mapOf("group-1" to id(70), "choice-1" to id(71), "choice-2" to id(72), "item-1" to id(100), "category-1" to cat)
+    private fun live(group: String) = dao.choices.values.filter { it.group_id == group && it.deleted_at == null }.map { it.name + ":" + it.price }.sorted()
+
+    @Test fun `a group of add-ons saved whole, changed and removed`() {
+        val sent = fixture("addon-save", addonIds)
+        assertEquals("done", ask("addon.save", sent))
+        assertEquals(listOf("Extras", 0, 2), dao.groups[id(70)]!!.let { listOf(it.name, it.min_select, it.max_select) })
+        assertEquals(listOf("Cheese:2500", "Chilli:0"), live(id(70)))
+        assertEquals("done", ask("addon.save", sent))
+        assertEquals(2, dao.choices.size)
+        // a choice renamed, one dropped, one added
+        val changed = obj("""{"id":"${id(70)}","name":"Toppings","min":1,"max":3,"choices":[{"id":"${id(71)}","name":"Cheddar","price":3000},{"id":"${id(73)}","name":"Egg","price":1500}]}""")
+        assertEquals("done", ask("addon.save", changed))
+        assertEquals(listOf("Cheddar:3000", "Egg:1500"), live(id(70)))
+        assertNotNull(dao.choices[id(72)]!!.deleted_at)
+        assertEquals("bad-limits", ask("addon.save", JsonObject(sent + ("min" to JsonPrimitive(3)) + ("max" to JsonPrimitive(2)))))
+        assertEquals("bad-limits", ask("addon.save", JsonObject(sent + ("max" to JsonPrimitive(21)))))
+        assertEquals("name-required", ask("addon.save", JsonObject(sent + ("name" to JsonPrimitive(" ")))))
+        assertEquals("name-required", ask("addon.save", obj("""{"id":"${id(70)}","name":"Toppings","min":0,"max":0,"choices":[{"id":"${id(74)}","name":"","price":0}]}""")))
+        assertEquals("name-taken", ask("addon.save", obj("""{"id":"${id(75)}","name":"toppings","min":0,"max":0,"choices":[]}""")))
+        // removed: off its items, its choices gone, its name freed
+        dao.itemGroups += com.restopos.core.database.ItemModGroupCrossRef(id(100), id(70))
+        assertEquals("done", ask("addon.remove", """{"group_id":"${id(70)}"}"""))
+        assertTrue(dao.groups[id(70)]!!.let { it.deleted_at != null && it.name.startsWith("Toppings (removed ") })
+        assertTrue(live(id(70)).isEmpty() && dao.itemGroups.isEmpty())
+        assertEquals("done", ask("addon.remove", """{"group_id":"${id(70)}"}"""))
+        assertEquals("bad-group", ask("addon.save", sent))
+        assertEquals("bad-group", ask("addon.remove", """{"group_id":"${id(79)}"}"""))
+    }
+
+    @Test fun `the add-on groups an item carries`() {
+        dao.settings = SettingsEntity(tenant, """{"plan":"offline"}""")
+        ask("addon.save", fixture("addon-save", addonIds))
+        ask("addon.save", obj("""{"id":"${id(76)}","name":"Cooking","min":1,"max":1,"choices":[{"id":"${id(77)}","name":"Rare","price":0}]}"""))
+        val item = fixture("item-save-groups", addonIds)
+        assertEquals("done", ask("item.save", item))
+        assertEquals(listOf(id(70)), runBlocking { dao.groupsOf(id(100)) })
+        assertEquals("done", ask("item.save", JsonObject(item + ("groups" to Json.parseToJsonElement("[\"${id(76)}\"]")))))
+        assertEquals(listOf(id(76)), runBlocking { dao.groupsOf(id(100)) })
+        // a save that names no groups leaves them
+        assertEquals("done", ask("item.save", JsonObject(item - "groups")))
+        assertEquals(listOf(id(76)), runBlocking { dao.groupsOf(id(100)) })
+        // one that is not there is refused, and nothing of the save is written
+        assertEquals("bad-group", ask("item.save", JsonObject(item + ("name" to JsonPrimitive("Renamed")) + ("groups" to Json.parseToJsonElement("[\"${id(78)}\"]")))))
+        assertEquals("Dholl puri", dao.items[id(100)]!!.name)
+        assertEquals("done", ask("item.save", JsonObject(item + ("groups" to Json.parseToJsonElement("[]")))))
+        assertTrue(runBlocking { dao.groupsOf(id(100)) }.isEmpty())
+    }
+
+    @Test fun `the receipt's two notes and the service charge, and nothing else of the settings`() {
+        dao.settings = SettingsEntity(tenant, """{"plan":"offline","quickPay":"cash","receipt":{"header":"Old","footer":"Old foot","logo":"data:image/png;base64,AAAA","showLogo":false}}""")
+        assertEquals("done", ask("settings.save", OfficeFixtures.payload("settings-save").jsonObject))
+        val st = PosSettings.parse(dao.settings!!.data)
+        assertEquals(listOf("Open every day, 9 to 9", "Thank you. See you again soon.", "data:image/png;base64,AAAA", false, 10, "cash", true),
+            listOf(st.header, st.footer, st.logo, st.showLogo, st.servicePct, st.quickPay, st.alone))
+        assertEquals("bad-value", ask("settings.save", """{"servicePct":31}"""))
+        assertEquals("done", ask("settings.save", """{"receipt":{"footer":"${"x".repeat(400)}"}}"""))
+        val after = PosSettings.parse(dao.settings!!.data)
+        assertEquals(listOf(300, "Open every day, 9 to 9", 10), listOf(after.footer.length, after.header, after.servicePct))
+    }
+
+    @Test fun `what is sent for a group of add-ons, an item's groups and the settings is the example the server was tested with`() {
+        val g = AddonForm.read(" Extras ", "", "2", listOf(AddonForm.Typed("choice-1", "Cheese", "25"), AddonForm.Typed("choice-2", "Chilli", ""), AddonForm.Typed("choice-3"))).getOrThrow()
+        assertEquals(OfficeFixtures.payload("addon-save"), OfficePayloads.addonSave("group-1", g, null))
+        assertEquals(OfficeFixtures.payload("addon-remove"), OfficePayloads.addonRemove("group-1", null))
+        assertEquals(OfficeFixtures.payload("settings-save"), OfficePayloads.settingsSave("Open every day, 9 to 9", "Thank you. See you again soon.", 10, null))
+        assertEquals(setOf("servicePct"), OfficePayloads.settingsSave(null, null, 0, null).keys)
+        val dish = ItemForm.read("Dholl puri", "25", false, "").getOrThrow()
+        val more = ItemForm.readMore(ItemForm.Typed(taxId = null, shop = false, groups = setOf("group-1"))).getOrThrow()
+        assertEquals(OfficeFixtures.payload("item-save-groups"), OfficePayloads.itemSave("item-1", dish, "category-1", true, false, more, "store-1", null))
+        // of an item being changed, its groups are sent only when they were changed
+        val same = ItemForm.readMore(ItemForm.Typed(taxId = "t", groups = setOf("a")), from = ItemForm.Typed(taxId = "t", groups = setOf("a"))).getOrThrow()
+        assertFalse(OfficePayloads.itemSave("item-1", dish, null, true, false, same, "store-1", null).containsKey("groups"))
+        assertEquals("The most that can be picked cannot be less than the fewest", AddonForm.read("X", "3", "2", emptyList()).exceptionOrNull()?.message)
+        assertEquals("Give each choice a name", AddonForm.read("X", "", "", listOf(AddonForm.Typed("c", "", "5"))).exceptionOrNull()?.message)
+        assertEquals(listOf("Optional, any number", "Optional, up to 2", "At least 1", "Pick 1", "Pick 1 to 3"), listOf(0 to 0, 0 to 2, 1 to 0, 1 to 1, 1 to 3).map { AddonForm.rule(it.first, it.second) })
     }
 
     @Test fun `a change this tablet cannot answer by itself says so`() {

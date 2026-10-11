@@ -112,6 +112,12 @@ interface CatalogDao {
     @Query("SELECT * FROM discounts WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE")
     fun discountsFlow(): kotlinx.coroutines.flow.Flow<List<DiscountEntity>>
 
+    // The add-on groups and their choices, for the Menu's Add-ons sheet and an item's ticks.
+    @Query("SELECT * FROM modifier_groups WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE")
+    fun groupsFlow(): kotlinx.coroutines.flow.Flow<List<ModifierGroupEntity>>
+    @Query("SELECT * FROM modifiers WHERE deleted_at IS NULL ORDER BY rowid")
+    fun choicesFlow(): kotlinx.coroutines.flow.Flow<List<ModifierEntity>>
+
     @Query("SELECT * FROM discounts WHERE id = :id")
     suspend fun discount(id: String): DiscountEntity?
 

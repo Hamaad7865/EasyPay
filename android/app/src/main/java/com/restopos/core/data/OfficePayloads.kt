@@ -43,6 +43,8 @@ object OfficePayloads {
                 if (sent(ItemForm.SUPPLIER_CODE)) put("supplier_code", m.supplierCode ?: "")
                 if (store != null && sent(ItemForm.REORDER)) { put("store_id", store); put("reorder_point", m.reorder); put("reorder_qty", m.orderQty) }
             }
+            // the add-on groups it carries, when the page showed them
+            m.groups?.takeIf { sent(ItemForm.GROUPS) }?.let { g -> putJsonArray("groups") { g.forEach { add(it) } } }
         }
         approvedBy?.let { put("approved_by", it) }
     }
@@ -79,6 +81,25 @@ object OfficePayloads {
 
     fun discountRemove(id: String, approvedBy: String?): JsonObject = buildJsonObject {
         put("discount_id", id)
+        approvedBy?.let { put("approved_by", it) }
+    }
+
+    // A group of add-ons, whole: a choice that is not in the list is removed by whoever takes this.
+    fun addonSave(id: String, g: AddonForm.Group, approvedBy: String?): JsonObject = buildJsonObject {
+        put("id", id); put("name", g.name); put("min", g.min); put("max", g.max)
+        putJsonArray("choices") { g.choices.forEach { c -> add(buildJsonObject { put("id", c.id); put("name", c.name); put("price", c.price) }) } }
+        approvedBy?.let { put("approved_by", it) }
+    }
+
+    fun addonRemove(id: String, approvedBy: String?): JsonObject = buildJsonObject {
+        put("group_id", id)
+        approvedBy?.let { put("approved_by", it) }
+    }
+
+    // The receipt's two notes and the service charge: what is null is not sent, and is left as it is.
+    fun settingsSave(header: String?, footer: String?, servicePct: Int?, approvedBy: String?): JsonObject = buildJsonObject {
+        if (header != null || footer != null) put("receipt", buildJsonObject { header?.let { put("header", it) }; footer?.let { put("footer", it) } })
+        servicePct?.let { put("servicePct", it) }
         approvedBy?.let { put("approved_by", it) }
     }
 }

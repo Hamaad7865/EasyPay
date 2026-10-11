@@ -72,6 +72,9 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             "staff.update" -> staffUpdate(p)
             "discount.save" -> discountSave(p, tenant)
             "discount.remove" -> discountRemove(p)
+            "addon.save" -> addonSave(p, tenant)
+            "addon.remove" -> addonRemove(p)
+            "settings.save" -> settingsSave(p, tenant)
             else -> throw Refused("not-alone")
         }
     }
@@ -106,6 +109,12 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         val reorder = "reorder_point" in p || "reorder_qty" in p
         if (reorder && (store == null || store !in dao.storeIds())) throw Refused("bad-store")
         fun text(key: String) = p.str(key)?.trim()?.take(60)?.ifEmpty { null }
+        // the add-on groups it carries (0096), when the sheet says: each a group that is there
+        val groups = if ("groups" in p) ((p["groups"] as? JsonArray) ?: bad()).map { (it as? JsonPrimitive)?.contentOrNull?.takeIf { g -> UUID.matches(g) } ?: bad() }.distinct() else null
+        if (groups != null) {
+            val live = dao.groups().filter { it.deleted_at == null }.map { it.id }.toSet()
+            if (groups.any { it !in live }) throw Refused("bad-group")
+        }
 
         val was = dao.item(id)
         // a barcode and a SKU are one product's only (the server's guard on the table)
@@ -141,6 +150,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             if (tax != null) dao.putItemTax(ItemTaxCrossRef(id, tax))
         }
         if (reorder) setReorder(store!!, id, point?.toInt(), qty?.toInt())
+        if (groups != null) { dao.dropGroupsOf(id); dao.putItemGroups(groups.map { com.restopos.core.database.ItemModGroupCrossRef(id, it) }) }
     }
 
     // stock_set_reorder: on every line of the product in one shop, its variants or itself when it has none
@@ -428,11 +438,78 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         if (was.deleted_at == null) dao.putDiscount(was.copy(deleted_at = now(), name = was.name.take(40) + " (removed " + stamp() + ")"))
     }
 
+    // ---- push_addon_save, push_addon_remove (0096) ----
+    private suspend fun addonSave(p: JsonObject, tenant: String) {
+        val id = p.id("id")
+        val min = p.long("min") ?: 0
+        val max = p.long("max") ?: 0
+        val rows = (p["choices"] as? JsonArray) ?: bad()
+        val name = (p.str("name") ?: "").trim().take(40)
+        if (name.isEmpty()) throw Refused("name-required")
+        // the fewest 0 is optional, 1 means one must be picked; the most 0 is as many as they like
+        if (min !in 0..20 || max !in 0..20 || (max != 0L && max < min)) throw Refused("bad-limits")
+        if (rows.size > 50) throw Refused("too-many")
+        val all = dao.groups()
+        if (all.any { it.id != id && it.name.lowercase() == name.lowercase() }) throw Refused("name-taken")
+        val was = all.firstOrNull { it.id == id }
+        if (was != null && was.deleted_at != null) throw Refused("bad-group")
+        val keep = ArrayList<com.restopos.core.database.ModifierEntity>()
+        val named = HashSet<String>()
+        for (row in rows) {
+            val c = (row as? JsonObject) ?: bad()
+            val cid = c.id("id")
+            val price = c.long("price") ?: 0
+            val cname = (c.str("name") ?: "").trim().take(40)
+            if (price < 0 || price > 100_000_000L) bad()
+            if (cname.isEmpty()) throw Refused("name-required")
+            named += cid
+            // a choice that is another group's is left alone
+            if (dao.choice(cid)?.let { it.group_id != id } == true) continue
+            keep += com.restopos.core.database.ModifierEntity(cid, tenant, id, cname, price)
+        }
+        dao.putGroup((was ?: com.restopos.core.database.ModifierGroupEntity(id, tenant, name)).copy(name = name, min_select = min.toInt(), max_select = max.toInt()))
+        dao.putChoices(keep)
+        // a choice that is not in the list is removed
+        dao.putChoices(dao.choicesOf(id).filter { it.deleted_at == null && it.id !in named }.map { it.copy(deleted_at = now()) })
+    }
+
+    private suspend fun addonRemove(p: JsonObject) {
+        val id = p.id("group_id")
+        val was = dao.groups().firstOrNull { it.id == id } ?: throw Refused("bad-group")
+        // removed already is removed
+        if (was.deleted_at != null) return
+        dao.dropLinksTo(id)
+        dao.putChoices(dao.choicesOf(id).filter { it.deleted_at == null }.map { it.copy(deleted_at = now()) })
+        dao.putGroup(was.copy(deleted_at = now(), name = was.name.take(40) + " (removed " + stamp() + ")"))
+    }
+
+    // ---- push_settings_save (0096): the receipt's two notes and the service charge ----
+    private suspend fun settingsSave(p: JsonObject, tenant: String) {
+        var patch = JsonObject(emptyMap())
+        p["receipt"]?.let { r ->
+            val sent = (r as? JsonObject) ?: bad()
+            val now = runCatching { Json.parseToJsonElement(dao.settings()?.data ?: "{}").jsonObject["receipt"]?.jsonObject }.getOrNull() ?: JsonObject(emptyMap())
+            // the two notes only: the logo and whether it shows are left as they are
+            val notes = buildJsonObject {
+                if ("header" in sent) put("header", (sent.str("header") ?: "").replace("\r", "").take(300))
+                if ("footer" in sent) put("footer", (sent.str("footer") ?: "").replace("\r", "").take(300))
+            }
+            patch = JsonObject(patch + ("receipt" to JsonObject(now + notes)))
+        }
+        if ("servicePct" in p) {
+            val pct = p.long("servicePct")
+            if (pct == null || pct !in 0..30) throw Refused("bad-value")
+            patch = JsonObject(patch + ("servicePct" to JsonPrimitive(pct.toInt())))
+        }
+        if (patch.isNotEmpty()) mergeSettings(tenant, patch)
+    }
+
     companion object {
         val KINDS = setOf(
             "item.save", "item.remove", "category.save", "category.remove", "stock.adjust", "tables.add", "printer.save",
             "company.save", "staff.save", "staff.set_pin", "tax.save", "supplier.save", "supplier.remove",
             "role.save", "role.remove", "staff.update", "discount.save", "discount.remove",
+            "addon.save", "addon.remove", "settings.save",
         )
         private val IN_REASONS = setOf("receive", "found")
         private val OUT_REASONS = setOf("damaged", "expired", "lost", "internal", "supplier_return")

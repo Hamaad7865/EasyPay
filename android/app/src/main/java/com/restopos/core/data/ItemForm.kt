@@ -32,6 +32,8 @@ object ItemForm {
         val skuShown: Boolean = true, val sku: String = "",
         val brand: String = "", val supplierId: String? = null, val supplierCode: String = "",
         val reorder: String = "", val orderQty: String = "",
+        // the add-on groups it carries (a restaurant's item); null when the page did not show them
+        val groups: Set<String>? = null,
     )
 
     // The same, read. An empty field is "none": the server clears what it held.
@@ -42,6 +44,7 @@ object ItemForm {
         val brand: String?, val supplierId: String?, val supplierCode: String?,
         // thousandths, as every quantity is
         val reorder: Int?, val orderQty: Int?,
+        val groups: List<String>? = null,
         // Which of them are sent (TAX, COST and so on). For a new item, all
         // of them. For one being changed, only what the person changed on
         // the page: what the tablet holds may be older than the server's (the
@@ -56,7 +59,8 @@ object ItemForm {
     const val SUPPLIER = "supplier"
     const val SUPPLIER_CODE = "supplier_code"
     const val REORDER = "reorder"
-    val ALL = setOf(TAX, COST, SKU, BRAND, SUPPLIER, SUPPLIER_CODE, REORDER)
+    const val GROUPS = "groups"
+    val ALL = setOf(TAX, COST, SKU, BRAND, SUPPLIER, SUPPLIER_CODE, REORDER, GROUPS)
 
     // The tax a sheet opens on: an item's own, and for a new item the usual
     // one. An item that carries no tax is not given one by being opened.
@@ -72,6 +76,7 @@ object ItemForm {
         if (t.supplierCode.trim() != from.supplierCode.trim()) add(SUPPLIER_CODE)
         // the two figures are saved together
         if (t.reorder.trim() != from.reorder.trim() || t.orderQty.trim() != from.orderQty.trim()) add(REORDER)
+        if (t.groups != from.groups) add(GROUPS)
     }
 
     private val QTY = Regex("""(\d{1,7})(?:[.,](\d{1,3}))?""")
@@ -88,13 +93,13 @@ object ItemForm {
     // from: the page as it opened, for an item being changed; null for a new one.
     fun readMore(t: Typed, from: Typed? = null): Result<More> = runCatching {
         val sent = if (from == null) ALL else changed(t, from)
-        if (!t.shop) return@runCatching More(t.taxId, false, false, null, false, null, null, null, null, null, null, sent)
+        if (!t.shop) return@runCatching More(t.taxId, false, false, null, false, null, null, null, null, null, null, t.groups?.sorted(), sent)
         val cost = if (!t.costShown || t.cost.isBlank()) null else Money.parseRs(t.cost) ?: throw IllegalArgumentException("The cost is not a number")
         require(cost == null || cost <= LinePrice.MOST) { "Rs 1,000,000 is the most a product can cost" }
         More(
             t.taxId, true, t.costShown, cost, t.skuShown, t.sku.trim().take(60).ifEmpty { null },
             t.brand.trim().take(60).ifEmpty { null }, t.supplierId, t.supplierCode.trim().take(60).ifEmpty { null },
-            qty(t.reorder, "The reorder level"), qty(t.orderQty, "The order quantity"), sent,
+            qty(t.reorder, "The reorder level"), qty(t.orderQty, "The order quantity"), t.groups?.sorted(), sent,
         )
     }
 
@@ -118,6 +123,7 @@ object ItemForm {
             "unknown-supplier" -> "That supplier is no longer there. Pick another, or none."
             "bad-store" -> "This till's store is no longer there."
             "bad-quantity" -> "A reorder quantity cannot be less than nothing."
+            "bad-group" -> "One of those add-on groups is no longer there. Open the sheet again."
             "conflict" -> "That did not work. Close this and try again."
             "forbidden" -> "You are not allowed to change the ${if (shop) "products" else "menu"}. Ask a manager."
             "open-price-not-here" -> "A product with variants, or sold by weight, has prices of its own: its price cannot be typed at the sale."
