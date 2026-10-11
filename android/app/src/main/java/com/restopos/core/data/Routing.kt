@@ -82,7 +82,8 @@ object Routing {
         if (names.isEmpty()) return null
         val n = names.size
         return "$n ${if (n == 1) "item" else "items"} went to no printer: ${names.distinct().joinToString(", ")}. " +
-            "Tick a printer for ${if (n == 1) "its" else "their"} category in the back office."
+            if (Journey.alone) "Switch on \"Kitchen orders print on it too\" for the printer: Settings, This till, Set-up, Printer."
+            else "Tick a printer for ${if (n == 1) "its" else "their"} category in the back office."
     }
 
     // The kitchen display's stations: the printers where something is made,

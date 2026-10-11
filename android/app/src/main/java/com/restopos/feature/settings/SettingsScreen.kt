@@ -275,6 +275,10 @@ class SettingsViewModel @Inject constructor(
     // it keeps is counted (kept), and nothing is said of waiting or signing in.
     val alone = db.ops().settingsFlow().map { PosSettings.parse(it).alone }.held(false)
     val kept = db.outbox().pendingCountFlow().held(0L)
+    // The server asked this tablet to sign in when it tried to connect: it has
+    // no key of its own (it was filled from a backup, or its key was ended).
+    // Said even while the tablet works on its own, or it could never connect.
+    val signInWanted = session.needsSignIn.held(false)
     val needsSignIn = kotlinx.coroutines.flow.combine(session.needsSignIn, alone) { wanted, a -> wanted && !a }.held(false)
     val pending = kotlinx.coroutines.flow.combine(db.outbox().pendingCountFlow(), alone) { n, a -> if (a) 0L else n }.held(0L)
     val rejected = db.outbox().deadCountFlow().held(0L)
@@ -415,6 +419,7 @@ class SettingsViewModel @Inject constructor(
         }
         val stillAlone = PosSettings.parse(db.ops().settings()).alone
         com.restopos.core.ui.Toaster.say(when {
+            stillAlone && session.needsSignIn.first() -> "This tablet has to sign in once before it can be connected. Tap Sign in, with the login of this business, then Connect to the cloud again."
             !stillAlone -> "This business is on Premium: the tablet is connected, and what it kept is being sent to the cloud."
             state == androidx.work.WorkInfo.State.SUCCEEDED -> "This business is not on Premium. Nothing has changed: the tablet goes on working on its own."
             state?.isFinished == true -> "EasyPay could not be reached. Try again when the tablet is online."
@@ -673,9 +678,14 @@ private fun TillPage(vm: SettingsViewModel, keys: CashKeys, network: String, sta
     CashActions(keys)
     Heading("Status")
     val alone by vm.alone.collectAsState()
+    val signInWanted by vm.signInWanted.collectAsState()
     Group {
         when {
             // the offline plan: nothing is sent anywhere, and this is the way to Premium
+            alone && signInWanted -> Fact(
+                VI.Signal, "This device", "Works on its own. To be connected to the cloud it has to sign in once, with the login of this business.",
+                V.AmberText, "Sign in", onSignIn,
+            )
             alone -> Fact(
                 VI.Signal, "This device", "Works on its own. Everything is kept on this tablet; with Premium it is kept in the cloud too, and the back office opens.",
                 V.Text2, "Connect to the cloud",
@@ -1298,6 +1308,7 @@ private fun SupportPage(vm: SettingsViewModel, shop: Boolean, network: String, o
     val alone by vm.alone.collectAsState()
     val kept by vm.kept.collectAsState()
     val lastBackup by vm.lastBackup.collectAsState()
+    val signInWanted by vm.signInWanted.collectAsState()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     // the file is saved where the owner picks: a USB stick, the tablet's Downloads, a Drive
     val saveTo = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")) { uri -> if (uri != null) vm.backup(uri) }
@@ -1321,6 +1332,7 @@ private fun SupportPage(vm: SettingsViewModel, shop: Boolean, network: String, o
         }
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (alone && signInWanted) Action("Sign in", primary = true, onClick = onSignIn)
         if (alone) Action("Connect to the cloud") { vm.connect() }
         else if (needsSignIn) Action("Sign in", primary = true, onClick = onSignIn) else Action("Sync now") { vm.sync() }
         Action("Save a backup", primary = alone) { scope.launch { saveTo.launch(vm.backupName()) } }
