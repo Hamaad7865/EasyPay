@@ -10,7 +10,10 @@ also answer at easypaypos.pages.dev, the Cloudflare project's own address;
 the canonical link tells a search engine which of the two is the site.
 
 ```
-index.html      the page
+index.html      Home: the headline, the three reasons, the line that drops, a list of features, the demo form
+product.html    Product: its parts, the back office as it is, the small things, what it runs on
+features.html   Features: each feature of the till, with what can be pressed
+pricing.html    Pricing: the prices, how you start, the questions
 404.html        what an address with nothing behind it answers
 css/site.css    the page's look, top to bottom
 css/mock.css    the till drawn in the page: tablet, paper
@@ -47,6 +50,22 @@ them nothing moves, and the keys still turn the screens.
 The film plays only while the tablet is on screen and the tab is in front.
 To watch it while working on it, the browser's window has to be showing:
 in a hidden pane it rightly stands still.
+
+## The pages
+
+The site is four pages, so that none is long: Home, Product, Features and
+Pricing. They share the head, the bar and the foot word for word, and each
+has the Restaurant / Shop switch (what was picked is kept from page to page).
+A part of the site has one home: `WHERE` in the script that built them says
+which page holds which section (`why`, `offline`, `features` and `demo` at
+Home; `qr`, `floor`, `kitchen`, `payment`, `selling`, `stock` and `returns`
+on Features; `parts`, `backoffice`, `more` and `works` on Product; `pricing`,
+`start` and `faq` on Pricing), and a link to a section is written with its
+page when the section is on another one (`features.html#kitchen`). A change
+to the bar or the foot is made in all four files.
+
+The pages are plain files: nothing builds them. Cloudflare Pages serves
+`features.html` at `/features` too.
 
 ## The pictures of the back office
 

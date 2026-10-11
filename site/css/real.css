@@ -200,3 +200,44 @@ button.v-charge.is-done { background: var(--t-key); color: var(--t-text); }
   .night-log p.is-new, .v-shares li.is-new { animation: none; }
   .webapp img, button.v-plot .tb, .line-keys button, button.v-charge { transition: none; }
 }
+
+/* ---- the site in pages: Home, Product, Features, Pricing ---- */
+
+/* the page a visitor is on, in the bar */
+.nav-links a.is-page { color: var(--leaf-deep); }
+/* the head of a page that is not the home page: the same switch and headline, nothing under it */
+.hero--page .hero-copy h1 { font-size: clamp(34px, 4.6vw, 66px); }
+/* what such a page ends on: one thing to do next */
+.feature-end { padding: clamp(96px, 12.5vw, 196px) var(--gutter) 0; }
+.feature-end .hero-cta { margin-top: clamp(22px, 2.6vw, 34px); }
+
+/* the home page's list of what the till does: a card for each, which goes to it */
+.index { padding: clamp(96px, 12.5vw, 196px) var(--gutter) 0; }
+/* four to a row, and a last row that is not full stands in the middle */
+.index-grid { --n: 4; --gap: clamp(12px, 1.6vw, 20px); margin-top: clamp(32px, 4vw, 56px); display: flex; flex-wrap: wrap; justify-content: center; gap: var(--gap); }
+.index-card {
+  position: relative; flex: 0 1 calc((100% - (var(--n) - 1) * var(--gap)) / var(--n)); min-width: 0;
+  display: grid; align-content: start; gap: 8px; padding: 24px 60px 26px 24px; border-radius: 22px;
+  background: var(--card); box-shadow: 0 0 0 1px var(--line), 0 18px 40px -30px rgba(40, 70, 48, 0.45);
+  color: var(--ink); text-decoration: none; transition: transform 0.3s var(--out), box-shadow 0.3s var(--ease);
+}
+.index-card:hover { transform: translateY(-3px); box-shadow: 0 0 0 1px #cfd8cc, 0 26px 50px -30px rgba(40, 70, 48, 0.6); }
+.index-card:focus-visible { outline: 2px solid var(--leaf); outline-offset: 3px; }
+.index-card > .ico { width: 26px; height: 26px; color: var(--leaf-deep); }
+.index-card b { margin-top: 6px; font-size: 19px; font-weight: 700; letter-spacing: -0.02em; }
+.index-card span { color: var(--ink-2); font-size: 15.5px; }
+.index-card i { position: absolute; right: 18px; top: 20px; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: var(--mint); color: var(--leaf-deep); transition: transform 0.3s var(--out); }
+.index-card:hover i { transform: translateX(3px); }
+.index-card i .ico { width: 15px; height: 15px; }
+.index-all { margin-top: clamp(24px, 3vw, 40px); display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; }
+
+/* the whole product: its parts, each with the way to it */
+.parts { padding: clamp(48px, 6vw, 96px) var(--gutter) 0; }
+.parts .quarters { margin-top: 0; }
+.parts .quarters a { display: inline-block; margin-top: 12px; font-weight: 700; color: var(--leaf-deep); text-decoration: none; }
+.parts .quarters a:hover { text-decoration: underline; }
+
+@media (max-width: 1180px) { .index-grid { --n: 3; } }
+@media (max-width: 900px) { .index-grid { --n: 2; } }
+@media (max-width: 620px) { .index-grid { --n: 1; } }
+@media (prefers-reduced-motion: reduce) { .index-card, .index-card i { transition: none; } }
