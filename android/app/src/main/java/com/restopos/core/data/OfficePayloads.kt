@@ -102,4 +102,29 @@ object OfficePayloads {
         servicePct?.let { put("servicePct", it) }
         approvedBy?.let { put("approved_by", it) }
     }
+
+    // A product's options and the lines to make, each under the id the tablet made.
+    fun variantsMake(itemId: String, make: VariantForm.Make, approvedBy: String?): JsonObject = buildJsonObject {
+        put("item_id", itemId)
+        putJsonArray("names") { make.names.forEach { add(it) } }
+        putJsonArray("lines") { make.lines.forEach { l -> add(buildJsonObject { put("id", l.id); putJsonArray("values") { l.values.forEach { add(it) } } }) } }
+        approvedBy?.let { put("approved_by", it) }
+    }
+
+    // One line's codes. cost: sent only from a sheet that showed it (costShown), an empty one as none.
+    fun variantSave(itemId: String, variantId: String, barcode: String, sku: String, costShown: Boolean, cost: Long?, approvedBy: String?): JsonObject = buildJsonObject {
+        put("item_id", itemId)
+        putJsonArray("lines") {
+            add(buildJsonObject {
+                put("id", variantId); put("barcode", barcode.filterNot { it.isWhitespace() }); put("sku", sku.trim().take(60))
+                if (costShown) put("cost", cost)
+            })
+        }
+        approvedBy?.let { put("approved_by", it) }
+    }
+
+    fun variantRemove(variantId: String, approvedBy: String?): JsonObject = buildJsonObject {
+        put("variant_id", variantId)
+        approvedBy?.let { put("approved_by", it) }
+    }
 }

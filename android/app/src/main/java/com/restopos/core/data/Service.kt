@@ -430,6 +430,27 @@ class ServiceRepository @Inject constructor(
         }, OfficePayloads.settingsSave(header, footer, servicePct, staff.approvedBy("settings.device", approver)))
     }
 
+    // ---- a product's variants (server 0097) ----
+    // whether the person signed in may see cost: a sheet shows it, and sends it, only then
+    fun mayCost(): Boolean = staff.can("costs.view")
+
+    // Returns how many lines are made.
+    suspend fun makeVariants(itemId: String, make: VariantForm.Make, approver: StaffMember? = null): Result<Int> = runCatching {
+        staff.allow("items.edit", "change the products", approver)
+        ask("variants.make", VariantForm::refused, OfficePayloads.variantsMake(itemId, make, staff.approvedBy("items.edit", approver)))
+        make.lines.size
+    }
+
+    suspend fun saveVariant(itemId: String, variantId: String, barcode: String, sku: String, costShown: Boolean, cost: Long?, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("items.edit", "change the products", approver)
+        ask("variants.save", VariantForm::refused, OfficePayloads.variantSave(itemId, variantId, barcode, sku, costShown, cost, staff.approvedBy("items.edit", approver)))
+    }
+
+    suspend fun removeVariant(variantId: String, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("items.edit", "change the products", approver)
+        ask("variant.remove", VariantForm::refused, OfficePayloads.variantRemove(variantId, staff.approvedBy("items.edit", approver)))
+    }
+
     // "Open the till": the set-up is finished, for every tablet of the
     // business. Queued like a sale and not waited for; this tablet remembers
     // it at once, so its start screen stops offering the set-up.

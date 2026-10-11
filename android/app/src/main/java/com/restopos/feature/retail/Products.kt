@@ -157,6 +157,40 @@ class ProductsViewModel @Inject constructor(
     fun close() { open.value = null }
     fun closeAsk() { asking.value = null }
 
+    // ---- a product's variants, made and changed from this till (server 0097) ----
+    // which of the two sheets is open: the product's options, or one variant's codes
+    val options = MutableStateFlow<ItemEntity?>(null)
+    val codes = MutableStateFlow<ItemVariantEntity?>(null)
+    val working = MutableStateFlow(false)
+    fun mayCost(): Boolean = service.mayCost()
+
+    private fun go(itemId: String, said: (Int) -> String, by: StaffMember? = null, change: suspend (StaffMember?) -> Result<Int>) {
+        if (working.value) return
+        viewModelScope.launch {
+            working.value = true
+            val out = change(by)
+            working.value = false
+            val need = out.exceptionOrNull() as? NeedsApproval
+            if (need != null && by == null) approvals.ask(need.permission, need.what) { who -> go(itemId, said, who, change) }
+            else out.fold({ n -> options.value = null; codes.value = null; Toaster.say(said(n)); show(itemId) }, { Toaster.say(it.message ?: "That did not work") })
+        }
+    }
+
+    fun makeVariants(item: ItemEntity, variants: List<ItemVariantEntity>, rows: List<com.restopos.core.data.VariantForm.Option>) {
+        val has = variants.map { com.restopos.core.data.VariantForm.held(it.option_values) }
+        val make = com.restopos.core.data.VariantForm.read(rows, has, com.restopos.core.data.VariantForm.held(item.option_names).size) { com.restopos.core.common.Uuid7.next() }
+            .getOrElse { Toaster.say(it.message ?: "Those are not options yet"); return }
+        go(item.id, { n -> if (n == 1) "1 variant made, at the product's price." else "$n variants made, at the product's price." }) { by -> service.makeVariants(item.id, make, by) }
+    }
+
+    fun saveCodes(item: ItemEntity, v: ItemVariantEntity, barcode: String, sku: String, cost: String) {
+        val shown = mayCost()
+        val cents = if (!shown || cost.isBlank()) null else Money.parseRs(cost) ?: run { Toaster.say("The cost is not a number"); return }
+        go(item.id, { v.name + " is saved." }) { by -> service.saveVariant(item.id, v.id, barcode, sku, shown, cents, by).map { 1 } }
+    }
+
+    fun removeVariant(item: ItemEntity, v: ItemVariantEntity) = go(item.id, { v.name + " is removed. Receipts that sold it keep its name." }) { by -> service.removeVariant(v.id, by).map { 1 } }
+
     // a scanned code opens its product
     fun scanned(code: String) = viewModelScope.launch {
         query.value = ""
@@ -299,6 +333,14 @@ private fun ProductSheet(p: ProductOpen, vm: ProductsViewModel, onLabel: (ItemEn
     val i = p.item
     val weighed = i.sold_by == "weight"
     val tone = { n: Long -> when (LinePrice.stock(n)) { LinePrice.Stock.Plenty -> V.Text2; LinePrice.Stock.Few -> V.AmberText; LinePrice.Stock.None -> V.RedText } }
+    val optioning by vm.options.collectAsState()
+    val coding by vm.codes.collectAsState()
+    val working by vm.working.collectAsState()
+    if (optioning != null) { OptionsSheet(i, p.variants, working, { vm.options.value = null }) { rows -> vm.makeVariants(i, p.variants, rows) }; return }
+    coding?.let { v ->
+        VariantCodesSheet(i, v, vm.mayCost(), working, { vm.codes.value = null }, { b, k, c -> vm.saveCodes(i, v, b, k, c) }) { vm.removeVariant(i, v) }
+        return
+    }
     Sheet(onDismiss = { vm.close() }, width = 640.dp) {
         SheetHead(i.name, listOfNotNull(p.category, i.sku?.let { "SKU $it" }, i.barcode?.let { "barcode $it" }).joinToString(" · ").ifEmpty { null }) { vm.close() }
         if (p.variants.isEmpty()) {
@@ -326,6 +368,7 @@ private fun ProductSheet(p: ProductOpen, vm: ProductsViewModel, onLabel: (ItemEn
                         }
                         if (p.counted) T(LinePrice.left(qty, weighed), 14.sp, 700, tone(qty), Modifier.width(96.dp))
                         T(Money.format(v.price), 15.sp, 800, modifier = Modifier.width(110.dp))
+                        VBtn("Codes", height = 42.dp, radius = 12.dp, size = 14.sp, pad = 14.dp) { vm.codes.value = v }
                         VBtn("Price", height = 42.dp, radius = 12.dp, size = 14.sp, pad = 14.dp) { vm.askPrice(i, v) }
                         // its sheet adds or takes out
                         if (p.counted) VBtn("Stock", height = 42.dp, radius = 12.dp, size = 14.sp, pad = 14.dp) { vm.stockOf(p, v, StockForm.Way.In) }
@@ -348,6 +391,7 @@ private fun ProductSheet(p: ProductOpen, vm: ProductsViewModel, onLabel: (ItemEn
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             // its name, category, barcode, and removing it: the product's own sheet
             VBtn("Edit product", height = 52.dp, radius = 14.dp) { vm.close(); vm.items.open(i, fixedPrice = p.variants.isNotEmpty() || weighed) }
+            if (!weighed && !i.open_price) VBtn("Variants", height = 52.dp, radius = 14.dp) { vm.options.value = i }
             // onto the Print labels list: its price and barcode on a sticker
             VBtn("Print label", height = 52.dp, radius = 14.dp, icon = VI.Tag) { vm.close(); onLabel(i) }
             Gap()

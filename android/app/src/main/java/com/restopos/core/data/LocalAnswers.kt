@@ -75,6 +75,9 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             "addon.save" -> addonSave(p, tenant)
             "addon.remove" -> addonRemove(p)
             "settings.save" -> settingsSave(p, tenant)
+            "variants.make" -> variantsMake(p, tenant)
+            "variants.save" -> variantsSave(p)
+            "variant.remove" -> variantRemove(p)
             else -> throw Refused("not-alone")
         }
     }
@@ -504,12 +507,86 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         if (patch.isNotEmpty()) mergeSettings(tenant, patch)
     }
 
+    // ---- push_variants_make, push_variants_save, push_variant_remove (0097) ----
+    private suspend fun variantsMake(p: JsonObject, tenant: String) {
+        val id = p.id("item_id")
+        val names = (p["names"] as? JsonArray) ?: bad()
+        val lines = (p["lines"] as? JsonArray) ?: bad()
+        val item = dao.item(id)?.takeIf { it.deleted_at == null } ?: throw Refused("unknown-item")
+        if (names.size !in 1..3 || lines.isEmpty()) throw Refused("bad-options")
+        val called = ArrayList<String>()
+        for (n in names) {
+            val name = ((n as? JsonPrimitive)?.contentOrNull ?: "").trim()
+            if (name.isEmpty() || name.length > 30 || called.any { it.lowercase() == name.lowercase() }) throw Refused("bad-options")
+            called += name
+        }
+        val live = dao.variantsOf(id)
+        // a product that has variants keeps its number of options
+        if (live.isNotEmpty() && VariantForm.held(item.option_names).size != called.size) throw Refused("bad-options")
+        // stock held by the product itself would belong to no line once it has lines
+        if (live.isEmpty() && dao.levelsOfItem(id).any { it.qty != 0 }) throw Refused("has-stock")
+        fun key(values: List<String>) = values.joinToString("\u001f") { it.lowercase() }
+        val there = live.map { key(VariantForm.held(it.option_values)) }.toMutableSet()
+        val seen = HashSet<String>()
+        val new = ArrayList<com.restopos.core.database.ItemVariantEntity>()
+        for (row in lines) {
+            val l = (row as? JsonObject) ?: bad()
+            val vid = l.id("id")
+            val values = ((l["values"] as? JsonArray) ?: throw Refused("bad-options")).map { ((it as? JsonPrimitive)?.contentOrNull ?: "").trim() }
+            if (values.size != called.size || values.any { it.isEmpty() || it.length > 30 }) throw Refused("bad-options")
+            // the same line twice in one send
+            if (!seen.add(key(values))) throw Refused("bad-options")
+            // a line the product has already, by its values or by this id, is left as it is
+            if (key(values) in there || dao.variant(vid) != null) continue
+            new += com.restopos.core.database.ItemVariantEntity(
+                vid, tenant, id, values.joinToString(" / "), item.price,
+                option_values = JsonArray(values.map { JsonPrimitive(it) }).toString(), cost = item.cost,
+            )
+        }
+        if (live.size + new.size > 200) throw Refused("too-many-variants")
+        dao.putItem(item.copy(option_names = JsonArray(called.map { JsonPrimitive(it) }).toString()))
+        dao.putVariants(new)
+    }
+
+    private suspend fun variantsSave(p: JsonObject) {
+        val id = p.id("item_id")
+        val lines = (p["lines"] as? JsonArray) ?: bad()
+        if (lines.size > 200) bad()
+        for (row in lines) {
+            val l = (row as? JsonObject) ?: bad()
+            val vid = l.id("id")
+            val cost = l.long("cost")
+            val code = if ("barcode" in l) (l.str("barcode") ?: "").filterNot { it.isWhitespace() }.ifEmpty { null } else null
+            if ((cost != null && (cost < 0 || cost > 100_000_000L)) || (code?.length ?: 0) > 64) bad()
+            val was = dao.variant(vid)?.takeIf { it.item_id == id && it.deleted_at == null } ?: throw Refused("unknown-variant")
+            val barcode = if ("barcode" in l) code else was.barcode
+            val sku = if ("sku" in l) (l.str("sku") ?: "").trim().take(60).ifEmpty { null } else was.sku
+            // a barcode and a SKU are one line's only, among the products and among their variants
+            if (barcode != null && (dao.itemsWithBarcode(barcode, vid) > 0 || dao.variantsWithBarcode(barcode, vid) > 0)) throw Refused("barcode-taken")
+            if (sku != null && (dao.itemsWithSku(sku, vid) > 0 || dao.variantsWithSku(sku, vid) > 0)) throw Refused("sku-taken")
+            // the sheet sends a cost only when it showed one
+            dao.putVariants(listOf(was.copy(barcode = barcode, sku = sku, cost = if ("cost" in l) cost else was.cost)))
+        }
+    }
+
+    private suspend fun variantRemove(p: JsonObject) {
+        val id = p.id("variant_id")
+        val was = dao.variant(id) ?: throw Refused("unknown-variant")
+        // removed already is removed
+        if (was.deleted_at != null) return
+        // what is on the shelf would drop out of the stock without a word
+        if (dao.levelsOfItem(was.item_id).any { it.variant_id == id && it.qty != 0 }) throw Refused("has-stock")
+        dao.putVariants(listOf(was.copy(deleted_at = now())))
+        // with its last variant gone, a product is a simple one again
+        if (dao.variantsOf(was.item_id).isEmpty()) dao.item(was.item_id)?.let { dao.putItem(it.copy(option_names = "[]")) }
+    }
+
     companion object {
         val KINDS = setOf(
             "item.save", "item.remove", "category.save", "category.remove", "stock.adjust", "tables.add", "printer.save",
             "company.save", "staff.save", "staff.set_pin", "tax.save", "supplier.save", "supplier.remove",
             "role.save", "role.remove", "staff.update", "discount.save", "discount.remove",
-            "addon.save", "addon.remove", "settings.save",
+            "addon.save", "addon.remove", "settings.save", "variants.make", "variants.save", "variant.remove",
         )
         private val IN_REASONS = setOf("receive", "found")
         private val OUT_REASONS = setOf("damaged", "expired", "lost", "internal", "supplier_return")

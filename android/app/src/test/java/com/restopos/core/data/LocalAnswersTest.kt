@@ -86,6 +86,9 @@ class FakeAlone : AloneDao {
     val discounts = LinkedHashMap<String, com.restopos.core.database.DiscountEntity>()
     override suspend fun discounts() = discounts.values.toList()
     override suspend fun putDiscount(row: com.restopos.core.database.DiscountEntity) { discounts[row.id] = row }
+    override suspend fun variant(id: String) = variants.firstOrNull { it.id == id }
+    override suspend fun putVariants(rows: List<ItemVariantEntity>) { rows.forEach { r -> variants.removeAll { it.id == r.id }; variants += r } }
+    override suspend fun levelsOfItem(item: String) = levels.values.filter { it.item_id == item }
     val groups = LinkedHashMap<String, com.restopos.core.database.ModifierGroupEntity>()
     val choices = LinkedHashMap<String, com.restopos.core.database.ModifierEntity>()
     val itemGroups = ArrayList<com.restopos.core.database.ItemModGroupCrossRef>()
@@ -567,6 +570,81 @@ class LocalAnswersTest {
         assertEquals("The most that can be picked cannot be less than the fewest", AddonForm.read("X", "3", "2", emptyList()).exceptionOrNull()?.message)
         assertEquals("Give each choice a name", AddonForm.read("X", "", "", listOf(AddonForm.Typed("c", "", "5"))).exceptionOrNull()?.message)
         assertEquals(listOf("Optional, any number", "Optional, up to 2", "At least 1", "Pick 1", "Pick 1 to 3"), listOf(0 to 0, 0 to 2, 1 to 0, 1 to 1, 1 to 3).map { AddonForm.rule(it.first, it.second) })
+    }
+
+    // ---- a product's variants (the server's 0097, section V of its suite) ----
+    private val variantIds = mapOf("item-1" to id(100), "variant-1" to id(201), "variant-2" to id(202), "variant-3" to id(203), "variant-4" to id(204))
+    private fun names(item: String) = dao.variants.filter { it.item_id == item && it.deleted_at == null }.map { it.name }.sorted()
+
+    @Test fun `a product's lines made under the tablet's ids, and made once`() {
+        dao.items[id(100)] = ItemEntity(id(100), tenant, null, "Polo", 49900, cost = 17000, track_stock = true)
+        val sent = fixture("variants-make", variantIds)
+        assertEquals("done", ask("variants.make", sent))
+        assertEquals(listOf("M / Navy", "M / White", "S / Navy", "S / White"), names(id(100)))
+        val line = dao.variants.first { it.id == id(201) }
+        assertEquals(listOf("S / White", 49900L, 17000L, "[\"S\",\"White\"]"), listOf(line.name, line.price, line.cost, line.option_values))
+        assertEquals("[\"Size\",\"Colour\"]", dao.items[id(100)]!!.option_names)
+        assertEquals("done", ask("variants.make", sent))
+        assertEquals(4, dao.variants.size)
+        // a size added later makes its lines only; one it has, typed in other letters, is left
+        assertEquals("done", ask("variants.make", """{"item_id":"${id(100)}","names":["Size","Colour"],"lines":[{"id":"${id(205)}","values":["L","White"]},{"id":"${id(206)}","values":["s","white"]}]}"""))
+        assertEquals(5, dao.variants.size)
+        val one = { names: String, lines: String -> ask("variants.make", """{"item_id":"${id(100)}","names":[$names],"lines":[$lines]}""") }
+        assertEquals("bad-options", one("\"Size\"", """{"id":"${id(207)}","values":["XL"]}"""))
+        assertEquals("bad-options", one("\"Size\",\"size\"", """{"id":"${id(207)}","values":["XL","x"]}"""))
+        assertEquals("bad-options", one("\"Size\",\"Colour\"", """{"id":"${id(207)}","values":["XL"]}"""))
+        assertEquals("bad-options", one("\"Size\",\"Colour\"", """{"id":"${id(207)}","values":["XL","Red"]},{"id":"${id(208)}","values":["xl","red"]}"""))
+        assertEquals("unknown-item", ask("variants.make", JsonObject(sent + ("item_id" to JsonPrimitive(id(999))))))
+        // a product with stock of its own is not given variants
+        dao.items[id(101)] = ItemEntity(id(101), tenant, null, "Stocked", 1000, track_stock = true)
+        dao.levels["x"] = StockLevelEntity(store, id(101), "", qty = 5000)
+        assertEquals("has-stock", ask("variants.make", """{"item_id":"${id(101)}","names":["Size"],"lines":[{"id":"${id(209)}","values":["S"]}]}"""))
+    }
+
+    @Test fun `a line's codes saved, and a line removed`() {
+        dao.items[id(100)] = ItemEntity(id(100), tenant, null, "Polo", 49900, cost = 17000, track_stock = true)
+        ask("variants.make", fixture("variants-make", variantIds))
+        assertEquals("done", ask("variants.save", fixture("variants-save", variantIds)))
+        assertEquals(listOf("6091234500024", "POLO-S-WH", 17500L), dao.variants.first { it.id == id(201) }.let { listOf(it.barcode, it.sku, it.cost) })
+        // a barcode or a SKU another line has
+        assertEquals("barcode-taken", ask("variants.save", """{"item_id":"${id(100)}","lines":[{"id":"${id(202)}","barcode":"6091234500024"}]}"""))
+        assertEquals("sku-taken", ask("variants.save", """{"item_id":"${id(100)}","lines":[{"id":"${id(202)}","sku":"polo-s-wh"}]}"""))
+        assertEquals("unknown-variant", ask("variants.save", """{"item_id":"${id(100)}","lines":[{"id":"${id(299)}","sku":"X"}]}"""))
+        // its own codes are its own, a cost not sent is left, and emptied codes are none
+        assertEquals("done", ask("variants.save", """{"item_id":"${id(100)}","lines":[{"id":"${id(201)}","barcode":"6091234500024","sku":"POLO-S-WH"}]}"""))
+        assertEquals("done", ask("variants.save", """{"item_id":"${id(100)}","lines":[{"id":"${id(201)}","barcode":"","sku":""}]}"""))
+        assertEquals(listOf(null, null, 17500L), dao.variants.first { it.id == id(201) }.let { listOf(it.barcode, it.sku, it.cost) })
+        // a line that holds stock is not removed
+        dao.levels["y"] = StockLevelEntity(store, id(100), id(202), qty = 3000)
+        assertEquals("has-stock", ask("variant.remove", """{"variant_id":"${id(202)}"}"""))
+        assertEquals("done", ask("variant.remove", fixture("variant-remove", variantIds)))
+        assertEquals("done", ask("variant.remove", fixture("variant-remove", variantIds)))
+        assertEquals(listOf("M / Navy", "M / White", "S / Navy"), names(id(100)))
+        assertEquals("unknown-variant", ask("variant.remove", """{"variant_id":"${id(298)}"}"""))
+        // with its last variant gone, a product is a simple one again
+        dao.levels.remove("y")
+        listOf(202, 203, 204).forEach { ask("variant.remove", """{"variant_id":"${id(it)}"}""") }
+        assertEquals("[]", dao.items[id(100)]!!.option_names)
+    }
+
+    @Test fun `the options typed are read as the lines to make, and what is sent is the server's example`() {
+        var n = 0
+        val ids = { "variant-${++n}" }
+        val make = VariantForm.read(listOf(VariantForm.Option("Size", "S, M"), VariantForm.Option(" Colour ", "White,Navy, white"), VariantForm.Option()), emptyList(), 0, ids).getOrThrow()
+        assertEquals(OfficeFixtures.payload("variants-make"), OfficePayloads.variantsMake("item-1", make, null))
+        // a value added later: only the lines the product does not have
+        val more = VariantForm.read(listOf(VariantForm.Option("Size", "S, M, L"), VariantForm.Option("Colour", "White, Navy")), make.lines.map { it.values }, 2, { "new" }).getOrThrow()
+        assertEquals(listOf(listOf("L", "White"), listOf("L", "Navy")), more.lines.map { it.values })
+        val said = { o: List<VariantForm.Option>, has: List<List<String>>, had: Int -> VariantForm.read(o, has, had) { "x" }.exceptionOrNull()?.message }
+        assertEquals("Every one of those is already there", said(listOf(VariantForm.Option("Size", "S"), VariantForm.Option("Colour", "white")), make.lines.map { it.values }, 2))
+        assertEquals("Name an option, for example Size, and give its values", said(listOf(VariantForm.Option()), emptyList(), 0))
+        assertEquals("Give Size at least one value", said(listOf(VariantForm.Option("Size", " , ")), emptyList(), 0))
+        assertEquals("Two options have the same name", said(listOf(VariantForm.Option("Size", "S"), VariantForm.Option("size", "M")), emptyList(), 0))
+        assertTrue(said(listOf(VariantForm.Option("Size", "S")), make.lines.map { it.values }, 2)!!.contains("that number cannot change"))
+        assertEquals(OfficeFixtures.payload("variants-save"), OfficePayloads.variantSave("item-1", "variant-1", "6091 2345 00024", " POLO-S-WH ", true, 17500, null))
+        assertFalse((OfficePayloads.variantSave("item-1", "variant-1", "", "", false, 5, null)["lines"] as kotlinx.serialization.json.JsonArray)[0].jsonObject.containsKey("cost"))
+        assertEquals(OfficeFixtures.payload("variant-remove"), OfficePayloads.variantRemove("variant-1", null))
+        assertEquals(listOf("S", "M", "L"), VariantForm.values("S, M ,  m; L,"))
     }
 
     @Test fun `a change this tablet cannot answer by itself says so`() {

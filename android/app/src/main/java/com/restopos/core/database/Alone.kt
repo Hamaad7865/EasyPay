@@ -38,6 +38,10 @@ interface AloneDao {
     @Query("SELECT * FROM item_variants WHERE item_id = :item AND deleted_at IS NULL") suspend fun variantsOf(item: String): List<ItemVariantEntity>
     @Query("SELECT * FROM stock_levels WHERE store_id = :store AND item_id = :item") suspend fun levelsOf(store: String, item: String): List<StockLevelEntity>
     @Upsert suspend fun putLevels(rows: List<StockLevelEntity>)
+    @Query("SELECT * FROM item_variants WHERE id = :id") suspend fun variant(id: String): ItemVariantEntity?
+    @Upsert suspend fun putVariants(rows: List<ItemVariantEntity>)
+    // what a product holds, in every shop
+    @Query("SELECT * FROM stock_levels WHERE item_id = :item") suspend fun levelsOfItem(item: String): List<StockLevelEntity>
     @Upsert suspend fun putMovement(row: StockMovementEntity)
 
     // ---- suppliers ----
