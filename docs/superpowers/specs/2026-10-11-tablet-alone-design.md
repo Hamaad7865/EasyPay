@@ -214,11 +214,33 @@ taken.
 - **All of the night's commits are this session's**, and migrations 0094 to 0098 and the till's
   database versions 17 and 18 were not taken by anyone else meanwhile.
 
-**A risk at the moment of connecting, known and not yet closed.** Connect to the cloud pulls before
-it pushes. The owner's change of plan rewrote the client's settings on the server, so for the few
-seconds until the queue has gone up and come back, the tablet shows the server's old copy of what it
-had changed while alone in those settings: the business's details, the receipt's notes, the service
-charge, the one-printer switch. They come back with the queue. If the server refused one of those
-changes, that one would be lost. Pushing before applying what was pulled closes it; it is the first
-thing to do before this is used by a paying client.
+**The risk at the moment of connecting, closed the same morning.** Connect to the cloud pulls before
+it pushes, and the owner's change of plan rewrote the client's settings on the server: the pull
+brought the server's old copy of what the tablet had changed while alone (the business's details,
+the receipt's notes, the service charge, the one-printer switch), and wrote it over the tablet's.
+Two rules close it, both in the till, neither on the server:
+
+- **The tablet keeps its own settings until its queue has gone up** (`OwnSettings`, read by
+  `PullApplier`). While a kept `company.save`, `settings.save` or `printer.save` is still waiting,
+  the server's settings are taken with the tablet's own `company`, `receipt`, `servicePct` and
+  `onePrinter` put back over them: the plan and everything else is the server's. Once those changes
+  have gone up the server's copy is the tablet's, and it is taken whole. A linked till never queues
+  one of those, so nothing changes for it. A test holds the four keys against what the kept changes
+  really write.
+- **A change that asks the server waits while the queue is still going up** (`ServiceRepository.ask`).
+  Sent straight away it would get there before an older change of the queue and be overwritten by
+  it. The till says: "This tablet is still sending what it kept while it worked on its own. Try
+  again in a moment." Selling goes on meanwhile.
+
+Seen on the hidden emulator, through the till's own reader (`DEMO_PULL`), the made-up restaurant
+alone with 8 kept changes, two of them `printer.save`: handed the server's settings of the day it is
+made Premium (plan `premium`, another name, another footer, the one-printer switch on), the tablet
+took the plan and kept its own name, address, footer and switch. Saving a category then was answered
+by the sentence above, and nothing was added to the queue. The same answer handed to the restaurant
+made afresh, with nothing kept: taken whole. 480 unit tests pass.
+
+**Still as it was:** a kept change the server refuses is set aside on the tablet (as any refused
+change is), and if it was the only one that wrote into the settings the tablet keeps its own value
+until the settings next change. And none of this has met a real server: Connect to the cloud itself
+has still never been run.
 

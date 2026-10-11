@@ -193,6 +193,12 @@ interface OutboxDao {
     @Query("SELECT COUNT(*) FROM outbox WHERE state = 'pending'")
     fun pendingCountFlow(): Flow<Long>
 
+    // How many changes of these kinds are still waiting to go up. A linked
+    // till never queues a change it asks the server about, so one of those
+    // found here was kept while the tablet worked on its own.
+    @Query("SELECT COUNT(*) FROM outbox WHERE state = 'pending' AND type IN (:types)")
+    suspend fun pendingOf(types: List<String>): Long
+
     // 'dead' = the server refused it (spec 5.4 dead-letter)
     @Query("SELECT COUNT(*) FROM outbox WHERE state = 'dead'")
     suspend fun deadCount(): Long

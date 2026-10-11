@@ -488,6 +488,15 @@ class ServiceRepository @Inject constructor(
             }
             return
         }
+        // Just connected, and what the tablet kept is still going up, in the
+        // order it happened. A change sent straight to the server now would
+        // get there before an older one of the queue, and be overwritten by
+        // it when its turn came. So it waits until the queue has gone. A
+        // linked till never has one of these in its queue.
+        if (db.outbox().pendingOf(LocalAnswers.KINDS.toList()) > 0) {
+            com.restopos.core.sync.pushNow(context)
+            error("This tablet is still sending what it kept while it worked on its own. Try again in a moment.")
+        }
         val answer = try {
             api.push(listOf(OutboxOp(Uuid7.next(), type, payload, staff.id()))).firstOrNull()
         } catch (e: java.io.IOException) {

@@ -346,6 +346,20 @@ class LocalAnswersTest {
         assertEquals("name-required", ask("company.save", """{"name":""}"""))
     }
 
+    // The day the tablet is connected it keeps these of its own until its
+    // queue has gone up (OwnSettings). A kept change that wrote anything
+    // else into the settings would be overwritten by the server's old copy.
+    @Test fun `what the kept changes write into the settings is what the tablet keeps on connecting`() {
+        val before = obj(dao.settings!!.data)
+        ask("company.save", """{"name":"Chez Aisha","address":"Royal Road"}""")
+        ask("settings.save", OfficeFixtures.payload("settings-save").jsonObject)
+        ask("printer.save", """{"id":"${id(410)}","store_id":"$store","name":"Counter","kind":"usb","address":"","paper_mm":80,"one_printer":true}""")
+        val after = obj(dao.settings!!.data)
+        val written = after.keys.filter { after[it] != before[it] }.toSet()
+        assertEquals(com.restopos.core.sync.OwnSettings.KEYS, written)
+        assertTrue(LocalAnswers.KINDS.containsAll(com.restopos.core.sync.OwnSettings.KINDS))
+    }
+
     @Test fun `a member of staff and their PIN`() {
         val row = """{"id":"${id(500)}","name":" Ben ","role_id":"$role","pin_hash":"pbkdf2:abc"}"""
         assertEquals("done", ask("staff.save", row))

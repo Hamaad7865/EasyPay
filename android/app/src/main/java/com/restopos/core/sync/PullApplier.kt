@@ -218,7 +218,11 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                 })
             }
             changes["pos_settings"]?.lastOrNull()?.let {
-                val data = it.jsonObject["data"]?.toString() ?: "{}"
+                val sent = it.jsonObject["data"]?.toString() ?: "{}"
+                // What this tablet changed in its settings while it worked on
+                // its own, and has not sent yet, stays as the tablet has it:
+                // the server's copy of it is the older one (OwnSettings).
+                val data = if (db.outbox().pendingOf(OwnSettings.KINDS) > 0) OwnSettings.kept(sent, ops.settings()) else sent
                 ops.upsertSettings(SettingsEntity(str(it, "tenant_id") ?: "", data))
                 com.restopos.core.common.Money.decimals = com.restopos.core.data.PosSettings.parse(data).decimals
             }
