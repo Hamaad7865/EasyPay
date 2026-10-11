@@ -11,6 +11,10 @@
 //     tables to a store, two tables free to swap numbers in one save.
 //   - Each is refused for someone who may not and done with the word of
 //     someone who may.
+//   - Since 0102: a table may be set at an angle (left as it is when a save
+//     does not say), a booth and a bar stool are tables, and a room's walls,
+//     doors, windows and bar are saved with its plan, renamed with the room
+//     and removed with it; a save that does not name them leaves them alone.
 // The example payloads are the files in fixtures/till-floor, which the
 // tablet's own tests compare with what it builds. Their stand-in ids are
 // swapped for real ones.
@@ -220,6 +224,86 @@ const table = (name, x, y, more = {}) => ({ id: id(), name: String(name), seats:
       // a number freed by a removed table can be used again
       const reuse = await one(save('Main', [table(5, 60, 40)]));
       check('D4 the number of a removed table is free again', reuse.said === 'applied', reuse.said);
+    }
+
+    // ---- 0102: an angle, booths and stools, and what stands in the room ----
+    {
+      const els = async () => (await c.query(
+        `select id, area, kind, x, y, w, h, rotation, deleted_at is not null as gone from floor_elements where store_id = $1 order by sort_order, id`, [store])).rows;
+      const el = (kind, x, y, w, h, more = {}) => ({ id: id(), kind, x, y, w, h, rotation: 0, ...more });
+      const rot = async (tableId) => (await q1(`select rotation, shape, seats from tables where id = $1`, [tableId]));
+      const old = el('window', 90, 0, 8, 1);
+      const first = await one(op('floor.save', { store_id: store, area: 'Hall', tables: [], removed: [], elements: [old] }));
+      check('E0 a room may be given something to stand in it before it has a table', first.said === 'applied' && first.data.elements === 1, first.said);
+
+      const ex = fixture('floor-save-pieces');
+      const ids = { 'store-1': store, 'table-1': id(), 'table-2': id(), 'table-3': id(), 'element-1': id(), 'element-2': id(), 'element-3': id(), 'element-4': old.id };
+      const sent = { ...swap(ex.payload, ids), area: 'Hall' };
+      // the example's numbers are free in this store
+      sent.tables = sent.tables.map((t, i) => ({ ...t, name: ['H1', 'HB1', 'HS1'][i] }));
+      const r = await one(op(ex.type, sent));
+      const now = await els();
+      check('E1 the plan is saved with its pieces', r.said === 'applied' && r.data.saved === 3 && r.data.elements === 3 && r.data.elements_removed === 1, r.said + ' ' + JSON.stringify(r.data));
+      const t1 = await rot(ids['table-1']), t2 = await rot(ids['table-2']), t3 = await rot(ids['table-3']);
+      check('E1 a table is set at an angle', t1.rotation === 45);
+      check('E1 a booth and a bar stool are tables', t2.shape === 'booth' && t3.shape === 'stool' && t3.seats === 1, JSON.stringify([t2, t3]));
+      const wall = now.find((x) => x.id === ids['element-1']), bar = now.find((x) => x.id === ids['element-3']);
+      check('E1 a wall one unit thick, and a bar turned a quarter', !!wall && wall.kind === 'wall' && wall.h === 1 && wall.area === 'Hall' && !!bar && bar.rotation === 90, JSON.stringify([wall, bar]));
+      check('E1 the element taken off is removed', now.find((x) => x.id === old.id).gone === true);
+      const was = JSON.stringify(await els()) + (await state());
+      const again = await one(op(ex.type, sent));
+      check('E1 sent again, it leaves what one sending left', again.said === 'applied' && JSON.stringify(await els()) + (await state()) === was, again.said);
+
+      // a till built before this names no angle and no elements: neither is touched
+      const plain = sent.tables.map(({ rotation, ...t }) => t);
+      const older = await one(op('floor.save', { store_id: store, area: 'Hall', tables: plain, removed: [] }));
+      check('E2 a save that names no angle turns nothing back', older.said === 'applied' && (await rot(ids['table-1'])).rotation === 45, older.said);
+      check('E2 a save that names no elements leaves them where they stand', JSON.stringify(await els()) + (await state()) === was);
+      const none = await one(op('floor.save', { store_id: store, area: 'Hall', tables: [], removed: [], elements: [] }));
+      check('E2 nor does one that names none', none.said === 'applied' && (await els()).filter((x) => !x.gone).length === 3, none.said);
+      const turned = await one(op('floor.save', { store_id: store, area: 'Hall', tables: [{ ...sent.tables[0], rotation: 0 }], removed: [] }));
+      check('E2 an angle of nought is an angle', turned.said === 'applied' && (await rot(ids['table-1'])).rotation === 0, turned.said);
+
+      const still = async (name, payload, code, login) => {
+        const before = JSON.stringify(await els()) + (await state());
+        const res = await one(op('floor.save', { store_id: store, area: 'Hall', tables: [], removed: [], ...payload }), login);
+        const ok = Array.isArray(code) ? code.map((x) => 'rejected:' + x).includes(res.said) : res.said === 'rejected:' + code;
+        check(name, ok && JSON.stringify(await els()) + (await state()) === before, res.said);
+      };
+      await still('E3 a kind that is none of the four', { elements: [el('pillar', 2, 2, 2, 2)] }, 'bad-payload');
+      await still('E3 an element that leaves the plan', { elements: [el('wall', 95, 0, 10, 1)] }, 'bad-payload');
+      await still('E3 an element with no thickness', { elements: [el('wall', 2, 2, 10, 0)] }, 'bad-payload');
+      await still('E3 an angle past the circle', { elements: [el('door', 2, 2, 8, 2, { rotation: 360 })] }, 'bad-payload');
+      await still('E3 a table at an angle past the circle', { tables: [{ ...sent.tables[0], rotation: 400 }] }, 'bad-payload');
+      await still('E3 a shape that is none of the four', { tables: [{ ...sent.tables[0], shape: 'sofa' }] }, 'bad-payload');
+      const twice = el('wall', 2, 30, 10, 1);
+      await still('E3 one element sent twice', { elements: [twice, twice] }, 'bad-payload');
+      await still('E3 an element both on the plan and taken off it', { elements: [twice], removed_elements: [twice.id] }, 'bad-payload');
+      await still('E3 elements that are not a list', { elements: 'all' }, 'bad-payload');
+      await still('E3 an element that was removed does not come back by its id', { elements: [{ ...old }] }, 'conflict');
+      await still('E3 a cashier may not move a wall', { elements: [el('wall', 2, 40, 10, 1)] }, 'forbidden', cashier);
+      const theirEl = (await q1(`insert into floor_elements (tenant_id, store_id, area, kind) values ($1,$2,'Main','wall') returning id`, [other, theirStore])).id;
+      await still("E3 another client's element is not written over", { elements: [{ ...el('wall', 2, 40, 10, 1), id: theirEl }] }, ['conflict', 'error']);
+      const taken = await one(op('floor.save', { store_id: store, area: 'Hall', tables: [], removed: [], removed_elements: [theirEl] }));
+      check("E3 nor removed", taken.said === 'applied' && taken.data.elements_removed === 0 && (await q1(`select deleted_at from floor_elements where id = $1`, [theirEl])).deleted_at === null, taken.said);
+
+      const page = JSON.stringify(await asApp(async () => (await c.query('select sync_pull($1::uuid, 0, 500) as r', [store])).rows[0].r));
+      check("P2 the next sync carries the room's elements and a table's angle", page.includes(ids['element-1']) && page.includes('"floor_elements"') && page.includes('"rotation"'));
+
+      const renamed = await one(op('room.rename', { store_id: store, from: 'Hall', to: 'Great hall' }));
+      check('R7 a room renamed takes what stands in it', renamed.said === 'applied' && (await els()).filter((x) => !x.gone).every((x) => x.area === 'Great hall'), renamed.said);
+
+      // 200 to a store
+      const have = (await els()).filter((x) => !x.gone).length;
+      const many = Array.from({ length: 200 - have }, (_, i) => el('wall', i % 90, Math.floor(i / 90) * 2 + 20, 1, 1));
+      const filled = await one(op('floor.save', { store_id: store, area: 'Great hall', tables: [], removed: [], elements: many }));
+      const over = await one(op('floor.save', { store_id: store, area: 'Great hall', tables: [], removed: [], elements: [el('wall', 2, 50, 10, 1)] }));
+      check('L3 a store holds 200 elements at most', filled.said === 'applied' && (await els()).filter((x) => !x.gone).length === 200 && over.said === 'rejected:too-many', filled.said + ' ' + over.said);
+      const longList = await one(op('floor.save', { store_id: store, area: 'Great hall', tables: [], removed: [], elements: Array.from({ length: 201 }, (_, i) => el('wall', i % 90, 20, 1, 1)) }));
+      check('L3 and a save names 200 at most', longList.said === 'rejected:bad-payload', longList.said);
+
+      const gone = await one(op('room.remove', { store_id: store, area: 'Great hall' }));
+      check('D5 a room removed takes what stood in it', gone.said === 'applied' && (await els()).every((x) => x.gone), gone.said);
     }
   } finally {
     await devguard.cleanupTenant(c, tid);

@@ -1,0 +1,18 @@
+{
+  "type": "floor.save",
+  "payload": {
+    "store_id": "store-1", "area": "Main",
+    "tables": [
+      { "id": "table-1", "name": "1", "seats": 4, "shape": "square", "x": 2, "y": 2, "w": 12, "h": 12, "rotation": 45 },
+      { "id": "table-2", "name": "B1", "seats": 4, "shape": "booth", "x": 20, "y": 4, "w": 16, "h": 10, "rotation": 0 },
+      { "id": "table-3", "name": "S1", "seats": 1, "shape": "stool", "x": 40, "y": 4, "w": 5, "h": 5, "rotation": 0 }
+    ],
+    "removed": [],
+    "elements": [
+      { "id": "element-1", "kind": "wall", "x": 0, "y": 0, "w": 60, "h": 1, "rotation": 0 },
+      { "id": "element-2", "kind": "door", "x": 30, "y": 58, "w": 8, "h": 2, "rotation": 0 },
+      { "id": "element-3", "kind": "bar", "x": 70, "y": 10, "w": 24, "h": 6, "rotation": 90 }
+    ],
+    "removed_elements": ["element-4"]
+  }
+}
