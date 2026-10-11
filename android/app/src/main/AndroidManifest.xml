@@ -34,8 +34,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <!-- Hands the update that was fetched to Android's installer, and nothing
-             else: only the folder named in res/xml/update_paths.xml. -->
+        <!-- Hands another app a file in one of the till's own folders, and only in the two
+             named in res/xml/update_paths.xml: the update that was fetched, to Android's
+             installer; and the file the camera writes a product's photograph into. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

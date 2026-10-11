@@ -382,8 +382,13 @@ private fun PicturePage(item: String, thing: String) {
     val choose = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) pictures?.choose(item, uri)
     }
-    val shoot = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicturePreview()) { photo ->
-        if (photo != null) pictures?.taken(item, photo)
+    // The whole photograph, taken into a file of the till's own, which is then made small and kept. It used
+    // to ask the camera for its preview, which is a picture the size of a stamp (174 x 232 on the first try).
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var shot by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<android.net.Uri?>(null) }
+    val shoot = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicture()) { taken ->
+        val from = shot
+        if (taken && from != null) pictures?.choose(item, from)
     }
     Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
         androidx.compose.foundation.layout.Box(
@@ -398,7 +403,13 @@ private fun PicturePage(item: String, thing: String) {
                 if (runCatching { choose.launch("image/*") }.isFailure) Toaster.say("This tablet has no app to choose a picture with.")
             }
             VBtn("Take a photo", Modifier.fillMaxWidth(), height = 50.dp) {
-                if (runCatching { shoot.launch(null) }.isFailure) Toaster.say("This tablet has no camera app to take one with.")
+                val started = runCatching {
+                    val file = java.io.File(context.cacheDir, "photos/shot.jpg").apply { parentFile?.mkdirs(); delete() }
+                    val to = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
+                    shot = to
+                    shoot.launch(to)
+                }
+                if (started.isFailure) Toaster.say("This tablet has no camera app to take one with.")
             }
             if (pic != null) VBtn("Remove the picture", Modifier.fillMaxWidth(), height = 50.dp, fg = V.Red) { pictures?.remove(item) }
         }

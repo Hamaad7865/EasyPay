@@ -56,7 +56,9 @@ class Pictures @Inject constructor(
         }.getOrNull()
     }
 
-    // A picture picked on the tablet: read, turned the way it was taken, made small, kept.
+    // A picture picked on the tablet, or the photograph its camera has just
+    // written to a file of the till's own: read, turned the way it was taken,
+    // made small, kept.
     fun choose(item: String, from: Uri) = keep(item) {
         val resolver = context.contentResolver
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -68,9 +70,6 @@ class Pictures @Inject constructor(
         val turn = runCatching { resolver.openInputStream(from)?.use { ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL) } }.getOrNull()
         turned(read, when (turn) { ExifInterface.ORIENTATION_ROTATE_90 -> 90f; ExifInterface.ORIENTATION_ROTATE_180 -> 180f; ExifInterface.ORIENTATION_ROTATE_270 -> 270f; else -> 0f })
     }
-
-    // A photograph just taken with the tablet's camera, as the camera handed it over.
-    fun taken(item: String, photo: Bitmap) = keep(item) { photo }
 
     fun remove(item: String) = scope.launch { runCatching { db.pictures().drop(item) } }
 

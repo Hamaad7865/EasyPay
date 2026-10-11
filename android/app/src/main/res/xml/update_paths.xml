@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The one folder the till may hand to Android's installer: its own
-     "Download" folder, where an update of the till is fetched to (AppUpdater). -->
+<!-- The two folders of the till's own that another app is handed a file in:
+     its "Download" folder, where an update of the till is fetched to and
+     Android's installer reads it (AppUpdater); and "photos" in its cache,
+     where the tablet's camera writes the photograph taken for a product's
+     card, which the till then makes small, keeps, and throws the file away
+     (the Picture page of a product's sheet). -->
 <paths>
     <external-files-path name="updates" path="Download/" />
+    <cache-path name="photos" path="photos/" />
 </paths>
