@@ -4,6 +4,7 @@ import { db, withTenant } from "@/lib/db";
 import { hashPin, isPin } from "@/lib/pin";
 import { adminMessage, requirePlatformAdmin } from "@/lib/platform";
 import { loginForRestaurant, passwordProblem, removeLogin, setLoginPassword } from "@/lib/platform-auth";
+import type { CodeAnswer, TabletCode } from "./tablets";
 import { type Audit, type Login, type Store, type Tenant, TenantView, type Till } from "./view";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -209,6 +210,59 @@ async function setTillActive(formData: FormData) {
   );
 }
 
+// A code that sets up one tablet (migration 0099). The code is the answer to
+// the form and is shown on the page that asked, once: it is never put in the
+// page's address, as a notice is, nor in what was done here.
+async function addTablet(_was: CodeAnswer, formData: FormData): Promise<CodeAnswer> {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  const storeId = String(formData.get("store") ?? "");
+  if (!UUID.test(storeId)) notFound();
+  const owned = await db().query(`select name from stores where id = $1 and tenant_id = $2 and deleted_at is null`, [storeId, tenantId]);
+  if (!owned.rowCount) return { error: "That store does not exist." };
+  try {
+    const made = (await db().query(`select platform.tablet_code_add($1, $2) as r`, [adminId, storeId])).rows[0].r as { id: string; code: string };
+    revalidatePath(`/admin/tenants/${tenantId}`);
+    return { id: made.id, code: made.code, what: `Code for a new tablet in ${owned.rows[0].name}` };
+  } catch (e) {
+    return { error: adminMessage(e) };
+  }
+}
+
+// The tablet of a till is being replaced: the till's key ends at once, and the
+// tablet set up with the new code becomes that till.
+async function moveTablet(_was: CodeAnswer, formData: FormData): Promise<CodeAnswer> {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  const deviceId = String(formData.get("device") ?? "");
+  if (!UUID.test(deviceId)) notFound();
+  const owned = await db().query(`select name, code from pos_devices where id = $1 and tenant_id = $2`, [deviceId, tenantId]);
+  if (!owned.rowCount) return { error: "That till does not exist." };
+  try {
+    const made = (await db().query(`select platform.tablet_code_move($1, $2) as r`, [adminId, deviceId])).rows[0].r as { id: string; code: string };
+    revalidatePath(`/admin/tenants/${tenantId}`);
+    return { id: made.id, code: made.code, what: `Code for the tablet that replaces ${owned.rows[0].name} (${owned.rows[0].code})` };
+  } catch (e) {
+    return { error: adminMessage(e) };
+  }
+}
+
+async function endCode(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  const codeId = String(formData.get("code") ?? "");
+  if (!UUID.test(codeId)) notFound();
+  const owned = await db().query(`select 1 from tablet_codes where id = $1 and tenant_id = $2`, [codeId, tenantId]);
+  if (!owned.rowCount) back(tenantId, "error", "That code does not exist.");
+  try {
+    await db().query(`select platform.tablet_code_end($1, $2)`, [adminId, codeId]);
+  } catch (e) {
+    back(tenantId, "error", adminMessage(e));
+  }
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  back(tenantId, "notice", "Code taken back. It sets up nothing now.");
+}
+
 async function setActive(formData: FormData) {
   "use server";
   const { adminId, tenantId } = await tenantOf(formData);
@@ -246,7 +300,7 @@ export default async function TenantPage({
     )
   ).rows[0] as Tenant | undefined;
   if (!tenant) notFound();
-  const [stores, tills, logins, roles, audit] = await Promise.all([
+  const [stores, tills, logins, roles, audit, codes] = await Promise.all([
     pool
       .query(
         `select s.id, s.name, s.code
@@ -284,6 +338,7 @@ export default async function TenantPage({
         [id],
       )
       .then((r) => r.rows as Audit[]),
+    pool.query(`select platform.tablet_codes($1) as r`, [id]).then((r) => (r.rows[0]?.r ?? []) as TabletCode[]),
   ]);
   return (
     <TenantView
@@ -293,9 +348,10 @@ export default async function TenantPage({
       logins={logins}
       roles={roles}
       audit={audit}
+      codes={codes}
       error={sp.error}
       notice={sp.notice}
-      actions={{ setDetails, setPlan, setBusinessType, setStatus, addStore, setTillActive, addLogin, setPassword, setPin, setActive }}
+      actions={{ setDetails, setPlan, setBusinessType, setStatus, addStore, setTillActive, addLogin, setPassword, setPin, setActive, addTablet, moveTablet, endCode }}
     />
   );
 }

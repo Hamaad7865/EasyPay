@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { isOffline } from "@/lib/plan";
 import { BUSINESS_TYPES, PLAN_HELP, PLANS } from "@/lib/platform";
 import { Submit, Wait } from "../../../backoffice/busy";
 import { cap, day, dayTime, Notes, supportId } from "../../bits";
 import { ConfirmSubmit } from "../../confirm";
 import { Password } from "../../password";
 import { type Login, LoginsTable } from "./logins";
+import { type CodeAction, type TabletCode, Tablets } from "./tablets";
 
 export type Tenant = {
   id: string;
@@ -44,6 +46,9 @@ export type TenantActions = {
   setPassword: Action;
   setPin: Action;
   setActive: Action;
+  addTablet: CodeAction;
+  moveTablet: CodeAction;
+  endCode: Action;
 };
 
 const ACTIONS: Record<string, string> = {
@@ -61,6 +66,9 @@ const ACTIONS: Record<string, string> = {
   "tenant.details": "Details changed",
   "till.deactivate": "Till deactivated",
   "till.activate": "Till reactivated",
+  "tablet.add": "Code made for a new tablet",
+  "tablet.move": "Code made for a replacement tablet",
+  "tablet.code_end": "Code taken back",
 };
 
 function auditNote(a: Audit): string {
@@ -69,7 +77,7 @@ function auditNote(a: Audit): string {
   if (a.action === "tenant.suspended") return String(d.reason ?? "");
   if (a.action === "login.add") return `${String(d.name)} as ${String(d.role)}`;
   if (a.action === "store.add") return `${String(d.name)} (${String(d.code)})`;
-  if (a.action === "till.deactivate" || a.action === "till.activate") return String(d.code ?? "");
+  if (a.action === "till.deactivate" || a.action === "till.activate" || a.action === "tablet.move") return String(d.code ?? "");
   return "";
 }
 
@@ -87,6 +95,7 @@ export function TenantView({
   logins,
   roles,
   audit,
+  codes,
   error,
   notice,
   actions,
@@ -97,6 +106,7 @@ export function TenantView({
   logins: Login[];
   roles: string[];
   audit: Audit[];
+  codes: TabletCode[];
   error?: string;
   notice?: string;
   actions: TenantActions;
@@ -220,6 +230,17 @@ export function TenantView({
               its login is switched off.
             </p>
           </section>
+
+          <Tablets
+            tenant={tenant.id}
+            offline={isOffline(tenant.plan)}
+            stores={stores}
+            tills={tills.filter((d) => d.active).map((d) => ({ id: d.id, name: d.name, code: d.code, store: stores.find((st) => st.id === d.store_id)?.name ?? "" }))}
+            codes={codes}
+            addTablet={actions.addTablet}
+            moveTablet={actions.moveTablet}
+            endCode={actions.endCode}
+          />
 
           <section className="card flush">
             <div className="card-head">
