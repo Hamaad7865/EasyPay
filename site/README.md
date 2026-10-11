@@ -86,6 +86,10 @@ Four pieces of the till and the tabs of the back office answer the visitor
 - **Payment:** the bill is split equally between the guests picked (the
   cents that do not divide go on the last share), and each share is charged
   cash, card or transfer.
+- **QR ordering:** dishes are picked on the guest's phone and the order is
+  sent; it shows on the till, which accepts it (the phone says Confirmed) or
+  declines it (the phone says Not taken). The words on the phone are the
+  guest page's own (`cloudflare/relay/public/app/guest.js`).
 
 Nothing is there to press that the product cannot do. The names and figures
 in them are made up. With reduced motion asked for, the clock stands still
@@ -132,6 +136,17 @@ shop, because not built or not whole: scanning with the tablet's camera, a
 card terminal driven by the till, transfers between shops, and the three
 languages (a shop's screens are only partly translated). When a shop's
 screen changes, its Help changes, and this page is read against it again.
+
+**"The best POS in Mauritius"** is on the page at the owner's word (the
+title, the headline, the first question): it is his claim to make, and the
+first question answers it with what the product does, not with a ranking.
+
+**QR ordering from the table** is on the page as a Premium feature. Guests
+reach it at order.easypaypos.com, which answers only once the relay is
+deployed (`cloudflare/relay/deploy.cjs --apply`, the owner's to run). The
+page must not go live before that address answers and an order has been
+tried from a real phone: until then the section promises what a guest cannot
+do.
 
 ## The prices
 

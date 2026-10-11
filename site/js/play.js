@@ -4,7 +4,8 @@
 // and sent when the line is back; a table is seated, asked for its bill and
 // paid; a kitchen ticket's lines are ticked, and the ticket bumped and
 // recalled; a bill is split equally between the guests picked and each share
-// charged its own way. The figures and names in them are made up.
+// charged its own way; a guest orders from the phone, the till accepts or
+// declines, and the phone is told. The figures and names in them are made up.
 (() => {
   "use strict";
   const $ = (q, el = document) => el.querySelector(q);
@@ -204,5 +205,57 @@
       draw(paid.length - 1);
     });
     draw();
+  }
+
+  // ---- ordering from the table: the guest sends, the till accepts or declines, the phone is told ----
+
+  const qr = $('[data-play="qr"]');
+  if (qr) {
+    const menu = $("[data-g-menu]", qr), state = $("[data-g-state]", qr), send = $("[data-send]", qr), again = $("[data-again]", qr);
+    const title = $("[data-g-title]", qr), says = $("[data-g-says]", qr);
+    const none = $("[data-none]", qr), order = $("[data-order]", qr), done = $("[data-done]", qr);
+    const tiles = $$(".g-tile", qr), cart = new Map();
+    const count = () => [...cart.values()].reduce((a, n) => a + n, 0);
+    const sum = () => tiles.reduce((a, t) => a + (cart.get(t.dataset.dish) || 0) * Number(t.dataset.rs), 0);
+    const drawMenu = () => {
+      for (const t of tiles) {
+        const n = cart.get(t.dataset.dish) || 0;
+        t.classList.toggle("is-in", n > 0);
+        $("em", t).textContent = n || "";
+        t.setAttribute("aria-label", `${t.dataset.dish}, Rs ${t.dataset.rs}${n ? `, ${n} in the order` : ""}. Tap to add one.`);
+      }
+      const n = count();
+      send.disabled = n === 0;
+      send.textContent = n ? `Send order to staff · Rs ${sum().toLocaleString("en-US")}` : "Send order to staff";
+    };
+    const phone = (kind, head, line) => {
+      menu.hidden = kind !== "menu"; state.hidden = kind === "menu";
+      state.className = "g-state" + (kind === "wait" ? " is-wait" : kind === "yes" ? " is-yes" : kind === "no" ? " is-no" : "");
+      title.textContent = head || ""; says.textContent = line || "";
+      again.hidden = kind === "wait" || kind === "menu";
+    };
+    // a tile adds one of its dish; four of one is as many as the piece takes
+    for (const t of tiles) t.addEventListener("click", () => { cart.set(t.dataset.dish, Math.min(4, (cart.get(t.dataset.dish) || 0) + 1)); drawMenu(); });
+    send.addEventListener("click", () => {
+      const n = count();
+      phone("wait", "Order sent", "Waiting for staff to confirm");
+      // on the till: the order, at the till's own names and prices
+      $("[data-o-says]", qr).textContent = `${n} ${n === 1 ? "item" : "items"} · just now`;
+      $("[data-o-total]", qr).textContent = `Rs ${sum().toLocaleString("en-US")}`;
+      $("[data-o-lines]", qr).innerHTML = tiles.filter((t) => cart.get(t.dataset.dish)).map((t) => `<li><i>${cart.get(t.dataset.dish)}</i><span>${t.dataset.dish}</span><em>${(cart.get(t.dataset.dish) * Number(t.dataset.rs)).toLocaleString("en-US")}</em></li>`).join("");
+      none.hidden = true; done.hidden = true; order.hidden = false;
+      $("[data-accept]", qr).focus({ preventScroll: true });
+    });
+    const answer = (yes) => {
+      order.hidden = true; done.hidden = false;
+      done.classList.toggle("is-no", !yes);
+      done.textContent = yes ? "Accepted. It is on table 4's order, to send to the kitchen as usual." : "Declined. The guest is asked to see a member of staff.";
+      if (yes) phone("yes", "Confirmed", "Your order is with the staff. You pay at the table as usual.");
+      else phone("no", "Not taken", "A member of staff could not take this order. Please ask them, or order again.");
+    };
+    $("[data-accept]", qr).addEventListener("click", () => answer(true));
+    $("[data-decline]", qr).addEventListener("click", () => answer(false));
+    again.addEventListener("click", () => { cart.clear(); drawMenu(); phone("menu"); none.hidden = false; done.hidden = true; });
+    drawMenu();
   }
 })();

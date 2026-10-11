@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EasyPay | Point of sale for restaurants and shops in Mauritius</title>
-<meta name="description" content="EasyPay is a point of sale for restaurants and shops in Mauritius that keeps selling when the internet drops. Starter pack Rs 5,000, paid once. On an Android tablet, with a back office in your browser.">
+<title>EasyPay | The best POS software in Mauritius for restaurants and shops</title>
+<meta name="description" content="EasyPay is the best POS software in Mauritius for restaurants and shops: QR code ordering from the table, a till that keeps selling when the internet drops, and a back office in your browser. Starter pack Rs 5,000, paid once.">
 <link rel="canonical" href="https://easypaypos.com/">
 <meta name="theme-color" content="#fafaf6">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="EasyPay">
-<meta property="og:title" content="EasyPay | Point of sale for restaurants and shops in Mauritius">
-<meta property="og:description" content="The till that keeps selling when the internet drops. A restaurant’s floor and kitchen, or a shop’s counter and stock, on one tablet. Starter pack Rs 5,000, once.">
+<meta property="og:title" content="EasyPay | The best POS software in Mauritius">
+<meta property="og:description" content="The best POS app in Mauritius: QR code ordering from the table, and a till that keeps selling when the internet drops. A restaurant’s floor and kitchen, or a shop’s counter and stock, on one tablet. Starter pack Rs 5,000, once.">
 <meta property="og:url" content="https://easypaypos.com/">
 <meta property="og:image" content="https://easypaypos.com/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -53,6 +53,7 @@
   <symbol id="i-split" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 10h18M12 10v9"/></symbol>
   <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.2"/></symbol>
   <symbol id="i-box" viewBox="0 0 24 24"><path d="M3 8 12 3l9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v.01M14 20v.01M17 20h4v-3"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
 </svg>
 
@@ -72,6 +73,7 @@
         <div class="nav-panel" id="nav-product">
           <div class="nav-col">
             <p>For restaurants</p>
+            <a href="#qr"><svg class="ico"><use href="#i-qr"/></svg><span><b>QR ordering</b>Guests order from their table, on their phone</span></a>
             <a href="#floor"><svg class="ico"><use href="#i-floor"/></svg><span><b>Front of house</b>The floor plan, tables and bookings</span></a>
             <a href="#kitchen"><svg class="ico"><use href="#i-ticket"/></svg><span><b>Kitchen and bar</b>Each ticket to the right printer</span></a>
             <a href="#payment"><svg class="ico"><use href="#i-split"/></svg><span><b>Payment</b>Split bills, cash and receipts</span></a>
@@ -97,6 +99,7 @@
   </div>
   <div class="nav-sheet" id="nav-sheet" hidden>
     <p>For restaurants</p>
+    <a href="#qr">QR ordering</a>
     <a href="#floor">Front of house</a>
     <a href="#kitchen">Kitchen and bar</a>
     <a href="#payment">Payment</a>
@@ -120,7 +123,7 @@
   <div class="wrap">
     <div class="hero-copy" data-solid>
       <div class="pick" data-rise style="--i:0">
-        <p class="eyebrow">Point of sale for your</p>
+        <p class="eyebrow">The best POS in Mauritius for your</p>
         <div class="pick-keys" role="group" aria-label="What EasyPay is shown for">
           <i aria-hidden="true"></i>
           <button type="button" data-pick="restaurant" aria-pressed="true">Restaurant</button>
@@ -128,8 +131,9 @@
         </div>
         <p class="eyebrow dim">Made for Mauritius</p>
       </div>
-      <h1 data-rise style="--i:1">The till that keeps selling <span class="dim">when the internet drops.</span></h1>
-      <p class="lede" data-only="restaurant" data-rise style="--i:2">EasyPay runs a restaurant's floor, kitchen and till on one Android tablet. Orders, payments and printing carry on without a connection, and everything reaches your back office when it returns.</p>
+      <h1 data-only="restaurant" data-rise style="--i:1">The best POS app in Mauritius. <span class="dim">With QR ordering at every table.</span></h1>
+      <h1 data-only="shop" data-rise style="--i:1">The best POS app in Mauritius. <span class="dim">It keeps selling when the internet drops.</span></h1>
+      <p class="lede" data-only="restaurant" data-rise style="--i:2">EasyPay runs a restaurant's floor, kitchen and till on one Android tablet. Guests scan the code on their table and order from their own phone. And when the internet drops, the till keeps selling.</p>
       <p class="lede" data-only="shop" data-rise style="--i:2">EasyPay runs a shop's counter, stock and till on one Android tablet. Sales, payments and printing carry on without a connection, and everything reaches your back office when it returns.</p>
       <div class="hero-cta" data-rise style="--i:3">
         <a class="btn-demo" href="#demo">Book a demo <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a>
@@ -147,7 +151,7 @@
       <div class="hero-duo">
         <figure class="webapp" data-only="restaurant">
           <div class="webapp-bar" aria-hidden="true"><i></i><i></i><i></i><span>easypaypos.com/backoffice</span></div>
-          <img src="assets/shots/restaurant-insights-1000.webp" srcset="assets/shots/restaurant-insights-1000.webp 1000w, assets/shots/restaurant-insights.webp 2000w" sizes="(max-width: 760px) 92vw, (max-width: 1348px) 70vw, 940px" width="2000" height="1250" alt="EasyPay’s back office open in a browser: a restaurant’s sales patterns, with its busy hours and what stands out" loading="lazy" decoding="async">
+          <img src="assets/shots/restaurant-insights-1000.webp" srcset="assets/shots/restaurant-insights-1000.webp 1000w, assets/shots/restaurant-insights.webp 2000w" sizes="(max-width: 760px) 92vw, (max-width: 1348px) 70vw, 940px" width="2000" height="1250" alt="EasyPay’s back office open in a browser: a restaurant’s sales patterns, with its busy hours and what stands out" fetchpriority="high" decoding="async">
         </figure>
         <figure class="webapp" data-only="shop">
           <div class="webapp-bar" aria-hidden="true"><i></i><i></i><i></i><span>easypaypos.com/backoffice</span></div>
@@ -432,7 +436,7 @@
 <section class="why" id="why">
   <div class="wrap">
     <div class="head head--mid" data-solid>
-      <p class="eyebrow" data-reveal>Why EasyPay</p>
+      <p class="eyebrow" data-reveal>Why it is the best POS in Mauritius</p>
       <h2 data-reveal="focus">A till you can count on. <span class="dim">At a price you can see.</span></h2>
     </div>
     <div class="trio" data-solid>
@@ -446,7 +450,7 @@
       </article>
       <article class="why-card" data-reveal>
         <h3>The price is on the page</h3>
-        <p data-only="restaurant">The Starter pack is Rs 5,000, paid once for each tablet. Premium starts from Rs 2,100 a month and adds the kitchen screen and bookings.</p>
+        <p data-only="restaurant">The Starter pack is Rs 5,000, paid once for each tablet. Premium starts from Rs 2,100 a month and adds QR ordering from the table, the kitchen screen and bookings.</p>
         <p data-only="shop">The Starter pack is Rs 5,000, paid once for each tablet, with the back office and your reports.</p>
         <div class="why-shot why-shot--b">
           <a class="why-go" href="#pricing" aria-label="What each price includes"><svg class="ico"><use href="#i-down"/></svg></a>
@@ -467,6 +471,65 @@
           </div>
         </div>
       </article>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ordering from the table ================= -->
+<section class="feature feature--flip" id="qr" data-only="restaurant">
+  <div class="wrap feature-grid">
+    <div class="stage stage--b" data-solid data-reveal>
+      <div class="qr-play" data-play="qr" role="group" aria-label="Ordering from the table, to try: pick dishes on the phone, send the order, then accept it on the till">
+        <!-- the guest's phone, with the page the code opens -->
+        <div class="phone">
+          <div class="phone-screen">
+            <header class="g-head"><b>Demo Restaurant</b><span>Table 4</span></header>
+            <div class="g-menu" data-g-menu>
+              <p class="g-search" aria-hidden="true">Search the menu</p>
+              <div class="g-tiles">
+                <button type="button" class="g-tile" data-dish="Mine frite poulet" data-rs="220" style="--c:#d9825b"><b>Mine frite poulet</b><i>Rs 220</i><em aria-hidden="true"></em></button>
+                <button type="button" class="g-tile" data-dish="Briani poulet" data-rs="260" style="--c:#c9a23f"><b>Briani poulet</b><i>Rs 260</i><em aria-hidden="true"></em></button>
+                <button type="button" class="g-tile" data-dish="Vindaye poisson" data-rs="320" style="--c:#4f9a8f"><b>Vindaye poisson</b><i>Rs 320</i><em aria-hidden="true"></em></button>
+                <button type="button" class="g-tile" data-dish="Alouda" data-rs="90" style="--c:#b56aa0"><b>Alouda</b><i>Rs 90</i><em aria-hidden="true"></em></button>
+              </div>
+              <p class="g-note">Nothing is charged here: you pay at the table as usual.</p>
+              <button type="button" class="g-send" data-send disabled>Send order to staff</button>
+            </div>
+            <div class="g-state" data-g-state hidden aria-live="polite">
+              <i data-g-mark aria-hidden="true"></i>
+              <b data-g-title>Order sent</b>
+              <span data-g-says>Waiting for staff to confirm</span>
+              <button type="button" data-again hidden>Order something else</button>
+            </div>
+          </div>
+        </div>
+        <!-- the till, where the order arrives -->
+        <div class="mock">
+          <div class="till piece qr-till">
+            <div class="qr-sheet">
+              <h6>Orders from the tables</h6>
+              <p class="qr-none" data-none>Nothing is waiting. An order sent from a table shows here within seconds.</p>
+              <div class="qr-order" data-order hidden>
+                <header><b>Table 4</b><span data-o-says></span><em data-o-total></em></header>
+                <ul data-o-lines></ul>
+                <div class="qr-keys"><button type="button" data-decline>Decline</button><button type="button" data-accept>Accept</button></div>
+              </div>
+              <p class="qr-done" data-done hidden aria-live="polite"></p>
+            </div>
+            <p class="v-try v-try--light">Try it: pick dishes on the phone, send the order, then answer it on the till.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="copy" data-solid>
+      <p class="eyebrow" data-reveal>QR ordering <em class="tag">Premium</em></p>
+      <h2 data-reveal="focus">A QR code on every table. <span class="dim">Guests order from their own phone.</span></h2>
+      <ul class="points">
+        <li data-reveal><h3>A card for each table</h3><p>Print the cards from the back office. Each code knows its table, so the order arrives where the guests are sitting.</p></li>
+        <li data-reveal><h3>No app, no account</h3><p>Guests scan with their phone's camera and your menu opens: search, the choices of a dish, a note for the kitchen. A dish you have marked sold out cannot be ordered.</p></li>
+        <li data-reveal><h3>Your cashier says yes</h3><p>The order is on the till within seconds. Accept it and it joins the table's order, and the guest's phone says Confirmed. Decline it and the guest is asked to see a member of staff.</p></li>
+        <li data-reveal><h3>Nothing is paid on the phone</h3><p>The bill is settled at the table as usual. Ordering from the table needs the tablet online; everything else on this page carries on without a connection.</p></li>
+      </ul>
     </div>
   </div>
 </section>
@@ -1022,8 +1085,13 @@
     </div>
     <div class="faq-list" data-solid>
       <details data-reveal>
+        <summary>What is the best POS software in Mauritius?<svg class="ico"><use href="#i-plus"/></svg></summary>
+        <p data-only="restaurant">We built EasyPay to be it, for restaurants here. Guests order from their table by scanning a QR code. The till keeps taking orders and payments when the internet drops. Its price is on this page, and we set it up with you in person, in Mauritius. Book a demo and judge it on your own menu.</p>
+        <p data-only="shop">We built EasyPay to be it, for shops here. The till keeps selling when the internet drops, it knows what is left of every product, and a return starts from the receipt's barcode. Its price is on this page, and we set it up with you in person, in Mauritius. Book a demo and judge it on your own products.</p>
+      </details>
+      <details data-reveal>
         <summary>How much does it cost?<svg class="ico"><use href="#i-plus"/></svg></summary>
-        <p data-only="restaurant">The Starter pack is Rs 5,000, paid once for each tablet: the till, the back office, your reports and printed kitchen tickets. Premium starts from Rs 2,100 a month for each restaurant and adds the kitchen screen and bookings. The tablet and the printers are yours to choose.</p>
+        <p data-only="restaurant">The Starter pack is Rs 5,000, paid once for each tablet: the till, the back office, your reports and printed kitchen tickets. Premium starts from Rs 2,100 a month for each restaurant and adds QR ordering from the table, the kitchen screen and bookings. The tablet and the printers are yours to choose.</p>
         <p data-only="shop">The Starter pack is Rs 5,000, paid once for each tablet: the till, the back office, your stock and your reports. The tablet, the printer and the scanner are yours to choose.</p>
       </details>
       <details data-reveal>
@@ -1086,6 +1154,7 @@
           <tr><th scope="row">Reports<span>Sales, items, tax, day closing and time cards, as spreadsheet files</span></th><td><svg class="ico" role="img" aria-label="Included"><use href="#i-check"/></svg></td><td><svg class="ico" role="img" aria-label="Included"><use href="#i-check"/></svg></td></tr>
           <tr><th scope="row">Your account opened and set up with you</th><td><svg class="ico" role="img" aria-label="Included"><use href="#i-check"/></svg></td><td><svg class="ico" role="img" aria-label="Included"><use href="#i-check"/></svg></td></tr>
           <tr><th scope="row">Kitchen screen<span>A tablet in the kitchen shows each order as it is sent</span></th><td><span class="no" role="img" aria-label="Not included">–</span></td><td><svg class="ico" role="img" aria-label="Included"><use href="#i-check"/></svg></td></tr>
+          <tr><th scope="row">QR ordering from the table<span>Guests scan the code on their table and order from their phone; the till accepts</span></th><td><span class="no" role="img" aria-label="Not included">–</span></td><td><svg class="ico" role="img" aria-label="Included"><use href="#i-check"/></svg></td></tr>
           <tr><th scope="row">Bookings<span>Taken on the till or in the back office, seated on the floor plan</span></th><td><span class="no" role="img" aria-label="Not included">–</span></td><td><svg class="ico" role="img" aria-label="Included"><use href="#i-check"/></svg></td></tr>
         </tbody>
         <tfoot><tr><th scope="row">Price</th><td><b>Rs 5,000</b><span>once, per tablet</span></td><td><i>Starter pack, then from</i><b>Rs 2,100</b><span>a month, per restaurant</span></td></tr></tfoot>
@@ -1153,7 +1222,7 @@
     </div>
     <nav aria-label="The till">
       <h4>The till</h4>
-      <a href="#floor">Front of house</a><a href="#kitchen">Kitchen and bar</a><a href="#payment">Payment</a><a href="#selling">Selling in a shop</a><a href="#stock">Stock</a><a href="#returns">Returns</a>
+      <a href="#qr">QR ordering</a><a href="#floor">Front of house</a><a href="#kitchen">Kitchen and bar</a><a href="#payment">Payment</a><a href="#selling">Selling in a shop</a><a href="#stock">Stock</a><a href="#returns">Returns</a>
     </nav>
     <nav aria-label="The back office">
       <h4>The back office</h4>
