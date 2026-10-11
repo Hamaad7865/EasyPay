@@ -135,8 +135,9 @@ share either.
 - `sitemap.xml` lists the four pages at the addresses their canonical links
   name, without `.html`. A page added to the site is added there.
 - `robots.txt` opens the site to every search engine, keeps the back office
-  and this file out, and names the sitemap. Cloudflare puts its own lines
-  above ours when it serves it.
+  and this file out, and names the sitemap. Before it existed Cloudflare
+  answered that address with a notice of its own; if its managed robots.txt
+  is ever switched on, its lines come above ours.
 - `_headers` tells search engines not to list easypaypos.pages.dev or a
   deployment's own address, which show the same pages.
 - Home's head holds what a search engine is told in its own format
