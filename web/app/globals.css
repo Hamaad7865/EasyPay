@@ -1,10 +1,11 @@
-/* EasyPay back office. One stylesheet, no UI library. Everything floats on a
-   soft, cool backdrop: the menu is a rounded pane of frosted glass, the pages
-   are white rounded panels with a soft shadow, buttons are pills (the main one
-   dark), and the logo's green is the one accent. The pages are written with
-   plain headings, tables, forms and buttons; the classes below are the few
-   components they share. There is a dark look too, for whoever chooses it or
-   whose device is set to dark: the same rules, with other colours. */
+/* EasyPay back office. One stylesheet, no UI library. The page is warm paper;
+   the menu is a rounded pane of deep green, the one dark thing on it; the
+   pages are white rounded panels with a soft shadow, buttons are pills (the
+   main one the menu's green), and the logo's green is the accent. The pages
+   are written with plain headings, tables, forms and buttons; the classes
+   below are the few components they share. There is a dark look too, for
+   whoever chooses it or whose device is set to dark: the same rules, with
+   other colours, and the same green pane. */
 
 /* Every colour has a name here, and the rules below use the names. This block
    is the light look. The dark one, after it, gives the same names other
@@ -13,21 +14,21 @@
 :root {
   color-scheme: light;
   /* the page under everything. The backdrop itself is --canvas, under .bo */
-  --body: #f2f3f7;
-  --canvas: #eceef3;
+  --body: #f4f1e9;
+  --canvas: #f4f1e9;
   /* the backdrop's mist: the green corner, the blue one, the light at the top; and the sign-in page's */
-  --glow-a: rgba(63, 132, 67, 0.15);
-  --glow-b: rgba(112, 126, 240, 0.17);
-  --glow-top: rgba(255, 255, 255, 0.9);
-  --auth-glow: #dcefdc;
+  --glow-a: rgba(63, 132, 67, 0.07);
+  --glow-b: rgba(196, 164, 92, 0.1);
+  --glow-top: rgba(255, 255, 255, 0.55);
+  --auth-glow: #e4efdd;
   /* fills: hovers, chips and wells */
-  --bg: #f2f3f7;
-  --well: #eef0f3;
+  --bg: #f2efe7;
+  --well: #ece8de;
   /* panels, their heads and foots, and the line of a table under the pointer */
   --surface: #ffffff;
-  --surface-2: #fafbfc;
-  --surface-3: #f7f8fa;
-  --row-hover: #fbfcfd;
+  --surface-2: #fbfaf6;
+  --surface-3: #f8f6f0;
+  --row-hover: #fcfbf8;
   /* where something is typed or picked; and what is lifted off the page (the
      open page in the menu, a quiet button) */
   --field: #fff;
@@ -45,22 +46,22 @@
   --glass-key: rgba(255, 255, 255, 0.72);
   --glass-lit: rgba(255, 255, 255, 0.8);
   --glass-chip: rgba(255, 255, 255, 0.82);
-  --line: #e8eaef;
-  --line-strong: #d5d9e1;
-  --hairline: rgba(16, 24, 40, 0.06);
-  --ink: #111827;
-  --ink2: #4b5563;
-  --ink3: #8a93a3;
-  --ink4: #b3bac7;
-  --placeholder: #a3aab8;
+  --line: #e9e5da;
+  --line-strong: #d8d3c6;
+  --hairline: rgba(28, 40, 30, 0.07);
+  --ink: #16231c;
+  --ink2: #49554d;
+  --ink3: #89928a;
+  --ink4: #b4bab3;
+  --placeholder: #a4aba3;
   /* a shape or a word that is barely there, and a switch that is off */
-  --faint: #c3c8d4;
-  --off: #cfd4dc;
+  --faint: #c6cac2;
+  --off: #d2d6cd;
   /* The main button, the page that is on, a tip: the page's opposite, and
      what is written on it. Not --ink: lettering and this fill change places
      on a dark page, where the pill is the light thing. */
-  --strong: #111827;
-  --strong-hover: #1f2937;
+  --strong: #12382a;
+  --strong-hover: #1b4a38;
   --on-strong: #fff;
   --on-strong-dim: rgba(255, 255, 255, 0.18);
   --on-strong-ring: rgba(255, 255, 255, 0.3);
@@ -102,22 +103,41 @@
   --row-bad: #fef5f4;
   /* figures: the chart's rules and its dashed earlier line, the quiet hours'
      bars, busy hours from none to most, and the floor plan */
-  --chart-grid: #eceef2;
+  --chart-grid: #ece8de;
   --chart-prev: #a9b0bd;
   --hours: #c3dfc4;
-  --heat-0: #f0f2f5;
+  --heat-0: #f0ede4;
   --heat-1: #d9eeda;
   --heat-2: #aed8b1;
   --heat-3: #7fbd85;
   --heat-4: #4f9a56;
   --heat-5: #2c6a31;
-  --floor: #fbfcfd;
-  --floor-line: #edf0f4;
+  --floor: #fbfaf6;
+  --floor-line: #ece8dc;
   --floor-table: #475066;
   /* waiting: a bar of the skeleton, the light that crosses it, the ring beside a link */
-  --sk: rgba(17, 24, 39, 0.085);
-  --sk-lit: rgba(17, 24, 39, 0.028);
-  --wait-ring: rgba(17, 24, 39, 0.14);
+  --sk: rgba(22, 35, 28, 0.085);
+  --sk-lit: rgba(22, 35, 28, 0.028);
+  --wait-ring: rgba(22, 35, 28, 0.14);
+  /* The menu: a deep green pane, the one dark thing on the light page, and
+     as it is on a dark one. Its lettering, the lines in it, a line of it
+     under the pointer, its cards and keys, the open page (a pill of the
+     page's own paper) and the marks that take the accent. Left out of the
+     dark look on purpose: the pane is the same there. */
+  --menu: #12382a;
+  --menu-line: rgba(255, 255, 255, 0.09);
+  --menu-ink: #f3f6f2;
+  --menu-ink2: #c6d4cb;
+  --menu-ink3: #8fa799;
+  --menu-card: rgba(255, 255, 255, 0.06);
+  --menu-hover: rgba(255, 255, 255, 0.08);
+  --menu-key: rgba(255, 255, 255, 0.09);
+  --menu-lit: rgba(255, 255, 255, 0.16);
+  --menu-chip: rgba(255, 255, 255, 0.13);
+  --menu-on: #f6f3ea;
+  --menu-on-ink: #12281f;
+  --menu-on-mark: #2f7a3b;
+  --menu-accent: #9bd8a4;
   --radius: 18px;
   --radius-sm: 10px;
   --shadow-sm: 0 1px 2px rgba(22, 28, 45, 0.04), 0 10px 28px -14px rgba(22, 28, 45, 0.14);
@@ -476,6 +496,13 @@ body {
 .bo-side {
   position: sticky; top: 14px; height: calc(100vh - 28px); width: 268px; overflow: hidden;
   padding: 16px 12px 12px;
+  /* inside the pane the names its rules use mean the menu's own colours */
+  --ink: var(--menu-ink); --ink2: var(--menu-ink2); --ink3: var(--menu-ink3); --ink4: var(--menu-ink3); --placeholder: var(--menu-ink3);
+  --glass: var(--menu); --glass-line: var(--menu-line); --glass-card: var(--menu-card); --glass-hover: var(--menu-hover);
+  --glass-key: var(--menu-key); --glass-lit: var(--menu-lit); --glass-chip: var(--menu-chip); --line: var(--menu-line);
+  --raised: var(--menu-on); --accent: var(--menu-accent); --accent-hover: var(--menu-ink); --accent-soft: var(--menu-lit);
+  --strong: var(--menu-on); --on-strong: var(--menu-on-ink); --bg: var(--menu-hover);
+  color: var(--menu-ink);
   background: var(--glass); -webkit-backdrop-filter: blur(22px) saturate(1.3); backdrop-filter: blur(22px) saturate(1.3);
   border: 1px solid var(--glass-line); border-radius: 26px;
   box-shadow: var(--shadow-sm);
@@ -534,8 +561,8 @@ body {
 }
 .bo-nav a:hover, .bo-group-head:hover { background: var(--glass-hover); color: var(--ink); }
 /* the page that is open: a white pill lifted off the glass */
-.bo-nav a.on { background: var(--raised); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.06), 0 8px 18px -10px rgba(22, 28, 45, 0.28); }
-.bo-nav a.on svg { color: var(--accent); }
+.bo-nav a.on { background: var(--raised); color: var(--menu-on-ink); font-weight: 600; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.06), 0 8px 18px -10px rgba(22, 28, 45, 0.28); }
+.bo-nav a.on svg { color: var(--menu-on-mark); }
 .bo-nav svg { width: 17px; height: 17px; flex: none; }
 .bo-nav a:focus-visible, .bo-group-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
@@ -625,7 +652,7 @@ body {
   font: inherit; font-size: 13.5px; font-weight: 400; cursor: text; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.04);
   transition: background-color 0.15s, color 0.15s, box-shadow 0.2s;
 }
-.bo-side button.search-trigger:hover { background: var(--raised); color: var(--ink2); box-shadow: 0 8px 18px -12px rgba(22, 28, 45, 0.35); }
+.bo-side button.search-trigger:hover { background: var(--menu-lit); color: var(--menu-ink); }
 .bo-side button.search-trigger:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
 .search-trigger svg { width: 16px; height: 16px; flex: none; }
 .search-trigger span { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -633,6 +660,8 @@ body {
   font: inherit; font-size: 11.5px; font-weight: 600; color: var(--ink2); padding: 2px 7px; border-radius: 999px;
   background: var(--surface); border: 1px solid var(--line); box-shadow: 0 1px 0 var(--line);
 }
+/* on the menu's pane the key is a chip of the pane, not of the page */
+.bo-side .search-trigger kbd { background: var(--menu-chip); border-color: transparent; box-shadow: none; color: var(--menu-ink2); }
 
 .search-dialog { width: min(640px, calc(100vw - 32px)); max-height: none; margin: 11vh auto 0; padding: 0; border: 0; background: transparent; color: var(--ink); overflow: visible; }
 /* What dims the page behind a dialog. --scrim has a value on a dark page only,
