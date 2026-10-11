@@ -77,6 +77,8 @@ class BusinessViewModel @Inject constructor(db: TillDatabase, private val servic
     val staff = db.staff().everyone().held(emptyList())
     val roles = db.staff().roles().map { rows -> rows.sortedBy { it.name.lowercase() } }.held(emptyList())
     val discounts = db.catalog().discountsFlow().held(emptyList())
+    // the receipt's notes and the service charge, as the settings hold them
+    val settings = db.ops().settingsFlow().map { PosSettings.parse(it) }.held(PosSettings())
     val busy = MutableStateFlow(false)
 
     // One change: asked, and if the person signed in may not, asked again with the word of someone who may.
@@ -126,6 +128,16 @@ class BusinessViewModel @Inject constructor(db: TillDatabase, private val servic
     fun saveDiscount(id: String, name: String, percent: Boolean, value: String, needsManager: Boolean, done: () -> Unit) {
         val d = DiscountForm.read(name, percent, value, needsManager).getOrElse { Toaster.say(it.message ?: "That is not a discount yet"); return }
         go("${d.name} is saved.", done) { by -> service.saveDiscount(id, d, by) }
+    }
+
+    // only what was changed is sent: the rest is left as it is
+    fun saveReceipt(was: PosSettings, header: String, footer: String, pct: String) {
+        val service = if (was.retail) null else (pct.trim().ifEmpty { "0" }.toIntOrNull()?.takeIf { it in 0..30 } ?: run { Toaster.say("A service charge is a whole number from 0 to 30"); return })
+        val h = header.trim().take(300).takeIf { it != was.header }
+        val f = footer.trim().take(300).takeIf { it != was.footer }
+        val p = service?.takeIf { it != was.servicePct }
+        if (h == null && f == null && p == null) { Toaster.say("Nothing was changed."); return }
+        go("Saved. Receipts printed from now on carry it.", {}) { by -> this.service.saveSettings(h, f, p, by) }
     }
 
     fun removeDiscount(d: DiscountEntity, done: () -> Unit) = go("${d.name} is removed. Receipts it was given on keep it.", done) { by -> service.removeDiscount(d.id, by) }
@@ -294,6 +306,40 @@ private fun RoleSheet(vm: BusinessViewModel, edit: RoleEdit, shop: Boolean, hold
             }
         }
     }
+}
+
+// ---- Settings > Receipt ----
+@Composable
+internal fun ReceiptPage(vm: BusinessViewModel = hiltViewModel()) {
+    val st by vm.settings.collectAsState()
+    val busy by vm.busy.collectAsState()
+    var header by remember(st.header) { mutableStateOf(st.header) }
+    var footer by remember(st.footer) { mutableStateOf(st.footer) }
+    var pct by remember(st.servicePct) { mutableStateOf(if (st.servicePct == 0) "" else st.servicePct.toString()) }
+
+    Note("Two notes printed on every receipt and bill: one under the business's name and address, one at the foot.")
+    Panel {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Caps("At the top", V.Text2)
+            Field(header, { header = it.take(300) }, "Open every day, 9 to 9", Modifier.fillMaxWidth(), height = 50.dp, size = 16.sp)
+            Caps("At the foot", V.Text2, Modifier.padding(top = 6.dp))
+            Field(footer, { footer = it.take(300) }, "Thank you. See you again soon.", Modifier.fillMaxWidth(), height = 50.dp, size = 16.sp)
+        }
+    }
+    if (!st.retail) {
+        Note("A service charge is added to orders served at a table, and to no other.")
+        Panel {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f)) {
+                    T("Service charge", 15.sp, 700)
+                    T("A percentage, 0 to 30. Empty is none.", 13.sp, 500, V.Text2)
+                }
+                Field(pct, { v -> pct = v.filter { it.isDigit() }.take(2) }, "0", Modifier.padding(start = 8.dp).fillMaxWidth(0.25f), height = 50.dp, number = true, size = 17.sp, leading = { T("%", 15.sp, 700, V.Text2) })
+            }
+        }
+    }
+    Row { VBtn(if (busy) "Saving…" else "Save", bg = V.Blue, fg = Color.White, height = 52.dp, radius = 14.dp, weight = 800, enabled = !busy) { vm.saveReceipt(st, header, footer, pct) } }
+    Note("The business's name, address and numbers on the receipt are under This till, Set-up, Business details.")
 }
 
 // ---- Settings > Discounts ----

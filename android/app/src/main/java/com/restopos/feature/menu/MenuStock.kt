@@ -120,6 +120,11 @@ class MenuViewModel @Inject constructor(
     // An item being added, changed or removed from this till.
     val items = ItemEditor(service, approvals, viewModelScope, shop = false)
 
+    // The add-on groups, made and changed from this till (server 0096).
+    val addons = AddonEditor(service, approvals, viewModelScope)
+    val groups: StateFlow<List<com.restopos.core.database.ModifierGroupEntity>> = db.catalog().groupsFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val choices: StateFlow<List<com.restopos.core.database.ModifierEntity>> = db.catalog().choicesFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // The categories, made, changed and removed from this till; a list that
     // was showing one that is gone shows everything.
     val categories = CategoryEditor(service, approvals, viewModelScope, shop = false) { gone -> if (cat.value == gone) cat.value = null }
@@ -190,7 +195,8 @@ fun MenuStockScreen(vm: MenuViewModel) {
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             ScreenHead("$total items · $soldOut sold out", L.menu, Modifier.weight(1f))
-            Field(q, { vm.query.value = it.take(40) }, "Find an item", Modifier.width(340.dp), height = 52.dp, bg = V.Panel, size = 16.sp, leading = { VIcon(VI.Search, 20.dp, V.Text2) })
+            Field(q, { vm.query.value = it.take(40) }, "Find an item", Modifier.width(280.dp), height = 52.dp, bg = V.Panel, size = 16.sp, leading = { VIcon(VI.Search, 20.dp, V.Text2) })
+            VBtn("Add-ons", height = 52.dp) { vm.addons.list() }
             VBtn("Categories", height = 52.dp) { vm.categories.list() }
             VBtn("New item", bg = V.Blue, fg = Color.White, height = 52.dp, weight = 800) { vm.items.new(cat) }
         }
@@ -262,6 +268,9 @@ fun MenuStockScreen(vm: MenuViewModel) {
 
     editing?.let { e -> ItemSheet(vm.items, e, cats, shop = false, stock = e.item?.let { item -> { way -> vm.stockOf(item, way) } }) }
     CategorySheets(vm.categories, cats, counts, shop = false)
+    val groups by vm.groups.collectAsState()
+    val choices by vm.choices.collectAsState()
+    AddonSheets(vm.addons, groups, choices)
     stocking?.let { StockSheet(vm.stock, it) }
 
     pricing?.let { item ->

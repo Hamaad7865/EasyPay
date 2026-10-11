@@ -173,10 +173,12 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
     var supplierCode by remember(edit) { mutableStateOf(was?.supplier_code ?: "") }
     var reorder by remember(edit, more) { mutableStateOf(ItemForm.shown(more?.reorder)) }
     var orderQty by remember(edit, more) { mutableStateOf(ItemForm.shown(more?.orderQty)) }
+    // the add-on groups a restaurant's item carries
+    var groups by remember(edit, more) { mutableStateOf(more?.groupIds ?: emptySet()) }
     // a product with variants keeps its codes and its costs on them
     val costShown = shop && more?.mayCost == true && !more.variants
     val skuShown = more?.variants != true
-    fun typed() = ItemForm.Typed(taxId, shop, costShown, cost, skuShown, sku, brand, supplier, supplierCode, reorder, orderQty)
+    fun typed() = ItemForm.Typed(taxId, shop, costShown, cost, skuShown, sku, brand, supplier, supplierCode, reorder, orderQty, groups = if (shop) null else groups)
     // the page as it opened: of an item being changed, only what differs from this is sent
     val start = remember(edit, more) { more?.let { typed() } }
 
@@ -198,7 +200,7 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             Seg(
                 listOf(
                     SegOption("Basics", page == 0) { page = 0 },
-                    SegOption(if (!shop) "Tax" else if (costShown) "Tax, cost and supplier" else "Tax and supplier", page == 1) { page = 1 },
+                    SegOption(if (!shop) "Tax and add-ons" else if (costShown) "Tax, cost and supplier" else "Tax and supplier", page == 1) { page = 1 },
                 ),
                 well = V.Key, height = 36.dp, radius = 12.dp, size = 14.sp,
             )
@@ -265,6 +267,14 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
                 more.taxes.forEach { t -> Pick("${t.name} · ${TaxForm.rate(t.rate_bp)}%", t.id == taxId) { taxId = t.id } }
             }
 
+            if (!shop) {
+                Caps("Add-ons it carries", V.Text2)
+                if (more.groups.isEmpty()) T("No add-on group yet. Add them on the Menu, under Add-ons.", 13.sp, 500, V.Text2, lines = 2)
+                else {
+                    Picks { more.groups.forEach { g -> Pick(g.name, g.id in groups) { groups = if (g.id in groups) groups - g.id else groups + g.id } } }
+                    T("Ordering it asks for a choice from each group ticked.", 13.sp, 500, V.Text3)
+                }
+            }
             if (shop) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Bottom) {
                     if (costShown) Labelled("Cost", Modifier.weight(1f)) {
@@ -304,7 +314,7 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             }
         }
 
-        if (page == 1 && !com.restopos.core.data.Journey.alone) T("Its ${if (shop) "variants" else "add-ons"} are set in the back office.", 13.sp, 500, V.Text3, lines = 2)
+        if (page == 1 && shop && !com.restopos.core.data.Journey.alone) T("Its variants are set in the back office.", 13.sp, 500, V.Text3, lines = 2)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (was != null) VBtn("Remove", height = 52.dp, fg = V.RedText, enabled = !busy) { removing = true }
             Box(Modifier.weight(1f))

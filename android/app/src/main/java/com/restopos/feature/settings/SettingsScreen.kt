@@ -438,7 +438,7 @@ class SettingsViewModel @Inject constructor(
 private enum class Page(val label: String) {
     Till("This till"), Notices("Notifications"), Cash("Cash drawer"), Reports("Reports"), Payments("Payments"),
     // what the business is set up with, as its back office sets it (server 0094 on)
-    Taxes("Taxes"), Discounts("Discounts"), Staff("Staff"), Roles("Roles"),
+    Taxes("Taxes"), Discounts("Discounts"), Staff("Staff"), Roles("Roles"), Receipt("Receipt"),
     Printers("Printers"), Labels("Label printer"), Scanners("Scanners"), Display("Display"), Support("Support"), Help("Help"),
 }
 
@@ -464,6 +464,7 @@ private fun icon(p: Page): String = when (p) {
     Page.Discounts -> VI.Tag
     Page.Staff -> VI.People
     Page.Roles -> VI.Lock
+    Page.Receipt -> VI.Receipt
     Page.Printers -> VI.Print
     Page.Labels -> VI.Tag
     Page.Scanners -> SCAN_ICON
@@ -594,6 +595,7 @@ fun SettingsScreen(
                             Page.Discounts -> DiscountsPage()
                             Page.Staff -> StaffPage()
                             Page.Roles -> RolesPage()
+                            Page.Receipt -> ReceiptPage()
                             Page.Printers -> PrintersPage(vm, more, retail)
                             Page.Labels -> LabelPrinterPage()
                             Page.Scanners -> ScannersPage(vm, retail == true)
