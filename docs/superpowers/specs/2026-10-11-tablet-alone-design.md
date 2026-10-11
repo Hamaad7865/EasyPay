@@ -326,4 +326,29 @@ months of sales, not on production.
 
 Not asked through the API: what a login is refused (it needs a login). Not run: the owner's own
 emulator session (Testing sheik, 32 kept changes) was left alone.
-
+
+## 11. Record: the floor plan on the tablet (2026-10-11, afternoon)
+
+The owner: "we should have an option in the offline mode to edit tables, move them edit, make them
+bigger like floor designer". Section 7 listed "tables renamed/moved/removed" as not built. Built:
+
+- Server **0101** (dev only): `floor.save` (one room as the plan holds it: tables written as they
+  stand, the ones taken off removed, no other room touched; the whole room, so safe to send twice),
+  `room.rename`, `room.remove`. The rules are the back office's own (`saveFloor`, `renameFloor`,
+  `deleteFloor`). Suite `till-floor`, 48 checks; examples in `db/tests/fixtures/till-floor`.
+- Tablet: `core/data/FloorPlan` (the plan while it is changed, and what is sent), the three answered
+  alone in `LocalAnswers`, `feature/floor/FloorEditor.kt`. On Tables, **Edit plan** (only where the
+  tablet works on its own: a linked till's editor is the back office, and a whole room saved from a
+  till that had not synced would undo what was drawn there). One change a Save, never one a drag.
+- Decided here, not by the owner: a table with an open order cannot be removed on the tablet, nor a
+  room that holds one (the back office allows it and leaves the order without a table); the plan
+  being changed is kept by the view model, so an order opened meanwhile does not lose it; today's
+  shapes only (square, round, any width and depth): no turning, no walls, no booths.
+- Seen on an emulator with its window (made-up restaurant on the offline plan, 1280 x 800): a table
+  dragged, sized by its corner, two added at once, Save, the Tables screen showing the new plan; a
+  table with an open order refused; a room added, a table saved in it, the room renamed, then
+  removed. The queue read off it (13 changes, with two `floor.save`, `room.rename`, `room.remove`)
+  replayed against dev: every one taken, and the 7 tables the same on both, each where the till has
+  it (`read-till-state.cjs` now reads the tables, `replay-demo-outbox.cjs` compares them).
+- Not seen: on a real tablet; a manager's PIN asked for by someone who may not change settings; the
+  keyboard over the table-number box on a real tablet; Connect to the cloud with floor changes kept.

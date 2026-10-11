@@ -160,6 +160,15 @@ function check(name, cond, extra) {
     const held = new Map(levels.map((l) => [l.item_id + '|' + (l.variant_id ?? ''), l.qty]));
     const off = till.levels.filter((l) => (held.get(l.item_id + '|' + (l.variant_id ?? '')) ?? 0) !== l.qty);
     if (compare) check(`stock: the till's ${till.levels.length} figures are the server's`, off.length === 0, JSON.stringify(off.map((l) => ({ ...l, server: held.get(l.item_id + '|' + (l.variant_id ?? '')) ?? 0 }))));
+    // the floor: every table the till holds is on the server where the till has it, and the ones it removed are
+    // removed there (a plan changed on the tablet: floor.save, room.rename, room.remove)
+    if (compare && restaurant && till.tables) {
+      const rows = (await c.query(`select id, name, area, seats, shape, x, y, w, h, sort_order, deleted_at is not null as gone from tables where tenant_id = $1 and store_id = $2`, [tid, store])).rows;
+      const one = (t) => t.id + ' ' + (t.gone ? 'removed' : [t.name, t.area, t.seats, t.shape, t.x, t.y, t.w, t.h, t.sort_order].join('|'));
+      const here = till.tables.map((t) => one({ ...t, gone: !!t.gone })).sort().join('\n     ');
+      const there = rows.map(one).sort().join('\n     ');
+      check(`the floor: the till's ${till.tables.length} tables are the server's, each where the till has it`, here === there, here === there ? '' : '\n   till:\n     ' + here + '\n   server:\n     ' + there);
+    }
     // a return not put back: it came back and left again as damaged
     for (const r of till.receipts.filter((x) => x.type === 'refund')) {
       const moves = (await c.query(`select reason, qty, ref_type from stock_movements where ref_id = $1 order by created_at, reason desc`, [r.id])).rows.map((m) => `${m.reason}:${m.qty}:${m.ref_type}`).join(' ');

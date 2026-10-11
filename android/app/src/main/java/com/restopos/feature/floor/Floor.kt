@@ -180,6 +180,10 @@ class FloorViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), FloorUi())
 
+    // The plan while it is being changed on this tablet (FloorEditor). Kept here
+    // and not by the screen: an order opened meanwhile does not lose it.
+    val plan = FloorEditing(viewModelScope, service, approvals) { ui.value }
+
     fun pickZone(z: String) { zone.value = z; selected.value = null }
     fun pick(tableId: String?) { selected.value = tableId }
     fun show(table: TableEntity) { zone.value = table.area; selected.value = table.id }
@@ -283,6 +287,8 @@ fun FloorScreen(
     val pickedZone by vm.zone.collectAsState()
     val sel by vm.selected.collectAsState()
     val moving by vm.moving.collectAsState()
+    val edit by vm.plan.state.collectAsState()
+    edit?.let { FloorEditor(vm.plan, it); return }
     // an order in hand is put down when the floor is left
     DisposableEffect(Unit) { onDispose { vm.stopMove() } }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -359,9 +365,14 @@ fun FloorScreen(
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().dots()) {
                 if (ui.ready && ui.tables.isEmpty()) {
                     T(
-                        (if (com.restopos.core.data.Journey.alone) "No tables yet. Add them in Settings, under This till, Set-up, Tables." else "No tables yet. Draw the floor plan in the back office, under Tables, and it shows here."),
+                        (if (com.restopos.core.data.Journey.alone) "No tables yet. Tap Edit plan to add them and draw the floor." else "No tables yet. Draw the floor plan in the back office, under Tables, and it shows here."),
                         15.sp, 600, V.Text2, Modifier.align(Alignment.Center).padding(40.dp), lines = 3,
                     )
+                }
+                // A restaurant that works on its own has no back office: its plan is
+                // drawn here. Not while an order or a booking is in hand.
+                if (com.restopos.core.data.Journey.alone && moving == null && assigning == null) {
+                    VBtn("Edit plan", Modifier.align(Alignment.BottomStart), height = 42.dp, radius = 12.dp, size = 14.sp, pad = 14.dp) { vm.pick(null); vm.plan.open(zone) }
                 }
                 val cw = maxWidth - 96.dp
                 val ch = maxHeight - 88.dp

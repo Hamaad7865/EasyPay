@@ -48,6 +48,8 @@ try {
     shifts: all(`select id, opening_float, expected_cash, counted_cash from shifts where closed_at is not null order by opened_at`),
     levels: all(`select item_id, nullif(variant_id, '') as variant_id, qty from stock_levels order by item_id, variant_id`),
     lines: all(`select id, ticket_id, item_id, variant_id, name_snapshot, unit_price, qty, note, paid, voided_at, list_price, price_kind, price_label, price_by from ticket_lines order by rowid`),
+    // a restaurant's floor plan as the till holds it: every table, the ones it removed marked
+    tables: all(`select id, name, area, seats, shape, x, y, w, h, sort_order, deleted_at is not null as gone from tables order by id`),
   };
   db.close();
   fs.writeFileSync(out, JSON.stringify(state, null, 1));
