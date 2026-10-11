@@ -247,12 +247,18 @@ fun CashScreen(vm: CashViewModel, onOpenPeriod: () -> Unit, onClosed: () -> Unit
     val doc = ui.doc
     Row(Modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = 24.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ScreenHead(ui.info, "Count the drawer", Modifier.weight(1f))
-                VBtn("Open drawer", height = 52.dp, radius = 14.dp) { vm.openDrawer() }
-                VBtn("Cash in", height = 52.dp, radius = 14.dp) { moving = "in" }
-                VBtn("Cash out", height = 52.dp, radius = 14.dp) { moving = "out" }
-                VBtn("Print X report", height = 52.dp, radius = 14.dp, pad = 20.dp) { vm.xReport() }
+            // where the till is drawn larger (a 10-inch) the four keys are closer set, so that the title beside them is whole
+            BoxWithConstraints {
+                val narrow = maxWidth < 700.dp
+                val pad = if (narrow) 10.dp else 16.dp
+                val size = if (narrow) 14.sp else 15.sp
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (narrow) 8.dp else 10.dp)) {
+                    ScreenHead(ui.info, "Count the drawer", Modifier.weight(1f))
+                    VBtn("Open drawer", height = 52.dp, radius = 14.dp, size = size, pad = pad) { vm.openDrawer() }
+                    VBtn("Cash in", height = 52.dp, radius = 14.dp, size = size, pad = pad) { moving = "in" }
+                    VBtn("Cash out", height = 52.dp, radius = 14.dp, size = size, pad = pad) { moving = "out" }
+                    VBtn("Print X report", height = 52.dp, radius = 14.dp, size = size, pad = if (narrow) pad else 20.dp) { vm.xReport() }
+                }
             }
             if (ui.byNotes) {
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {

@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -564,22 +565,26 @@ fun MainShell(
             // any finger anywhere counts as someone being at the till
             .pointerInput(Unit) { awaitPointerEventScope { while (true) { awaitPointerEvent(PointerEventPass.Initial); touched = System.currentTimeMillis() } } },
     ) {
+        // Where the till is drawn larger (a 10-inch: core/ui/ScreenFit) a bar of more than four
+        // keys is longer than the screen is wide. The keys are then closer set and the logo is its
+        // mark without the name, so that every key is on the bar; one more than fits still scrolls.
+        val tight = bar.size > 4 && LocalConfiguration.current.screenWidthDp < 1280
         Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().height(64.dp).background(V.Header)
                     .drawBehind { drawRect(V.HeaderLine, Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx())) }.padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (tight) 10.dp else 14.dp),
             ) {
                 Box(Modifier.size(48.dp).press { drawer = true }.clip(RoundedCornerShape(12.dp)).background(V.Panel), contentAlignment = Alignment.Center) {
                     VIcon(VI.Menu, 22.dp, V.Text)
                 }
-                Wordmark()
+                Wordmark(name = !tight)
                 // the service screens, straight on the bar: the lit one on a pill that slides to whichever is tapped
                 Box(Modifier.weight(1f)) {
                     PillRow(bar.size, bar.indexOfFirst { it.screen == lit }, { go(bar[it].screen) }, scroll = rememberScrollState()) { i, onPill, m ->
                         val n = bar[i]
                         val count = when (n.screen) { Screen.Takeaway -> badges.takeaway; Screen.Kitchen -> badges.kitchen; Screen.Bookings -> badges.bookings; else -> 0 }
-                        Row(m.height(42.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(m.height(42.dp).padding(horizontal = if (tight) 10.dp else 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (tight) 6.dp else 8.dp)) {
                             VIcon(n.icon, 19.dp, if (onPill) V.OnText else V.Text2)
                             T(n.label(), 15.sp, 700, if (onPill) V.OnText else V.Text2)
                             if (count > 0) Badge(count, when (n.screen) { Screen.Takeaway -> V.Red; Screen.Kitchen -> V.Blue; else -> Color(0xFF6243C8) })

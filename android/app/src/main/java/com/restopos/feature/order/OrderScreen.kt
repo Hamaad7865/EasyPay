@@ -12,6 +12,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -32,6 +33,9 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -53,6 +57,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.restopos.core.common.Money
@@ -107,37 +112,47 @@ fun OrderScreen(vm: OrderViewModel, onBack: (board: Boolean) -> Unit, onPay: () 
     // while this screen is open, a scanned barcode adds its item
     LaunchedEffect(Unit) { com.restopos.core.common.Scanner.codes.collect { vm.scanned(it) } }
 
-    Row(Modifier.fillMaxSize()) {
-        if (left) Menu(ui, vm, Modifier.weight(1f))
-        Column(Modifier.width(390.dp).fillMaxHeight().background(V.Panel).drawBehind { drawRect(V.Stroke, Offset(if (left) 0f else size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height)) }) {
-            Head(ui, vm) { onBack(ui.board) }
-            Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
-            Lines(ui, vm, Modifier.weight(1f))
-            Totals(ui)
-            Column(Modifier.fillMaxWidth().background(V.PanelFoot).padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (ui.dine) Fn(L.printBill, VI.Print, V.Soft, Modifier.weight(1f)) { vm.printBill() }
-                    // a counter sale can wait while the next customer is served
-                    else if (ui.kind == "counter" || ui.kind == "tab") Fn(L.newSale, VI.Plus, if (!ui.empty) V.Soft else V.Off, Modifier.weight(1f)) { vm.newSale() }
-                    Fn(L.split, VI.Split, V.Soft, Modifier.weight(1f)) { if (vm.mayPay()) onSplit() }
-                    Fn(L.clearNew, VI.Close, if (ui.unsent > 0) V.RedText else V.Off, Modifier.weight(1f)) { vm.clearNew() }
-                    Fn(L.more, VI.More, V.Soft, Modifier.weight(1f)) { more = true }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val on = ui.unsent > 0 && !ui.busy
-                    VBtn(
-                        L.send + if (ui.unsent > 0) " · ${ui.unsent}" else "", Modifier.weight(1f), if (on) V.Blue else V.Key, if (on) Color.White else V.Text3,
-                        66.dp, size = 16.sp, weight = 800, pad = 10.dp,
-                    ) { vm.send(onSent) }
-                    val due = ui.totals.total
-                    VBtn(
-                        "${L.pay} · ${Money.format(due)}", Modifier.weight(1f), if (!ui.empty) V.Green else V.GreenOff, if (!ui.empty) V.GreenInk else V.GreenOffText,
-                        66.dp, size = 16.sp, weight = 800, pad = 10.dp,
-                    ) { if (vm.mayPay()) onPay() }
+    // On a screen that is not tall (a 10-inch, where the till is drawn larger:
+    // core/ui/ScreenFit) the order's column gives way, so that the order itself
+    // can still be read: its head, its total and its keys are a little lower and
+    // the tax goes under the word Total. A takeaway shows three lines of it
+    // then, where it would show one. A tall screen is drawn as before.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val low = maxHeight < 600.dp
+        Row(Modifier.fillMaxSize()) {
+            if (left) Menu(ui, vm, Modifier.weight(1f))
+            Column(Modifier.width(390.dp).fillMaxHeight().background(V.Panel).drawBehind { drawRect(V.Stroke, Offset(if (left) 0f else size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height)) }) {
+                Head(ui, vm, low) { onBack(ui.board) }
+                Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
+                Lines(ui, vm, Modifier.weight(1f))
+                Totals(ui, low)
+                Column(Modifier.fillMaxWidth().background(V.PanelFoot).padding(start = 16.dp, end = 16.dp, bottom = if (low) 12.dp else 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val fn = if (low) 42.dp else 48.dp
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (ui.dine) Fn(L.printBill, VI.Print, V.Soft, Modifier.weight(1f), fn) { vm.printBill() }
+                        // a counter sale can wait while the next customer is served
+                        else if (ui.kind == "counter" || ui.kind == "tab") Fn(L.newSale, VI.Plus, if (!ui.empty) V.Soft else V.Off, Modifier.weight(1f), fn) { vm.newSale() }
+                        Fn(L.split, VI.Split, V.Soft, Modifier.weight(1f), fn) { if (vm.mayPay()) onSplit() }
+                        Fn(L.clearNew, VI.Close, if (ui.unsent > 0) V.RedText else V.Off, Modifier.weight(1f), fn) { vm.clearNew() }
+                        Fn(L.more, VI.More, V.Soft, Modifier.weight(1f), fn) { more = true }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val key = if (low) 56.dp else 66.dp
+                        val on = ui.unsent > 0 && !ui.busy
+                        VBtn(
+                            L.send + if (ui.unsent > 0) " · ${ui.unsent}" else "", Modifier.weight(1f), if (on) V.Blue else V.Key, if (on) Color.White else V.Text3,
+                            key, size = 16.sp, weight = 800, pad = 10.dp,
+                        ) { vm.send(onSent) }
+                        val due = ui.totals.total
+                        VBtn(
+                            "${L.pay} · ${Money.format(due)}", Modifier.weight(1f), if (!ui.empty) V.Green else V.GreenOff, if (!ui.empty) V.GreenInk else V.GreenOffText,
+                            key, size = 16.sp, weight = 800, pad = 10.dp,
+                        ) { if (vm.mayPay()) onPay() }
+                    }
                 }
             }
+            if (!left) Menu(ui, vm, Modifier.weight(1f))
         }
-        if (!left) Menu(ui, vm, Modifier.weight(1f))
     }
 
     sheet?.let { OptionsSheet(it, ui.notes, vm) }
@@ -149,8 +164,8 @@ fun OrderScreen(vm: OrderViewModel, onBack: (board: Boolean) -> Unit, onPay: () 
 // What the order is, and what can be said about it up front: how many
 // guests at a table; for the others what kind of order it is and who it is for.
 @Composable
-private fun Head(ui: OrderUi, vm: OrderViewModel, onBack: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+private fun Head(ui: OrderUi, vm: OrderViewModel, low: Boolean, onBack: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = if (low) 10.dp else 14.dp), verticalArrangement = Arrangement.spacedBy(if (low) 8.dp else 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             IconKey(VI.Back, tint = V.Text, width = 2.2f, onClick = onBack)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
@@ -160,7 +175,7 @@ private fun Head(ui: OrderUi, vm: OrderViewModel, onBack: () -> Unit) {
             if (ui.dine) Stepper(ui.covers.toString(), L.covers, onDown = { vm.covers(-1) }, onUp = { vm.covers(1) })
         }
         if (!ui.dine && ui.modes.size > 1) {
-            Seg(ui.modes.take(4).map { m -> SegOption(m.name, m.id == ui.typeId) { vm.setType(m.id) } }, Modifier.fillMaxWidth(), V.Well, 42.dp, 12.dp, fill = true, size = 14.sp)
+            Seg(ui.modes.take(4).map { m -> SegOption(m.name, m.id == ui.typeId) { vm.setType(m.id) } }, Modifier.fillMaxWidth(), V.Well, if (low) 38.dp else 42.dp, 12.dp, fill = true, size = 14.sp)
         }
         if (ui.board) {
             // typed here, saved after a pause; another order starts them afresh
@@ -188,7 +203,15 @@ private fun Lines(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
         }
         return
     }
-    LazyColumn(modifier.fillMaxWidth()) {
+    // A line just added is brought into sight: the list shows a few at a time,
+    // and what was tapped last is what the cashier looks for.
+    val list = rememberLazyListState()
+    val had = remember { intArrayOf(ui.fresh.size) }
+    LaunchedEffect(ui.fresh.size) {
+        if (ui.fresh.size > had[0]) list.animateScrollToItem((list.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
+        had[0] = ui.fresh.size
+    }
+    LazyColumn(modifier.fillMaxWidth(), list) {
         if (ui.sent.isNotEmpty()) {
             item { Caps(L.inKitchen, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp), size = 11.sp) }
             items(ui.sent, key = { it.line.id }) { l ->
@@ -212,7 +235,7 @@ private fun Lines(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
                         T(Money.format(l.amount), 15.sp, 700, V.Dim)
                     }
                     if (on) {
-                        Row(Modifier.fillMaxWidth().padding(start = 52.dp, end = 16.dp, bottom = 12.dp)) {
+                        Row(Modifier.fillMaxWidth().inSight().padding(start = 52.dp, end = 16.dp, bottom = 12.dp)) {
                             Gap()
                             VBtn("Void · tell the kitchen", bg = V.RedWash, fg = V.RedText, height = 44.dp, radius = 10.dp, size = 14.sp) { vm.remove(l.line.id) }
                         }
@@ -237,7 +260,7 @@ private fun Lines(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
                         T(Money.format(l.amount), 15.sp, 700)
                     }
                     if (on) {
-                        Row(Modifier.fillMaxWidth().padding(start = 52.dp, end = 16.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth().inSight().padding(start = 52.dp, end = 16.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Box(Modifier.size(52.dp, 44.dp).clip(RoundedCornerShape(10.dp)).background(V.Hover).clickable { vm.bump(l, -1) }, contentAlignment = Alignment.Center) { T("−", 20.sp, 700) }
                             Box(Modifier.size(52.dp, 44.dp).clip(RoundedCornerShape(10.dp)).background(V.Hover).clickable { vm.bump(l, 1) }, contentAlignment = Alignment.Center) { T("+", 20.sp, 700) }
                             Gap()
@@ -250,22 +273,47 @@ private fun Lines(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
     }
 }
 
+// The keys that open under a line that is tapped: where the list ends above
+// them (the last line in sight, on a screen that shows few) it slides them in.
 @Composable
-private fun Totals(ui: OrderUi) {
+private fun Modifier.inSight(): Modifier {
+    val place = remember { BringIntoViewRequester() }
+    LaunchedEffect(place) { place.bringIntoView() }
+    return bringIntoViewRequester(place)
+}
+
+@Composable
+private fun Totals(ui: OrderUi, low: Boolean) {
     val t = ui.totals
     Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
-    Column(Modifier.fillMaxWidth().background(V.PanelFoot).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(
+        Modifier.fillMaxWidth().background(V.PanelFoot).padding(start = 16.dp, end = 16.dp, top = if (low) 8.dp else 12.dp, bottom = if (low) 10.dp else 14.dp),
+        verticalArrangement = Arrangement.spacedBy(if (low) 4.dp else 6.dp),
+    ) {
         if (t.service > 0 || t.discount > 0) Small(L.subtotal, Money.format(t.subtotal))
         if (t.discount > 0) Small("${L.discount} · ${ui.discount?.name ?: ""}", "− " + Money.format(t.discount), V.AmberText)
         if (t.service > 0) Small(L.serviceCharge, Money.format(t.service))
         if (ui.paid > 0) Small("Already paid", "− " + Money.format(ui.paid), V.GreenText, 700)
+        val taxed = L.t("of which tax", "dont taxes", "ladan tax")
+        if (low) {
+            // the tax under the word Total, on the line the amount is on
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    T(L.total, 16.sp, 700)
+                    T("$taxed ${Money.format(t.tax)}", 12.sp, 600, V.Text3)
+                }
+                Gap()
+                T(Money.format(t.total), 28.sp, 800, spacing = (-0.6).sp)
+            }
+            return@Column
+        }
         Row(verticalAlignment = Alignment.Bottom) {
             T(L.total, 16.sp, 700)
             Gap()
             T(Money.format(t.total), 28.sp, 800, spacing = (-0.6).sp)
         }
         Row {
-            T(L.t("of which tax", "dont taxes", "ladan tax"), 13.sp, 600, V.Text3)
+            T(taxed, 13.sp, 600, V.Text3)
             Gap()
             T(Money.format(t.tax), 13.sp, 600, V.Text3)
         }
@@ -281,9 +329,9 @@ private fun Small(label: String, value: String, color: Color = V.Text2, weight: 
 }
 
 @Composable
-private fun Fn(label: String, icon: String, fg: Color, modifier: Modifier, onClick: () -> Unit) {
+private fun Fn(label: String, icon: String, fg: Color, modifier: Modifier, height: Dp, onClick: () -> Unit) {
     Row(
-        modifier.height(48.dp).clip(RoundedCornerShape(10.dp)).background(V.Key).clickable(onClick = onClick).padding(horizontal = 2.dp),
+        modifier.height(height).clip(RoundedCornerShape(10.dp)).background(V.Key).clickable(onClick = onClick).padding(horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
     ) {
         VIcon(icon, 14.dp, fg)

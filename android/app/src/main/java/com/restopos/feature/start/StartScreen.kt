@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -182,18 +183,19 @@ private fun InfoPanel(vm: StaffViewModel) {
     val network by produceState(initialValue = network(context)) {
         while (true) { delay(5000); value = network(context) }
     }
-    Column(
-        Modifier.width(300.dp).fillMaxHeight().background(Pos.Panel).padding(horizontal = 28.dp),
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Wordmark()
-        Spacer(Modifier.height(28.dp))
-        Facts(info, network, when {
-            alone -> "Works on its own"
-            needsSignIn -> "Sign-in needed"
-            pending > 0 -> "$pending changes waiting"
-            else -> "Everything sent"
-        })
+    BoxWithConstraints(Modifier.width(300.dp).fillMaxHeight().background(Pos.Panel)) {
+        // on a screen that is not tall the logo is smaller, so that the last of the facts under it is not cut off
+        val low = maxHeight < 640.dp
+        Column(Modifier.fillMaxSize().padding(horizontal = 28.dp), verticalArrangement = Arrangement.Center) {
+            Logo(Modifier.width(if (low) 132.dp else 190.dp))
+            Spacer(Modifier.height(if (low) 18.dp else 28.dp))
+            Facts(info, network, when {
+                alone -> "Works on its own"
+                needsSignIn -> "Sign-in needed"
+                pending > 0 -> "$pending changes waiting"
+                else -> "Everything sent"
+            })
+        }
     }
 }
 
@@ -262,11 +264,6 @@ private fun SortKey(label: String, on: Boolean, onClick: () -> Unit) {
         label, Modifier.background(if (on) Pos.Blue else Pos.Key).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 9.dp),
         color = if (on) Color.White else Pos.Text2, fontSize = 13.sp, fontWeight = FontWeight.Medium,
     )
-}
-
-@Composable
-private fun Wordmark() {
-    Logo(Modifier.width(190.dp))
 }
 
 @Composable

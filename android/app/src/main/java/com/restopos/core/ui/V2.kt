@@ -427,13 +427,15 @@ fun Badge(n: Int, bg: Color, size: Dp = 20.dp) {
 
 // The name and the mark, as on the top bar.
 @Composable
-fun Wordmark() {
+fun Wordmark(name: Boolean = true) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         // the logo's own mark (the hand holding a note), as it was sent
         androidx.compose.foundation.Image(
             androidx.compose.ui.res.painterResource(com.restopos.app.R.drawable.logo_mark), contentDescription = null,
             modifier = Modifier.height(36.dp), contentScale = androidx.compose.ui.layout.ContentScale.Fit,
         )
+        // the mark alone, where the bar it is on has no room for the name
+        if (!name) return@Row
         Spacer(Modifier.width(9.dp))
         Text("Easy", color = V.Text, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.4).sp)
         Text("Pay", color = Color(0xFF74B884), fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.4).sp)
