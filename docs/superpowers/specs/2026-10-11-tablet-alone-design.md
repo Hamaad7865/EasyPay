@@ -280,3 +280,50 @@ There it still follows the back office's switch, which is off unless switched on
 487 unit tests pass. The first two were seen on the owner's emulator after an install; the barcode
 is theirs to see.
 
+## 10. Record, the licence: a code for each tablet, and the first real Connect
+
+**"We need license now"** (the owner, 2026-10-11, the day of their first client). Their choice of
+2026-10-10 stood: a code made in /admin, checked online once, tied to one tablet, movable to a
+replacement. Built that afternoon, in four parts.
+
+- **Server** (migrations 0099 and 0100, on dev only). `tablet_codes` keeps a code's SHA-256, never
+  the code. `platform.tablet_code_add` makes one for a store; `redeem_tablet_code` is the tablet
+  using it: registered as the store's next till and given its key, which stands for the business's
+  own owner. Used once; the tablet that used it may ask again, another is refused.
+  `platform.tablet_code_move` is a tablet being replaced: the till's key and code end, a new code is
+  made for that same till. A tablet filled from a backup, or asked to sign in again, says which
+  till it has to be (`p_must`), and a code that is not that till's is refused and stays unused.
+- **Till service.** `POST /devices/redeem`, with no login. And `POST /devices/register` refuses a
+  new tablet where the plan is offline: the code is the only way in for those.
+- **/admin.** "Tablets by code" on a client's page: a code for a new tablet, a code for a
+  replacement, the list, taking back one nobody used. The code is shown once, on the page that
+  asked, never in the address.
+- **Tablet.** "Set up with a code" on the first screen; "Restore from a backup" asks for the code of
+  the replacement; "Sign in again" offers "Use a code from EasyPay" (a tablet set up with a code has
+  no login). The tablet's own mark is kept beside its key and never in a backup.
+
+**Decided by me, the owner's to confirm.** No signature on the licence and no check at each start:
+the lock is the set-up (one code, one tablet) and the restore (the replacement's code). A tablet
+that works on its own never asks the server, so **replacing it does not stop the old one**; the
+design's list of moved licences, read when a tablet happens to be online, is not built. A code can
+be made for a cloud business too. A business that runs on its tablet can no longer set a tablet up
+with its login.
+
+**Seen running** (a new emulator of mine, its window open, against dev; a restaurant made on dev as
+/admin makes one, plan offline, no login behind it): a wrong code answered in the server's words;
+the real code straight into the set-up of an offline restaurant; a sale; "Works on its own"; a
+backup saved, the app cleared, the backup refused with a new tablet's code and put back with the
+replacement's. Three faults showed and were fixed: the code box rewrote what was typed and lost
+letters; the key of a tablet filled from a backup was lost, saved a moment before the app started
+again (the secrets are written with `commit` now); a code tablet asked to sign in had no way to.
+
+**Connect to the cloud, run for real for the first time.** That restaurant made Premium on dev,
+Connect tapped on the tablet filled from its backup: its 9 kept changes all taken by the dev
+server (the category, the item, four tables, the sale of Rs 250.00, a service charge of 10% set
+while alone and kept through the connecting), the queue empty, nothing refused, the tablet saying
+"Device is up to date". Once, on an emulator, with a queue of nine: not on a real tablet, not with
+months of sales, not on production.
+
+Not asked through the API: what a login is refused (it needs a login). Not run: the owner's own
+emulator session (Testing sheik, 32 kept changes) was left alone.
+
