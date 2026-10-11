@@ -437,7 +437,7 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
                     }
                     // The name and the price, on the card's own ground: the category's colour is a rail down their side and a wash from it.
                     Box(
-                        Modifier.fillMaxWidth().height(if (band) 82.dp else 104.dp)
+                        Modifier.fillMaxWidth().height(if (band) 88.dp else 104.dp)
                             .drawBehind {
                                 if (!out) drawRect(Brush.horizontalGradient(0f to hue.copy(alpha = 0.20f), 0.8f to hue.copy(alpha = 0.03f)))
                                 drawRect(rail, size = Size(4.dp.toPx(), size.height))

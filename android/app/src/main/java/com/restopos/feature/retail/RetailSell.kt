@@ -378,9 +378,10 @@ internal fun Tile(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants: In
     }
     val ink = if (i.is_available) V.Text else V.Text3
     Column(Modifier.press(0.97f, onClick).clip(RoundedCornerShape(18.dp)).background(V.Panel)) {
-        if (band) PictureBand(i.id, i.name, V.Well, off = !i.is_available)
+        // V.Key: lighter than the card, so the band of a product with no picture is not a hole in it (V.Well is the screen's own colour)
+        if (band) PictureBand(i.id, i.name, V.Key, off = !i.is_available)
         Column(
-            Modifier.fillMaxWidth().height(if (band) 92.dp else 118.dp).padding(horizontal = 14.dp, vertical = if (band) 10.dp else 14.dp),
+            Modifier.fillMaxWidth().height(if (band) 96.dp else 118.dp).padding(horizontal = 14.dp, vertical = if (band) 10.dp else 14.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

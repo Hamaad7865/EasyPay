@@ -44,7 +44,10 @@ fun pictureOf(item: String): ImageBitmap? {
 
 // How wide a card's picture is for its height. The product's sheet shows a
 // picture in this shape too, so what is seen there is what the card shows.
-const val PICTURE_SHAPE = 16f / 9f
+// Twice as wide as high: the lowest screen the till is drawn for (1067 x 600)
+// then shows two whole rows of cards, on a shop's Sell and on the menu. At
+// 16:9 the second row's prices were under the edge.
+const val PICTURE_SHAPE = 2f
 
 // Whether any of the products a grid shows has a picture. Then each of its
 // cards carries a band (PictureBand), the ones without a picture too: cards
