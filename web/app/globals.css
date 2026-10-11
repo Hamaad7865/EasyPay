@@ -118,6 +118,9 @@
   --fd-table-line: #33443a;
   --fd-chair: #d9d5c8;
   --fd-busy: #d9a520;
+  --fd-wall: #33443a;
+  --fd-window: #8cc3d6;
+  --fd-bar: #efe9dc;
   /* waiting: a bar of the skeleton, the light that crosses it, the ring beside a link */
   --sk: rgba(22, 35, 28, 0.085);
   --sk-lit: rgba(22, 35, 28, 0.028);
@@ -249,6 +252,9 @@
     --fd-table-line: #5a6270;
     --fd-chair: #3d434f;
     --fd-busy: #f0b93a;
+    --fd-wall: #6a7382;
+    --fd-window: #4f8fa6;
+    --fd-bar: #2f3540;
     --sk: rgba(255, 255, 255, 0.07);
     --sk-lit: rgba(255, 255, 255, 0.14);
     --wait-ring: rgba(255, 255, 255, 0.16);
@@ -338,6 +344,9 @@
     --fd-table-line: #5a6270;
     --fd-chair: #3d434f;
     --fd-busy: #f0b93a;
+    --fd-wall: #6a7382;
+    --fd-window: #4f8fa6;
+    --fd-bar: #2f3540;
     --sk: rgba(255, 255, 255, 0.07);
     --sk-lit: rgba(255, 255, 255, 0.14);
     --wait-ring: rgba(255, 255, 255, 0.16);
@@ -992,6 +1001,34 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 /* a chair: a small bar just off the table's edge */
 .fd-table > i { position: absolute; width: 14px; height: 5px; border-radius: 3px; background: var(--fd-chair); pointer-events: none; }
 .fd-handle { position: absolute; right: -7px; bottom: -7px; width: 14px; height: 14px; background: var(--surface); border: 2px solid var(--accent); border-radius: 50%; cursor: nwse-resize; }
+
+/* What stands in the room, under its tables (migration 0102): a wall is a
+   solid line, a window a lighter one, a door an opening, a bar a counter. */
+.fd-el { position: absolute; display: grid; place-items: center; border-radius: 2px; cursor: grab; }
+.fd-el.wall { background: var(--fd-wall); }
+.fd-el.window { background: var(--fd-window); }
+.fd-el.door { background: var(--floor); border: 1.5px dashed var(--fd-wall); }
+.fd-el.bar { background: var(--fd-bar); border: 1.5px solid var(--fd-table-line); border-radius: 6px; }
+.fd-el.bar > span:first-child { font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink3); pointer-events: none; }
+.fd-el.on { outline: 2px solid var(--accent); outline-offset: 2px; z-index: 2; }
+/* a wall is one unit thick: what takes the pointer is a little more */
+.fd-el::before { content: ""; position: absolute; inset: -6px; }
+.fd-stage.pan .fd-el { cursor: inherit; }
+/* the handle a piece is turned by, above it, on a short stem */
+.fd-turn { position: absolute; left: 50%; top: -30px; width: 14px; height: 14px; margin-left: -7px; background: var(--accent); border: 2px solid var(--surface); border-radius: 50%; cursor: grab; }
+.fd-turn::before { content: ""; position: absolute; left: 50%; top: 12px; width: 2px; height: 16px; margin-left: -1px; background: var(--accent); pointer-events: none; }
+/* a booth: a bench down each long side. A bar stool: the seat itself. */
+.fd-table.booth::before, .fd-table.booth::after { content: ""; position: absolute; left: 4px; right: 4px; height: 6px; border-radius: 3px; background: var(--fd-chair); pointer-events: none; }
+.fd-table.booth::before { top: -11px; }
+.fd-table.booth::after { bottom: -11px; }
+.fd-table.booth.tall::before, .fd-table.booth.tall::after { top: 4px; bottom: 4px; width: 6px; height: auto; }
+.fd-table.booth.tall::before { left: -11px; right: auto; }
+.fd-table.booth.tall::after { right: -11px; left: auto; }
+.fd-table.stool { font-size: 12px; }
+.fd-table strong { display: block; }
+.fd-angle { display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; gap: 6px; align-items: center; margin-top: 5px; }
+.fd-side label .fd-angle input { margin-top: 0; text-align: center; }
+.bo-main .fd-kinds .fd-kind-list + h3 { margin-top: 16px; }
 
 .fd-side header { display: grid; gap: 2px; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
 .fd-side header b { font-size: 15px; font-weight: 650; }

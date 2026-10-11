@@ -4,7 +4,7 @@ import { readTenant } from "@/lib/db";
 import { TABLE_ORDERING_LIVE } from "@/lib/plan";
 import { Wait } from "../busy";
 import { FloorDesigner } from "./designer";
-import type { FloorTable } from "./actions";
+import type { FloorElement, FloorTable } from "./actions";
 
 // The floor plan of a store, an area at a time: the areas across the top, the
 // plan of the one that is open under them. An area is the name its tables
@@ -23,7 +23,7 @@ export default async function FloorPlanPage({
     const store = list.find((s) => s.id === sp.store) ?? list[0] ?? null;
     if (!store) return { stores: list, store: null };
     const rows = await c.query(
-      `select id, name, area, seats, shape, x, y, w, h from tables
+      `select id, name, area, seats, shape, x, y, w, h, rotation from tables
         where tenant_id = $1 and store_id = $2 and deleted_at is null order by sort_order, name`,
       [ctx.tenantId, store.id],
     );
@@ -36,12 +36,19 @@ export default async function FloorPlanPage({
         where tenant_id = $1 and store_id = $2 and status = 'open' and deleted_at is null and table_id is not null`,
       [ctx.tenantId, store.id],
     );
+    // what stands in the area beside its tables: walls, doors, windows, a bar (0102)
+    const standing = await c.query(
+      `select id, kind, x, y, w, h, rotation from floor_elements
+        where tenant_id = $1 and store_id = $2 and area = $3 and deleted_at is null order by sort_order, id`,
+      [ctx.tenantId, store.id, floor],
+    );
     const may = await c.query(`select has_perm($1, 'settings.device') as ok`, [ctx.employeeId]);
     return {
       stores: list,
       store,
       floors,
       floor,
+      elements: standing.rows as FloorElement[],
       tables: all.filter((t) => t.area === floor),
       // a table's number is its own in the whole store
       elsewhere: all.filter((t) => t.area !== floor).map((t) => t.name),
@@ -54,7 +61,7 @@ export default async function FloorPlanPage({
       <div className="page-head">
         <div>
           <h1>Floor plan</h1>
-          <p className="lede">Put the tables where they stand, area by area. The tablets seat guests on this plan.</p>
+          <p className="lede">Put the tables where they stand, and the walls round them, area by area. The tablets seat guests on this plan.</p>
         </div>
         {/* the cards guests scan to order from their table: a page of the premium tier */}
         {TABLE_ORDERING_LIVE && data.store && ctx.premium && (
@@ -82,6 +89,7 @@ export default async function FloorPlanPage({
           floor={data.floor}
           floors={data.floors}
           initial={data.tables}
+          initialElements={data.elements}
           namesElsewhere={data.elsewhere}
           occupied={data.occupied}
           canEdit={data.may}
