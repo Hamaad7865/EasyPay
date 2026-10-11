@@ -348,7 +348,11 @@ class ShellViewModel @Inject constructor(
         refreshing.value = false
         when {
             found != null && found !is Update.None -> updateSheet.value = true
-            onItsOwn -> Toaster.say("This tablet works on its own: everything is kept here. Settings, This till, has the key that connects it to the cloud with Premium.")
+            // A tablet that works on its own syncs nothing, but it is offered every new build of the till like
+            // any other: what this key found is said. It used to say only that the tablet works on its own,
+            // whatever was found, which read as "no updates here".
+            onItsOwn && found == null -> Toaster.say("EasyPay could not be reached to look for a newer version. Check the tablet's internet, then tap again. This tablet works on its own, so selling goes on as always.")
+            onItsOwn -> Toaster.say("This till is up to date (EasyPay ${BuildConfig.VERSION_NAME}). A newer version shows here when there is one. Everything else is kept on this tablet: it works on its own.")
             signedOut -> Toaster.say("This tablet has to be signed in again before it can sync.")
             found == null -> Toaster.say("The back office could not be reached. Sales are kept on this tablet and sent when it can be.")
             else -> Toaster.say("Syncing with the back office. This till is up to date (EasyPay ${BuildConfig.VERSION_NAME}).")
