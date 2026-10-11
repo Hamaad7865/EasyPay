@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The site's pages, for search engines, at the addresses their canonical
+     links name (no .html). A page added to the site is added here. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://easypaypos.com/</loc></url>
+  <url><loc>https://easypaypos.com/product</loc></url>
+  <url><loc>https://easypaypos.com/features</loc></url>
+  <url><loc>https://easypaypos.com/pricing</loc></url>
+</urlset>

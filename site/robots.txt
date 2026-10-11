@@ -1,0 +1,14 @@
+# easypaypos.com: the public site is open to every search engine.
+# What is kept out is the back office behind the sign-in (nothing there is
+# for a visitor) and this folder's own notes. /login stays open, so that a
+# customer who searches for the sign-in finds it.
+User-agent: *
+Allow: /
+Disallow: /backoffice
+Disallow: /admin
+Disallow: /onboarding
+Disallow: /reset-password
+Disallow: /api/
+Disallow: /README.md
+
+Sitemap: https://easypaypos.com/sitemap.xml

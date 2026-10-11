@@ -1,0 +1,10 @@
+# Cloudflare Pages reads this file; it is not served.
+#
+# The same pages answer at the project's own address, easypaypos.pages.dev,
+# and at the address of each deployment. Search engines are told to leave
+# those out, so that easypaypos.com is the only one they list.
+https://:project.pages.dev/*
+  X-Robots-Tag: noindex
+
+https://:version.:project.pages.dev/*
+  X-Robots-Tag: noindex

@@ -15,6 +15,9 @@ product.html    Product: its parts, the back office as it is, the small things, 
 features.html   Features: each feature of the till, with what can be pressed
 pricing.html    Pricing: the prices, how you start, the questions
 404.html        what an address with nothing behind it answers
+sitemap.xml     the four pages, for search engines (see "Being found")
+robots.txt      what a search engine may read, and where the sitemap is
+_headers        keeps the project's own address out of search engines (not served)
 css/site.css    the page's look, top to bottom
 css/mock.css    the till drawn in the page: tablet, paper
 css/real.css    the back office in a browser's frame, and the pieces that answer a tap
@@ -113,6 +116,50 @@ Nothing is there to press that the product cannot do. The names and figures
 in them are made up. With reduced motion asked for, the clock stands still
 and the rest still works.
 
+## Being found
+
+The site is written to be found for "POS Mauritius" and the ways people say
+it ("Mauritius POS", "best POS in Mauritius", "POS system Mauritius"). Those
+are one search, so one page answers it: Home. Its title starts with the
+words, and its headline and the line over the three reasons say them; the
+foot of every page says "point of sale (POS) system". A page written for
+each wording would compete with Home and is not wanted.
+
+Each of the other pages has a search of its own, said in its title and
+description: Features is the features of a restaurant's and a shop's POS,
+Product is the POS system on an Android tablet with its back office, Pricing
+is what a POS system costs in Mauritius. A title stays under 60 characters
+and a description under 160, or a search engine cuts them; no two pages
+share either.
+
+- `sitemap.xml` lists the four pages at the addresses their canonical links
+  name, without `.html`. A page added to the site is added there.
+- `robots.txt` opens the site to every search engine, keeps the back office
+  and this file out, and names the sitemap. Cloudflare puts its own lines
+  above ours when it serves it.
+- `_headers` tells search engines not to list easypaypos.pages.dev or a
+  deployment's own address, which show the same pages.
+- Home's head holds what a search engine is told in its own format
+  (`application/ld+json`): who makes EasyPay, with the number from
+  `js/config.js`, the site, and the product with its two prices. It carries
+  no rating and no review, because there are none to show: nothing is made
+  up here either (see "What the page may say").
+- A link between pages is written `features.html`, which Cloudflare sends on
+  to `/features`. It is left so, because the folder then opens as it is from
+  any plain server (see "See it").
+
+What the files cannot do is the owner's: adding easypaypos.com to Google
+Search Console and giving it the sitemap, a Google Business Profile, and
+links from other Mauritian sites. www.easypaypos.com shows the same pages;
+the canonical links name the address without it, and a redirect rule in
+Cloudflare (www to easypaypos.com, permanent, keeping the path) is the
+tidier answer. It is not done by `_worker.js`, which would then run on
+every visit.
+
+A shop's words are in the same pages as a restaurant's, behind the switch,
+and `/#shop` is not an address of its own to a search engine. A search for a
+shop's POS would be answered better by a page of its own; none is built.
+
 ## See it
 
 ```
@@ -185,6 +232,8 @@ page's two descriptions at the top, the line under the hero's buttons, the secon
 among the questions, the pricing section's headline, and the foot of its
 table. What comes with Premium is also marked where it is described
 (Bookings under Front of house, the kitchen screen under Kitchen and bar).
+They are also in what Home's head tells a search engine (the two offers in
+its `application/ld+json`) and in `pricing.html`'s title and description.
 
 Offline is said with the same care everywhere: the till keeps selling,
 taking payments, printing and closing the day, and sends everything on
