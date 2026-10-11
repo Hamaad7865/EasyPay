@@ -205,7 +205,9 @@ class CashViewModel @Inject constructor(
             }
             out.fold(
                 onSuccess = { (z, problem) ->
-                    val day = "Day closing no. ${z.number} done. " + (problem ?: "Z report printed.")
+                    // whoever was still clocked in on this till was clocked out with the closing
+                    val gone = com.restopos.core.data.ClockOut.said(cash.clockedOut)
+                    val day = "Day closing no. ${z.number} done. " + (problem ?: "Z report printed.") + if (gone.isEmpty()) "" else " $gone"
                     _ui.value = _ui.value.copy(busy = false, shift = null, typed = null, counts = emptyMap(), closed = Closed(z.expected ?: 0, counted, day))
                 },
                 onFailure = { _ui.value = s.copy(busy = false); Toaster.say(it.message) },

@@ -23,6 +23,7 @@ import com.restopos.core.print.ZDoc
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.pushNow
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -49,6 +50,25 @@ class CashOps @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     private fun op(type: String, payload: JsonObject) = OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
+
+    // ---- closing the day clocks out whoever is still clocked in on this till (ClockOut) ----
+    // Who the last closing clocked out, by name, for the screen that closed the day to say.
+    var clockedOut: List<String> = emptyList()
+        private set
+    private suspend fun stillIn(store: String, device: String): List<String> = ClockOut.stillIn(db.staff().punches(store).first(), device)
+    // Written with the closing, in its transaction: an "out" for each at the
+    // moment the day closed, kept for the server as a punch at the till is,
+    // under the name of the one who is clocked out.
+    private suspend fun clockOut(who: List<String>, tenant: String, store: String, device: String, at: Long) {
+        for (employee in who) {
+            val id = Uuid7.next()
+            db.staff().upsertPunches(listOf(com.restopos.core.database.PunchEntity(id, tenant, store, device, employee, "out", at)))
+            db.outbox().enqueue(OutboxEntity(Uuid7.next(), "timeclock.punch", buildJsonObject {
+                put("id", id); put("store_id", store); put("device_id", device)
+                put("kind", "out"); put("device_time", Instant.ofEpochMilli(at).toString())
+            }.toString(), employee_id = employee))
+        }
+    }
 
     private suspend fun till(): String = session.deviceId()?.let { db.catalog().device(it)?.name } ?: "Till"
     private suspend fun name(id: String?): String? = id?.let { db.staff().employee(it)?.name }
@@ -346,6 +366,8 @@ class CashOps @Inject constructor(
         val last = db.ops().lastDayClose(device)
         val z = dayDoc(now).withDrawer(closed)
         val row = DayCloseEntity(Uuid7.next(), tenant, store, device, z.number, who.employee.id, last?.closed_at, now)
+        // the day is over for everyone still clocked in on this till
+        val leaving = stillIn(store, device)
         db.withTransaction {
             db.staff().upsertShifts(listOf(closed))
             db.ops().upsertDayCloses(listOf(row))
@@ -355,7 +377,9 @@ class CashOps @Inject constructor(
                 by?.let { put("approved_by", it) }
             }))
             db.outbox().enqueue(dayCloseOp(row, z, by))
+            clockOut(leaving, tenant, store, device, now)
         }
+        clockedOut = leaving.mapNotNull { name(it) }
         session.setPeriodSeq(0)
         pushNow(context)
         z to printZ(z).exceptionOrNull()?.message
@@ -437,7 +461,10 @@ class CashOps @Inject constructor(
         val last = db.ops().lastDayClose(device)
         val z = dayDoc(now, by = name(r.requested_by)).withDrawer(closed)
         val row = DayCloseEntity(Uuid7.next(), tenant, store, device, z.number, r.requested_by, last?.closed_at, now)
+        // closed from the back office: whoever is still clocked in on this till is clocked out all the same
+        val leaving = stillIn(store, device)
         db.withTransaction {
+            clockOut(leaving, tenant, store, device, now)
             db.staff().upsertShifts(listOf(closed))
             db.ops().upsertDayCloses(listOf(row))
             db.outbox().enqueue(OutboxEntity(Uuid7.next(), "shift.close", buildJsonObject {
