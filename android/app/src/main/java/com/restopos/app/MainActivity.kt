@@ -227,6 +227,12 @@ class MainActivity : ComponentActivity() {
                                 Toast.makeText(this@MainActivity, said, Toast.LENGTH_LONG).show()
                                 return@launch
                             }
+                            // A count of the shelves that is still open is on this tablet and
+                            // nowhere else: signing out would wipe an afternoon's counting.
+                            if (session.storeId()?.let { db.stock().openOwnCount(it) } != null) {
+                                Toast.makeText(this@MainActivity, "A stock count is open on this tablet. Complete it or throw it away first (Stock, Counts).", Toast.LENGTH_LONG).show()
+                                return@launch
+                            }
                             SyncScheduler.stop(this@MainActivity)
                             api.endTillKey() // the till's own key ends with the sign-out
                             auth.signOut() // best effort on the server, always clears locally

@@ -115,7 +115,7 @@ fun StockScreen(vm: StockViewModel, serviceLine: String, onLabels: ((LabelsFor) 
                     val order by vm.receiving.collectAsState()
                     DeliveriesTab(d, vm.approver("stock.receive"), vm.costs(words), order, onTaken = { vm.taken() }, onLabels = onLabels)
                 }
-                else -> Soon(tab)
+                StockTab.Counts -> { val c: CountsViewModel = hiltViewModel(); CountsTab(c, vm.approver("stock.count"), vm.costs(words)) }
             }
         }
     }
@@ -129,15 +129,5 @@ private fun Locked(tab: StockTab, onAsk: () -> Unit) {
         T(tab.about, 15.sp, 500, V.Text2, Modifier.widthIn(max = 520.dp), lines = 4, align = TextAlign.Center)
         T("You are not allowed to ${tab.what}. Someone who is can open this with their PIN.", 15.sp, 500, V.Text2, Modifier.widthIn(max = 520.dp), lines = 3, align = TextAlign.Center)
         VBtn("Ask a manager", bg = V.Blue, fg = Color.White, height = 56.dp, pad = 24.dp) { onAsk() }
-    }
-}
-
-// Counts is the next build: until then the tab says so.
-@Composable
-private fun Soon(tab: StockTab) {
-    Column(Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        T(tab.label, 22.sp, 700, spacing = (-0.4).sp)
-        T(tab.about, 15.sp, 500, V.Text2, Modifier.widthIn(max = 520.dp), lines = 4, align = TextAlign.Center)
-        T("Coming with the next build.", 15.sp, 600, V.Text3)
     }
 }

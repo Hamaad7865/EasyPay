@@ -1,8 +1,13 @@
 package com.restopos.core.data
 
+import androidx.room.withTransaction
+import com.restopos.core.database.ItemEntity
+import com.restopos.core.database.StockCountEntity
+import com.restopos.core.database.StockCountLineEntity
 import com.restopos.core.database.StockDraftEntity
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.sync.SessionStore
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,6 +23,8 @@ class StockRepository @Inject constructor(
     private val session: SessionStore,
     private val staff: StaffSession,
     private val service: ServiceRepository,
+    private val api: com.restopos.core.network.ApiClient,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) {
     suspend fun saveSupplier(id: String, s: SupplierForm.Supplier, approver: StaffMember? = null): Result<Unit> = runCatching {
         staff.allow("suppliers.edit", "change suppliers", approver)
@@ -97,9 +104,83 @@ class StockRepository @Inject constructor(
         service.ask("delivery.receive", DeliveryForm::refused, StockPayloads.deliveryReceive(d, store(), staff.approvedBy(RECEIVE, approver)))
     }
 
+    // ---- a count of the shelves ----
+    // Kept on this tablet from the moment it is begun, with no number and no
+    // row on any server, until it is completed as one change: a count takes
+    // an afternoon, and nothing of it may depend on a connection. Every tap
+    // and every typed figure is written at once (CountBook says what each
+    // does), with what the tablet holds of the line at that moment.
+    suspend fun ownCount(): StockCountEntity? = db.stock().openOwnCount(store())
+    private fun line(e: StockCountLineEntity) = CountBook.Line(e.item_id, e.variant_id, e.counted, e.counted_at, e.expected, e.left_out)
+    private suspend fun counts(item: ItemEntity): Boolean = item.track_stock || item.category_id?.let { c -> db.alone().category(c)?.is_stock } == true
+
+    // Begins one: of the whole shop ("all"), a category or a supplier (scopeId), or a brand. Returns its id.
+    suspend fun startCount(kind: String, scopeId: String?, brand: String?, approver: StaffMember? = null): Result<String> = runCatching {
+        staff.allow(COUNT, "count stock", approver)
+        val at = store()
+        if (db.stock().openOwnCount(at) != null) error("A count is already open on this tablet. Carry on with it, or throw it away first.")
+        val items = db.stock().everyItem().first()
+        val counted = items.filter { counts(it) }.map { it.id }.toSet()
+        val lines = CountBook.scope(kind, scopeId, brand, items, { it.id in counted }, db.stock().everyVariant().first())
+        if (lines.isEmpty()) error("There is nothing to count there: no product of it has its stock counted.")
+        val title = CountBook.title(kind, scopeId?.let { db.alone().category(it)?.name }, scopeId?.let { db.stock().supplier(it)?.name }, brand) ?: error("Pick what to count.")
+        val id = com.restopos.core.common.Uuid7.next()
+        db.withTransaction {
+            db.stock().upsertCounts(listOf(StockCountEntity(
+                id, at, null, kind, if (kind == "category" || kind == "supplier") scopeId else null, if (kind == "brand") title else null,
+                title, "open", started_by = staff.id(), created_at = System.currentTimeMillis(),
+            )))
+            db.stock().upsertCountLines(lines.map { StockCountLineEntity(id, it.item, it.variant) })
+        }
+        id
+    }
+
+    // One line changed and written back, with what the tablet holds of it now.
+    private suspend fun change(count: String, s: CountBook.Stock, how: (List<CountBook.Line>, Int) -> List<CountBook.Line>) = db.withTransaction {
+        val held = db.retail().levelsOf(store(), s.item).firstOrNull { it.variant_id == s.variant }?.qty ?: 0
+        val next = how(db.stock().countLinesNow(count).map(::line), held).firstOrNull { it.item == s.item && it.variant == s.variant } ?: return@withTransaction
+        db.stock().upsertCountLines(listOf(StockCountLineEntity(count, next.item, next.variant, next.counted, next.countedAt, next.leftOut, expected = next.expected)))
+    }
+    // a scan or a tap: `by` more of it
+    suspend fun counted(count: String, s: CountBook.Stock, by: Int) = change(count, s) { lines, held -> CountBook.add(lines, s, by, System.currentTimeMillis(), held) }
+    // a figure typed for it
+    suspend fun typed(count: String, s: CountBook.Stock, units: Int) = change(count, s) { lines, held -> CountBook.set(lines, s, units, System.currentTimeMillis(), held) }
+    suspend fun uncount(count: String, s: CountBook.Stock) = change(count, s) { lines, _ -> CountBook.clear(lines, s) }
+    suspend fun leaveOut(count: String, s: CountBook.Stock, out: Boolean) = change(count, s) { lines, _ -> CountBook.leaveOut(lines, s, out) }
+    // thrown away: it was never anywhere but here
+    suspend fun dropCount(count: String) = db.withTransaction { db.stock().dropCountLines(count); db.stock().dropCount(count) }
+
+    // Completed as one change, with exactly its lines. uncounted: "leave" what
+    // nobody counted as it is, or set it to "zero".
+    suspend fun completeCount(count: String, uncounted: String, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow(COUNT, "count stock", approver)
+        val c = db.stock().count(count) ?: error("That count is no longer on this tablet.")
+        val lines = db.stock().countLinesNow(count).map(::line)
+        val alone = PosSettings.parse(db.ops().settings()).alone
+        var ahead = 0L
+        if (!alone) {
+            // A linked till: the server works the count out with every till's
+            // sales, so what this one still holds goes up first; and it sets
+            // the tablet's moments right by how far the tablet's clock is
+            // from its own, which has to have been measured, not assumed.
+            if (db.outbox().pendingCount() > 0) {
+                com.restopos.core.sync.pushNow(context)
+                error("The sales this till is holding have to go up first. Complete the count in a moment, with the tablet online.")
+            }
+            runCatching { api.latestTill() }
+            ahead = api.clockAhead.value ?: error("This needs a connection: the server has to answer first. Complete the count when the tablet is online.")
+        }
+        service.ask("count.complete", CountBook::refused, StockPayloads.countComplete(
+            count, c.store_id, c.scope_kind, c.scope_id, c.scope_text, c.created_at, ahead, uncounted, lines, staff.approvedBy(COUNT, approver),
+        ))
+        // a linked till: the server's rows take the tablet's place at the sync that follows; until then it is not open here any more
+        if (!alone) db.stock().count(count)?.takeIf { it.status == "open" }?.let { db.stock().upsertCounts(listOf(it.copy(status = "completed", uncounted = uncounted, completed_at = System.currentTimeMillis()))) }
+    }
+
     private companion object {
         const val ORDER = "order"
         const val DELIVERY = "delivery"
         const val RECEIVE = "stock.receive"
+        const val COUNT = "stock.count"
     }
 }
