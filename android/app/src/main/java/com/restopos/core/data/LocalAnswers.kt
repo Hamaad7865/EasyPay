@@ -68,6 +68,8 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         when (type) {
             "item.save" -> { val kept = coded(p); itemSave(kept, tenant); return listOf(type to kept) }
             "variants.make" -> return listOfNotNull(type to p, codes(p, variantsMake(p, tenant)))
+            // kept with what moved on this tablet since each line was counted: the server cannot know it (0103)
+            "count.complete" -> return listOf(type to countComplete(p, employee))
             else -> change(type, p, tenant, employee)
         }
         return listOf(type to p)
@@ -95,7 +97,6 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             "po.cancel" -> poState(p, "cancel")
             "po.close" -> poState(p, "close")
             "delivery.receive" -> deliveryReceive(p, employee)
-            "count.complete" -> countComplete(p, employee)
             "role.save" -> roleSave(p, tenant)
             "role.remove" -> roleRemove(p)
             "staff.update" -> staffUpdate(p)
@@ -733,14 +734,24 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
     // sold: the server reaches the same figure by adding up what moved since.
     // A line nobody counted is left as it is or set to nothing, as chosen; a
     // line left out is neither. Sent again, it was completed the first time.
-    private suspend fun countComplete(p: JsonObject, employee: String?) {
+    //
+    // Returns the change as it is kept for the server: with, on each counted
+    // line, what moved on this tablet between the line being counted and the
+    // count being completed (`moved`, server 0103). The day the business is
+    // made Premium this tablet's deliveries and corrections are written on
+    // the server at that moment, long after they happened; a server left to
+    // add up "what moved since the line was counted" by when things were
+    // written took a delivery from before the count for one after it, and
+    // added it twice. The tablet is the only one that moved its stock while
+    // it worked on its own, so it is the one that knows.
+    private suspend fun countComplete(p: JsonObject, employee: String?): JsonObject {
         val id = p.id("id"); val store = p.id("store_id")
         val scope = maybeId(p, "scope_id")
         val ahead = p.long("clock_ahead_ms") ?: 0L
         // a clock more than a day out is not a clock to set anything right by
         if (ahead > 86_400_000L || ahead < -86_400_000L) bad()
         val was = dao.count(id)
-        if (was != null && was.status != "open") return
+        if (was != null && was.status != "open") return p
         val kind = p.str("scope_kind")?.takeIf { it in setOf("all", "category", "supplier", "brand") } ?: throw Refused("bad-scope")
         if (store !in dao.storeIds()) throw Refused("unknown-store")
         val uncounted = p.str("uncounted")?.takeIf { it == "leave" || it == "zero" } ?: throw Refused("bad-uncounted")
@@ -776,6 +787,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         // what the tablet held of each line at the moment it was counted
         val held = dao.countLines(id).associate { (it.item_id to it.variant_id) to it.expected }
         val written = ArrayList<StockCountLineEntity>()
+        val moved = HashMap<Pair<String, String>, Int>()
         for (l in sent.sortedWith(compareBy<Sent> { it.item }.thenBy { it.variant })) {
             if (l.out) { written += StockCountLineEntity(id, l.item, l.variant, l.counted, if (l.counted == null) null else l.at, left_out = true); continue }
             val level = dao.levelsOf(store, l.item).firstOrNull { it.variant_id == l.variant } ?: StockLevelEntity(store, l.item, l.variant)
@@ -785,6 +797,8 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             }
             // not counted and set to nothing: against what it holds now
             val before = if (l.counted == null) level.qty else held[l.item to l.variant] ?: level.qty
+            // what the tablet holds now, less what it held when the line was counted: what moved in between
+            if (l.counted != null) moved[l.item to l.variant] = level.qty - before
             val counted = l.counted ?: 0
             val diff = counted - before
             written += StockCountLineEntity(id, l.item, l.variant, counted, l.at ?: now, expected = before, diff = diff, unit_cost = level.avg_cost)
@@ -802,6 +816,11 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
                 scope_text = if (kind == "brand") title else null, title = title, status = "completed", uncounted = uncounted, completed_by = employee, completed_at = now,
             ),
         )
+        // the change as it is kept: each counted line with what moved on this tablet since it was counted
+        return JsonObject(p + ("lines" to JsonArray(rows.map { row ->
+            val x = row as JsonObject
+            moved[(x.str("item_id") ?: "") to (x.str("variant_id") ?: "")]?.let { JsonObject(x + ("moved" to JsonPrimitive(it))) } ?: x
+        })))
     }
 
     // ---- push_role_save, push_role_remove (0095) ----

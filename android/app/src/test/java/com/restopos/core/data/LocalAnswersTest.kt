@@ -17,6 +17,7 @@ import com.restopos.core.database.TableEntity
 import com.restopos.core.database.TaxEntity
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
@@ -797,7 +798,12 @@ class LocalAnswersTest {
         dao.levels["$store/$plain/"] = StockLevelEntity(store, plain, "", qty = 10000, avg_cost = 4000.0)
         dao.levels["$store/$sized/$small"] = StockLevelEntity(store, sized, small, qty = 3000, avg_cost = 18000.0)
         // soap counted 9 where the tablet holds 10; the small shirts not counted and left as they are; the medium left out
-        assertEquals("done", ask("count.complete", stockFixture("count-complete")))
+        val kept = runBlocking { local.apply("count.complete", stockFixture("count-complete"), tenant, owner) }.single()
+        // What is kept for the server is the count, with what moved on this tablet since each counted line was
+        // counted (server 0103): nothing here. A line nobody counted, or left out, says nothing.
+        assertEquals("count.complete", kept.first)
+        assertEquals(listOf("0", null, null), (kept.second["lines"] as JsonArray).map { it.jsonObject["moved"]?.toString() })
+        assertEquals(JsonObject(kept.second - "lines"), JsonObject(stockFixture("count-complete") - "lines"))
         val c = dao.counts[count]!!
         assertEquals(listOf("C-0001", "completed", "all", null, "The whole shop", "leave", owner, clock), listOf(c.number, c.status, c.scope_kind, c.scope_id, c.title, c.uncounted, c.completed_by, c.completed_at))
         assertEquals(9000, level(plain)!!.qty)
@@ -822,7 +828,9 @@ class LocalAnswersTest {
         dao.levels["$store/$sized/$small"] = StockLevelEntity(store, sized, small, qty = 3000)
         dao.levels["$store/$sized/$large"] = StockLevelEntity(store, sized, large, qty = 2000)
         val sent = counting(tally(plain, "", 9000) + "," + tally(sized, small, null) + "," + tally(sized, large, null, out = true), uncounted = "zero", kind = "category", scope = cat)
-        assertEquals("done", ask("count.complete", sent))
+        val kept = runBlocking { local.apply("count.complete", obj(sent), tenant, owner) }.single().second
+        // the server is told that one went out between the soap being counted and the count being completed
+        assertEquals(listOf("-1000", null, null), (kept["lines"] as JsonArray).map { it.jsonObject["moved"]?.toString() })
         // one short when it was counted, and the one sold since stays sold: 8 now
         assertEquals(8000, level(plain)!!.qty)
         // not counted, and set to nothing; left out, and left alone
