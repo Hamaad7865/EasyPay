@@ -1,0 +1,11 @@
+{
+  "type": "floor.save",
+  "payload": {
+    "store_id": "store-1", "area": "Main",
+    "tables": [
+      { "id": "table-1", "name": "1", "seats": 4, "shape": "square", "x": 2, "y": 2, "w": 12, "h": 12 },
+      { "id": "table-2", "name": "2", "seats": 6, "shape": "round", "x": 20, "y": 4, "w": 16, "h": 14 }
+    ],
+    "removed": ["table-3"]
+  }
+}

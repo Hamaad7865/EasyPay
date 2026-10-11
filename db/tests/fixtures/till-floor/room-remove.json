@@ -1,0 +1,4 @@
+{
+  "type": "room.remove",
+  "payload": { "store_id": "store-1", "area": "Terrace" }
+}

@@ -1,0 +1,4 @@
+{
+  "type": "room.rename",
+  "payload": { "store_id": "store-1", "from": "Main", "to": "Dining room" }
+}
