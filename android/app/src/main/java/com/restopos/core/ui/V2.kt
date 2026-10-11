@@ -31,6 +31,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -304,6 +306,16 @@ fun Modifier.press(to: Float = 0.96f, onClick: () -> Unit): Modifier {
     val source = remember { MutableInteractionSource() }
     val s = rememberPress(source, to)
     return graphicsLayer { scaleX = s.value; scaleY = s.value }.clickable(interactionSource = source, indication = null, onClick = onClick)
+}
+
+// What opens under a line that is tapped (its keys): where the list ends
+// above it (the last line in sight, on a screen that shows few) the list
+// slides it in.
+@Composable
+fun Modifier.inSight(): Modifier {
+    val place = remember { BringIntoViewRequester() }
+    LaunchedEffect(place) { place.bringIntoView() }
+    return bringIntoViewRequester(place)
 }
 
 // A row of keys with one pill under the lit one (lit is its place in the row,

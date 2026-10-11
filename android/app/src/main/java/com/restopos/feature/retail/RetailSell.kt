@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -25,6 +26,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -64,6 +66,7 @@ import com.restopos.core.ui.V
 import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.VI
 import com.restopos.core.ui.VIcon
+import com.restopos.core.ui.inSight
 import com.restopos.core.ui.press
 import com.restopos.feature.customers.CustomerPicker
 import com.restopos.feature.more.MoreSheets
@@ -97,12 +100,18 @@ fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit
     // while this screen is open, a scanned barcode rings its product up, and a receipt's opens the receipt
     LaunchedEffect(Unit) { Scanner.codes.collect { vm.scanned(it, onReceipt) } }
 
-    Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        Sale(
-            ui, parked.size, exchange, vm, onParked = { sheet = "parked" }, onCustomer = { sheet = "customer" }, onDiscount = { sheet = "discount" },
-            onClear = { sheet = "clear" }, onMore = { sheet = "more" }, onSaleNote = { sheet = "note" }, onNote = { noting = it }, onPay = onPay,
-        )
-        Products(vm, Modifier.weight(1f))
+    // On a screen that is not tall (a 10-inch, where the till is drawn larger: core/ui/ScreenFit)
+    // the sale's column gives way, as an order's does: its head, its keys and Pay are a little
+    // lower, which leaves the sale one more line. A tall screen is drawn as before.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val low = maxHeight < 600.dp
+        Row(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = if (low) 10.dp else 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Sale(
+                ui, parked.size, exchange, vm, low, onParked = { sheet = "parked" }, onCustomer = { sheet = "customer" }, onDiscount = { sheet = "discount" },
+                onClear = { sheet = "clear" }, onMore = { sheet = "more" }, onSaleNote = { sheet = "note" }, onNote = { noting = it }, onPay = onPay,
+            )
+            Products(vm, Modifier.weight(1f))
+        }
     }
 
     picking?.let { VariantSheet(it, vm) }
@@ -139,12 +148,12 @@ fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit
 
 @Composable
 private fun Sale(
-    ui: SaleUi, parked: Int, exchange: ExchangeDraft?, vm: RetailViewModel,
+    ui: SaleUi, parked: Int, exchange: ExchangeDraft?, vm: RetailViewModel, low: Boolean,
     onParked: () -> Unit, onCustomer: () -> Unit, onDiscount: () -> Unit, onClear: () -> Unit, onMore: () -> Unit, onSaleNote: () -> Unit,
     onNote: (SaleLine) -> Unit, onPay: () -> Unit,
 ) {
     Column(Modifier.width(440.dp).fillMaxHeight().clip(RoundedCornerShape(20.dp)).background(V.Panel)) {
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 10.dp, top = 12.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 10.dp, top = if (low) 6.dp else 12.dp, bottom = if (low) 6.dp else 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             T("Sale", 18.sp, 800)
             if (parked > 0) {
                 Box(Modifier.height(30.dp).press { onParked() }.clip(RoundedCornerShape(15.dp)).background(V.AmberWash).padding(horizontal = 11.dp), contentAlignment = Alignment.Center) {
@@ -178,12 +187,19 @@ private fun Sale(
                 T("or tap one on the right", 14.sp, 500, V.Text2)
             }
         } else {
-            LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+            // a line just added is brought into sight: what was scanned last is what the cashier looks for
+            val list = rememberLazyListState()
+            val had = remember { intArrayOf(ui.lines.size) }
+            LaunchedEffect(ui.lines.size) {
+                if (ui.lines.size > had[0]) list.animateScrollToItem(ui.lines.size - 1)
+                had[0] = ui.lines.size
+            }
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), list) {
                 items(ui.lines, key = { it.line.id }) { l -> Line(l, ui.open == l.line.id, vm, onNote) }
             }
         }
 
-        Column(Modifier.fillMaxWidth().background(V.PanelFoot).padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxWidth().background(V.PanelFoot).padding(start = 16.dp, end = 16.dp, top = if (low) 10.dp else 14.dp, bottom = if (low) 12.dp else 16.dp), verticalArrangement = Arrangement.spacedBy(if (low) 8.dp else 12.dp)) {
             // the note on the whole sale, as the receipt will carry it: tap to change it
             ui.ticket?.note?.takeIf { it.isNotBlank() }?.let { note ->
                 Row(Modifier.fillMaxWidth().clickable(onClick = onSaleNote), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -197,14 +213,15 @@ private fun Sale(
                 if (ui.totals.tax != 0L) Small(if (ui.taxOnTop == 0L) "VAT, included" else "VAT", Money.format(ui.totals.tax))
                 if (ui.totals.rounding != 0L) Small("Rounding", Money.format(ui.totals.rounding))
             }
+            val key = if (low) 42.dp else 48.dp
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                VBtn("Park sale", Modifier.weight(1f), height = 48.dp, radius = 14.dp, pad = 10.dp, fg = if (ui.empty) V.Off else V.Text) { vm.park() }
-                VBtn(if (ui.discount != null) "Discount · ${ui.discount.name}" else "Discount on sale", Modifier.weight(1.35f), height = 48.dp, radius = 14.dp, pad = 10.dp, fg = if (ui.empty) V.Off else V.Text, onClick = onDiscount)
+                VBtn("Park sale", Modifier.weight(1f), height = key, radius = 14.dp, pad = 10.dp, fg = if (ui.empty) V.Off else V.Text) { vm.park() }
+                VBtn(if (ui.discount != null) "Discount · ${ui.discount.name}" else "Discount on sale", Modifier.weight(1.35f), height = key, radius = 14.dp, pad = 10.dp, fg = if (ui.empty) V.Off else V.Text, onClick = onDiscount)
                 // More is for an empty sale too: the receipt a customer asks for again is the one just paid
-                VBtn(L.more, Modifier.weight(0.85f), height = 48.dp, radius = 14.dp, pad = 10.dp, icon = VI.More, onClick = onMore)
+                VBtn(L.more, Modifier.weight(0.85f), height = key, radius = 14.dp, pad = 10.dp, icon = VI.More, onClick = onMore)
             }
             Row(
-                Modifier.fillMaxWidth().height(64.dp).press { if (vm.mayPay()) onPay() }.clip(RoundedCornerShape(16.dp)).background(if (ui.empty) V.GreenOff else V.Green).padding(horizontal = 22.dp),
+                Modifier.fillMaxWidth().height(if (low) 56.dp else 64.dp).press { if (vm.mayPay()) onPay() }.clip(RoundedCornerShape(16.dp)).background(if (ui.empty) V.GreenOff else V.Green).padding(horizontal = 22.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // an exchange: what is left once the goods that come back have paid their part
@@ -258,7 +275,7 @@ private fun Line(l: SaleLine, open: Boolean, vm: RetailViewModel, onNote: (SaleL
             }
         }
         if (open) {
-            FlowRow(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(Modifier.fillMaxWidth().inSight().padding(start = 16.dp, end = 16.dp, bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val label = line.price_label.takeIf { line.price_kind == "discount" }
                 LineKey("No discount", line.price_kind == null) { vm.noDiscount(l) }
                 listOf(10, 20).forEach { pct -> LineKey("$pct% off", label == "$pct% off") { vm.percentOff(l, pct) } }

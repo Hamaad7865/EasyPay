@@ -34,8 +34,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -88,6 +86,7 @@ import com.restopos.core.ui.V
 import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.VI
 import com.restopos.core.ui.VIcon
+import com.restopos.core.ui.inSight
 import com.restopos.core.ui.press
 import com.restopos.core.ui.rememberPress
 import com.restopos.feature.customers.CustomerPicker
@@ -271,15 +270,6 @@ private fun Lines(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
             }
         }
     }
-}
-
-// The keys that open under a line that is tapped: where the list ends above
-// them (the last line in sight, on a screen that shows few) it slides them in.
-@Composable
-private fun Modifier.inSight(): Modifier {
-    val place = remember { BringIntoViewRequester() }
-    LaunchedEffect(place) { place.bringIntoView() }
-    return bringIntoViewRequester(place)
 }
 
 @Composable
