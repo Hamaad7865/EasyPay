@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -391,8 +392,9 @@ private fun PicturePage(item: String, thing: String) {
         if (taken && from != null) pictures?.choose(item, from)
     }
     Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        // in the shape the card shows it in, so what is cut off here is cut off there
         androidx.compose.foundation.layout.Box(
-            Modifier.width(236.dp).height(158.dp).clip(RoundedCornerShape(18.dp)).background(V.Well),
+            Modifier.width(236.dp).aspectRatio(com.restopos.core.ui.PICTURE_SHAPE).clip(RoundedCornerShape(18.dp)).background(V.Well),
             contentAlignment = Alignment.Center,
         ) {
             if (pic == null) T("No picture yet", 14.sp, 600, V.Text3)
@@ -414,5 +416,5 @@ private fun PicturePage(item: String, thing: String) {
             if (pic != null) VBtn("Remove the picture", Modifier.fillMaxWidth(), height = 50.dp, fg = V.Red) { pictures?.remove(item) }
         }
     }
-    T("It shows on this $thing's card. It is kept on this tablet and in its backup; another till of the business does not get it.", 13.sp, 500, V.Text3, lines = 3)
+    T("It shows along the top of this $thing's card, in this shape. It is kept on this tablet and in its backup; another till of the business does not get it.", 13.sp, 500, V.Text3, lines = 3)
 }

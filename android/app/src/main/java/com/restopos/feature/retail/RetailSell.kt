@@ -57,6 +57,7 @@ import com.restopos.core.ui.Field
 import com.restopos.core.ui.Gap
 import com.restopos.core.ui.IconKey
 import com.restopos.core.ui.L
+import com.restopos.core.ui.PictureBand
 import com.restopos.core.ui.ScanKey
 import com.restopos.core.ui.ScanPill
 import com.restopos.core.ui.Sheet
@@ -66,8 +67,8 @@ import com.restopos.core.ui.V
 import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.VI
 import com.restopos.core.ui.VIcon
+import com.restopos.core.ui.anyPictured
 import com.restopos.core.ui.inSight
-import com.restopos.core.ui.picture
 import com.restopos.core.ui.press
 import com.restopos.feature.customers.CustomerPicker
 import com.restopos.feature.more.MoreSheets
@@ -319,6 +320,7 @@ private fun Products(vm: RetailViewModel, modifier: Modifier) {
     val byId = remember(cats) { cats.associateBy { it.id } }
     val searching = q.isNotBlank()
     val scan by vm.scanMode.collectAsState()
+    val band = anyPictured(items) { it.id }
 
     Column(modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -346,7 +348,7 @@ private fun Products(vm: RetailViewModel, modifier: Modifier) {
                     15.sp, 500, V.Text2, Modifier.padding(40.dp), lines = 3,
                 )
             }
-            items(items, key = { it.id }) { i -> Tile(i, byId[i.category_id], left[i.id]?.qty, variants[i.id] ?: 0) { vm.tap(i) } }
+            items(items, key = { it.id }) { i -> Tile(i, byId[i.category_id], left[i.id]?.qty, variants[i.id] ?: 0, band) { vm.tap(i) } }
         }
     }
 }
@@ -360,8 +362,11 @@ internal fun CatKey(label: String, on: Boolean, onClick: () -> Unit) {
 
 // A product: its category, its name, its price, and what is left of it.
 // "Not stocked" is a product whose stock nobody counts (a service, a bag).
+// band: the grid it is in shows pictures (anyPictured), so the card has its
+// picture along the top and the name and the price under it; the category's
+// name, which the keys above the grid say already, gives its line to that.
 @Composable
-internal fun Tile(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants: Int, onClick: () -> Unit) {
+internal fun Tile(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants: Int, band: Boolean, onClick: () -> Unit) {
     val counted = i.track_stock || cat?.is_stock == true
     val weighed = i.sold_by == "weight"
     val qty = left ?: 0L
@@ -371,23 +376,22 @@ internal fun Tile(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants: In
         !counted -> "Not stocked" to V.Text2
         else -> LinePrice.left(qty, weighed) to when (LinePrice.stock(qty)) { LinePrice.Stock.Plenty -> V.Text2; LinePrice.Stock.Few -> V.AmberText; LinePrice.Stock.None -> V.RedText }
     }
-    // Its picture, when it has one, fills the card behind the words, which are then white on the shade over it.
-    val pic = com.restopos.core.ui.pictureOf(i.id)
-    val over = pic != null
-    val ink = if (over) com.restopos.core.ui.OverPicture.Text else if (i.is_available) V.Text else V.Text3
-    Column(
-        Modifier.height(118.dp).press(0.97f, onClick).clip(RoundedCornerShape(18.dp)).background(V.Panel).picture(pic).padding(14.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            T(cat?.name ?: "", 12.sp, 600, if (over) com.restopos.core.ui.OverPicture.Soft else V.Text2)
-            T(i.name, 15.sp, 700, ink, lines = 2, height = 19.sp)
-        }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            T(if (i.open_price) "Enter price" else Money.format(i.price) + if (weighed) " /kg" else "", 16.sp, 800, ink)
-            Gap()
-            val shade = if (!over) tone else when (tone) { V.AmberText -> com.restopos.core.ui.OverPicture.Amber; V.RedText -> com.restopos.core.ui.OverPicture.Red; else -> com.restopos.core.ui.OverPicture.Soft }
-            T(note, 12.sp, 700, shade, align = TextAlign.End, lines = 2, height = 15.sp)
+    val ink = if (i.is_available) V.Text else V.Text3
+    Column(Modifier.press(0.97f, onClick).clip(RoundedCornerShape(18.dp)).background(V.Panel)) {
+        if (band) PictureBand(i.id, i.name, V.Well, off = !i.is_available)
+        Column(
+            Modifier.fillMaxWidth().height(if (band) 92.dp else 118.dp).padding(horizontal = 14.dp, vertical = if (band) 10.dp else 14.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (!band) T(cat?.name ?: "", 12.sp, 600, V.Text2)
+                T(i.name, 15.sp, 700, ink, lines = 2, height = 19.sp)
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                T(if (i.open_price) "Enter price" else Money.format(i.price) + if (weighed) " /kg" else "", 16.sp, 800, ink)
+                Gap()
+                T(note, 12.sp, 700, tone, align = TextAlign.End, lines = 2, height = 15.sp)
+            }
         }
     }
 }

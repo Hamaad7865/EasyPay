@@ -52,6 +52,7 @@ import com.restopos.core.ui.V
 import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.VI
 import com.restopos.core.ui.VIcon
+import com.restopos.core.ui.anyPictured
 import com.restopos.core.ui.press
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -152,6 +153,7 @@ fun ProductPane(p: ProductPick, modifier: Modifier, empty: String = "No products
     val byId = remember(cats) { cats.associateBy { it.id } }
     val searching = q.isNotBlank()
     val scan by p.scanMode.collectAsState()
+    val band = anyPictured(items) { it.id }
 
     Column(modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -176,7 +178,7 @@ fun ProductPane(p: ProductPick, modifier: Modifier, empty: String = "No products
             if (items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
                 T(if (searching) "Nothing matches “${q.trim()}”." else empty, 15.sp, 500, V.Text2, Modifier.padding(40.dp), lines = 3)
             }
-            items(items, key = { it.id }) { i -> Tile(i, byId[i.category_id], left[i.id]?.qty, variants[i.id] ?: 0) { p.tap(i) } }
+            items(items, key = { it.id }) { i -> Tile(i, byId[i.category_id], left[i.id]?.qty, variants[i.id] ?: 0, band) { p.tap(i) } }
         }
     }
 }

@@ -54,6 +54,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -75,6 +76,7 @@ import com.restopos.core.ui.Gap
 import com.restopos.core.ui.IconKey
 import com.restopos.core.ui.L
 import com.restopos.core.ui.Motion
+import com.restopos.core.ui.PictureBand
 import com.restopos.core.ui.Pos
 import com.restopos.core.ui.Seg
 import com.restopos.core.ui.SegOption
@@ -86,8 +88,8 @@ import com.restopos.core.ui.V
 import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.VI
 import com.restopos.core.ui.VIcon
+import com.restopos.core.ui.anyPictured
 import com.restopos.core.ui.inSight
-import com.restopos.core.ui.picture
 import com.restopos.core.ui.press
 import com.restopos.core.ui.rememberPress
 import com.restopos.feature.customers.CustomerPicker
@@ -347,6 +349,7 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
     val byId = remember(cats) { cats.associateBy { it.id } }
     // how many of each item are on the order and not sent yet
     val counts = remember(ui.fresh) { ui.fresh.groupBy { it.line.item_id }.mapValues { e -> e.value.sumOf { it.units } } }
+    val band = anyPictured(items) { it.id }
 
     Column(modifier.fillMaxHeight().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // every category stays in sight: the chips wrap onto another row rather than scroll away
@@ -411,36 +414,45 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
                         }
                     }
                 }
-                // Its picture, when it has one, fills the card behind the words, which are then white on the
-                // shade over it; the category's colour stays as the rail down its side.
-                val pic = com.restopos.core.ui.pictureOf(i.id)
-                val over = pic != null
-                Box(
-                    Modifier.height(104.dp).graphicsLayer { scaleX = press.value; scaleY = press.value }
-                        .clip(RoundedCornerShape(14.dp)).background(V.Panel).picture(pic)
-                        .drawBehind {
-                            if (!out && !over) drawRect(Brush.horizontalGradient(0f to hue.copy(alpha = 0.20f), 0.8f to hue.copy(alpha = 0.03f)))
-                            drawRect(rail, size = Size(4.dp.toPx(), size.height))
-                        }
-                        .border(1.dp, V.Stroke, RoundedCornerShape(14.dp))
-                        .combinedClickable(interactionSource = source, indication = null, onClick = { vm.tap(i) }, onLongClick = { vm.tap(i, ask = true) })
-                        .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 11.dp),
-                ) {
-                    T(i.name, 15.sp, 700, if (over) com.restopos.core.ui.OverPicture.Text else if (out) V.Text3 else V.Text, Modifier.align(Alignment.TopStart).padding(end = if (n > 0) 30.dp else 0.dp), lines = 3, height = 19.sp)
-                    Row(Modifier.align(Alignment.BottomStart).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        T(if (i.open_price) "Enter price" else Money.format(i.price), 14.sp, 700, if (over) com.restopos.core.ui.OverPicture.Text else if (out) V.Text3 else V.Text2)
-                        Gap()
-                        // what else there is to know about it, said quietly
-                        val note = if (out) "Sold out" else listOfNotNull(tag, if (withOptions.contains(i.id)) "Options" else null).joinToString(" · ")
-                        if (note.isNotEmpty()) T(note, 12.sp, if (out) 700 else 600, if (over) (if (out) com.restopos.core.ui.OverPicture.Red else com.restopos.core.ui.OverPicture.Soft) else if (out) V.RedText else V.Text3)
-                    }
-                    // how many of it are on the order and not sent yet
+                // how many of it are on the order and not sent yet
+                val count: @Composable (Modifier) -> Unit = { at ->
                     if (n > 0) {
                         Box(
-                            Modifier.align(Alignment.TopEnd).graphicsLayer { scaleX = pop.value; scaleY = pop.value }.heightIn(min = 26.dp).widthIn(min = 26.dp)
+                            at.graphicsLayer { scaleX = pop.value; scaleY = pop.value }.heightIn(min = 26.dp).widthIn(min = 26.dp)
                                 .clip(RoundedCornerShape(13.dp)).background(V.On).padding(horizontal = 7.dp),
                             contentAlignment = Alignment.Center,
                         ) { T(n.toString(), 13.sp, 800, V.OnText) }
+                    }
+                }
+                Column(
+                    Modifier.graphicsLayer { scaleX = press.value; scaleY = press.value }
+                        .clip(RoundedCornerShape(14.dp)).background(V.Panel)
+                        .border(1.dp, V.Stroke, RoundedCornerShape(14.dp))
+                        .combinedClickable(interactionSource = source, indication = null, onClick = { vm.tap(i) }, onLongClick = { vm.tap(i, ask = true) }),
+                ) {
+                    // Its picture along the top, the count in its corner; an item with none shows its initials on its category's colour.
+                    if (band) Box {
+                        PictureBand(i.id, i.name, if (out) V.Well else hue.copy(alpha = 0.18f).compositeOver(V.Well), off = out)
+                        count(Modifier.align(Alignment.TopEnd).padding(8.dp))
+                    }
+                    // The name and the price, on the card's own ground: the category's colour is a rail down their side and a wash from it.
+                    Box(
+                        Modifier.fillMaxWidth().height(if (band) 82.dp else 104.dp)
+                            .drawBehind {
+                                if (!out) drawRect(Brush.horizontalGradient(0f to hue.copy(alpha = 0.20f), 0.8f to hue.copy(alpha = 0.03f)))
+                                drawRect(rail, size = Size(4.dp.toPx(), size.height))
+                            }
+                            .padding(start = 16.dp, end = 12.dp, top = if (band) 10.dp else 12.dp, bottom = if (band) 10.dp else 11.dp),
+                    ) {
+                        T(i.name, 15.sp, 700, if (out) V.Text3 else V.Text, Modifier.align(Alignment.TopStart).padding(end = if (n > 0 && !band) 30.dp else 0.dp), lines = if (band) 2 else 3, height = 19.sp)
+                        Row(Modifier.align(Alignment.BottomStart).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            T(if (i.open_price) "Enter price" else Money.format(i.price), 14.sp, 700, if (out) V.Text3 else V.Text2)
+                            Gap()
+                            // what else there is to know about it, said quietly
+                            val note = if (out) "Sold out" else listOfNotNull(tag, if (withOptions.contains(i.id)) "Options" else null).joinToString(" · ")
+                            if (note.isNotEmpty()) T(note, 12.sp, if (out) 700 else 600, if (out) V.RedText else V.Text3)
+                        }
+                        if (!band) count(Modifier.align(Alignment.TopEnd))
                     }
                 }
             }
