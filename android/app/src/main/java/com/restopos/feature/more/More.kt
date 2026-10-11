@@ -345,7 +345,7 @@ fun PrinterList(vm: MoreViewModel) {
     val busy by vm.busy.collectAsState()
     LaunchedEffect(Unit) { vm.load() }
     if (printers.isEmpty()) {
-        Text("No printer is set up. Add them in the back office, under Printers; they arrive here with the next sync.", color = Pos.Text, fontSize = 14.sp)
+        Text((if (com.restopos.core.data.Journey.alone) "No printer is set up. Add one in Settings, under This till, Set-up, Printer." else "No printer is set up. Add them in the back office, under Printers; they arrive here with the next sync."), color = Pos.Text, fontSize = 14.sp)
     }
     printers.forEach { p ->
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

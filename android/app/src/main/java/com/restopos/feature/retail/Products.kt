@@ -247,7 +247,7 @@ fun ProductsScreen(vm: ProductsViewModel, onLabel: (ItemEntity) -> Unit = {}) {
                 T("LEFT", 12.sp, 800, V.Text3, Modifier.width(170.dp), spacing = 1.sp)
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
-            if (items.isEmpty()) T(if (searching) "Nothing matches “${q.trim()}”." else "No products here yet. Tap New product, or add them in the back office, under Products.", 15.sp, 500, V.Text2, Modifier.padding(28.dp), lines = 2)
+            if (items.isEmpty()) T(if (searching) "Nothing matches “${q.trim()}”." else (if (com.restopos.core.data.Journey.alone) "No products here yet. Tap New product." else "No products here yet. Tap New product, or add them in the back office, under Products."), 15.sp, 500, V.Text2, Modifier.padding(28.dp), lines = 2)
             LazyColumn(Modifier.fillMaxSize()) {
                 items(items, key = { it.id }) { i ->
                     val c = byId[i.category_id]
@@ -341,7 +341,7 @@ private fun ProductSheet(p: ProductOpen, vm: ProductsViewModel, onLabel: (ItemEn
             Toggle(i.is_available)
         }
         T(
-            if (p.counted) "A delivery with its costs, a count and a transfer are done in the back office."
+            if (p.counted) (if (com.restopos.core.data.Journey.alone) "Stock goes in and out with the keys above; each change is kept in the stock history." else "A delivery with its costs, a count and a transfer are done in the back office.")
             else "Its stock is not counted. Edit product has the switch for that.",
             13.sp, 500, V.Text3, lines = 2,
         )

@@ -88,7 +88,7 @@ fun StartScreen(
             all == null -> Unit // still reading the tablet's own data
             all.none { it.hasPin } -> Closed(
                 vm, title = "Register is locked", text = "Open the register to take orders.", button = "Open register",
-                note = "Staff PINs are not set up. Add them in the back office, under Staff, to have staff clock in and sign in here.",
+                note = (if (com.restopos.core.data.Journey.alone) "Staff PINs are not set up. Add them in Settings, under Staff, to have staff clock in and sign in here." else "Staff PINs are not set up. Add them in the back office, under Staff, to have staff clock in and sign in here."),
                 onButton = onOpen, onSignIn = onSignIn, onSetUp = onSetUp,
             )
             active.isEmpty() -> Closed(

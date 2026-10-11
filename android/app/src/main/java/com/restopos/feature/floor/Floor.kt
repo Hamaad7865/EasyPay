@@ -359,7 +359,7 @@ fun FloorScreen(
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().dots()) {
                 if (ui.ready && ui.tables.isEmpty()) {
                     T(
-                        "No tables yet. Draw the floor plan in the back office, under Tables, and it shows here.",
+                        (if (com.restopos.core.data.Journey.alone) "No tables yet. Add them in Settings, under This till, Set-up, Tables." else "No tables yet. Draw the floor plan in the back office, under Tables, and it shows here."),
                         15.sp, 600, V.Text2, Modifier.align(Alignment.Center).padding(40.dp), lines = 3,
                     )
                 }

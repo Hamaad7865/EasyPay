@@ -31,7 +31,7 @@ object StaffForm {
     // The server's refusal of staff.save or staff.set_pin (migration 0089), in words.
     fun refused(code: String?): String = when (code) {
         "name-required" -> "Give them a name"
-        "forbidden" -> "Only the owner can add staff or set a PIN. Ask the owner, or do it in the back office, under Staff."
+        "forbidden" -> "Only the owner can add staff or set a PIN. Ask the owner" + if (Journey.alone) "." else ", or do it in the back office, under Staff."
         "bad-role" -> "That role is no longer there. Pick another."
         "bad-pin" -> "That PIN could not be saved. Type it again."
         "unknown-staff" -> "That person is no longer there."

@@ -105,7 +105,7 @@ private fun PrinterList(vm: SetupViewModel, printers: List<PrinterEntity>, onCha
                 }
             }
         }
-        T("More printers, and which category prints where, are set in the back office, under Printers.", 13.sp, 500, V.Text3, lines = 2)
+        if (!com.restopos.core.data.Journey.alone) T("More printers, and which category prints where, are set in the back office, under Printers.", 13.sp, 500, V.Text3, lines = 2)
     }
 }
 

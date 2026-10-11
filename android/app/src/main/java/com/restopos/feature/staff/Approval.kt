@@ -110,7 +110,7 @@ fun ApprovalHost(vm: ApprovalViewModel = hiltViewModel()) {
                     Modifier.padding(bottom = 6.dp), color = Pos.Text2, fontSize = 14.sp,
                 )
                 if (list != null && list.isEmpty()) {
-                    Text("Nobody with a PIN is allowed to do this. Roles and PINs are set in the back office, under Staff.", color = Pos.Warn, fontSize = 14.sp)
+                    Text((if (com.restopos.core.data.Journey.alone) "Nobody with a PIN is allowed to do this. Roles and PINs are set in Settings, under Staff and Roles." else "Nobody with a PIN is allowed to do this. Roles and PINs are set in the back office, under Staff."), color = Pos.Warn, fontSize = 14.sp)
                 }
                 list.orEmpty().forEach { m ->
                     Row(

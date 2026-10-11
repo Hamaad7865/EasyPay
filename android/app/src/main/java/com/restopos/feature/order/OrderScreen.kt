@@ -351,7 +351,7 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                T(if (searching) "Nothing on the menu matches that search." else "No items in this category yet. Add them in the back office, under Items.", 15.sp, 500, V.Text2, Modifier.padding(40.dp), lines = 3)
+                T(if (searching) "Nothing on the menu matches that search." else (if (com.restopos.core.data.Journey.alone) "No items in this category yet. Add them on Menu & stock." else "No items in this category yet. Add them in the back office, under Items."), 15.sp, 500, V.Text2, Modifier.padding(40.dp), lines = 3)
             }
             items(items, key = { it.id }) { i ->
                 val out = !i.is_available

@@ -166,7 +166,8 @@ internal fun MenuStep(vm: SetupViewModel, facts: SetupFacts, next: () -> Unit) {
         if (!typing) {
             Spacer(Modifier.height(10.dp))
             T(
-                if (shop) "Many products? Import a spreadsheet in the back office, under Import products."
+                if (com.restopos.core.data.Journey.alone) (if (shop) "Each product's tax, cost and supplier are on the second page of its sheet." else "Each item's tax is on the second page of its sheet.")
+                else if (shop) "Many products? Import a spreadsheet in the back office, under Import products."
                 else "Add-ons and tax are set in the back office, under Menu.",
                 13.sp, 500, V.Text3, lines = 2,
             )

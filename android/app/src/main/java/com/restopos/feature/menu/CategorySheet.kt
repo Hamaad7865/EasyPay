@@ -193,8 +193,8 @@ private fun CategorySheet(editor: CategoryEditor, edit: CategoryEdit, items: Int
         if (color == null) T("With no colour of its own it takes one by its place among the buttons.", 13.sp, 500, V.Text2, lines = 2)
 
         // a restaurant's new category is ticked for no printer yet: said before an order finds out
-        if (was == null && !shop) T("Its items print nowhere until a printer is ticked for it in the back office, under Printers.", 13.sp, 500, V.AmberText, lines = 2)
-        T("Where its ${if (shop) "products" else "items"} print, its place among the buttons and whether its stock is counted are set in the back office.", 13.sp, 500, V.Text3, lines = 2)
+        if (was == null && !shop && !com.restopos.core.data.Journey.alone) T("Its items print nowhere until a printer is ticked for it in the back office, under Printers.", 13.sp, 500, V.AmberText, lines = 2)
+        if (!com.restopos.core.data.Journey.alone) T("Where its ${if (shop) "products" else "items"} print, its place among the buttons and whether its stock is counted are set in the back office.", 13.sp, 500, V.Text3, lines = 2)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (was != null) VBtn("Remove", height = 56.dp, fg = V.RedText, enabled = !busy) {
                 // the server refuses it too; said here without asking

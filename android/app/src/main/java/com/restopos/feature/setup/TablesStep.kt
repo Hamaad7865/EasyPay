@@ -93,6 +93,6 @@ internal fun TablesStep(vm: SetupViewModel, facts: SetupFacts, next: () -> Unit)
         }
         QuietLink("Add a room", enabled = !busy) { vm.lines.value = vm.lines.value + RoomLine(Uuid7.next()) }
         if (numbered != null) T("They will be numbered  $numbered", 14.sp, 600, V.BlueText, lines = 3, height = 20.sp)
-        T("They can be moved, renamed and given other shapes in the back office, under Tables.", 13.sp, 500, V.Text3, lines = 2)
+        if (!com.restopos.core.data.Journey.alone) T("They can be moved, renamed and given other shapes in the back office, under Tables.", 13.sp, 500, V.Text3, lines = 2)
     }
 }

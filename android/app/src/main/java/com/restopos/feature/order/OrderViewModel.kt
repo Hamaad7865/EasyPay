@@ -213,7 +213,7 @@ class OrderViewModel @Inject constructor(
     fun scanned(code: String) = viewModelScope.launch {
         query.value = ""
         val item = db.catalog().itemByBarcode(code.trim())
-        if (item == null) { Toaster.say("No item has the barcode $code. It is set on the item in the back office."); return@launch }
+        if (item == null) { Toaster.say("No item has the barcode $code. It is set on the item's own sheet" + if (com.restopos.core.data.Journey.alone) ", on Menu & stock." else ", or in the back office."); return@launch }
         tap(item)
     }
 

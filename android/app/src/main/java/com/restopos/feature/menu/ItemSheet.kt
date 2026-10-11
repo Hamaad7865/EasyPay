@@ -237,7 +237,7 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             if (!open) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Switch("Count its stock", count || byCategory, Modifier.weight(1f)) {
-                        if (byCategory) Toaster.say("Its category counts stock, so this ${thing}'s is counted too. That is set in the back office.") else count = !count
+                        if (byCategory) Toaster.say("Its category counts stock, so this ${thing}'s is counted too." + if (com.restopos.core.data.Journey.alone) "" else " That is set in the back office.") else count = !count
                     }
                     // stock can be changed once the server counts it: after a save, not before
                     if (stock != null && was != null && !was.open_price && (was.track_stock || byCategory)) {
@@ -304,7 +304,7 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             }
         }
 
-        if (page == 1) T("Its ${if (shop) "variants" else "add-ons"} are set in the back office.", 13.sp, 500, V.Text3, lines = 2)
+        if (page == 1 && !com.restopos.core.data.Journey.alone) T("Its ${if (shop) "variants" else "add-ons"} are set in the back office.", 13.sp, 500, V.Text3, lines = 2)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (was != null) VBtn("Remove", height = 52.dp, fg = V.RedText, enabled = !busy) { removing = true }
             Box(Modifier.weight(1f))

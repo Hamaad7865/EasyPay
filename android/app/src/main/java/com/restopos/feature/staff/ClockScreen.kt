@@ -82,7 +82,7 @@ fun ClockScreen(vm: StaffViewModel = hiltViewModel(), onBack: () -> Unit, onRegi
                     Text("Not clocked in", Modifier.padding(top = 22.dp, bottom = 10.dp), color = Pos.Text3, fontSize = 13.sp)
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(out, key = { it.employee.id }) { m ->
-                            StaffRow(m, note = if (m.hasPin) null else "No PIN yet. Set one in the back office, under Staff.", enabled = m.hasPin) {
+                            StaffRow(m, note = if (m.hasPin) null else (if (com.restopos.core.data.Journey.alone) "No PIN yet. Set one in Settings, under Staff." else "No PIN yet. Set one in the back office, under Staff."), enabled = m.hasPin) {
                                 pinFor = m to "in"
                             }
                         }

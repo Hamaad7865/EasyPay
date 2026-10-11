@@ -324,7 +324,7 @@ private fun Products(vm: RetailViewModel, modifier: Modifier) {
         LazyVerticalGrid(GridCells.Adaptive(176.dp), Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
                 T(
-                    if (searching) "Nothing matches “${q.trim()}”. A scanned code that no product carries adds nothing." else "No products here yet. They are added in the back office, under Products.",
+                    if (searching) "Nothing matches “${q.trim()}”. A scanned code that no product carries adds nothing." else (if (com.restopos.core.data.Journey.alone) "No products here yet. They are added on Products & stock." else "No products here yet. They are added in the back office, under Products."),
                     15.sp, 500, V.Text2, Modifier.padding(40.dp), lines = 3,
                 )
             }

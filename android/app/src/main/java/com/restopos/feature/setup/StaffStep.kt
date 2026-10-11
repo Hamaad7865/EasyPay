@@ -157,7 +157,7 @@ private fun AddSheet(vm: SetupViewModel, roles: List<RoleEntity>, close: () -> U
         SetupField("Name", name, { name = it; vm.clear() }, "Asha", enabled = !busy, ime = ImeAction.Next)
         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             T("What they are", 13.sp, 600, V.Text2)
-            if (roles.isEmpty()) T("This business has no roles to give. Add one in the back office, under Roles and permissions.", 14.sp, 500, V.Text2, lines = 3)
+            if (roles.isEmpty()) T((if (com.restopos.core.data.Journey.alone) "This business has no roles to give. Add one in Settings, under Roles." else "This business has no roles to give. Add one in the back office, under Roles and permissions."), 14.sp, 500, V.Text2, lines = 3)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 roles.forEach { r ->
                     val on = role?.id == r.id

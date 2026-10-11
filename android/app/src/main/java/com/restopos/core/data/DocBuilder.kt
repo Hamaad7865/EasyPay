@@ -119,7 +119,7 @@ class DocBuilder @Inject constructor(
 
     // Receipts, bills and refunds come out of the cashier's printer.
     suspend fun print(doc: ReceiptDoc, openDrawer: Boolean = false): Result<Unit> = runCatching {
-        val p = printing.receiptPrinter() ?: throw PrintError("No receipt printer is set up. Add one in the back office, under Printers.")
+        val p = printing.receiptPrinter() ?: throw PrintError(if (Journey.alone) "No receipt printer is set up. Add one in Settings, under This till, Set-up, Printer." else "No receipt printer is set up. Add one in the back office, under Printers.")
         val s = printing.settings()
         val what = when (doc.kind) { "bill" -> "Bill, ${doc.order}"; "refund" -> "Refund ${doc.number}"; else -> "Receipt ${doc.number}" + (doc.share?.let { ", share $it" } ?: "") }
         val bytes = Docs.receipt(doc, printing.shop(), printing.paper(p), s.decimals, printing.logo(s, p), openDrawer)

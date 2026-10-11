@@ -553,7 +553,7 @@ fun SettingsScreen(
         if (pending > 0 && !needsSignIn) add(Standing("$pending changes are waiting to be sent", "They go as soon as there is a connection.", "Sync now", soft = true) { vm.sync() })
         val list = printers
         if (list != null && list.isEmpty()) {
-            add(Standing("No printer is set up", "Nothing can print: no receipts, no ${if (shop) "reports" else "kitchen tickets"}. Printers are added in the back office.", "Printers") { page = Page.Printers })
+            add(Standing("No printer is set up", "Nothing can print: no receipts, no ${if (shop) "reports" else "kitchen tickets"}. " + (if (com.restopos.core.data.Journey.alone) "Add one under This till, Set-up, Printer." else "Printers are added in the back office."), "Printers") { page = Page.Printers })
         } else if (list != null && list.none { it.is_receipt }) {
             add(Standing("No receipt printer", "${if (shop) "Receipts and reports" else "Receipts, bills and reports"} have nowhere to print, and the drawer cannot open.", "Printers") { page = Page.Printers })
         }
@@ -1083,7 +1083,7 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
     }
     val list = printers
     if (list != null && list.isEmpty()) {
-        Panel { Text("No printer is set up. Add them in the back office, under Printers; they arrive here with the next sync.", color = Pos.Text, fontSize = 14.sp) }
+        Panel { Text((if (com.restopos.core.data.Journey.alone) "No printer is set up. Add one in Settings, under This till, Set-up, Printer." else "No printer is set up. Add them in the back office, under Printers; they arrive here with the next sync."), color = Pos.Text, fontSize = 14.sp) }
     }
     // A Bluetooth printer: the tablet has to allow EasyPay to use Bluetooth,
     // asked once from Android 12 on, and the printer is paired in the tablet
