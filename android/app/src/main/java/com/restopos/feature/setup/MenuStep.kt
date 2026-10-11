@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -38,6 +38,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.restopos.core.common.Money
@@ -104,8 +105,12 @@ internal fun MenuStep(vm: SetupViewModel, facts: SetupFacts, next: () -> Unit) {
 
     // With the tablet's keyboard up there is half a screen left, less on a low
     // tablet. The heading, the line under the lists and the foot give way, so
-    // that the lists and the line being typed in keep the room.
-    val typing = WindowInsets.isImeVisible
+    // that the lists and the line being typed in keep the room. Only a
+    // keyboard that takes room counts: with a scanner or a keyboard plugged
+    // in, Android shows a small floating bar instead, which is "up" and covers
+    // nothing, and the key to go on would never come back.
+    val density = LocalDensity.current
+    val typing = WindowInsets.ime.getBottom(density) > with(density) { 120.dp.roundToPx() }
     Column(Modifier.fillMaxSize()) {
         if (!typing) {
             Heading(
@@ -166,7 +171,7 @@ internal fun MenuStep(vm: SetupViewModel, facts: SetupFacts, next: () -> Unit) {
         if (!typing) {
             Spacer(Modifier.height(10.dp))
             T(
-                if (com.restopos.core.data.Journey.alone) (if (shop) "Each product's tax, cost and supplier are on the second page of its sheet." else "Each item's tax is on the second page of its sheet.")
+                if (com.restopos.core.data.Journey.alone) (if (shop) "A product added with no barcode is given one of EasyPay's. Its tax, cost and supplier are on the second page of its sheet." else "Each item's tax is on the second page of its sheet.")
                 else if (shop) "Many products? Import a spreadsheet in the back office, under Import products."
                 else "Add-ons and tax are set in the back office, under Menu.",
                 13.sp, 500, V.Text3, lines = 2,

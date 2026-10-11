@@ -480,8 +480,8 @@ class ServiceRepository @Inject constructor(
             val tenant = session.tenantId() ?: error("This tablet is not set up")
             try {
                 db.withTransaction {
-                    local.apply(type, payload, tenant, staff.id())
-                    db.outbox().enqueue(op(type, payload))
+                    // kept as the tablet answered it: a barcode it gave goes with the change
+                    local.apply(type, payload, tenant, staff.id()).forEach { (kind, kept) -> db.outbox().enqueue(op(kind, kept)) }
                 }
             } catch (e: Refused) {
                 error(refused(e.code))

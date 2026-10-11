@@ -224,7 +224,10 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                 // the server's copy of it is the older one (OwnSettings).
                 val data = if (db.outbox().pendingOf(OwnSettings.KINDS) > 0) OwnSettings.kept(sent, ops.settings()) else sent
                 ops.upsertSettings(SettingsEntity(str(it, "tenant_id") ?: "", data))
-                com.restopos.core.common.Money.decimals = com.restopos.core.data.PosSettings.parse(data).decimals
+                val told = com.restopos.core.data.PosSettings.parse(data)
+                com.restopos.core.common.Money.decimals = told.decimals
+                // the plan came with these: the first screens after it say at once where a change goes
+                com.restopos.core.data.Journey.alone = told.alone
             }
             // Cash movements and day closings are made on this till. The copies
             // that come back only matter after a reinstall; one made here and

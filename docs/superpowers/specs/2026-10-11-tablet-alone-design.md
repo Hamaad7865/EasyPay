@@ -188,7 +188,7 @@ checks. The till's database is 18. 474 unit tests, 39 of them of the tablet's ow
 | The receipt's logo | **not built** |
 | Products from a file | **not built** |
 | A shop's purchase orders, deliveries and counts | **not built** (their rules are; their screens say "Coming with the next build") |
-| An EasyPay barcode made for a new product | **not built** offline: made when the product reaches the server |
+| An EasyPay barcode made for a new product | done (section 9) |
 
 ## 8. Record, the last of the night: a kitchen printer, and four checks
 
@@ -243,4 +243,40 @@ made afresh, with nothing kept: taken whole. 480 unit tests pass.
 change is), and if it was the only one that wrote into the settings the tablet keeps its own value
 until the settings next change. And none of this has met a real server: Connect to the cloud itself
 has still never been run.
+
+## 9. Record, the first morning: the owner at the emulator
+
+The owner made a client on the plan Offline in the local /admin (dev), a shop, and signed the debug
+build in to it on `easypay_claude_kitchen` (5588, its window open). Three things came of it.
+
+**"I cant go next"**, on the first step of the set-up. The step hid its heading and its Continue key
+whenever a keyboard was "up" (`WindowInsets.isImeVisible`), to leave the room to the line being
+typed. On the emulator the keyboard is a small floating bar, because a real keyboard is attached:
+it is "up", covers nothing, and stays while a box has the focus, so Continue never came back. A
+tablet with a scanner or a keyboard plugged in would do the same. The step now gives way only to a
+keyboard that takes room (more than 120 dp of the screen's foot).
+
+**After a restart the set-up spoke of the back office** on this offline tablet. What a sentence says
+of where a change goes (`Journey.alone`) was set only by the main screen and by the first change
+asked, and the set-up is shown before either. It is set now when the app starts and whenever a pull
+brings the settings.
+
+**"If a product doesnt have a barcode yet, we need to generate one."** Until now only the server
+made one, and only for a shop that had switched that on in the back office (`barcodes_auto`, off
+unless switched on), so an offline shop never had one. A tablet that works on its own now makes
+them itself, for a shop: a product saved with the barcode box empty is given the next of EasyPay's
+(prefix 200, the serial, the check digit: `Barcodes.ean13`, the server's `ean13` written again and
+held to the server's own figures), and the lines made for a product are each given theirs. The
+number is the one after the highest the tablet has ever held, removed products included, and never
+one in use. So that a printed label still scans after the business goes Premium, **the barcode goes
+up with the change**: the kept `item.save` carries it, and the lines' barcodes are a `variants.save`
+kept straight after the `variants.make` (`LocalAnswers.apply` returns what is to be kept). Nothing
+changed on the server. A product that has variants gets none of its own; a restaurant's item gets
+none; a product saved before this is given one the next time its sheet is saved.
+
+Not decided, the owner's: whether a **linked** shop (Premium) should have this on by default too.
+There it still follows the back office's switch, which is off unless switched on.
+
+487 unit tests pass. The first two were seen on the owner's emulator after an install; the barcode
+is theirs to see.
 

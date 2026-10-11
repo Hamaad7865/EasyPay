@@ -51,10 +51,23 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
     // The kinds of change this tablet can answer by itself.
     fun answers(type: String): Boolean = type in KINDS
 
-    // One change, applied. Call it inside one transaction with the queueing of the change.
-    suspend fun apply(type: String, p: JsonObject, tenant: String, employee: String?) {
+    // One change, applied. Call it inside one transaction with the queueing of
+    // what it returns: the change as the server is to take it, and after it a
+    // change this tablet made beside it. Both are there for the barcodes: a
+    // shop's line saved with none is given one of EasyPay's here, since no
+    // back office is there to make it, and the server is sent the barcode
+    // itself, so that the one on a printed label is the one it holds after.
+    suspend fun apply(type: String, p: JsonObject, tenant: String, employee: String?): List<Pair<String, JsonObject>> {
         when (type) {
-            "item.save" -> itemSave(p, tenant)
+            "item.save" -> { val kept = coded(p); itemSave(kept, tenant); return listOf(type to kept) }
+            "variants.make" -> return listOfNotNull(type to p, codes(p, variantsMake(p, tenant)))
+            else -> change(type, p, tenant, employee)
+        }
+        return listOf(type to p)
+    }
+
+    private suspend fun change(type: String, p: JsonObject, tenant: String, employee: String?) {
+        when (type) {
             "item.remove" -> itemRemove(p)
             "category.save" -> categorySave(p, tenant)
             "category.remove" -> categoryRemove(p)
@@ -75,10 +88,51 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             "addon.save" -> addonSave(p, tenant)
             "addon.remove" -> addonRemove(p)
             "settings.save" -> settingsSave(p, tenant)
-            "variants.make" -> variantsMake(p, tenant)
             "variants.save" -> variantsSave(p)
             "variant.remove" -> variantRemove(p)
             else -> throw Refused("not-alone")
+        }
+    }
+
+    // ---- barcodes_auto, assign_barcodes (0070, 0080): EasyPay's own barcodes ----
+    // A shop's product saved with no barcode, as it is kept: with the next of
+    // EasyPay's. Not one that has variants: its lines have their own.
+    private suspend fun coded(p: JsonObject): JsonObject {
+        if (!PosSettings.parse(dao.settings()?.data).retail) return p
+        if ((p.str("barcode") ?: "").any { !it.isWhitespace() }) return p
+        val id = p.str("id")?.takeIf { UUID.matches(it) } ?: return p
+        if (dao.variantsOf(id).isNotEmpty()) return p
+        val code = mint(emptySet()) ?: return p
+        return JsonObject(p + ("barcode" to JsonPrimitive(code)))
+    }
+
+    // The lines just made, given their barcodes: a change of its own, kept
+    // after the one that made them.
+    private suspend fun codes(p: JsonObject, made: List<com.restopos.core.database.ItemVariantEntity>): Pair<String, JsonObject>? {
+        val given = LinkedHashMap<String, String>()
+        for (v in made) given[v.id] = mint(given.values.toSet()) ?: break
+        if (given.isEmpty()) return null
+        val save = buildJsonObject {
+            put("item_id", p.id("item_id"))
+            put("lines", JsonArray(given.map { (line, code) -> buildJsonObject { put("id", line); put("barcode", code) } }))
+            // whoever gave their word for the lines gave it for their barcodes
+            p["approved_by"]?.let { put("approved_by", it) }
+        }
+        variantsSave(save)
+        return "variants.save" to save
+    }
+
+    // The next of EasyPay's barcodes: the one after the highest this tablet
+    // has held, and never one in use. null when no number is left.
+    private suspend fun mint(given: Set<String>): String? {
+        val like = Barcodes.PREFIX + "%"
+        val top = listOfNotNull(dao.topItemBarcode(like), dao.topVariantBarcode(like)).mapNotNull { Barcodes.serial(it) }.maxOrNull() ?: 0L
+        // past the last number the prefix has room for, the gaps below are looked through
+        var n = if (Barcodes.ean13(Barcodes.PREFIX, top + 1) != null) top + 1 else 1L
+        while (true) {
+            val code = Barcodes.ean13(Barcodes.PREFIX, n) ?: return null
+            if (code !in given && dao.itemsWithBarcode(code, "") == 0 && dao.variantsWithBarcode(code, "") == 0) return code
+            n++
         }
     }
 
@@ -515,7 +569,8 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
     }
 
     // ---- push_variants_make, push_variants_save, push_variant_remove (0097) ----
-    private suspend fun variantsMake(p: JsonObject, tenant: String) {
+    // Returns the lines it made.
+    private suspend fun variantsMake(p: JsonObject, tenant: String): List<com.restopos.core.database.ItemVariantEntity> {
         val id = p.id("item_id")
         val names = (p["names"] as? JsonArray) ?: bad()
         val lines = (p["lines"] as? JsonArray) ?: bad()
@@ -553,6 +608,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         if (live.size + new.size > 200) throw Refused("too-many-variants")
         dao.putItem(item.copy(option_names = JsonArray(called.map { JsonPrimitive(it) }).toString()))
         dao.putVariants(new)
+        return new
     }
 
     private suspend fun variantsSave(p: JsonObject) {

@@ -22,8 +22,9 @@ class RestoPosApp : Application(), Configuration.Provider {
         super.onCreate()
         // before anything else can go wrong: a crash is written down for the next sync to send
         com.restopos.core.common.Crashes.install(this)
-        // how many decimals amounts are shown with, before the first screen draws them
-        printing.scope.launch { runCatching { printing.settings() } }
+        // how many decimals amounts are shown with, before the first screen draws them;
+        // and whether this tablet works on its own, which its sentences say (Journey)
+        printing.scope.launch { runCatching { com.restopos.core.data.Journey.alone = printing.settings().alone } }
     }
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder().setWorkerFactory(workerFactory).build()

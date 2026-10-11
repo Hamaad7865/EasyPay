@@ -17,6 +17,10 @@ interface AloneDao {
     @Query("SELECT COUNT(*) FROM items WHERE barcode = :code AND deleted_at IS NULL AND id <> :not") suspend fun itemsWithBarcode(code: String, not: String): Int
     @Query("SELECT COUNT(*) FROM item_variants v JOIN items i ON i.id = v.item_id WHERE v.barcode = :code AND v.deleted_at IS NULL AND i.deleted_at IS NULL AND v.id <> :not")
     suspend fun variantsWithBarcode(code: String, not: String): Int
+    // The highest 13-digit code beginning as EasyPay's own do that this tablet
+    // has ever held, removed lines included: a number is not given out twice.
+    @Query("SELECT MAX(barcode) FROM items WHERE barcode LIKE :like AND LENGTH(barcode) = 13") suspend fun topItemBarcode(like: String): String?
+    @Query("SELECT MAX(barcode) FROM item_variants WHERE barcode LIKE :like AND LENGTH(barcode) = 13") suspend fun topVariantBarcode(like: String): String?
     @Query("SELECT COUNT(*) FROM items WHERE LOWER(sku) = LOWER(:sku) AND deleted_at IS NULL AND id <> :not") suspend fun itemsWithSku(sku: String, not: String): Int
     @Query("SELECT COUNT(*) FROM item_variants v JOIN items i ON i.id = v.item_id WHERE LOWER(v.sku) = LOWER(:sku) AND v.deleted_at IS NULL AND i.deleted_at IS NULL AND v.id <> :not")
     suspend fun variantsWithSku(sku: String, not: String): Int

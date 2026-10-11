@@ -221,7 +221,12 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Caps("Barcode", V.Text2)
-                    Field(barcode, { barcode = it.take(64) }, "Scan it here, or leave empty", Modifier.fillMaxWidth(), height = 52.dp, size = 17.sp)
+                    // a shop's tablet that works on its own gives a product saved with none one of EasyPay's (LocalAnswers)
+                    Field(
+                        barcode, { barcode = it.take(64) },
+                        if (shop && com.restopos.core.data.Journey.alone) "Scan it, or EasyPay makes one" else "Scan it here, or leave empty",
+                        Modifier.fillMaxWidth(), height = 52.dp, size = 17.sp,
+                    )
                 }
             }
 

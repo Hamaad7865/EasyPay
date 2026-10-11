@@ -20,6 +20,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -50,6 +51,9 @@ class FakeAlone : AloneDao {
     override suspend fun putItem(row: ItemEntity) { items[row.id] = row }
     override suspend fun itemsWithBarcode(code: String, not: String) = items.values.count { it.barcode == code && it.deleted_at == null && it.id != not }
     override suspend fun variantsWithBarcode(code: String, not: String) = variants.count { it.barcode == code && liveVariant(it) && it.id != not }
+    private fun top(codes: List<String?>, like: String) = codes.filterNotNull().filter { it.startsWith(like.removeSuffix("%")) && it.length == 13 }.maxOrNull()
+    override suspend fun topItemBarcode(like: String) = top(items.values.map { it.barcode }, like)
+    override suspend fun topVariantBarcode(like: String) = top(variants.map { it.barcode }, like)
     override suspend fun itemsWithSku(sku: String, not: String) = items.values.count { it.sku?.lowercase() == sku.lowercase() && it.deleted_at == null && it.id != not }
     override suspend fun variantsWithSku(sku: String, not: String) = variants.count { it.sku?.lowercase() == sku.lowercase() && liveVariant(it) && it.id != not }
     override suspend fun itemsIn(category: String) = items.values.count { it.category_id == category && it.deleted_at == null }
@@ -219,6 +223,65 @@ class LocalAnswersTest {
         // and a removed product's is free again
         ask("item.remove", """{"item_id":"${id(100)}"}""")
         assertEquals("done", ask("item.save", "{$other,\"barcode\":\"6091234500017\",\"sku\":\"POLO-01\"}"))
+    }
+
+    // what goes into the queue for a change: each kind and its payload, as the server is to take it
+    private fun kept(type: String, json: String): List<Pair<String, JsonObject>> = runBlocking { local.apply(type, obj(json), tenant, owner) }
+    private fun plain(n: Int, name: String, barcode: String = "") =
+        """{"id":"${id(n)}","name":"$name","price":25000,"open_price":false,"category_id":"$cat","barcode":"$barcode","available":true}"""
+
+    @Test fun `a shop's product saved with no barcode is given the next of EasyPay's, and the server is sent it`() {
+        val first = kept("item.save", plain(700, "Cotton scarf")).single()
+        assertEquals("item.save", first.first)
+        assertEquals("2000000000015", first.second["barcode"]!!.jsonPrimitive.content)
+        assertEquals("2000000000015", dao.items[id(700)]!!.barcode)
+        // the next one takes the next number; one typed in is left as typed
+        assertEquals("2000000000022", kept("item.save", plain(701, "Wool scarf")).single().second["barcode"]!!.jsonPrimitive.content)
+        assertEquals("6091234500017", kept("item.save", plain(702, "Polo", "6091234500017")).single().second["barcode"]!!.jsonPrimitive.content)
+        // saved again it keeps its own; emptied by hand it is given a new one, never the old
+        assertEquals("done", ask("item.save", plain(700, "Cotton scarf, long", "2000000000015")))
+        assertEquals("2000000000015", dao.items[id(700)]!!.barcode)
+        assertEquals("2000000000039", kept("item.save", plain(701, "Wool scarf")).single().second["barcode"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun `a number is not given twice, a removed product's included, and one typed in by hand is stepped over`() {
+        ask("item.save", plain(710, "One"))
+        ask("item.save", plain(711, "Two"))
+        assertEquals("done", ask("item.remove", """{"item_id":"${id(711)}"}"""))
+        ask("item.save", plain(712, "Three"))
+        assertEquals("2000000000039", dao.items[id(712)]!!.barcode)
+        // the owner typed the very next one on another product
+        ask("item.save", plain(713, "Four", "2000000000046"))
+        ask("item.save", plain(714, "Five"))
+        assertEquals("2000000000053", dao.items[id(714)]!!.barcode)
+    }
+
+    @Test fun `a restaurant's item is given none, and what is refused takes no number`() {
+        dao.settings = SettingsEntity(tenant, """{"plan":"offline"}""")
+        assertEquals("", kept("item.save", plain(720, "Grilled fish")).single().second["barcode"]!!.jsonPrimitive.content)
+        assertNull(dao.items[id(720)]!!.barcode)
+        dao.settings = SettingsEntity(tenant, """{"businessType":"retail","plan":"offline"}""")
+        assertEquals("name-required", ask("item.save", plain(721, " ")))
+        ask("item.save", plain(722, "Mug"))
+        assertEquals("2000000000015", dao.items[id(722)]!!.barcode)
+    }
+
+    @Test fun `the lines made for a product are given theirs in a change kept after the first, and the product none`() {
+        ask("item.save", plain(730, "Tee", "6091234500031"))
+        val made = kept("variants.make", """{"item_id":"${id(730)}","names":["Size"],"lines":[{"id":"${id(731)}","values":["S"]},{"id":"${id(732)}","values":["M"]}],"approved_by":"$owner"}""")
+        assertEquals(listOf("variants.make", "variants.save"), made.map { it.first })
+        assertEquals(
+            """{"item_id":"${id(730)}","lines":[{"id":"${id(731)}","barcode":"2000000000015"},{"id":"${id(732)}","barcode":"2000000000022"}],"approved_by":"$owner"}""",
+            made[1].second.toString(),
+        )
+        assertEquals(listOf("2000000000015", "2000000000022"), dao.variants.filter { it.item_id == id(730) }.map { it.barcode })
+        // a value added later: only the new line, with the next number; nothing made, nothing more kept
+        val more = kept("variants.make", """{"item_id":"${id(730)}","names":["Size"],"lines":[{"id":"${id(733)}","values":["L"]}]}""")
+        assertEquals("""{"item_id":"${id(730)}","lines":[{"id":"${id(733)}","barcode":"2000000000039"}]}""", more[1].second.toString())
+        assertEquals(listOf("variants.make"), kept("variants.make", """{"item_id":"${id(730)}","names":["Size"],"lines":[{"id":"${id(734)}","values":["l"]}]}""").map { it.first })
+        // the product itself, saved with its barcode emptied: its lines have theirs, it gets none
+        assertEquals("", kept("item.save", plain(730, "Tee")).single().second["barcode"]!!.jsonPrimitive.content)
+        assertNull(dao.items[id(730)]!!.barcode)
     }
 
     @Test fun `a price typed at the sale has no price and no stock counted, and is not for variants or weight`() {
