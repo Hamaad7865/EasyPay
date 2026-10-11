@@ -26,10 +26,12 @@ function check(name, cond, extra) {
   if (!cond) failures++;
 }
 
-// web/lib/tenant.ts as it is, compiled here; who is signed in is `who.id`
+// web/lib/tenant.ts as it is, compiled here; who is signed in is `who.id`,
+// and `who.jar` are the cookies their browser carries (name: value)
 function tenantLib(client, who) {
   const stubs = {
     react: { cache: (fn) => fn },
+    'next/headers': { cookies: async () => ({ get: (name) => (who.jar && name in who.jar ? { name, value: who.jar[name] } : undefined) }) },
     'next/navigation': {
       redirect: (to) => { throw new Error('redirect ' + to); },
       notFound: () => { throw new Error('not found'); },
@@ -111,6 +113,53 @@ function tenantLib(client, who) {
       typeof lib.loginStanding === 'function' && (await lib.loginStanding(cashierAuth)) === 'none');
     r = await enter(null);
     check('A8 nobody signed in goes to the sign-in page', !r.in && r.to === '/login', JSON.stringify(r.to));
+
+    // E: EasyPay's platform admin in an offline client's back office ("Login to back
+    // office" in /admin leaves a cookie naming the client). The statement's own rules
+    // are in admin-inside.test.cjs; here the real tenantContext is asked, with the cookie.
+    const offOwner = crypto.randomUUID(), offCashier = crypto.randomUUID();
+    const off = (await one(`select platform.create_tenant($1,'Offline Access','Main','BA2','Aisha',$2,'offline') as r`, [admin, offOwner])).r.tenant_id;
+    await c.query(`select platform.add_login($1,$2,'Ravi','Cashier',$3)`, [admin, off, offCashier]);
+    const offOwnerRow = await one(`select id from employees where tenant_id = $1 and auth_user_id = $2`, [off, offOwner]);
+    const as = (id, jar) => { who.jar = jar; return enter(id).finally(() => { who.jar = null; }); };
+    const COOKIE = lib.AS_COOKIE;
+
+    r = await as(admin, null);
+    check('E1 without the cookie the admin has no back office to be in', !r.in && r.to === '/onboarding', JSON.stringify(r.to));
+    r = await as(admin, { [COOKIE]: off });
+    check('E2 with it, the admin is in the offline client\'s back office', !!r.in && r.in.tenantId === off && r.in.admin === true, JSON.stringify(r.to ?? r.in?.tenantId));
+    check('E2 standing in for its owner, and known as the admin they are', !!r.in && r.in.employeeId === offOwnerRow.id && r.in.role === 'Owner' && r.in.userId === admin && r.in.tenantName === 'Offline Access');
+    who.id = admin; who.jar = { [COOKIE]: off };
+    let saved = 'refused';
+    try { saved = (await lib.requirePerm('items.edit')).tenantId === off ? 'allowed' : 'wrong client'; } catch (e) { saved = e.message; }
+    check('E3 a save in there is allowed, as the owner\'s would be', saved === 'allowed', saved);
+    await c.query(`select platform.set_tenant_status($1,$2,'suspended','test')`, [admin, off]);
+    try { await lib.requirePerm('items.edit'); saved = 'allowed'; } catch (e) { saved = e.message; }
+    check('E3 and refused while the client is suspended, as the owner\'s would be', /suspended/.test(saved), saved);
+    await c.query(`select platform.set_tenant_status($1,$2,'active','')`, [admin, off]);
+    who.jar = null;
+
+    r = await as(offOwner, null);
+    check('E4 the client\'s own owner is still kept out: an offline business has no back office of its own', !r.in && r.to === '/onboarding', JSON.stringify(r.to));
+    r = await as(offOwner, { [COOKIE]: off });
+    check('E4 and the cookie does not let them in: it opens nothing for a login that is no admin', !r.in && r.to === '/onboarding', JSON.stringify(r.to ?? 'came in'));
+    r = await as(offCashier, { [COOKIE]: off });
+    check('E4 nor any other login of the client', !r.in && r.to === '/onboarding', JSON.stringify(r.to ?? 'came in'));
+    r = await as(ownerAuth, { [COOKIE]: off });
+    check('E5 another client\'s owner carrying it is in their own back office, not this one', !!r.in && r.in.tenantId === tid && r.in.admin === false, JSON.stringify(r.to ?? r.in?.tenantId));
+    r = await as(admin, { [COOKIE]: tid });
+    check('E6 a client on another plan is not opened by it', !r.in && r.to === '/onboarding', JSON.stringify(r.to ?? 'came in'));
+    r = await as(admin, { [COOKIE]: "x' or '1'='1" });
+    check('E6 a cookie that is not a client\'s id asks the database nothing and opens nothing', !r.in && r.to === '/onboarding', JSON.stringify(r.to ?? 'came in'));
+    await c.query(`select platform.set_tenant_plan($1,$2,'premium')`, [admin, off]);
+    r = await as(admin, { [COOKIE]: off });
+    check('E7 made Premium, the client is the admin\'s to open no longer', !r.in && r.to === '/onboarding', JSON.stringify(r.to ?? 'came in'));
+    r = await as(offOwner, null);
+    check('E7 and its own owner comes in, as any Premium client\'s does', !!r.in && r.in.tenantId === off && r.in.admin === false, JSON.stringify(r.to));
+    await c.query(`select platform.set_tenant_plan($1,$2,'offline')`, [admin, off]);
+    await c.query(`update platform.admins set revoked_at = now() where auth_user_id = $1`, [admin]);
+    r = await as(admin, { [COOKIE]: off });
+    check('E8 an admin taken back is out at the next page, cookie or not', !r.in && r.to === '/onboarding', JSON.stringify(r.to ?? 'came in'));
   } finally {
     await c.query('ROLLBACK');
     await c.end();
