@@ -55,6 +55,8 @@ interface AloneDao {
 
     // ---- tables ----
     @Query("SELECT * FROM tables WHERE store_id = :store AND deleted_at IS NULL") suspend fun tables(store: String): List<TableEntity>
+    // any table of that id: another store's, or one that was removed
+    @Query("SELECT * FROM tables WHERE id = :id") suspend fun table(id: String): TableEntity?
     @Upsert suspend fun putTables(rows: List<TableEntity>)
 
     // ---- printers ----

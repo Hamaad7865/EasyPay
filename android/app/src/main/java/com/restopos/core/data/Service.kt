@@ -322,6 +322,41 @@ class ServiceRepository @Inject constructor(
         })
     }
 
+    // ---- the floor plan, changed on a till (server 0101) ----
+    // What the back office's floor plan page does, for a restaurant that has
+    // none. One room as its plan stands when Save is pressed: the whole room
+    // is one change, so a second try after a lost answer leaves what the
+    // first left.
+    suspend fun saveFloor(room: String, tables: List<FloorPlan.Table>, removed: List<String>, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("settings.device", "change the floor plan", approver)
+        val store = session.storeId() ?: error("This till is not set up for a store yet.")
+        ask("floor.save", ::floorRefused, FloorPlan.save(store, room, tables, removed, staff.approvedBy("settings.device", approver)))
+    }
+
+    suspend fun renameRoom(from: String, to: String, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("settings.device", "change the floor plan", approver)
+        val store = session.storeId() ?: error("This till is not set up for a store yet.")
+        ask("room.rename", ::floorRefused, FloorPlan.rename(store, from, to, staff.approvedBy("settings.device", approver)))
+    }
+
+    suspend fun removeRoom(room: String, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("settings.device", "change the floor plan", approver)
+        val store = session.storeId() ?: error("This till is not set up for a store yet.")
+        ask("room.remove", ::floorRefused, FloorPlan.remove(store, room, staff.approvedBy("settings.device", approver)))
+    }
+
+    private fun floorRefused(code: String?): String = when (code) {
+        "name-taken" -> "Another table in this store already has one of those numbers. It may be in another room."
+        "room-exists" -> "There is already a room of that name."
+        "too-many" -> "A store holds 300 tables at most."
+        "bad-store" -> "This till's store is no longer there."
+        "conflict" -> "That did not work. Close the plan and open it again."
+        "forbidden" -> "You are not allowed to change the floor plan. Ask a manager."
+        "unknown-op" -> "The server has to be updated before the floor plan can be changed from a till."
+        null -> "The server refused it."
+        else -> "The server refused it ($code)."
+    }
+
     // The server's refusal of tables.add, in words.
     private fun tablesRefused(code: String?): String = when (code) {
         "room-exists" -> "There is already a room of that name."

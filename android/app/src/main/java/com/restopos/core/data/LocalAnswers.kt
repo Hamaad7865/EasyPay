@@ -73,6 +73,9 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             "category.remove" -> categoryRemove(p)
             "stock.adjust" -> stockAdjust(p, employee)
             "tables.add" -> tablesAdd(p, tenant)
+            "floor.save" -> floorSave(p, tenant)
+            "room.rename" -> roomRename(p)
+            "room.remove" -> roomRemove(p)
             "printer.save" -> printerSave(p, tenant)
             "company.save" -> companySave(p, tenant)
             "staff.save" -> staffSave(p, tenant)
@@ -313,6 +316,80 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         if (there.size + new.size > 300) throw Refused("too-many")
         var place = there.maxOfOrNull { it.sort_order } ?: -1
         dao.putTables(new.map { it.copy(sort_order = ++place) })
+    }
+
+    // ---- push_floor_save (0101) ----
+    // One room as the plan holds it: its tables written as they stand, the
+    // ones taken off removed, no other room touched.
+    private suspend fun floorSave(p: JsonObject, tenant: String) {
+        val store = p.id("store_id")
+        val area = (p.str("area") ?: "").trim().take(30)
+        val rows = (p["tables"] as? JsonArray) ?: bad()
+        val listed = p["removed"]
+        if (area.isEmpty() || rows.size > 300 || (listed != null && listed !is JsonArray)) bad()
+        if (store !in dao.storeIds()) throw Refused("bad-store")
+        val ids = ArrayList<String>()
+        val names = ArrayList<String>()
+        val sent = ArrayList<TableEntity>()
+        for (row in rows) {
+            val t = (row as? JsonObject) ?: bad()
+            val id = t.id("id")
+            val name = (t.str("name") ?: "").trim().take(30)
+            val seats = t.long("seats"); val x = t.long("x"); val y = t.long("y"); val w = t.long("w"); val h = t.long("h")
+            val shape = t.str("shape") ?: "square"
+            if (name.isEmpty() || seats == null || seats !in 1..99 || shape !in setOf("square", "round")
+                || w == null || w !in 4..100 || h == null || h !in 4..60 || x == null || x < 0 || x + w > 100 || y == null || y < 0 || y + h > 60
+                || id in ids) bad()
+            if (name.lowercase() in names) throw Refused("name-taken")
+            ids += id
+            names += name.lowercase()
+            sent += TableEntity(id, tenant, store, name, area, seats.toInt(), shape, x.toInt(), y.toInt(), w.toInt(), h.toInt())
+        }
+        val gone = (listed as? JsonArray)?.map { ((it as? JsonPrimitive)?.takeIf { v -> v !is JsonNull }?.contentOrNull)?.takeIf { v -> UUID.matches(v) } ?: bad() } ?: emptyList()
+        // a table cannot be both on the plan and taken off it
+        if (gone.any { it in ids }) bad()
+        val there = dao.tables(store)
+        val leaving = there.filter { it.id in gone }
+        val staying = there.filter { it.id !in gone }
+        val others = staying.filter { it.id !in ids }
+        // a table's number is its own in the whole store
+        if (others.any { it.name.lowercase() in names }) throw Refused("name-taken")
+        if (others.size + sent.size > 300) throw Refused("too-many")
+        var place = staying.maxOfOrNull { it.sort_order } ?: -1
+        val written = sent.map { t ->
+            val was = staying.firstOrNull { it.id == t.id }
+            // the id is another store's table, or one that was removed
+            if (was == null && dao.table(t.id) != null) throw Refused("conflict")
+            // a table that is there keeps its place in the order; a new one goes after the last
+            if (was != null) t.copy(sort_order = was.sort_order, server_seq = was.server_seq) else t.copy(sort_order = ++place)
+        }
+        dao.putTables(leaving.map { it.copy(deleted_at = now()) } + written)
+    }
+
+    // ---- push_room_rename (0101) ----
+    private suspend fun roomRename(p: JsonObject) {
+        val store = p.id("store_id")
+        val from = p.str("from") ?: ""
+        val to = (p.str("to") ?: "").trim().take(30)
+        if (from.isEmpty() || to.isEmpty()) bad()
+        if (store !in dao.storeIds()) throw Refused("bad-store")
+        val there = dao.tables(store)
+        val room = there.filter { it.area == from }
+        // done already, or a room that is gone: nothing to do
+        if (to == from || room.isEmpty()) return
+        if (there.any { it.area.lowercase() == to.lowercase() && it.area != from }) throw Refused("room-exists")
+        dao.putTables(room.map { it.copy(area = to) })
+    }
+
+    // ---- push_room_remove (0101) ----
+    // An order open on one of its tables stays open, under Orders, without a table.
+    private suspend fun roomRemove(p: JsonObject) {
+        val store = p.id("store_id")
+        val area = p.str("area") ?: ""
+        if (area.isEmpty()) bad()
+        if (store !in dao.storeIds()) throw Refused("bad-store")
+        val at = now()
+        dao.putTables(dao.tables(store).filter { it.area == area }.map { it.copy(deleted_at = at) })
     }
 
     // ---- push_printer_save (0089, 0088) ----
@@ -650,6 +727,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             "company.save", "staff.save", "staff.set_pin", "tax.save", "supplier.save", "supplier.remove",
             "role.save", "role.remove", "staff.update", "discount.save", "discount.remove",
             "addon.save", "addon.remove", "settings.save", "variants.make", "variants.save", "variant.remove",
+            "floor.save", "room.rename", "room.remove",
         )
         private val IN_REASONS = setOf("receive", "found")
         private val OUT_REASONS = setOf("damaged", "expired", "lost", "internal", "supplier_return")

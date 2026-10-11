@@ -73,6 +73,7 @@ class FakeAlone : AloneDao {
     override suspend fun suppliersNamed(name: String, not: String) = suppliers.values.count { it.name.lowercase() == name.lowercase() && it.deleted_at == null && it.id != not }
     override suspend fun putSupplier(row: SupplierEntity) { suppliers[row.id] = row }
     override suspend fun tables(store: String) = tables.values.filter { it.store_id == store && it.deleted_at == null }
+    override suspend fun table(id: String) = tables[id]
     override suspend fun putTables(rows: List<TableEntity>) { rows.forEach { tables[it.id] = it } }
     override suspend fun printer(id: String) = printers[id]
     override suspend fun printers() = printers.values.filter { it.deleted_at == null }
@@ -378,6 +379,82 @@ class LocalAnswersTest {
         assertEquals("bad-store", ask("tables.add", room("Terrace", t(307, "T1")).replace(store, otherStore)))
         assertEquals("done", ask("tables.add", room("Terrace", t(308, "T1"))))
         assertEquals(2, dao.tables[id(308)]!!.sort_order)
+    }
+
+    // ---- the floor plan, changed on the tablet (server 0101) ----
+    @Test fun `a room saved as its plan holds it`() {
+        fun t(n: Int, name: String, x: Int = 0, more: String = "") = """{"id":"${id(n)}","name":"$name","seats":4,"shape":"square","x":$x,"y":0,"w":10,"h":10$more}"""
+        val add = { area: String, rows: String -> """{"store_id":"$store","area":"$area","tables":[$rows]}""" }
+        val save = { area: String, rows: String, gone: String -> """{"store_id":"$store","area":"$area","tables":[$rows],"removed":[$gone]}""" }
+        assertEquals("done", ask("tables.add", add("Main", t(300, "1") + "," + t(301, "2", 12) + "," + t(302, "3", 24))))
+        assertEquals("done", ask("tables.add", add("Terrace", t(310, "5"))))
+        fun live() = dao.tables.values.filter { it.deleted_at == null }
+
+        // moved, made bigger, given other covers and another shape; one taken off; one of the room not sent
+        val moved = """{"id":"${id(300)}","name":"1","seats":6,"shape":"round","x":40,"y":20,"w":16,"h":14}"""
+        assertEquals("done", ask("floor.save", save("Main", moved, "\"${id(302)}\"")))
+        val one = dao.tables[id(300)]!!
+        assertEquals(listOf(40, 20, 16, 14, 6), listOf(one.x, one.y, one.w, one.h, one.seats))
+        assertEquals("round" to 0, one.shape to one.sort_order)
+        assertNotNull(dao.tables[id(302)]!!.deleted_at)
+        assertEquals(12 to "Main", dao.tables[id(301)]!!.let { it.x to it.area })
+        assertEquals("Terrace", dao.tables[id(310)]!!.area)
+        // sent again, it leaves what one sending left
+        val was = live().toString()
+        assertEquals("done", ask("floor.save", save("Main", moved, "\"${id(302)}\"")))
+        assertEquals(was, live().toString())
+
+        // a table added to a room the store has goes after the last in the order
+        assertEquals("done", ask("floor.save", save("Main", moved + "," + t(303, "7", 60), "")))
+        assertEquals(4, dao.tables[id(303)]!!.sort_order)
+        // two tables swap numbers in one save
+        assertEquals("done", ask("floor.save", save("Main", t(300, "2") + "," + t(301, "1", 12), "")))
+        assertEquals("2" to "1", dao.tables[id(300)]!!.name to dao.tables[id(301)]!!.name)
+
+        val still = live().toString()
+        assertEquals("name-taken", ask("floor.save", save("Main", t(300, "5"), "")))
+        assertEquals("name-taken", ask("floor.save", save("Main", t(300, "A") + "," + t(304, "a", 30), "")))
+        assertEquals("bad-payload", ask("floor.save", save("Main", t(300, "2", 95), "")))
+        assertEquals("bad-payload", ask("floor.save", save("Main", t(300, "2").replace("\"seats\":4", "\"seats\":0"), "")))
+        assertEquals("bad-payload", ask("floor.save", save("Main", t(300, "2") + "," + t(300, "2b", 30), "")))
+        assertEquals("bad-payload", ask("floor.save", save("Main", t(300, "2"), "\"${id(300)}\"")))
+        assertEquals("bad-payload", ask("floor.save", save("  ", t(300, "2"), "")))
+        assertEquals("bad-payload", ask("floor.save", save("Main", t(300, "2"), "").replace("\"removed\":[]", "\"removed\":\"all\"")))
+        assertEquals("bad-store", ask("floor.save", save("Main", t(305, "9"), "").replace(store, otherStore)))
+        // a table that was removed does not come back by its id
+        assertEquals("conflict", ask("floor.save", save("Main", t(302, "33", 70), "")))
+        assertEquals(still, live().toString())
+        // an id that is nobody's table removes nothing
+        assertEquals("done", ask("floor.save", save("Main", "", "\"${id(999)}\"")))
+        assertEquals(still, live().toString())
+    }
+
+    @Test fun `a room renamed, and a room removed`() {
+        fun t(n: Int, name: String, x: Int = 0) = """{"id":"${id(n)}","name":"$name","seats":4,"shape":"square","x":$x,"y":0,"w":10,"h":10}"""
+        val add = { area: String, rows: String -> """{"store_id":"$store","area":"$area","tables":[$rows]}""" }
+        assertEquals("done", ask("tables.add", add("Main", t(300, "1") + "," + t(301, "2", 12))))
+        assertEquals("done", ask("tables.add", add("Terrace", t(310, "5"))))
+        val rename = { from: String, to: String -> """{"store_id":"$store","from":"$from","to":"$to"}""" }
+        assertEquals("done", ask("room.rename", rename("Main", " Dining room ")))
+        assertEquals(listOf("Dining room", "Dining room", "Terrace"), dao.tables.values.map { it.area })
+        // sent again: nothing left to rename, and no refusal
+        assertEquals("done", ask("room.rename", rename("Main", "Dining room")))
+        assertEquals("room-exists", ask("room.rename", rename("Dining room", "terrace")))
+        // a room may change its own capitals
+        assertEquals("done", ask("room.rename", rename("Dining room", "DINING ROOM")))
+        assertEquals("DINING ROOM", dao.tables[id(300)]!!.area)
+        assertEquals("bad-payload", ask("room.rename", rename("DINING ROOM", "   ")))
+        assertEquals("bad-store", ask("room.rename", rename("DINING ROOM", "Hall").replace(store, otherStore)))
+
+        val remove = { area: String -> """{"store_id":"$store","area":"$area"}""" }
+        assertEquals("done", ask("room.remove", remove("Terrace")))
+        assertNotNull(dao.tables[id(310)]!!.deleted_at)
+        assertEquals(2, dao.tables.values.count { it.deleted_at == null })
+        assertEquals("done", ask("room.remove", remove("Terrace")))
+        assertEquals("bad-payload", ask("room.remove", remove("")))
+        assertEquals("bad-store", ask("room.remove", remove("DINING ROOM").replace(store, otherStore)))
+        // the number of a removed table is free again
+        assertEquals("done", ask("floor.save", """{"store_id":"$store","area":"DINING ROOM","tables":[${t(320, "5", 40)}],"removed":[]}"""))
     }
 
     @Test fun `a printer, and where receipts come out`() {
