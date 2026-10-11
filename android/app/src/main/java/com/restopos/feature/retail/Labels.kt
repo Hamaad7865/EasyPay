@@ -306,6 +306,14 @@ class LabelsViewModel @Inject constructor(
         return true
     }
 
+    // From a delivery just received (Stock, Deliveries): the run becomes what
+    // arrived, each with its labels. What one run cannot hold is said, as a
+    // tap says it, and the run stops there.
+    fun fill(rows: List<Triple<ItemEntity, ItemVariantEntity?, Int>>) {
+        clear()
+        for ((item, variant, copies) in rows) if (!add(item, variant, copies)) break
+    }
+
     // From a product's sheet on Products & stock: one more label of it. A product with variants asks which.
     fun tap(item: ItemEntity) = pane.tap(item)
     // A barcode read by the scanner while this screen is open: one more label of what carries it.

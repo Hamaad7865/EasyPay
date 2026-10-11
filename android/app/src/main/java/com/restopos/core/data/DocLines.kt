@@ -57,4 +57,19 @@ object DocLines {
 
     // A quantity as someone says it: 3, 1.5, or 0.350 kg for what is weighed.
     fun shown(qty: Int, weighed: Boolean = false): String = LinePrice.qty(qty, weighed)
+
+    // A quantity as it was typed on the till's keys, in thousandths: "3" is
+    // 3000, "1.5" is 1500. Nothing typed, or something that is no number, is
+    // none; more than a million units is not a quantity anyone ordered.
+    fun typed(text: String): Int? {
+        val n = text.trim().toBigDecimalOrNull() ?: return null
+        if (n.signum() < 0 || n > java.math.BigDecimal(1_000_000)) return null
+        return n.movePointRight(3).setScale(0, java.math.RoundingMode.HALF_UP).toInt()
+    }
+    // the same for what one costs, in cents: "45" is 4500, "45.5" is 4550
+    fun typedCost(text: String): Long? {
+        val n = text.trim().toBigDecimalOrNull() ?: return null
+        if (n.signum() < 0 || n > java.math.BigDecimal(10_000_000)) return null
+        return n.movePointRight(2).setScale(0, java.math.RoundingMode.HALF_UP).toLong()
+    }
 }

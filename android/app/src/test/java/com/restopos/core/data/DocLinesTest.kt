@@ -65,4 +65,23 @@ class DocLinesTest {
         assertEquals("0.35", DocLines.shown(350))
         assertEquals("0.350 kg", DocLines.shown(350, weighed = true))
     }
+
+    @Test fun `what is typed on the keys is read as a quantity, and as a cost`() {
+        assertEquals(3000, DocLines.typed("3"))
+        assertEquals(1500, DocLines.typed(" 1.5 "))
+        assertEquals(350, DocLines.typed("0.35"))
+        assertEquals(0, DocLines.typed("0"))
+        // a fourth decimal is rounded away, half up
+        assertEquals(1235, DocLines.typed("1.2345"))
+        assertEquals(null, DocLines.typed(""))
+        assertEquals(null, DocLines.typed("."))
+        assertEquals(null, DocLines.typed("-1"))
+        assertEquals(null, DocLines.typed("2000000"))
+        assertEquals(4500L, DocLines.typedCost("45"))
+        assertEquals(4550L, DocLines.typedCost("45.5"))
+        assertEquals(4534L, DocLines.typedCost("45.336"))
+        assertEquals(0L, DocLines.typedCost("0"))
+        assertEquals(null, DocLines.typedCost(""))
+        assertEquals(null, DocLines.typedCost("-4"))
+    }
 }

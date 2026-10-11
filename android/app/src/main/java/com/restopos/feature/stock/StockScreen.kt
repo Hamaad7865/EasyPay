@@ -80,11 +80,16 @@ class StockViewModel @Inject constructor(
     // Rupees of cost are for whoever may see costs, and for whoever orders and receives (they type them).
     fun costs(words: Map<String, StaffMember>): Boolean = staff.can("costs.view") || staff.can("stock.receive") || words.containsKey("stock.receive")
     fun leave() { _words.value = emptyMap() }
+
+    // An order that is waiting, handed from Orders to Deliveries to be received: taken there once.
+    val receiving = MutableStateFlow<com.restopos.core.database.PurchaseOrderEntity?>(null)
+    fun receive(order: com.restopos.core.database.PurchaseOrderEntity) { receiving.value = order; tab.value = StockTab.Deliveries }
+    fun taken() { receiving.value = null }
 }
 
 // Stock: one screen, five tabs. A shop's side menu opens it.
 @Composable
-fun StockScreen(vm: StockViewModel, serviceLine: String) {
+fun StockScreen(vm: StockViewModel, serviceLine: String, onLabels: ((LabelsFor) -> Unit)? = null) {
     val tab by vm.tab.collectAsState()
     val words by vm.words.collectAsState()
     val who by vm.current.collectAsState()
@@ -104,6 +109,12 @@ fun StockScreen(vm: StockViewModel, serviceLine: String) {
             else when (tab) {
                 StockTab.Suppliers -> { val s: SuppliersViewModel = hiltViewModel(); SuppliersTab(s) }
                 StockTab.History -> { val h: HistoryViewModel = hiltViewModel(); HistoryTab(h) }
+                StockTab.Orders -> { val o: OrdersViewModel = hiltViewModel(); OrdersTab(o, vm.approver("stock.receive"), vm.costs(words)) { order -> vm.receive(order) } }
+                StockTab.Deliveries -> {
+                    val d: ReceiveViewModel = hiltViewModel()
+                    val order by vm.receiving.collectAsState()
+                    DeliveriesTab(d, vm.approver("stock.receive"), vm.costs(words), order, onTaken = { vm.taken() }, onLabels = onLabels)
+                }
                 else -> Soon(tab)
             }
         }
@@ -121,7 +132,7 @@ private fun Locked(tab: StockTab, onAsk: () -> Unit) {
     }
 }
 
-// Deliveries, Orders and Counts are the next two builds: until then the tab says so.
+// Counts is the next build: until then the tab says so.
 @Composable
 private fun Soon(tab: StockTab) {
     Column(Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {

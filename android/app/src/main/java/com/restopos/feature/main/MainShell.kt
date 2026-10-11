@@ -653,7 +653,8 @@ fun MainShell(
                     )
                     Screen.Products -> { val vm: ProductsViewModel = hiltViewModel(); ProductsScreen(vm, onLabel = { item -> labels.tap(item); shell.go(Screen.Labels) }) }
                     Screen.Labels -> LabelsScreen(labels)
-                    Screen.Stock -> { val vm: com.restopos.feature.stock.StockViewModel = hiltViewModel(); com.restopos.feature.stock.StockScreen(vm, date) }
+                    // what arrived in a delivery goes on to Print labels, as one product does from Products & stock
+                    Screen.Stock -> { val vm: com.restopos.feature.stock.StockViewModel = hiltViewModel(); com.restopos.feature.stock.StockScreen(vm, date, onLabels = { rows -> labels.fill(rows); shell.go(Screen.Labels) }) }
                     Screen.StockCheck -> { val vm: StockCheckViewModel = hiltViewModel(); StockCheckScreen(vm, onBack = { shell.go(Screen.Sell) }) }
                     Screen.Takeaway -> { val vm: BoardViewModel = hiltViewModel(); BoardScreen(vm, onOrder = { shell.go(Screen.Order) }, onPay = { shell.go(Screen.Pay) }) }
                     Screen.Kitchen -> { val vm: KdsViewModel = hiltViewModel(); KdsScreen(vm) }
