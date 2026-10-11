@@ -75,19 +75,20 @@ class CategoryEditor(
     fun close() { if (!busy.value) editing.value = null }
     fun closeAll() { if (!busy.value) { editing.value = null; listing.value = false } }
 
-    fun save(name: String, color: String?, by: StaffMember? = null) {
+    // printers: the printers its orders print on, when the sheet changed them; null leaves them as they are
+    fun save(name: String, color: String?, printers: List<String>? = null, by: StaffMember? = null) {
         val edit = editing.value ?: return
         val id = edit.category?.id
         val read = CategoryForm.read(name, color).getOrElse { Toaster.say(it.message ?: "That is not a category yet"); return }
         if (busy.value) return
         scope.launch {
             busy.value = true
-            val out = service.saveCategory(id, read, shop, by)
+            val out = service.saveCategory(id, read, shop, by, printers)
             busy.value = false
             val need = out.exceptionOrNull() as? NeedsApproval
             if (need != null && by == null) {
                 editing.value = null; listing.value = false
-                approvals.ask(need.permission, need.what) { approver -> listing.value = true; editing.value = edit; save(name, color, approver) }
+                approvals.ask(need.permission, need.what) { approver -> listing.value = true; editing.value = edit; save(name, color, printers, approver) }
             } else out.fold(
                 {
                     editing.value = null
@@ -121,11 +122,12 @@ class CategoryEditor(
 // Whichever of the two is open: the category being made or changed, else the list.
 // counts: how many items each category holds, by its id.
 @Composable
-internal fun CategorySheets(editor: CategoryEditor, cats: List<CategoryEntity>, counts: Map<String, Int>, shop: Boolean) {
+// printers: a restaurant's printers, for the ticks of where a category's orders print; none for a shop
+internal fun CategorySheets(editor: CategoryEditor, cats: List<CategoryEntity>, counts: Map<String, Int>, shop: Boolean, printers: List<com.restopos.core.database.PrinterEntity> = emptyList()) {
     val listing by editor.listing.collectAsState()
     val editing by editor.editing.collectAsState()
     val edit = editing
-    if (edit != null) CategorySheet(editor, edit, counts[edit.category?.id] ?: 0, shop)
+    if (edit != null) CategorySheet(editor, edit, counts[edit.category?.id] ?: 0, shop, printers)
     else if (listing) CategoryList(editor, cats, counts, shop)
 }
 
@@ -162,12 +164,18 @@ private fun CategoryList(editor: CategoryEditor, cats: List<CategoryEntity>, cou
 // among the buttons and whether its stock is counted are the back office's.
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CategorySheet(editor: CategoryEditor, edit: CategoryEdit, items: Int, shop: Boolean) {
+private fun CategorySheet(editor: CategoryEditor, edit: CategoryEdit, items: Int, shop: Boolean, printers: List<com.restopos.core.database.PrinterEntity> = emptyList()) {
     val was = edit.category
     val busy by editor.busy.collectAsState()
     var name by remember(edit) { mutableStateOf(was?.name ?: "") }
     var color by remember(edit) { mutableStateOf(was?.color?.takeIf { it.isNotBlank() }) }
     var removing by remember(edit) { mutableStateOf(false) }
+    // where its orders print (server 0098): the printers ticked for it, of the ones there are
+    val had = remember(edit, printers) {
+        val ids = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(was?.printer_ids ?: "[]").let { it as kotlinx.serialization.json.JsonArray }.map { (it as kotlinx.serialization.json.JsonPrimitive).content } }.getOrDefault(emptyList())
+        printers.map { it.id }.filter { it in ids }.toSet()
+    }
+    var prints by remember(edit, printers) { mutableStateOf(had) }
 
     // top: the keyboard takes the lower half of the screen
     Sheet(onDismiss = { editor.close() }, width = 560.dp, gap = 14.dp, top = true) {
@@ -192,13 +200,29 @@ private fun CategorySheet(editor: CategoryEditor, edit: CategoryEdit, items: Int
         }
         if (color == null) T("With no colour of its own it takes one by its place among the buttons.", 13.sp, 500, V.Text2, lines = 2)
 
-        // a restaurant's new category is ticked for no printer yet: said before an order finds out
-        if (was == null && !shop) T(
+        // where a restaurant's orders for it print: each printer ticked gets them
+        if (!shop && printers.isNotEmpty()) {
+            Caps("Its orders print on", V.Text2)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                printers.forEach { p ->
+                    val on = p.id in prints
+                    Box(
+                        Modifier.height(42.dp).clip(RoundedCornerShape(21.dp)).background(if (on) V.On else V.Key).border(1.dp, if (on) V.On else V.Stroke, RoundedCornerShape(21.dp))
+                            .press { prints = if (on) prints - p.id else prints + p.id }.padding(horizontal = 16.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { T(p.name, 14.sp, 700, if (on) V.OnText else V.Text) }
+                }
+            }
+            T(
+                if (prints.isEmpty()) "With none ticked, its items print only where the receipt printer is set to print kitchen orders too." else "An order's items of this category print as a kitchen order on each printer ticked.",
+                13.sp, 500, if (prints.isEmpty()) V.AmberText else V.Text2, lines = 2,
+            )
+        } else if (was == null && !shop) T(
             if (com.restopos.core.data.Journey.alone) "Its items print with the kitchen orders on the receipt printer, when that printer has \"Kitchen orders print on it too\" switched on (Settings, This till, Set-up, Printer)."
             else "Its items print nowhere until a printer is ticked for it in the back office, under Printers.",
             13.sp, 500, V.AmberText, lines = 3,
         )
-        if (!com.restopos.core.data.Journey.alone) T("Where its ${if (shop) "products" else "items"} print, its place among the buttons and whether its stock is counted are set in the back office.", 13.sp, 500, V.Text3, lines = 2)
+        if (!com.restopos.core.data.Journey.alone) T("Its place among the buttons and whether its stock is counted are set in the back office.", 13.sp, 500, V.Text3, lines = 2)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (was != null) VBtn("Remove", height = 56.dp, fg = V.RedText, enabled = !busy) {
                 // the server refuses it too; said here without asking
@@ -207,7 +231,8 @@ private fun CategorySheet(editor: CategoryEditor, edit: CategoryEdit, items: Int
             Box(Modifier.weight(1f))
             VBtn("Cancel", height = 56.dp, enabled = !busy) { editor.close() }
             VBtn(if (busy) "Saving…" else if (was == null) "Add category" else "Save", bg = V.Blue, fg = Color.White, height = 56.dp, weight = 800, enabled = !busy) {
-                editor.save(name, color)
+                // its printers are sent only when they were changed: what this tablet holds may be older than the server's
+                editor.save(name, color, if (!shop && printers.isNotEmpty() && prints != had) printers.map { it.id }.filter { it in prints } else null)
             }
         }
     }

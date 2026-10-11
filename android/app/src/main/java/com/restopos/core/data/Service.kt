@@ -259,11 +259,13 @@ class ServiceRepository @Inject constructor(
     // printers, its place and whether its stock is counted are the back
     // office's, and the server leaves them as they are. Asked now and waited
     // for, as an item is. Returns the category's id.
-    suspend fun saveCategory(id: String?, category: CategoryForm.Category, shop: Boolean, approver: StaffMember? = null): Result<String> = runCatching {
+    // printerIds: the printers its orders print on, when the sheet changed them (server 0098); null leaves them as they are.
+    suspend fun saveCategory(id: String?, category: CategoryForm.Category, shop: Boolean, approver: StaffMember? = null, printerIds: List<String>? = null): Result<String> = runCatching {
         staff.allow("items.edit", if (shop) "change the products" else "change the menu", approver)
         val categoryId = id ?: Uuid7.next()
         ask("category.save", CategoryForm::refused, buildJsonObject {
             put("id", categoryId); put("name", category.name); put("color", category.color ?: "")
+            printerIds?.let { ids -> putJsonArray("printer_ids") { ids.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } } }
             staff.approvedBy("items.edit", approver)?.let { put("approved_by", it) }
         })
         categoryId

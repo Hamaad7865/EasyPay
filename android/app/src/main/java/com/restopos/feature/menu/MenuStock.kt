@@ -120,6 +120,12 @@ class MenuViewModel @Inject constructor(
     // An item being added, changed or removed from this till.
     val items = ItemEditor(service, approvals, viewModelScope, shop = false)
 
+    // This store's printers, for the ticks of where a category's orders print (server 0098); a kitchen screen is not one.
+    val printers: StateFlow<List<com.restopos.core.database.PrinterEntity>> = flow { emit(session.storeId()) }
+        .flatMapLatest { st -> if (st == null) emptyFlow() else db.ops().printersFlow(st) }
+        .map { rows -> rows.filter { it.kind != "screen" && it.deleted_at == null } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // The add-on groups, made and changed from this till (server 0096).
     val addons = AddonEditor(service, approvals, viewModelScope)
     val groups: StateFlow<List<com.restopos.core.database.ModifierGroupEntity>> = db.catalog().groupsFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -267,7 +273,8 @@ fun MenuStockScreen(vm: MenuViewModel) {
     }
 
     editing?.let { e -> ItemSheet(vm.items, e, cats, shop = false, stock = e.item?.let { item -> { way -> vm.stockOf(item, way) } }) }
-    CategorySheets(vm.categories, cats, counts, shop = false)
+    val printers by vm.printers.collectAsState()
+    CategorySheets(vm.categories, cats, counts, shop = false, printers = printers)
     val groups by vm.groups.collectAsState()
     val choices by vm.choices.collectAsState()
     AddonSheets(vm.addons, groups, choices)

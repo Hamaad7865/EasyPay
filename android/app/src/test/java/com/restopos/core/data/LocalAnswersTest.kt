@@ -647,6 +647,24 @@ class LocalAnswersTest {
         assertEquals(listOf("S", "M", "L"), VariantForm.values("S, M ,  m; L,"))
     }
 
+    @Test fun `the printers a category's orders print on`() {
+        dao.printers[id(400)] = PrinterEntity(id(400), tenant, store, "Counter", is_receipt = true, sort_order = 0)
+        dao.printers[id(401)] = PrinterEntity(id(401), tenant, store, "Kitchen", sort_order = 1)
+        val sent = fixture("category-save-printers", mapOf("category-1" to id(23), "printer-1" to id(401)))
+        assertEquals("done", ask("category.save", sent))
+        assertEquals("[\"${id(401)}\"]", dao.categories[id(23)]!!.printer_ids)
+        // one that is no printer is left out; both, in the printers' own order
+        assertEquals("done", ask("category.save", JsonObject(sent + ("printer_ids" to Json.parseToJsonElement("[\"${id(401)}\",\"${id(499)}\",\"${id(400)}\"]")))))
+        assertEquals("[\"${id(400)}\",\"${id(401)}\"]", dao.categories[id(23)]!!.printer_ids)
+        // a save that names none leaves them, and an empty list clears them
+        assertEquals("done", ask("category.save", JsonObject(sent - "printer_ids" + ("name" to JsonPrimitive("Grill and BBQ")))))
+        assertEquals(listOf("Grill and BBQ", "[\"${id(400)}\",\"${id(401)}\"]"), dao.categories[id(23)]!!.let { listOf(it.name, it.printer_ids) })
+        assertEquals("done", ask("category.save", JsonObject(sent + ("printer_ids" to Json.parseToJsonElement("[]")))))
+        assertEquals("[]", dao.categories[id(23)]!!.printer_ids)
+        assertEquals("bad-payload", ask("category.save", JsonObject(sent + ("printer_ids" to JsonPrimitive("kitchen")))))
+        assertEquals("bad-payload", ask("category.save", JsonObject(sent + ("printer_ids" to Json.parseToJsonElement("[\"not-an-id\"]")))))
+    }
+
     @Test fun `a change this tablet cannot answer by itself says so`() {
         assertEquals("not-alone", ask("po.save", "{}"))
         assertFalse(local.answers("po.save"))

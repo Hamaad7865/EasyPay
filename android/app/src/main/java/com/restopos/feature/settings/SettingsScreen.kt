@@ -1093,6 +1093,8 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
         Note("The tablet prints straight to each printer, over the network, a USB cable or Bluetooth.", Modifier.weight(1f))
         Small(if (checking) "Checking…" else "Check again", enabled = !checking) { vm.check() }
     }
+    // another printer, added here (a restaurant's kitchen or bar); the first one is set up under This till, Set-up
+    if (!shop && printers?.isNotEmpty() == true) AddPrinterKey()
     val list = printers
     if (list != null && list.isEmpty()) {
         Panel { Text((if (com.restopos.core.data.Journey.alone) "No printer is set up. Add one in Settings, under This till, Set-up, Printer." else "No printer is set up. Add them in the back office, under Printers; they arrive here with the next sync."), color = Pos.Text, fontSize = 14.sp) }

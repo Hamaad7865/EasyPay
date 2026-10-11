@@ -1,0 +1,4 @@
+{
+  "type": "category.save",
+  "payload": { "id": "category-1", "name": "Grill", "color": "", "printer_ids": ["printer-1"] }
+}

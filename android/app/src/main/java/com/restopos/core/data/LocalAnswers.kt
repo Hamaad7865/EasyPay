@@ -177,12 +177,19 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         val color = (p.str("color") ?: "").trim().lowercase().ifEmpty { null }
         if (color != null && !COLOR.matches(color)) bad()
         if (name.isEmpty()) throw Refused("name-required")
+        // Which printers its orders print on (0098), when the sheet says: of
+        // those named, the ones that are there. Not sent, they are left.
+        val printers = if ("printer_ids" in p) {
+            val named = ((p["printer_ids"] as? JsonArray) ?: bad()).map { (it as? JsonPrimitive)?.contentOrNull?.takeIf { x -> UUID.matches(x) } ?: bad() }
+            val live = dao.printers().sortedWith(compareBy<PrinterEntity> { it.sort_order }.thenBy { it.id }).map { it.id }
+            JsonArray(live.filter { it in named }.map { JsonPrimitive(it) }).toString()
+        } else null
         val was = dao.category(id)
         if (was != null) {
             if (was.deleted_at != null) throw Refused("bad-category")
-            // the name and the colour only: its printers, its place and whether its stock is counted are left
-            dao.putCategory(was.copy(name = name, color = color))
-        } else dao.putCategory(CategoryEntity(id, tenant, name, color, sort_order = dao.lastCategoryPlace() + 1))
+            // its place and whether its stock is counted are left
+            dao.putCategory(was.copy(name = name, color = color, printer_ids = printers ?: was.printer_ids))
+        } else dao.putCategory(CategoryEntity(id, tenant, name, color, sort_order = dao.lastCategoryPlace() + 1, printer_ids = printers ?: "[]"))
     }
 
     private suspend fun categoryRemove(p: JsonObject) {

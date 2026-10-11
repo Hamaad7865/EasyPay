@@ -140,6 +140,12 @@ class BusinessViewModel @Inject constructor(db: TillDatabase, private val servic
         go("Saved. Receipts printed from now on carry it.", {}) { by -> this.service.saveSettings(h, f, p, by) }
     }
 
+    // another printer (a kitchen's, a bar's): the first one of a store is the receipt printer, the others print what is ticked for them
+    fun addPrinter(id: String, name: String, kind: String, address: String, paper: Int, done: () -> Unit) {
+        val p = com.restopos.core.data.PrinterForm.read(name, kind, address, paper).getOrElse { Toaster.say(it.message ?: "That is not a printer yet"); return }
+        go("${p.name} is added. Tick the categories that print on it: Menu, Categories.", done) { by -> service.savePrinter(id, p, null, by) }
+    }
+
     fun removeDiscount(d: DiscountEntity, done: () -> Unit) = go("${d.name} is removed. Receipts it was given on keep it.", done) { by -> service.removeDiscount(d.id, by) }
 }
 
@@ -303,6 +309,53 @@ private fun RoleSheet(vm: BusinessViewModel, edit: RoleEdit, shop: Boolean, hold
             VBtn("Cancel", height = 50.dp, enabled = !busy) { close() }
             VBtn(if (busy) "Saving…" else if (was == null) "Add role" else "Save", bg = V.Blue, fg = Color.White, height = 50.dp, weight = 800, enabled = !busy) {
                 vm.saveRole(edit.id, name, ticked, shop, close)
+            }
+        }
+    }
+}
+
+// ---- Settings > Printers: another printer ----
+@Composable
+internal fun AddPrinterKey(vm: BusinessViewModel = hiltViewModel()) {
+    var adding by remember { mutableStateOf<String?>(null) }
+    Row { VBtn("Add a printer", height = 48.dp, radius = 13.dp, icon = VI.Plus) { adding = Uuid7.next() } }
+    val id = adding ?: return
+    val busy by vm.busy.collectAsState()
+    var name by remember(id) { mutableStateOf("") }
+    var kind by remember(id) { mutableStateOf(com.restopos.core.data.PrinterForm.NETWORK) }
+    var address by remember(id) { mutableStateOf("") }
+    var paper by remember(id) { mutableStateOf(80) }
+    Sheet(onDismiss = { if (!busy) adding = null }, width = 600.dp, pad = 22.dp, gap = 10.dp, top = true) {
+        SheetHead("Another printer", "A kitchen's or a bar's. The categories ticked for it print there.") { if (!busy) adding = null }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Caps("Its name", V.Text2)
+                Field(name, { name = it.take(40) }, "Kitchen", Modifier.fillMaxWidth(), height = 50.dp, size = 16.sp)
+            }
+            if (kind != com.restopos.core.data.PrinterForm.USB) Column(Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Caps(if (kind == com.restopos.core.data.PrinterForm.BLUETOOTH) "Its Bluetooth name" else "Its address", V.Text2)
+                Field(address, { address = it.take(40) }, if (kind == com.restopos.core.data.PrinterForm.BLUETOOTH) "As the tablet lists it" else "192.168.1.51", Modifier.fillMaxWidth(), height = 50.dp, size = 16.sp)
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            com.restopos.core.ui.Seg(
+                listOf(
+                    SegOption("Network", kind == com.restopos.core.data.PrinterForm.NETWORK) { kind = com.restopos.core.data.PrinterForm.NETWORK },
+                    SegOption("USB", kind == com.restopos.core.data.PrinterForm.USB) { kind = com.restopos.core.data.PrinterForm.USB },
+                    SegOption("Bluetooth", kind == com.restopos.core.data.PrinterForm.BLUETOOTH) { kind = com.restopos.core.data.PrinterForm.BLUETOOTH },
+                ),
+                well = V.Key, height = 38.dp, radius = 12.dp, size = 14.sp,
+            )
+            com.restopos.core.ui.Seg(
+                listOf(SegOption("80 mm", paper == 80) { paper = 80 }, SegOption("58 mm", paper == 58) { paper = 58 }),
+                well = V.Key, height = 38.dp, radius = 12.dp, size = 14.sp,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f))
+            VBtn("Cancel", height = 50.dp, enabled = !busy) { adding = null }
+            VBtn(if (busy) "Saving…" else "Add printer", bg = V.Blue, fg = Color.White, height = 50.dp, weight = 800, enabled = !busy) {
+                vm.addPrinter(id, name, kind, address, paper) { adding = null }
             }
         }
     }

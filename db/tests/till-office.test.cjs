@@ -438,6 +438,31 @@ const swap = (v, map) => (Array.isArray(v) ? v.map((x) => swap(x, map))
     check('V14 a line removed; removed twice is done; one that never was is refused', r.said === 'applied' && (await lines(polo)).length === 5 && vg.said === 'applied' && vh.said === 'rejected:unknown-variant', r.said + ' ' + vg.said + ' ' + vh.said);
     const pv = ((await pull()).changes || {}).item_variants || [];
     check('V15 a pull carries the lines, the removed one too', pv.some((x) => x.id === v5 && !x.deleted_at) && pv.some((x) => x.id === v1 && x.deleted_at), String(pv.length));
+
+    // ---- P: which printers a category's orders print on (0098). A restaurant's. ----
+    const counter = id(), kitchen = id(), grill = id();
+    const prn = (pid, name, addr) => ({ id: pid, store_id: restoStore, name, kind: 'network', address: addr, paper_mm: 80 });
+    r = await rone('printer.save', prn(counter, 'Counter', '192.168.1.50'));
+    const p2 = await rone('printer.save', prn(kitchen, 'Kitchen', '192.168.1.51'));
+    const pr = await all(`select name, is_receipt from printers where tenant_id = $1 and deleted_at is null order by sort_order`, [resto]);
+    check('P1 a second printer added from the till: the first prints the receipts, the second does not', r.said === 'applied' && p2.said === 'applied'
+      && pr.length === 2 && pr[0].is_receipt === true && pr[1].is_receipt === false, JSON.stringify(pr));
+    const cx = (over = {}) => { const fxt = fixture('category-save-printers'); return [fxt.type, { ...swap(fxt.payload, { 'category-1': grill, 'printer-1': kitchen }), ...over }]; };
+    const ticked = async (x) => (await q1(`select printer_ids::text[] as ids from categories where id = $1`, [x])).ids;
+    r = await rone(...cx());
+    check('P2 a new category that prints in the kitchen', r.said === 'applied' && JSON.stringify(await ticked(grill)) === JSON.stringify([kitchen]), r.said + ' ' + JSON.stringify(await ticked(grill)));
+    r = await rone(...cx({ printer_ids: [kitchen, counter, id(), theirStore] }));
+    check('P3 both printers; one that is not the client\'s, or is no printer, is left out', r.said === 'applied' && JSON.stringify((await ticked(grill)).sort()) === JSON.stringify([counter, kitchen].sort()), JSON.stringify(await ticked(grill)));
+    r = await rone('category.save', { id: grill, name: 'Grill and BBQ', color: '' });
+    check('P4 a save that names no printers leaves them', r.said === 'applied' && (await ticked(grill)).length === 2 && (await q1(`select name from categories where id = $1`, [grill])).name === 'Grill and BBQ', JSON.stringify(await ticked(grill)));
+    r = await rone(...cx({ printer_ids: [] }));
+    check('P5 emptied: it prints nowhere of its own', r.said === 'applied' && (await ticked(grill)).length === 0, JSON.stringify(await ticked(grill)));
+    r = await rone(...cx({ printer_ids: 'kitchen' }));
+    const p6 = await rone(...cx({ printer_ids: ['not-an-id'] }));
+    check('P6 printers that are not a list of ids are a bad payload', r.said === 'rejected:bad-payload' && p6.said === 'rejected:bad-payload', r.said + ' ' + p6.said);
+    await rone(...cx());
+    const pc = ((await pull(restoStore, resto)).changes || {}).categories || [];
+    check('P7 a pull carries the category with its printer', pc.some((x) => x.id === grill && JSON.stringify(x.printer_ids) === JSON.stringify([kitchen])), String(pc.length));
     void restoStore; void theirOwner;
   } finally {
     try { await c.query('ROLLBACK'); } catch {}
