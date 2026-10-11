@@ -69,7 +69,7 @@ each of these is the owner's to decide: Premium only, or not at all).
 |---|---|---|
 | Waiter app on phones | Orders at the table, each waiter's tables, alerts | **Left out**, at the owner's word. In EasyPay the order is taken on the till's tablet. |
 | Counter (POS) | Sell, split a bill equally, by seat, by dish or by amount | Built on the tablet (seats, split check). Tips and vouchers: not built. |
-| Kitchen display | Tickets by course and station, timers that change colour, allergens, ready per course, undo | Built (Premium), on a second tablet over the restaurant's Wi-Fi: stations, bump, recall. Ready per course, coloured timers and allergens: not built. Theirs also runs in a browser; ours is the tablet app. |
+| Kitchen display | Tickets by course and station, timers that change colour, allergens, ready per course, undo | Built (Premium), on a second tablet over the restaurant's Wi-Fi: stations, bump, recall, and a ticket that turns amber then red after the minutes the kitchen sets. Ready per course and allergens: not built. Theirs also runs in a browser; ours is the tablet app. |
 | Table QR ordering | The guest orders from the table onto the same bill | Built (Premium). Call a waiter and ask for the bill: not checked. |
 | Pick-up and delivery page | Orders from the restaurant's own page | Not built. |
 | Rider app | The rider's deliveries and cash | Not built. |
