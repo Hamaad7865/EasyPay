@@ -73,6 +73,12 @@ function check(name, cond, extra) {
     const m = await call('POST', '/devices/redeem', null, { code: moved.code, deviceId: sent, tablet: tabletB });
     check('C3 the new tablet is told which till it now is, whatever id it sent', m.status === 200 && m.json.deviceId === device && m.json.deviceId !== sent && m.json.code === 'T1' && m.json.moved === true, m.status + ' ' + m.text.replace(/[0-9a-f]{64}/g, '<key>').slice(0, 160));
     check('C3 and syncs as it', (await pulls(device, m.json.syncKey)).status === 200);
+    // a tablet filled from a backup says which till it has to be
+    const spare = await make();
+    const notIt = await call('POST', '/devices/redeem', null, { code: spare.code, deviceId: device, tablet: 'tablet-c', mustBe: device });
+    check('C3 a code for a new tablet does not fill a tablet from a backup, and says so', notIt.status === 409 && notIt.json.why === 'other-till' && /replacement/.test(notIt.json.error), notIt.status + ' ' + notIt.text.slice(0, 140));
+    const badMust = await call('POST', '/devices/redeem', null, { code: spare.code, deviceId: device, tablet: 'tablet-c', mustBe: 'nonsense' });
+    check('C3 and a till that is not an id is 400', badMust.status === 400, String(badMust.status));
     const olds = await call('POST', '/devices/redeem', null, { code: first.code, deviceId: device, tablet: tabletA });
     check('C3 the old tablet\'s code is over', olds.status === 409 && olds.json.why === 'ended', olds.status + ' ' + olds.text.slice(0, 120));
 

@@ -39,8 +39,8 @@ function check(name, cond, extra) {
     const owner = (await one(`insert into employees (tenant_id, name, role_id, auth_user_id) values ($1,'Owner',$2,$3) returning id`, [tid, role, crypto.randomUUID()])).id;
 
     const add = async (who, st) => (await one(`select platform.tablet_code_add($1, $2) as r`, [who, st])).r;
-    const redeem = async (code, device, tablet, name) =>
-      (await one(`select redeem_tablet_code($1, $2, $3, $4, '13') as r`, [code, device, tablet, name === undefined ? null : name])).r;
+    const redeem = async (code, device, tablet, name, must) =>
+      (await one(`select redeem_tablet_code($1, $2, $3, $4, '13', $5) as r`, [code, device, tablet, name === undefined ? null : name, must === undefined ? null : must])).r;
     const login = async (dev, key) => (await one(`select device_login($1, $2) as r`, [dev, key])).r;
     const states = async () => (await one(`select platform.tablet_codes($1) as r`, [tid])).r;
 
@@ -140,6 +140,26 @@ function check(name, cond, extra) {
       await c.query(`select platform.set_device_active($1, $2, true)`, [admin, dev1]);
     }
 
+    // B: a tablet filled from a backup has to be the till the backup is of (0100)
+    {
+      const devB = crypto.randomUUID();
+      const forB = await add(admin, store);
+      const rb = await redeem(forB.code, devB, 'tablet-b1');
+      const fresh = await add(admin, store);
+      const notMine = await redeem(fresh.code, devB, 'tablet-b2', null, devB);
+      check('B1 a code for a new tablet does not fill a tablet from a backup, and is still to use', notMine.ok === false && notMine.why === 'other-till' && (await one(`select used_at from tablet_codes where id = $1`, [fresh.id])).used_at === null, JSON.stringify(notMine));
+      await c.query(`select platform.tablet_code_end($1, $2)`, [admin, fresh.id]);
+      const movedB = (await one(`select platform.tablet_code_move($1, $2) as r`, [admin, devB])).r;
+      const wrongTill = await redeem(movedB.code, crypto.randomUUID(), 'tablet-b2', null, crypto.randomUUID());
+      check('B2 nor does the replacement code of another till', wrongTill.ok === false && wrongTill.why === 'other-till' && (await one(`select used_at from tablet_codes where id = $1`, [movedB.id])).used_at === null, JSON.stringify(wrongTill));
+      const right = await redeem(movedB.code, devB, 'tablet-b2', null, devB);
+      check('B3 the code made for the replacement of that till does', right.ok === true && right.device_id === devB && right.moved === true && rb.ok === true, JSON.stringify({ ...right, key: undefined }));
+      // out of the list checked below
+      await c.query(`delete from tablet_codes where id in ($1, $2, $3)`, [forB.id, fresh.id, movedB.id]);
+      await c.query(`delete from device_keys where device_id = $1`, [devB]);
+      await c.query(`delete from pos_devices where id = $1`, [devB]);
+    }
+
     // E: a code nobody used is taken back; L: the list
     {
       const third = spare;
@@ -168,7 +188,7 @@ function check(name, cond, extra) {
       await c.query(`select set_config('app.tenant_id', $1, true)`, [tid]);
       let e = await failsWith(`select count(*) from tablet_codes`);
       check('S1 a business\'s own connection cannot read the codes', e && e.code === '42501', e ? e.code : 'no error');
-      e = await failsWith(`select redeem_tablet_code('AAAA-BBBB-CCCC', gen_random_uuid(), 'x', null, null)`);
+      e = await failsWith(`select redeem_tablet_code('AAAA-BBBB-CCCC', gen_random_uuid(), 'x', null, null, null)`);
       check('S1 nor use one', e && e.code === '42501', e ? e.code : 'no error');
       e = await failsWith(`select platform.tablet_code_add($1, $2)`, [admin, store]);
       check('S1 nor make one', e && e.code === '42501', e ? e.code : 'no error');

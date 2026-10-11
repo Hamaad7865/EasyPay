@@ -384,22 +384,26 @@ async function byCodeOnly(tenantId: string, deviceId: string): Promise<boolean> 
 // a login's set-up gives it, and syncs with that from then on. A code is used
 // once; the tablet that used it may ask again if the answer never reached it.
 //   404  not a code of ours
-//   409  used by another tablet, taken back, or the tablet was replaced
+//   409  used by another tablet, taken back, or the tablet was replaced; or not the
+//        code of the till a backup is of (mustBe: what a tablet filled from one sends)
 //   403  the business is suspended, or the till was deactivated
 // The code is never written to the log.
 type Redeemed = { ok: boolean; why?: string; tenant_id?: string; business?: string; store_id?: string; device_id?: string; key?: string; last_receipt_seq?: string | number; name?: string; code?: string; moved?: boolean };
 app.post("/devices/redeem", async (c) => {
-  type CodeBody = { code?: string; deviceId?: string; tablet?: string; name?: string; appVersion?: string };
+  type CodeBody = { code?: string; deviceId?: string; tablet?: string; name?: string; appVersion?: string; mustBe?: string };
   const body: CodeBody = await c.req.json<CodeBody>().catch((): CodeBody => ({}));
   const code = String(body.code ?? "").slice(0, 64);
   const deviceId = String(body.deviceId ?? "");
   const tablet = String(body.tablet ?? "").trim();
   if (!UUID.test(deviceId)) return c.json({ error: "deviceId required (client-minted UUID)" }, 400);
   if (!tablet || tablet.length > 80) return c.json({ error: "tablet required" }, 400);
+  // a tablet filled from a backup says which till it has to be (migration 0100)
+  const mustBe = body.mustBe === undefined || body.mustBe === null ? null : String(body.mustBe);
+  if (mustBe !== null && !UUID.test(mustBe)) return c.json({ error: "mustBe is a till's id" }, 400);
   let r: Redeemed | undefined;
   try {
-    r = (await pool.query(`select redeem_tablet_code($1, $2::uuid, $3, $4, $5) as r`, [
-      code, deviceId, tablet, typeof body.name === "string" ? body.name : null, typeof body.appVersion === "string" ? body.appVersion : null,
+    r = (await pool.query(`select redeem_tablet_code($1, $2::uuid, $3, $4, $5, $6::uuid) as r`, [
+      code, deviceId, tablet, typeof body.name === "string" ? body.name : null, typeof body.appVersion === "string" ? body.appVersion : null, mustBe,
     ])).rows[0]?.r;
   } catch (err) {
     console.error("code not checked:", (err as Error).message);
@@ -412,6 +416,7 @@ app.post("/devices/redeem", async (c) => {
     if (why === "suspended") return c.json({ error: "This account is suspended. Contact EasyPay to reactivate.", why }, 403);
     if (why === "till-off") return c.json({ error: "The till this code is for was deactivated. Contact EasyPay.", why }, 403);
     if (why === "no-owner") return c.json({ error: "This business has no owner login, so its tablets cannot be set up yet. Contact EasyPay.", why }, 409);
+    if (why === "other-till") return c.json({ error: "This code is not for the till in this backup. Ask EasyPay for a code for the replacement of that till's tablet.", why }, 409);
     if (why === "bad-device") return c.json({ error: "This tablet could not be set up as a new till. Contact EasyPay.", why }, 409);
     return c.json({ error: "That is not a code EasyPay gave. Check it and type it again.", why: "bad-code" }, 404);
   }
