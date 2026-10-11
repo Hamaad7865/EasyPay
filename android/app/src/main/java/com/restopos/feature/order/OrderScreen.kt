@@ -113,9 +113,9 @@ fun OrderScreen(vm: OrderViewModel, onBack: (board: Boolean) -> Unit, onPay: () 
 
     // On a screen that is not tall (a 10-inch, where the till is drawn larger:
     // core/ui/ScreenFit) the order's column gives way, so that the order itself
-    // can still be read: its head, its total and its keys are a little lower and
-    // the tax goes under the word Total. A takeaway shows three lines of it
-    // then, where it would show one. A tall screen is drawn as before.
+    // can still be read: its head, its lines, its total and its keys are a little
+    // lower and the tax goes under the word Total. A takeaway shows three lines
+    // of it then, where it would show one. A tall screen is drawn as before.
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val low = maxHeight < 600.dp
         Row(Modifier.fillMaxSize()) {
@@ -123,7 +123,7 @@ fun OrderScreen(vm: OrderViewModel, onBack: (board: Boolean) -> Unit, onPay: () 
             Column(Modifier.width(390.dp).fillMaxHeight().background(V.Panel).drawBehind { drawRect(V.Stroke, Offset(if (left) 0f else size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height)) }) {
                 Head(ui, vm, low) { onBack(ui.board) }
                 Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
-                Lines(ui, vm, Modifier.weight(1f))
+                Lines(ui, vm, low, Modifier.weight(1f))
                 Totals(ui, low)
                 Column(Modifier.fillMaxWidth().background(V.PanelFoot).padding(start = 16.dp, end = 16.dp, bottom = if (low) 12.dp else 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val fn = if (low) 42.dp else 48.dp
@@ -193,7 +193,7 @@ private fun Head(ui: OrderUi, vm: OrderViewModel, low: Boolean, onBack: () -> Un
 }
 
 @Composable
-private fun Lines(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
+private fun Lines(ui: OrderUi, vm: OrderViewModel, low: Boolean, modifier: Modifier) {
     if (ui.empty) {
         Column(modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             VIcon(VI.Receipt, 40.dp, V.Stroke2, 1.6f)
@@ -212,7 +212,7 @@ private fun Lines(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
     }
     LazyColumn(modifier.fillMaxWidth(), list) {
         if (ui.sent.isNotEmpty()) {
-            item { Caps(L.inKitchen, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp), size = 11.sp) }
+            item { Caps(L.inKitchen, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = if (low) 8.dp else 12.dp, bottom = 4.dp), size = 11.sp) }
             items(ui.sent, key = { it.line.id }) { l ->
                 val on = ui.selected == l.line.id
                 val paid = l.line.paid
@@ -243,12 +243,12 @@ private fun Lines(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
             }
         }
         if (ui.fresh.isNotEmpty()) {
-            item { Caps(L.notSent, V.BlueText, Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp), 11.sp) }
+            item { Caps(L.notSent, V.BlueText, Modifier.padding(start = 16.dp, end = 16.dp, top = if (low) 8.dp else 14.dp, bottom = 4.dp), 11.sp) }
             items(ui.fresh, key = { it.line.id }) { l ->
                 val on = ui.selected == l.line.id
                 Column(Modifier.fillMaxWidth().background(if (on) V.RowOn else Color.Transparent)) {
                     Row(
-                        Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable { vm.select(if (on) null else l.line.id) }.padding(horizontal = 16.dp, vertical = 11.dp),
+                        Modifier.fillMaxWidth().heightIn(min = if (low) 48.dp else 52.dp).clickable { vm.select(if (on) null else l.line.id) }.padding(horizontal = 16.dp, vertical = if (low) 9.dp else 11.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         T(l.units.toString(), 15.sp, 800, modifier = Modifier.width(26.dp))
