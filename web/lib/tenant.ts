@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { asMode, type Mode } from "@/lib/mode";
 import { hasPremium, isOffline } from "@/lib/plan";
@@ -19,9 +20,74 @@ export type TenantContext = {
   // for the shell around every page: the restaurant's name and who is signed in
   tenantName: string | null;
   employeeName: string | null;
+  // EasyPay's platform admin is in here, standing in for the business's owner (adminInside, below)
+  admin: boolean;
 };
 
 export const isSuspended = (ctx: TenantContext) => ctx.status !== "active";
+
+// EasyPay inside a client's back office.
+//
+// A business on the offline plan has no back office of its own: that is part
+// of Premium. But EasyPay sets such a business up for its owner (the menu,
+// the taxes, the staff typed on a computer, the day it is handed over and
+// whenever it asks), and the tablet fetches that when someone taps "Get
+// changes from EasyPay" on it. So the platform admin opens its back office
+// from the client's page in /admin ("Login to back office"), which leaves
+// this cookie naming the client.
+//
+// The cookie alone opens nothing. On every request the login must still be a
+// platform admin, and the client must still be on the offline plan: a client
+// on another plan has a back office of its own, with its sales in it, and
+// that one is not opened from here. Inside, the admin stands in for the
+// business's owner (the one of its people whose role holds everything), so
+// what is saved is saved as the owner would have saved it; that the admin
+// came in is written in /admin's own list of what was done.
+export const AS_COOKIE = "easypay-as";
+// only the back office is sent it
+export const AS_PATH = "/backoffice";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Who the platform admin stands in for in this client's back office, or null
+// when there is nothing to open: the login is not a platform admin, the
+// client is not on the offline plan, or it has nobody who holds everything.
+// The admin area asks this before it leaves the cookie, and every request of
+// the back office asks it again.
+export async function adminInside(userId: string, tenantId: string): Promise<TenantContext | null> {
+  if (!UUID.test(tenantId)) return null;
+  const found = await ask(
+    `select t.id as tenant_id, t.status, t.status_reason, t.name as tenant_name, t.business_type, t.plan,
+            o.id, o.name as employee_name, o.role
+       from tenants t
+       join platform.admins a on a.auth_user_id = $1 and a.revoked_at is null
+       left join lateral (
+         select e.id, e.name, r.name as role
+           from employees e
+           join roles r on r.tenant_id = e.tenant_id and r.id = e.role_id and r.deleted_at is null
+          where e.tenant_id = t.id and e.deleted_at is null and e.is_active and r.permissions ? '*'
+          order by (e.auth_user_id is not null) desc, e.created_at
+          limit 1
+       ) o on true
+      where t.id = $2 and t.deleted_at is null and lower(btrim(coalesce(t.plan, ''))) = 'offline'`,
+    [userId, tenantId],
+  );
+  // (the statement is held to its rules in db/tests/admin-inside.test.cjs, which reads it from this file)
+  const row = found.rows[0];
+  if (!row || !row.id || !isOffline(row.plan)) return null;
+  return {
+    userId,
+    employeeId: row.id as string,
+    tenantId: row.tenant_id as string,
+    role: (row.role as string | null) ?? null,
+    status: row.status as string,
+    statusReason: (row.status_reason as string | null) ?? null,
+    mode: asMode(row.business_type),
+    premium: hasPremium(row.plan),
+    tenantName: (row.tenant_name as string | null) ?? null,
+    employeeName: (row.employee_name as string | null) ?? null,
+    admin: true,
+  };
+}
 
 // Session -> employees.auth_user_id -> tenant. A login with no restaurant goes
 // to /onboarding, which explains that restaurants are set up by EasyPay (and
@@ -36,6 +102,13 @@ export const tenantContext = cache(async (): Promise<TenantContext> => {
   const { data } = await auth.getSession();
   const user = data?.user;
   if (!user) redirect("/login");
+  // EasyPay's admin, come in from /admin to set an offline client up: asked
+  // only of a browser that carries the cookie, so nobody else's page pays for it
+  const named = (await cookies()).get(AS_COOKIE)?.value;
+  if (named) {
+    const inside = await adminInside(user.id, named);
+    if (inside) return inside;
+  }
   const found = await ask(
     `select e.id, e.tenant_id, e.name as employee_name, r.name as role, t.status, t.status_reason, t.name as tenant_name, t.business_type, t.plan,
             has_perm(e.id, 'backoffice.access') as may_enter
@@ -59,6 +132,7 @@ export const tenantContext = cache(async (): Promise<TenantContext> => {
     premium: hasPremium(row.plan),
     tenantName: (row.tenant_name as string | null) ?? null,
     employeeName: (row.employee_name as string | null) ?? null,
+    admin: false,
   };
 });
 

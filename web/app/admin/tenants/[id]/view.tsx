@@ -49,6 +49,7 @@ export type TenantActions = {
   addTablet: CodeAction;
   moveTablet: CodeAction;
   endCode: Action;
+  openBackOffice: Action;
 };
 
 const ACTIONS: Record<string, string> = {
@@ -69,6 +70,7 @@ const ACTIONS: Record<string, string> = {
   "tablet.add": "Code made for a new tablet",
   "tablet.move": "Code made for a replacement tablet",
   "tablet.code_end": "Code taken back",
+  "backoffice.open": "Back office opened by EasyPay",
 };
 
 function auditNote(a: Audit): string {
@@ -130,6 +132,19 @@ export function TenantView({
         {cap(tenant.business_type)} · {cap(tenant.plan)} plan · ID {supportId(tenant.id)} · Created {day(tenant.created_at)}
       </p>
       <Notes error={error} notice={notice} />
+      {/* An offline client has no back office of its own: EasyPay sets it up from here, for its owner. */}
+      {isOffline(tenant.plan) && (
+        <form action={actions.openBackOffice} className="bo-banner">
+          {which}
+          <strong>This client runs on its tablet, and has no back office of its own</strong>
+          You can open it to set the business up for its owner: products, prices, taxes, staff, printers, tables, the receipt. The tablet has what you
+          set up once someone taps Get changes from EasyPay on it (Settings, Support), with the tablet online. Its sales and its stock stay on the
+          tablet: reports and stock figures in there are not the business&apos;s.
+          <div className="inline" style={{ display: "flex", marginTop: 10 }}>
+            <Submit>Login to back office</Submit>
+          </div>
+        </form>
+      )}
       {!active && (
         <div className="bo-banner danger">
           <strong>

@@ -1,9 +1,12 @@
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { db, withTenant } from "@/lib/db";
 import { hashPin, isPin } from "@/lib/pin";
+import { isOffline } from "@/lib/plan";
 import { adminMessage, requirePlatformAdmin } from "@/lib/platform";
 import { loginForRestaurant, passwordProblem, removeLogin, setLoginPassword } from "@/lib/platform-auth";
+import { AS_COOKIE, AS_PATH, adminInside } from "@/lib/tenant";
 import type { CodeAnswer, TabletCode } from "./tablets";
 import { type Audit, type Login, type Store, type Tenant, TenantView, type Till } from "./view";
 
@@ -32,6 +35,38 @@ async function setPlan(formData: FormData) {
   }
   revalidatePath(`/admin/tenants/${tenantId}`);
   back(tenantId, "notice", "Plan changed.");
+}
+
+// "Login to back office": EasyPay goes into an offline client's back office,
+// to set the business up for its owner (lib/tenant.ts, adminInside). Only an
+// offline client's: it has none of its own, and nothing of its sales is here.
+// What the tablet has of it comes when someone taps "Get changes from
+// EasyPay" on it. That the admin went in is written in what was done here;
+// the cookie it leaves names the client and nothing else, lasts a working
+// day, and is asked about again on every page of the back office.
+async function openBackOffice(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  const found = await db().query(`select plan from tenants where id = $1 and deleted_at is null`, [tenantId]);
+  if (!found.rowCount) notFound();
+  if (!isOffline(found.rows[0].plan)) {
+    back(tenantId, "error", "Only an offline client's back office is opened from here. A client on another plan has its own, and signs in to it.");
+  }
+  if (!(await adminInside(adminId, tenantId))) {
+    back(tenantId, "error", "This client has nobody whose role holds everything, so there is no owner to set it up as. Add a login with the Owner role first.");
+  }
+  await db().query(
+    `insert into platform.audit (admin_auth_user_id, action, tenant_id, detail) values ($1, 'backoffice.open', $2, '{}'::jsonb)`,
+    [adminId, tenantId],
+  );
+  (await cookies()).set(AS_COOKIE, tenantId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: AS_PATH,
+    maxAge: 8 * 60 * 60,
+  });
+  redirect("/backoffice");
 }
 
 async function setBusinessType(formData: FormData) {
@@ -351,7 +386,7 @@ export default async function TenantPage({
       codes={codes}
       error={sp.error}
       notice={sp.notice}
-      actions={{ setDetails, setPlan, setBusinessType, setStatus, addStore, setTillActive, addLogin, setPassword, setPin, setActive, addTablet, moveTablet, endCode }}
+      actions={{ setDetails, setPlan, setBusinessType, setStatus, addStore, setTillActive, addLogin, setPassword, setPin, setActive, addTablet, moveTablet, endCode, openBackOffice }}
     />
   );
 }

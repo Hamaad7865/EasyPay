@@ -68,7 +68,7 @@ export function adminMessage(e: unknown): string {
 export const PLANS = ["trial", "standard", "premium", "offline"] as const;
 // said beside the plan wherever an admin picks one
 export const PLAN_HELP =
-  "Premium and Trial switch on the kitchen display, kitchen screens and Bookings for a restaurant. Standard keeps printed kitchen tickets. A till has the change after its next sync. Offline is the tablet alone: it does not sync, the business has no back office, and it costs nothing here. Moved from Offline to Premium, the tablet sends everything it kept once someone taps Connect to the cloud on it (Settings, This till).";
+  "Premium and Trial switch on the kitchen display, kitchen screens and Bookings for a restaurant. Standard keeps printed kitchen tickets. A till has the change after its next sync. Offline is the tablet alone: it does not sync, the business has no back office of its own, and it costs nothing here. You can set it up from this page (Login to back office): the tablet has that once someone taps Get changes from EasyPay on it (Settings, Support). Moved from Offline to Premium, the tablet sends everything it kept once someone taps Connect to the cloud on it (Settings, This till).";
 
 // What a client is given: a restaurant or a retail shop. Only set here.
 export const BUSINESS_TYPES = ["restaurant", "retail"] as const;
