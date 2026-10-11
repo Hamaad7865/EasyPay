@@ -54,6 +54,31 @@ data class RegisterDeviceRequest(
     val appVersion: String? = null,
 )
 
+// POST /devices/redeem: a tablet set up with its code, no login. mustBe: the
+// till a tablet filled from a backup has to be. The answer names the till
+// the tablet now is, which for a replacement is the till it replaces.
+@Serializable
+data class RedeemRequest(
+    val code: String,
+    val deviceId: String,
+    val tablet: String,
+    val appVersion: String? = null,
+    val mustBe: String? = null,
+)
+
+@Serializable
+data class RedeemResponse(
+    val deviceId: String,
+    val tenantId: String,
+    val storeId: String,
+    val business: String = "",
+    val name: String = "",
+    val code: String = "",
+    val lastReceiptSeq: Long = 0,
+    val syncKey: String,
+    val moved: Boolean = false,
+)
+
 // GET /health: `till` is the newest build of the till there is to install, or null.
 @Serializable
 data class HealthResponse(val till: TillReleaseDto? = null)

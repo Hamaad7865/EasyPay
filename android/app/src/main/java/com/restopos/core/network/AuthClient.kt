@@ -50,6 +50,7 @@ private val LEGACY_COOKIES = stringSetPreferencesKey("cookies")
 private const val KEY_JWT = "jwt"
 private const val KEY_COOKIES = "cookies"
 private const val KEY_TILL = "till_key"
+private const val KEY_TABLET = "tablet_mark"
 private const val ENTRY_SEPARATOR = "\u001e"
 
 /** The session is gone (or was never there): the user has to sign in again. */
@@ -174,6 +175,14 @@ class AuthClient(private val context: Context, baseUrl: String) {
     suspend fun tillKey(): String? = withContext(Dispatchers.IO) { secrets.get(KEY_TILL) }
     suspend fun saveTillKey(deviceId: String, key: String) = withContext(Dispatchers.IO) { secrets.put(KEY_TILL, "$deviceId:$key") }
     suspend fun clearTillKey() = withContext(Dispatchers.IO) { secrets.remove(KEY_TILL) }
+
+    // What this tablet calls itself when it uses a code (POST /devices/redeem):
+    // made once and kept beside the key, never in a backup, so a tablet filled
+    // from another's backup is still itself. The server gives a code's answer
+    // again only to the tablet that used it.
+    suspend fun tabletMark(): String = withContext(Dispatchers.IO) {
+        secrets.get(KEY_TABLET) ?: java.util.UUID.randomUUID().toString().also { secrets.put(KEY_TABLET, it) }
+    }
 
     // Works offline: the server call is best effort, local state always goes.
     suspend fun signOut() {

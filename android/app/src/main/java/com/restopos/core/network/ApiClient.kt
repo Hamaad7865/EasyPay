@@ -131,6 +131,25 @@ class ApiClient(baseUrl: String, private val auth: AuthClient, private val versi
         return out
     }
 
+    // A tablet set up with its code: no login is asked or used. The answer
+    // carries the till's key, kept as a login's set-up keeps it. What the
+    // server refuses comes back in its own words (ApiError).
+    suspend fun redeem(code: String, deviceId: String, appVersion: String? = null, mustBe: String? = null): com.restopos.core.network.dto.RedeemResponse {
+        val res = http.post("$functionUrl/devices/redeem") {
+            contentType(ContentType.Application.Json)
+            setBody(com.restopos.core.network.dto.RedeemRequest(code, deviceId, auth.tabletMark(), appVersion, mustBe))
+        }
+        noteClock(res)
+        if (!res.status.isSuccess()) {
+            val text = res.bodyAsText()
+            val message = runCatching { json.decodeFromString<ApiErrorBody>(text).error }.getOrNull()
+            throw ApiError(res.status.value, message?.takeIf { it.isNotBlank() } ?: "The code could not be checked (${res.status.value})")
+        }
+        val out: com.restopos.core.network.dto.RedeemResponse = res.body()
+        auth.saveTillKey(out.deviceId, out.syncKey)
+        return out
+    }
+
     suspend fun hasTillKey(): Boolean = auth.tillKey() != null
 
     // A till set up before tills had keys, or whose key was ended, asks for

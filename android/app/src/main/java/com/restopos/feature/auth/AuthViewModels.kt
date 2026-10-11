@@ -32,6 +32,8 @@ sealed interface AuthUiState {
     data class Error(val message: String) : AuthUiState
     // the link for choosing a new password was asked for
     data class LinkSent(val email: String) : AuthUiState
+    // the tablet was set up with its code: it is a till, with no login
+    data object CodeTaken : AuthUiState
 }
 
 sealed interface AuthAction {
@@ -66,9 +68,55 @@ class AuthViewModel @Inject constructor(
         backupSaid.value = "Reading the backup…"
         backups.read(from).fold({ backup.value = it; backupSaid.value = null }, { backupSaid.value = it.message ?: "That file could not be read." })
     }
-    fun leaveBackup() { backup.value = null; backups.forget() }
-    // the app starts again with what the backup holds
-    fun useBackup() { if (backup.value != null) backups.restart() }
+    fun leaveBackup() { backup.value = null; backupSaid.value = null; restoring.value = false; backups.forget() }
+    // A backup is a till, and a tablet is that till only with the code
+    // EasyPay made for its replacement: without one, a backup file would set
+    // up as many tablets as anyone liked. The code is checked once, online;
+    // then the app starts again with what the backup holds, and with the
+    // till's key, which no backup carries.
+    val restoring = MutableStateFlow(false)
+    fun useBackup(code: String) = viewModelScope.launch {
+        val note = backup.value ?: return@launch
+        if (restoring.value) return@launch
+        if (!TILL_ID.matches(note.device)) {
+            backupSaid.value = "This backup does not say which till it is of, so it cannot fill a new tablet. Contact EasyPay."
+            return@launch
+        }
+        restoring.value = true
+        backupSaid.value = null
+        runCatching { api.redeem(code, note.device, BuildConfig.VERSION_NAME, mustBe = note.device) }
+            .onSuccess { backups.restart() }
+            .onFailure { backupSaid.value = codeProblem(it); restoring.value = false }
+    }
+
+    // ---- a tablet set up with its code (the till service's /devices/redeem) ----
+    // One code sets up one tablet, with no login. What the tablet is then is
+    // what a login's set-up leaves it: the business, the store and the till,
+    // and the till's key. Its first pull follows, as after "Name this till".
+    fun useCode(code: String) = viewModelScope.launch {
+        if (_state.value == AuthUiState.Busy) return@launch
+        _state.value = AuthUiState.Busy
+        runCatching {
+            val out = api.redeem(code, session.deviceId() ?: com.restopos.core.common.Uuid7.next(), BuildConfig.VERSION_NAME)
+            session.save(out.tenantId, out.storeId, out.deviceId)
+            // what the tablet does next waits for a whole pull after this moment (SetupSteps.after)
+            session.setRegisteredAt(System.currentTimeMillis())
+            if (out.business.isNotBlank()) session.setBusinessName(out.business)
+        }.onSuccess {
+            SyncScheduler.pullNow(appContext)
+            _state.value = AuthUiState.CodeTaken
+        }.onFailure { _state.value = AuthUiState.Error(codeProblem(it)) }
+    }
+
+    private val TILL_ID = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+    // What is said of a code that did not work: the server's own sentence
+    // when it refused it, and plainly that the internet is needed otherwise.
+    private fun codeProblem(e: Throwable): String = when (e) {
+        is ApiError -> e.message ?: "That code did not work."
+        is java.io.IOException -> "The code could not be checked: the tablet needs the internet for a moment. Connect it and try again."
+        else -> e.message?.takeIf { it.isNotBlank() && it.length < 160 } ?: "The code could not be checked. Try again in a moment."
+    }
 
     private val _state = MutableStateFlow<AuthUiState>(AuthUiState.Form)
     val state: StateFlow<AuthUiState> = _state

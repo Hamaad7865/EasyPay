@@ -4,7 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -29,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.restopos.core.data.CodeForm
 import com.restopos.core.ui.Gap
 import com.restopos.core.ui.T
 import com.restopos.core.ui.V
@@ -50,17 +53,26 @@ fun AuthScreen(
     // The tablet is to be a kitchen screen, not a till: offered when a tablet
     // is first set up, never when a till is being signed in again.
     onKitchen: (() -> Unit)? = null,
+    // The tablet was set up with a code, and is a till: offered where the
+    // kitchen screen is, when a tablet is first set up.
+    onCode: (() -> Unit)? = null,
     onSignedIn: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     // Navigation is a side effect of the state, run once when it becomes SignedIn.
-    LaunchedEffect(state) { if (state is AuthUiState.SignedIn) onSignedIn() }
+    LaunchedEffect(state) {
+        if (state is AuthUiState.SignedIn) onSignedIn()
+        if (state is AuthUiState.CodeTaken) onCode?.invoke()
+    }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var shown by remember { mutableStateOf(false) }
     // the "forgot password" step: the same card asking only for the email
     var forgot by remember { mutableStateOf(false) }
-    val busy = state == AuthUiState.Busy || state == AuthUiState.SignedIn
+    // the same card asking only for the code EasyPay gave for this tablet
+    var byCode by remember { mutableStateOf(false) }
+    var code by remember { mutableStateOf("") }
+    val busy = state == AuthUiState.Busy || state == AuthUiState.SignedIn || state == AuthUiState.CodeTaken
     val problem = (state as? AuthUiState.Error)?.message
     // Sending puts the keyboard away: on a landscape tablet it covers the
     // lower half of the screen, which is where the answer would be.
@@ -86,6 +98,30 @@ fun AuthScreen(
                 14.sp, 500, V.Text2, lines = 4, height = 20.sp,
             )
             MainKey("Back to sign in", ready = true, busy = false, onClick = toSignIn)
+            return@SetupCard
+        }
+        if (byCode) {
+            val useCode: () -> Unit = {
+                if (!busy && CodeForm.ready(code)) {
+                    keyboard?.hide()
+                    focus.clearFocus()
+                    vm.useCode(code)
+                }
+            }
+            Heading("Set up with a code", "Type the code EasyPay gave for this tablet. It needs the internet for a moment, and not again after.")
+            problem?.let { Problem(it) }
+            SetupField(
+                "Code", code, { code = CodeForm.typed(it) }, "XXXX-XXXX-XXXX", enabled = !busy,
+                keyboard = KeyboardType.Ascii, ime = ImeAction.Done, onIme = useCode,
+            )
+            MainKey(if (CodeForm.ready(code)) "Set up this tablet" else "Enter the code", ready = CodeForm.ready(code), busy = busy, onClick = useCode)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                QuietLink("Back to sign in", enabled = !busy) { byCode = false; vm.onAction(AuthAction.Clear) }
+            }
+            T(
+                "One code sets up one tablet. A tablet that replaces another needs a code of its own from EasyPay.",
+                12.sp, 500, V.Text3, Modifier.fillMaxWidth(), lines = 2, align = TextAlign.Center, height = 17.sp,
+            )
             return@SetupCard
         }
         Heading(
@@ -135,12 +171,26 @@ fun AuthScreen(
         // The other thing a tablet can be: a screen in the kitchen that shows
         // the orders the tills send it. It needs no login.
         if (!forgot && !reauth && onKitchen != null) {
-            Column(
-                Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(12.dp)).background(V.Well).padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp), horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                QuietLink("Set up as a kitchen screen", enabled = !busy, onClick = onKitchen)
-                T("For a tablet in the kitchen: it shows the orders as they are sent. It needs no login.", 12.sp, 500, V.Text3, lines = 2, align = TextAlign.Center, height = 17.sp)
+            // Beside it, the other way to make this tablet a till: the code
+            // EasyPay made for it. A business that runs on its tablet has no
+            // other way, and it needs no login either.
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp).height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (onCode != null) {
+                    Column(
+                        Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(12.dp)).background(V.Well).padding(horizontal = 12.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        QuietLink("Set up with a code", enabled = !busy) { byCode = true; vm.onAction(AuthAction.Clear) }
+                        T("For a business that runs on its tablet: the code EasyPay gave for this one. It needs no login.", 12.sp, 500, V.Text3, lines = 4, align = TextAlign.Center, height = 17.sp)
+                    }
+                }
+                Column(
+                    Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(12.dp)).background(V.Well).padding(horizontal = 12.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    QuietLink("Set up as a kitchen screen", enabled = !busy, onClick = onKitchen)
+                    T("For a tablet in the kitchen: it shows the orders as they are sent. It needs no login.", 12.sp, 500, V.Text3, lines = 4, align = TextAlign.Center, height = 17.sp)
+                }
             }
             // A tablet that replaces one that broke: filled from the backup its owner saved. Offered only
             // here, where the tablet holds nothing yet, so a backup never writes over a tablet's sales.
@@ -154,13 +204,23 @@ fun AuthScreen(
                 val found = waiting
                 if (found == null) {
                     QuietLink("Restore from a backup", enabled = !busy) { pick.launch(arrayOf("*/*")) }
-                    T(said ?: "For a tablet that replaces another: pick the backup file its owner saved. It needs no login.", 12.sp, 500, if (said != null) V.AmberText else V.Text3, lines = 3, align = TextAlign.Center, height = 17.sp)
+                    T(said ?: "For a tablet that replaces another: pick the backup file its owner saved, then type the code EasyPay gave for the replacement.", 12.sp, 500, if (said != null) V.AmberText else V.Text3, lines = 3, align = TextAlign.Center, height = 17.sp)
                 } else {
+                    // A backup is a till, and this tablet is that till only with the code made for its
+                    // replacement: checked once, online, before anything is put in place.
+                    val restoring by vm.restoring.collectAsStateWithLifecycle()
+                    var replace by remember(found) { mutableStateOf("") }
                     T("Backup of " + found.business.ifBlank { "a till" } + ", saved " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(found.madeAt)), 14.sp, 700, lines = 2, align = TextAlign.Center)
                     T("This tablet becomes that till, with everything the backup holds. Sales made on the old tablet after the backup was saved are not in it.", 12.sp, 500, V.Text3, lines = 3, align = TextAlign.Center, height = 17.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        QuietLink("Not this one", enabled = true) { vm.leaveBackup() }
-                        QuietLink("Restore it", enabled = true) { vm.useBackup() }
+                    said?.let { T(it, 12.sp, 600, V.AmberText, lines = 4, align = TextAlign.Center, height = 17.sp) }
+                    SetupField(
+                        "The code for the replacement tablet", replace, { replace = CodeForm.typed(it) }, "XXXX-XXXX-XXXX", enabled = !restoring,
+                        keyboard = KeyboardType.Ascii, ime = ImeAction.Done, onIme = { if (CodeForm.ready(replace)) vm.useBackup(replace) },
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        QuietLink("Not this one", enabled = !restoring) { vm.leaveBackup() }
+                        if (restoring) CircularProgressIndicator(Modifier.size(18.dp), color = V.Cyan, strokeWidth = 2.dp)
+                        else QuietLink("Restore it", enabled = CodeForm.ready(replace)) { vm.useBackup(replace) }
                     }
                 }
             }

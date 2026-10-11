@@ -92,6 +92,13 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
                         nav.navigate(Routes.KDS) { popUpTo(0) { inclusive = true } }
                     }
                 },
+                // Set up with its code, the tablet is a till already: named,
+                // in its store, with its key. What it opens on waits for its
+                // first pull, as after "Name this till".
+                onCode = {
+                    SyncScheduler.startPeriodic(context)
+                    nav.navigate(Routes.SETUP_WAIT) { popUpTo(0) { inclusive = true } }
+                },
             ) { nav.navigate(Routes.DEVICE) { popUpTo(Routes.AUTH) { inclusive = true } } }
         }
         // The kitchen screen: the whole of a kitchen tablet.
