@@ -1,10 +1,10 @@
-# Ferculon's modules, and where EasyPay stands on each
+# Another restaurant POS's modules, and where EasyPay stands on each
 
 2026-10-11. The owner: "list all of their modules. So we will build them but leave the waiter app this is
-overkill in mauritius". Read that day from ferculon.com (home, Product, the eight feature pages) and from
+overkill in mauritius". Read that day from that product's own site (home, Product, the eight feature pages) and from
 the screenshots of their back office the site shows, whose side menu is the list below. What EasyPay has
 was checked against `web/app/backoffice/nav.ts` and a search of the till's and the back office's code, not
-from memory; where a thing was not checked it says so. Their site changes: read it again before quoting it.
+from memory; where a thing was not checked it says so. Their site changes: read it again before quoting it. The product is not named here: this file is public.
 
 **Built** = EasyPay has it. **Partly** = some of it. **Not built** = nothing of it.
 **Bill** = it costs money every month to run (EasyPay's running costs are meant to stay near zero, so
