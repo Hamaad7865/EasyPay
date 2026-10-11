@@ -1,0 +1,121 @@
+/* The real app on the page, and the pieces a visitor can press.
+
+   The back office is shown as it is: pictures of its own pages, taken from a
+   made-up restaurant and a made-up shop (README, "The pictures of the back
+   office"), each in a browser's frame. The till's pieces drawn in mock.css
+   answer a tap the way the till does: a router to unplug, a table to seat, a
+   kitchen ticket to bump, a bill to split. js/play.js makes them move. */
+
+/* ---- a page of the back office, in a browser's frame ---- */
+
+.webapp {
+  container-type: inline-size; overflow: hidden; margin: 0 auto; max-width: 1140px;
+  border-radius: clamp(8px, 1.2vw, 14px); background: #fff;
+  box-shadow: 0 0 0 1px rgba(20, 40, 26, 0.1), 0 40px 80px -30px rgba(16, 44, 24, 0.45), 0 18px 30px -18px rgba(16, 44, 24, 0.3);
+}
+.webapp-bar { display: flex; align-items: center; gap: 0.6cqw; padding: 0.9cqw 1.3cqw; background: #eef1ee; border-bottom: 1px solid #e0e4e0; }
+.webapp-bar i { width: 1cqw; height: 1cqw; min-width: 6px; min-height: 6px; border-radius: 50%; background: #cfd5cf; }
+.webapp-bar span { margin: 0 auto; padding: 0.35cqw 3.2cqw; border-radius: 1cqw; background: #fff; font-family: var(--mono); font-size: clamp(9px, 1.05cqw, 13px); color: #6b756d; transform: translateX(-2cqw); }
+/* the page's own paper shows while the picture arrives */
+.webapp img { display: block; width: 100%; height: auto; background: #f4f1e9; transition: opacity 0.25s var(--ease); }
+.webapp img.is-turning { opacity: 0.35; }
+
+/* ---- the hero: the back office behind, the till in front of its corner ---- */
+
+.stage--hero { padding-left: clamp(14px, 4.6vw, 72px); padding-right: clamp(14px, 4.6vw, 72px); }
+.hero-duo { position: relative; padding-bottom: 12.5%; }
+.hero-duo .webapp { width: 82%; margin: 0; }
+.hero-duo .tablet { position: absolute; z-index: 1; right: 0; bottom: 0; width: 61%; margin: 0; }
+/* a narrow window: one under the other */
+@media (max-width: 760px) {
+  .hero-duo { padding-bottom: 0; }
+  .hero-duo .webapp { width: 100%; margin-bottom: 14px; }
+  .hero-duo .tablet { position: relative; right: auto; bottom: auto; width: 100%; }
+}
+/* a phone: the tablet is shown larger and runs off the side of its stage, as before (mock.css) */
+@media (max-width: 620px) {
+  .hero-duo .tablet { width: 190%; }
+}
+
+/* ---- the back office's pages, a tab each ---- */
+
+.stage--office { padding-bottom: clamp(14px, 3vw, 40px); }
+.tour-tabs {
+  margin: 0 auto clamp(14px, 2vw, 26px); width: fit-content; max-width: 100%; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding: 5px;
+  border-radius: 26px; background: rgba(255, 255, 255, 0.6); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7), 0 6px 18px -8px rgba(60, 90, 66, 0.35);
+}
+.tour-tabs button {
+  height: 40px; padding: 0 clamp(12px, 1.7vw, 20px); border: 0; border-radius: 999px; background: transparent; cursor: pointer;
+  font: inherit; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink-2); transition: color 0.25s var(--ease), background-color 0.25s var(--ease);
+}
+.tour-tabs button:hover { color: var(--ink); }
+.tour-tabs button[aria-selected="true"] { background: var(--ink); color: #fff; }
+.tour-tabs button:focus-visible { outline: 2px solid var(--leaf); outline-offset: 2px; }
+.tour-says { margin: clamp(14px, 1.8vw, 24px) auto 0; max-width: 64ch; min-height: 3.1em; text-align: center; font-size: clamp(15px, 1.2vw, 17.5px); color: var(--ink-2); }
+
+/* ---- "try it": the line under a piece that answers a tap ---- */
+
+.v-try { margin: 1em 0.3em 0; font-family: var(--mono); font-size: 0.74em; line-height: 1.4; color: var(--t-text3); }
+.v-try--light { grid-column: 1 / -1; margin-top: 0.2em; text-align: center; color: #5d6b61; }
+.till.piece button, .till.piece [role="button"] { -webkit-tap-highlight-color: transparent; }
+.till.piece button:focus-visible, .till.piece [role="button"]:focus-visible { outline: 0.14em solid var(--t-greentext); outline-offset: 0.14em; }
+
+/* ---- when the line drops: the router and the sale ---- */
+
+.line-keys { display: flex; flex-wrap: wrap; gap: 8px; }
+.line-keys button { height: 42px; padding: 0 18px; border: 0; border-radius: 999px; cursor: pointer; font: inherit; font-size: 14.5px; font-weight: 700; letter-spacing: -0.01em; transition: transform 0.2s var(--out), background-color 0.2s var(--ease); }
+.line-keys button:active { transform: scale(0.97); }
+.line-keys button:focus-visible { outline: 2px solid #7be3ae; outline-offset: 2px; }
+.line-plug { display: inline-flex; align-items: center; gap: 10px; background: #fff; color: var(--forest); }
+.line-plug i { width: 9px; height: 9px; border-radius: 50%; background: #12b76a; box-shadow: 0 0 0 4px rgba(18, 183, 106, 0.22); }
+.line-plug[aria-pressed="true"] i { background: #ff7a70; box-shadow: 0 0 0 4px rgba(255, 122, 112, 0.22); }
+.line-sale { background: rgba(255, 255, 255, 0.1); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22); }
+.line-sale:hover { background: rgba(255, 255, 255, 0.16); }
+.line-rows { display: grid; gap: 8px; }
+.night-log em.sent { background: rgba(18, 183, 106, 0.18); color: #7be3ae; }
+.night-log p.is-new { animation: line-in 0.4s var(--out); }
+@keyframes line-in { from { opacity: 0; transform: translateY(8px); } }
+.line-hint { margin: 2px 4px 0; font-family: var(--mono); font-size: 12px; line-height: 1.45; color: #8fa596; }
+
+/* ---- front of house: a table is a key ---- */
+
+button.v-plot { width: 100%; padding: 0; border: 0; border-radius: 1em; background: none; color: inherit; font: inherit; cursor: pointer; }
+button.v-plot .tb { transition: transform 0.25s var(--out), background-color 0.25s var(--ease); }
+button.v-plot:hover .tb { transform: translateY(-0.12em); }
+button.v-plot:active .tb { transform: scale(0.96); }
+.v-booking button { margin-left: auto; padding: 0.7em 1em; border: 0; border-radius: 0.7em; background: var(--t-violet); color: #fff; font: inherit; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.v-booking.is-seated { background: var(--t-greenwash); color: var(--t-greentext); }
+.v-booking.is-seated button { display: none; }
+
+/* ---- the kitchen: lines to tick, a ticket to bump and to recall ---- */
+
+.t-tk [role="button"] { cursor: pointer; }
+.t-tk footer:has(button) { padding: 0; }
+.t-tk footer button { box-sizing: border-box; display: block; width: 100%; padding: 0.75em; border: 0; border-radius: inherit; background: none; color: inherit; font: inherit; font-weight: 700; cursor: pointer; }
+.t-tk footer button:hover { background: var(--t-stroke2); }
+.tk-gone { display: grid; justify-items: center; gap: 0.5em; padding: 2.6em 1.2em; text-align: center; }
+.tk-gone[hidden] { display: none; }
+.tk-gone b { font-size: 1.05em; }
+.tk-gone span { font-size: 0.86em; color: var(--t-text2); }
+.tk-gone button { margin-top: 0.5em; padding: 0.7em 1.6em; border: 0; border-radius: 0.75em; background: var(--t-key); color: var(--t-text); font: inherit; font-weight: 700; cursor: pointer; }
+.t-tk.is-gone header { background: var(--t-key); color: var(--t-text3); }
+.t-tk.is-gone header span { color: var(--t-text3); }
+
+/* ---- payment: guests, how a share is paid, and the charge ---- */
+
+.v-count { display: flex; align-items: center; gap: 0.6em; margin: 0 0 0.8em; font-size: 0.9em; color: var(--t-text2); }
+.v-count span { margin-right: auto; }
+.v-count b { min-width: 1.6em; text-align: center; font-size: 1.15em; color: var(--t-text); }
+.v-count button { width: 2.2em; height: 2.2em; border: 0; border-radius: 0.7em; background: var(--t-key); color: var(--t-text); font: inherit; font-size: 1.05em; font-weight: 700; line-height: 1; cursor: pointer; }
+.v-count button:disabled { opacity: 0.35; cursor: default; }
+.v-types button { padding: 0.75em 0; border: 0; border-radius: 0.8em; background: var(--t-key); text-align: center; font: inherit; font-size: 0.9em; font-weight: 600; color: var(--t-text2); cursor: pointer; }
+.v-types button.is-on { background: var(--t-text); color: var(--t-header); }
+button.v-charge { display: block; width: 100%; border: 0; font: inherit; font-weight: 800; cursor: pointer; transition: transform 0.2s var(--out); }
+button.v-charge:active { transform: scale(0.98); }
+button.v-charge.is-done { background: var(--t-key); color: var(--t-text); }
+.v-shares li.is-new { animation: line-in 0.35s var(--out); }
+
+@media (prefers-reduced-motion: reduce) {
+  .night-log p.is-new, .v-shares li.is-new { animation: none; }
+  .webapp img, button.v-plot .tb, .line-keys button, button.v-charge { transition: none; }
+}

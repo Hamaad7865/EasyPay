@@ -1,9 +1,9 @@
 /* The product, drawn in the page: the till on its tablet, the paper it
-   prints, and the back office in a browser window. The till's colours are
+   prints. (The back office is shown as it is, in pictures: css/real.css.) The till's colours are
    the app's own (android: core/ui/V2.kt). Everything is sized in em from the
    width of its box, so a mock-up scales as one piece. */
 
-.mock, .tablet-screen, .browser { container-type: inline-size; }
+.mock, .tablet-screen { container-type: inline-size; }
 
 .till {
   --u: 1.25; /* one em is this many hundredths of the box's width */
@@ -262,52 +262,6 @@
 .p-total { margin: 0.2em 0 !important; font-size: 1.16em; font-weight: 500; }
 .receipt { font-size: 0.8em; }
 
-/* ---- the back office in a browser window ---- */
-
-.browser { overflow: hidden; max-width: 1120px; margin: 0 auto; border-radius: clamp(8px, 1.3vw, 16px) clamp(8px, 1.3vw, 16px) 0 0; background: #fff; box-shadow: 0 0 0 1px rgba(20, 40, 26, 0.08), 0 40px 80px -30px rgba(16, 44, 24, 0.45); }
-.b-bar { display: flex; align-items: center; gap: 0.55cqw; padding: 1cqw 1.3cqw; background: #f1f3f1; border-bottom: 1px solid #e3e6e3; }
-.b-bar i { width: 1cqw; height: 1cqw; min-width: 5px; min-height: 5px; border-radius: 50%; background: #d3d8d3; }
-.b-bar span { margin: 0 auto; padding: 0.4cqw 4cqw; border-radius: 1cqw; background: #fff; font-family: var(--mono); font-size: max(1.05cqw, 7px); color: #6b756d; transform: translateX(-2cqw); }
-.bo {
-  --u: 1.04;
-  font-size: calc(var(--u) * 1cqw); line-height: 1.35;
-  display: grid; grid-template-columns: 15em minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
-  /* the window runs off the bottom of its stage, menu and page cut together */
-  height: 39em; overflow: hidden;
-  background: #f6f7f9; color: #111827; font-variant-numeric: tabular-nums;
-}
-.bo b { font-weight: 700; }
-.bo i, .bo em { font-style: normal; }
-.bo-side { display: flex; flex-direction: column; padding: 1.3em 0.9em; background: #fff; border-right: 1px solid #e6e8ec; }
-.bo-brand { display: flex; align-items: center; gap: 0.6em; margin: 0 0 1.1em 0.5em; font-size: 1.2em; font-weight: 800; letter-spacing: -0.02em; }
-.bo-brand img { height: 1.7em; width: auto; }
-.bo-side h6 { margin: 1.1em 0 0.3em 0.75em; font-size: 0.7em; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #8a93a3; }
-.bo-side a { padding: 0.42em 0.75em; border-radius: 0.6em; font-size: 0.92em; font-weight: 500; color: #4b5563; }
-.bo-side a.is-on { background: #e8f3e8; color: #2f6b33; font-weight: 700; }
-.bo-main { display: flex; flex-direction: column; padding: 1.7em 2em 0; min-width: 0; min-height: 0; }
-.bo-top { display: flex; justify-content: space-between; align-items: center; }
-.bo-top b { display: block; font-size: 1.6em; letter-spacing: -0.025em; }
-.bo-top span { color: #8a93a3; font-size: 0.92em; }
-.bo-top em { padding: 0.55em 1.1em; border-radius: 0.7em; background: #fff; box-shadow: 0 0 0 1px #e6e8ec; font-size: 0.92em; font-weight: 600; }
-.bo-tiles { margin-top: 1.3em; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.9em; }
-.bo-tiles div, .bo-card { padding: 1.1em 1.2em; border-radius: 0.95em; background: #fff; box-shadow: 0 0 0 1px #e6e8ec, 0 1px 2px rgba(16, 24, 40, 0.05); }
-.bo-tiles span { display: block; font-size: 0.85em; color: #4b5563; }
-.bo-tiles b { display: block; margin: 0.2em 0; font-size: 1.7em; letter-spacing: -0.03em; }
-.bo-tiles i { font-size: 0.8em; color: #8a93a3; }
-.bo-tiles i.up { color: #15803d; font-weight: 600; }
-.bo-tiles i.up::before { content: "↑ "; }
-.bo-row { flex: 1; min-height: 0; margin-top: 0.9em; display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 0.9em; }
-.bo-card { border-radius: 0.95em 0.95em 0 0; padding-bottom: 1.6em; }
-.bo-card p { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 1em; }
-.bo-card p span { font-size: 0.82em; color: #8a93a3; }
-.bo-chart { display: flex; flex-direction: column; min-height: 0; }
-.bo-chart svg { flex: 1; min-height: 0; width: 100%; overflow: visible; }
-.bo-axis { display: flex; justify-content: space-between; margin-top: 0.6em; font-size: 0.76em; color: #8a93a3; }
-.bo-top5 ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.95em; }
-.bo-top5 li { display: grid; grid-template-columns: 1fr auto; gap: 0.35em 0.8em; font-size: 0.92em; font-weight: 500; }
-.bo-top5 li i { grid-column: 1 / -1; height: 0.4em; border-radius: 1em; background: linear-gradient(90deg, #3f8443 var(--w), #e8f3e8 var(--w)); }
-.bo-top5 li em { grid-row: 1; grid-column: 2; font-weight: 700; }
-
 /* ---- a shop's till: the sale down the left, the products on the right ---- */
 
 /* the sell screen is the order screen's two columns with a shop's words */
@@ -464,7 +418,6 @@
   .v-kitchen .paper-wrap, .v-pay .paper-wrap { width: 78%; margin: 0 auto; }
   .v-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .v-weigh { width: 78%; margin: 0 auto; }
-  .bo { --u: 1.25; grid-template-columns: 13em minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {

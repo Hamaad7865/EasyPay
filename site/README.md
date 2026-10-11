@@ -13,10 +13,13 @@ the canonical link tells a search engine which of the two is the site.
 index.html      the page
 404.html        what an address with nothing behind it answers
 css/site.css    the page's look, top to bottom
-css/mock.css    the product drawn in the page: tablet, paper, back office window
+css/mock.css    the till drawn in the page: tablet, paper
+css/real.css    the back office in a browser's frame, and the pieces that answer a tap
 js/config.js    the site's own details (see below)
 js/main.js      the bar, the choice, the dots, the tablet's film, the demo form
+js/play.js      what a visitor can press (see "What can be pressed")
 assets/         the logo, cut down from brand/ (never redrawn)
+assets/shots/   pictures of the back office's own pages (see below)
 ```
 
 ## A restaurant's page or a shop's
@@ -44,6 +47,49 @@ them nothing moves, and the keys still turn the screens.
 The film plays only while the tablet is on screen and the tab is in front.
 To watch it while working on it, the browser's window has to be showing:
 in a hidden pane it rightly stands still.
+
+## The pictures of the back office
+
+The back office is not drawn: it is shown. Each picture in `assets/shots/`
+is a page of the real back office, at 1440 by 900 and twice the density,
+saved at 2000 and at 1000 wide (`name.webp`, `name-1000.webp`; the page asks
+for whichever fits). The hero has one behind the tablet; the Back office
+section has one for each tab.
+
+They are taken from two made-up businesses, never from a client: on the
+dev database a restaurant and a shop are made as /admin makes one, filled by
+`db/scripts/seed-demo-client.cjs --dev` (a menu or products, staff, thirty
+days of sales), their pages drawn and photographed in the light look with a
+headless Chrome, and both removed again with
+`db/scripts/delete-client.cjs --dev --apply`. The name in them is "Demo
+Restaurant" or "Demo Shop", the person signed in is made up, and the client's
+id under its name is left out. A page that lists customers with their phone
+numbers is not used.
+
+Take them again when the back office's look or one of these pages changes:
+a picture that no longer matches the product is a claim that is no longer
+true. A tab is a line in `index.html` (`data-shot` is the file's name,
+`data-says` the sentence under the frame, `data-alt` what the picture shows).
+
+## What can be pressed
+
+Four pieces of the till and the tabs of the back office answer the visitor
+(`js/play.js`), each the way the product does:
+
+- **When the line drops:** unplug the router and ring up a sale: it is kept
+  on the tablet. Plug it back in: what waited is sent.
+- **Front of house:** a free table is seated, a seated one is given its
+  bill, a bill is paid and the table is free; the booking seats its table.
+- **Kitchen:** the ticket's clock runs and turns amber at 8 minutes and red
+  at 15 (what a kitchen screen starts with); a line is ticked when done; the
+  ticket is bumped, and recalled.
+- **Payment:** the bill is split equally between the guests picked (the
+  cents that do not divide go on the last share), and each share is charged
+  cash, card or transfer.
+
+Nothing is there to press that the product cannot do. The names and figures
+in them are made up. With reduced motion asked for, the clock stands still
+and the rest still works.
 
 ## See it
 

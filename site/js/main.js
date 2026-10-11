@@ -650,29 +650,7 @@
     };
     const bump = (el) => { el.classList.remove("is-bump"); void el.offsetWidth; el.classList.add("is-bump"); };
 
-    // the kitchen: the ticket's clock runs, and a line is ticked when it is done
-    const tk = $(".v-kitchen .t-tk");
-    if (tk) {
-      const clock = $("header em", tk), lines = $$("li", tk);
-      live(tk, 1000, (n) => {
-        const s = 571 + (n % 8);
-        clock.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
-        lines[1].classList.toggle("done", n % 8 >= 4);
-      });
-    }
-
-    // a split bill: the last share is paid, and the bill is settled
-    const box = $(".v-pay:not(.v-return) .v-paybox");
-    if (box) {
-      const last = $(".v-shares li:last-child", box), charge = $(".v-charge", box);
-      const due = last.innerHTML, ask = charge.textContent;
-      live(box, 2400, (n) => {
-        const paid = n % 2 === 1;
-        last.className = paid ? "paid" : "now";
-        last.innerHTML = paid ? `<b>3</b><span>Card</span><em>612.34</em><svg class="ico"><use href="#i-check"/></svg>` : due;
-        charge.textContent = paid ? "Paid in full" : ask;
-      });
-    }
+    // (the kitchen ticket and the split bill answer the visitor now: js/play.js)
 
     // a product with sizes: one is picked, and the key says which
     const sizes = $('[data-loop="size"]');
