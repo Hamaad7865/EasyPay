@@ -3,34 +3,59 @@ import { onlyFor } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { TABLE_ORDERING_LIVE } from "@/lib/plan";
 import { Wait } from "../busy";
-import { NewFloor } from "./new-floor";
+import { FloorDesigner } from "./designer";
+import type { FloorTable } from "./actions";
 
-type Floor = { name: string; tables: number; covers: number };
-
-// The floors of a store, each with how many tables and covers it has. A floor
-// is the name its tables share (tables.area); its plan is drawn on the next page.
-export default async function FloorPlansPage({ searchParams }: { searchParams: Promise<{ store?: string }> }) {
+// The floor plan of a store, an area at a time: the areas across the top, the
+// plan of the one that is open under them. An area is the name its tables
+// share (tables.area), so one named here is kept once a table is saved in it.
+export default async function FloorPlanPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ store?: string; floor?: string }>;
+}) {
   const sp = await searchParams;
   const ctx = await onlyFor("restaurant");
+  const asked = (sp.floor ?? "").trim().slice(0, 30);
   const data = await readTenant(ctx.tenantId, async (c) => {
     const stores = await c.query(`select id, name from stores where tenant_id = $1 and deleted_at is null order by created_at`, [ctx.tenantId]);
     const list = stores.rows as { id: string; name: string }[];
     const store = list.find((s) => s.id === sp.store) ?? list[0] ?? null;
-    if (!store) return { stores: list, store: null, floors: [] as Floor[], may: false };
-    const floors = await c.query(
-      `select area as name, count(*)::int as tables, coalesce(sum(seats), 0)::int as covers
-         from tables where tenant_id = $1 and store_id = $2 and deleted_at is null
-        group by area order by area`,
+    if (!store) return { stores: list, store: null };
+    const rows = await c.query(
+      `select id, name, area, seats, shape, x, y, w, h from tables
+        where tenant_id = $1 and store_id = $2 and deleted_at is null order by sort_order, name`,
+      [ctx.tenantId, store.id],
+    );
+    const all = rows.rows as FloorTable[];
+    const floors = [...new Set(all.map((t) => t.area))].sort((a, b) => a.localeCompare(b));
+    // the area that was asked for, as the store spells it; or the first; or a first one to draw
+    const floor = floors.find((f) => f.toLowerCase() === asked.toLowerCase()) ?? (asked || floors[0] || "Main");
+    const occupied = await c.query(
+      `select distinct table_id from tickets
+        where tenant_id = $1 and store_id = $2 and status = 'open' and deleted_at is null and table_id is not null`,
       [ctx.tenantId, store.id],
     );
     const may = await c.query(`select has_perm($1, 'settings.device') as ok`, [ctx.employeeId]);
-    return { stores: list, store, floors: floors.rows as Floor[], may: Boolean(may.rows[0]?.ok) && ctx.status === "active" };
+    return {
+      stores: list,
+      store,
+      floors,
+      floor,
+      tables: all.filter((t) => t.area === floor),
+      // a table's number is its own in the whole store
+      elsewhere: all.filter((t) => t.area !== floor).map((t) => t.name),
+      occupied: occupied.rows.map((r) => r.table_id as string),
+      may: Boolean(may.rows[0]?.ok) && ctx.status === "active",
+    };
   });
-  const plan = (floor: string) => `/backoffice/tables/plan?store=${data.store?.id}&floor=${encodeURIComponent(floor)}`;
   return (
     <div>
       <div className="page-head">
-        <h1>Floor plan</h1>
+        <div>
+          <h1>Floor plan</h1>
+          <p className="lede">Put the tables where they stand, area by area. The tablets seat guests on this plan.</p>
+        </div>
         {/* the cards guests scan to order from their table: a page of the premium tier */}
         {TABLE_ORDERING_LIVE && data.store && ctx.premium && (
           <Link className="btn-quiet" href={`/backoffice/tables/cards?store=${data.store.id}`}>
@@ -38,7 +63,6 @@ export default async function FloorPlansPage({ searchParams }: { searchParams: P
             <Wait />
           </Link>
         )}
-        {data.store && data.may && <NewFloor storeId={data.store.id} existing={data.floors.map((f) => f.name)} />}
       </div>
       {data.stores.length > 1 && (
         <p className="bo-chips">
@@ -50,36 +74,21 @@ export default async function FloorPlansPage({ searchParams }: { searchParams: P
           ))}
         </p>
       )}
-      <table>
-        <thead>
-          <tr>
-            <th>Floor name</th>
-            <th>Tables</th>
-            <th>Covers</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.floors.map((f) => (
-            <tr key={f.name}>
-              <td>
-                <Link href={plan(f.name)}>{f.name}</Link>
-              </td>
-              <td>{f.tables}</td>
-              <td>{f.covers}</td>
-              <td>
-                <Link className="btn-quiet" href={plan(f.name)}>
-                  {data.may ? "Edit" : "View"}
-                </Link>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {data.floors.length === 0 && (
-        <p className="muted">
-          {data.store ? "No floor plan yet. Add one, then add its tables; the tablets show it under Tables." : "This restaurant has no store yet."}
-        </p>
+      {data.store ? (
+        // another area is another plan: the designer starts afresh
+        <FloorDesigner
+          key={data.store.id + "/" + data.floor}
+          storeId={data.store.id}
+          floor={data.floor}
+          floors={data.floors}
+          initial={data.tables}
+          namesElsewhere={data.elsewhere}
+          occupied={data.occupied}
+          canEdit={data.may}
+          saved={data.floors.includes(data.floor)}
+        />
+      ) : (
+        <p className="muted">This restaurant has no store yet.</p>
       )}
     </div>
   );

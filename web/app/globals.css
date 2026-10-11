@@ -113,8 +113,11 @@
   --heat-4: #4f9a56;
   --heat-5: #2c6a31;
   --floor: #fbfaf6;
-  --floor-line: #ece8dc;
-  --floor-table: #475066;
+  --floor-line: #ece8dc;
+  --fd-table: #ffffff;
+  --fd-table-line: #33443a;
+  --fd-chair: #d9d5c8;
+  --fd-busy: #d9a520;
   /* waiting: a bar of the skeleton, the light that crosses it, the ring beside a link */
   --sk: rgba(22, 35, 28, 0.085);
   --sk-lit: rgba(22, 35, 28, 0.028);
@@ -241,8 +244,11 @@
     --heat-4: #62ab69;
     --heat-5: #9fd4a8;
     --floor: #15181d;
-    --floor-line: #1f232a;
-    --floor-table: #353b47;
+    --floor-line: #1f232a;
+    --fd-table: #2a2f38;
+    --fd-table-line: #5a6270;
+    --fd-chair: #3d434f;
+    --fd-busy: #f0b93a;
     --sk: rgba(255, 255, 255, 0.07);
     --sk-lit: rgba(255, 255, 255, 0.14);
     --wait-ring: rgba(255, 255, 255, 0.16);
@@ -327,8 +333,11 @@
     --heat-4: #62ab69;
     --heat-5: #9fd4a8;
     --floor: #15181d;
-    --floor-line: #1f232a;
-    --floor-table: #353b47;
+    --floor-line: #1f232a;
+    --fd-table: #2a2f38;
+    --fd-table-line: #5a6270;
+    --fd-chair: #3d434f;
+    --fd-busy: #f0b93a;
     --sk: rgba(255, 255, 255, 0.07);
     --sk-lit: rgba(255, 255, 255, 0.14);
     --wait-ring: rgba(255, 255, 255, 0.16);
@@ -909,37 +918,108 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 .shape.square { border-radius: 8px; }
 .shape.round { border-radius: 50%; }
 
-/* ---- floor plan ---- */
+/* ---- floor plan ----
+   The designer (tables/designer.tsx): the areas across the top, a bar of
+   tools, then the kinds of table on the left, the plan in the middle and
+   what is picked on the right. The plan is 100 by 60 units; a table's place
+   and size are percentages of it, so it is the same at any zoom. */
 
-.floor-card { padding: 0; }
-.floor-bar { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-.bo-main .floor-bar h2 { margin: 0; }
-.floor-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 264px; gap: 16px; align-items: start; padding: 16px; }
-/* the plan is 100 x 60 grid units; the faint lines are every 5 units */
-.floor-canvas {
-  position: relative; aspect-ratio: 100 / 60; overflow: hidden;
-  background-color: var(--floor);
+.fd { display: flex; flex-direction: column; gap: 14px; }
+.fd-areas { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fd-tabs { display: inline-flex; gap: 2px; padding: 4px; border-radius: 13px; background: var(--well); max-width: 100%; overflow-x: auto; }
+.bo-main .fd-tabs button { height: 34px; padding: 0 14px; min-height: 0; border: 0; border-radius: 10px; background: transparent; color: var(--ink2); font-size: 13.5px; font-weight: 500; box-shadow: none; white-space: nowrap; }
+.bo-main .fd-tabs button:hover { background: var(--glass-hover); color: var(--ink); }
+.bo-main .fd-tabs button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: var(--shadow-sm); }
+.fd-areas .btn-quiet svg, .fd-remove svg { width: 15px; height: 15px; }
+
+.fd-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-sm); }
+.fd-group { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--well); margin-right: 6px; }
+.bo-main .fd-group button, .bo-main .fd-key, .bo-main .fd-align button {
+  width: 34px; height: 34px; min-height: 0; padding: 0; display: grid; place-items: center; border: 0; border-radius: 8px;
+  background: transparent; color: var(--ink2); box-shadow: none;
+}
+.bo-main .fd-group button:hover, .bo-main .fd-key:hover:not(:disabled), .bo-main .fd-align button:hover { background: var(--bg); color: var(--ink); }
+.bo-main .fd-group button.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+.bo-main .fd-key:disabled { color: var(--faint); background: transparent; cursor: default; }
+.fd-rule { width: 1px; height: 22px; background: var(--line); margin: 0 6px; }
+.fd-zoom { min-width: 44px; text-align: center; font-size: 13px; font-weight: 600; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.bo-main .fd-toggle { height: 34px; min-height: 0; padding: 0 12px; display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 9px; background: transparent; color: var(--ink2); font-size: 13px; font-weight: 600; box-shadow: none; }
+.bo-main .fd-toggle:hover { background: var(--bg); color: var(--ink); }
+.bo-main .fd-toggle.on { background: var(--accent-soft); color: var(--accent); }
+.fd-saved { display: inline-flex; align-items: center; gap: 6px; padding: 0 6px; font-size: 13px; font-weight: 600; color: var(--accent); }
+.fd-saved svg { width: 15px; height: 15px; }
+.fd-note { font-size: 13px; margin-right: 8px; }
+
+.fd-body { display: grid; grid-template-columns: 148px minmax(0, 1fr) 240px; gap: 14px; align-items: start; }
+.fd-body.view { grid-template-columns: minmax(0, 1fr) 240px; }
+.fd-kinds, .fd-side { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; box-shadow: var(--shadow-sm); }
+.bo-main .fd-kinds h3 { margin: 0 0 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3); }
+.fd-kind-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.bo-main .fd-kind-list button {
+  height: auto; min-height: 0; padding: 12px 4px 9px; display: grid; justify-items: center; gap: 7px; white-space: normal; border: 1px solid var(--line); border-radius: 11px;
+  background: var(--surface-2); color: var(--ink); font-size: 11.5px; font-weight: 600; line-height: 1.2; box-shadow: none; cursor: grab;
+}
+.bo-main .fd-kind-list button:hover { background: var(--accent-soft-2); border-color: var(--accent-line); }
+.bo-main .fd-kind-list button svg { width: 22px; height: 22px; color: var(--accent); }
+.bo-main .fd-kind-list button svg.long { width: 30px; }
+.fd-kinds p { margin: 12px 0 0; font-size: 12px; line-height: 1.45; color: var(--ink3); }
+
+/* the plan sits on a sheet of its own; larger than the sheet, it scrolls */
+.fd-stage { overflow: auto; padding: 22px; background: var(--well); border: 1px solid var(--line); border-radius: 14px; max-height: calc(100vh - 250px); min-height: 320px; outline: none; }
+.fd-stage:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+.fd-stage.pan { cursor: grab; }
+.fd-stage.pan:active { cursor: grabbing; }
+.fd-plan {
+  position: relative; aspect-ratio: 100 / 60; margin: 0 auto; background-color: var(--floor);
+  border: 1px solid var(--line-strong); border-radius: 10px; touch-action: none; user-select: none;
+}
+/* a faint line every five units; a table snaps to every one */
+.fd-plan.grid {
   background-image: linear-gradient(var(--floor-line) 1px, transparent 1px), linear-gradient(90deg, var(--floor-line) 1px, transparent 1px);
   background-size: 5% 8.3333%;
-  border: 1px solid var(--line); border-radius: 10px;
-  touch-action: none; user-select: none;
 }
-.floor-table {
-  position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: var(--floor-table); color: #fff; border: 2px solid transparent; border-radius: 8px;
-  font-size: 14px; font-weight: 600; line-height: 1.3; cursor: grab; touch-action: none;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.2);
+.fd-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 0 24px; text-align: center; color: var(--ink3); }
+.fd-table {
+  position: absolute; display: grid; place-items: center; background: var(--fd-table); color: var(--ink);
+  border: 1.5px solid var(--fd-table-line); border-radius: 7px; font-size: 14px; font-weight: 600; cursor: grab;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
 }
-.floor-table.round { border-radius: 50%; }
-.floor-table.on { background: var(--accent-fill); border-color: #fff; box-shadow: 0 0 0 2px var(--accent-fill); z-index: 2; }
-.floor-table.busy { outline: 3px solid #e2b23a; }
-.floor-table small { font-size: 12px; font-weight: 500; opacity: 0.9; }
-.floor-table small svg { width: 13px; height: 13px; fill: currentColor; vertical-align: -2px; margin-right: 4px; }
-.floor-handle { position: absolute; right: -3px; bottom: -3px; width: 14px; height: 14px; background: #fff; border: 2px solid var(--accent); border-radius: 4px; cursor: nwse-resize; }
-.floor-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--ink3); }
-.floor-panel { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
-.floor-panel label { display: block; font-size: 12px; font-weight: 600; color: var(--ink2); margin-bottom: 12px; }
-.floor-panel label input, .floor-panel label select { display: block; width: 100%; margin-top: 5px; font-weight: 400; }
+.fd-stage.pan .fd-table { cursor: inherit; }
+.fd-table.round { border-radius: 50%; }
+.fd-table.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); z-index: 2; }
+.fd-table.busy { border-color: var(--fd-busy); }
+.fd-table strong { font-weight: 600; pointer-events: none; }
+/* a chair: a small bar just off the table's edge */
+.fd-table > i { position: absolute; width: 14px; height: 5px; border-radius: 3px; background: var(--fd-chair); pointer-events: none; }
+.fd-handle { position: absolute; right: -7px; bottom: -7px; width: 14px; height: 14px; background: var(--surface); border: 2px solid var(--accent); border-radius: 50%; cursor: nwse-resize; }
+
+.fd-side header { display: grid; gap: 2px; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+.fd-side header b { font-size: 15px; font-weight: 650; }
+.fd-side header small { font-size: 12.5px; color: var(--ink3); }
+.fd-side label { display: block; font-size: 12px; font-weight: 600; color: var(--ink2); margin-bottom: 12px; }
+.fd-side label input, .fd-side label select { display: block; width: 100%; margin-top: 5px; font-weight: 400; }
+.fd-size { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.bo-main button.fd-remove { color: var(--red); }
+.fd-side .fd-remove { width: 100%; justify-content: center; }
+.fd-many { margin: 0 0 12px; font-size: 13px; color: var(--ink2); }
+.fd-align { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; padding: 3px; margin-bottom: 12px; border-radius: 10px; background: var(--well); }
+.bo-main .fd-align button { width: auto; }
+.fd-tips { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; font-size: 12.5px; line-height: 1.45; color: var(--ink2); }
+.fd-tips li { padding-left: 14px; position: relative; }
+.fd-tips li::before { content: ""; position: absolute; left: 0; top: 7px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+
+.fd-templates { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 0 16px; }
+.bo-main .fd-templates button {
+  height: auto; min-height: 0; padding: 12px; display: grid; gap: 4px; justify-items: start; text-align: left; white-space: normal; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface-2); color: var(--ink); box-shadow: none; font-weight: 400;
+}
+.bo-main .fd-templates button:hover { border-color: var(--accent-line); background: var(--accent-soft-2); }
+.fd-templates b { font-size: 13.5px; font-weight: 650; }
+.fd-templates small { font-size: 12px; color: var(--ink3); }
+.fd-mini { position: relative; display: block; width: 100%; aspect-ratio: 100 / 60; margin-bottom: 8px; background: var(--floor); border: 1px solid var(--line); border-radius: 8px; }
+.fd-mini i { position: absolute; background: var(--fd-table); border: 1px solid var(--fd-table-line); border-radius: 2px; }
+.fd-mini i.round { border-radius: 50%; }
+.modal-foot .spacer { flex: 1; }
 
 /* ---- dashboard ---- */
 
@@ -1304,7 +1384,7 @@ a.till:hover .till-go { border-color: var(--accent); color: var(--accent); }
   .bo-nav { -webkit-mask-image: none; mask-image: none; padding-bottom: 12px; }
   .bo-nav { overflow: visible; }
   .bo-main { padding: 20px 4px 40px; }
-  .floor-wrap, .grid-2, .grid-3, .form-row, .tills { grid-template-columns: 1fr; }
+  .fd-body, .fd-body.view, .grid-2, .grid-3, .form-row, .tills { grid-template-columns: 1fr; }
   .kpis, .kpis.six, .stats, .stats.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dash-split { grid-template-columns: 1fr; }
   .bo-main .home-head h1 { font-size: 30px; }

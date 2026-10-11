@@ -113,7 +113,7 @@ export async function POST(request: Request) {
       ).map((r) => ({
         title: r.name,
         sub: [r.area, r.seats ? `${r.seats} seats` : null].filter(Boolean).join(" · "),
-        href: r.area ? `/backoffice/tables/plan?floor=${encodeURIComponent(r.area)}` : "/backoffice/tables",
+        href: r.area ? `/backoffice/tables?floor=${encodeURIComponent(r.area)}` : "/backoffice/tables",
       })),
     );
 
