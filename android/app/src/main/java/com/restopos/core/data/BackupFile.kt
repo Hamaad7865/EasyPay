@@ -26,7 +26,8 @@ object BackupFile {
     // What the backup is of. database: the version of the till's database it holds.
     @Serializable
     data class Note(
-        val kind: String = KIND,
+        // what kind of file this is: written with every backup, and a file whose note does not say it is turned away
+        val kind: String = "",
         val madeAt: Long,
         val app: String,
         val database: Int,
@@ -38,7 +39,7 @@ object BackupFile {
 
     class NotABackup(message: String) : Exception(message)
 
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     // The backup's name: "EasyPay backup Chez Aisha 2026-10-11.easypay"
     fun name(business: String, day: String): String =
@@ -48,7 +49,7 @@ object BackupFile {
     fun write(note: Note, files: Map<String, File>, out: OutputStream) {
         ZipOutputStream(out).use { zip ->
             zip.putNextEntry(ZipEntry(NOTE))
-            zip.write(json.encodeToString(Note.serializer(), note).toByteArray())
+            zip.write(json.encodeToString(Note.serializer(), note.copy(kind = KIND)).toByteArray())
             zip.closeEntry()
             for ((name, file) in files) {
                 if (!file.isFile) continue

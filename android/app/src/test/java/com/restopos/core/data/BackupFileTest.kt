@@ -30,7 +30,7 @@ class BackupFileTest {
         val zip = written(mapOf("till.db" to db, "till.db-wal" to File(tmp.root, "not-there"), "device.preferences_pb" to prefs))
         val into = tmp.newFolder("restore")
         val read = BackupFile.read(ByteArrayInputStream(zip), into, wanted)
-        assertEquals(note, read)
+        assertEquals(note.copy(kind = BackupFile.KIND), read)
         assertTrue(File(into, "till.db").readBytes().contentEquals(db.readBytes()))
         assertEquals("who this till is", File(into, "device.preferences_pb").readText())
         // a file that was not there when the backup was made is simply not in it
@@ -44,6 +44,11 @@ class BackupFileTest {
         // a zip, with no note of ours in it
         val other = ByteArrayOutputStream().also { out -> ZipOutputStream(out).use { z -> z.putNextEntry(ZipEntry("till.db")); z.write(ByteArray(10)); z.closeEntry() } }.toByteArray()
         assertEquals("That file is not an EasyPay backup.", runCatching { BackupFile.read(ByteArrayInputStream(other), tmp.newFolder("r2"), wanted) }.exceptionOrNull()?.message)
+        // a note that does not say what it is
+        val silent = ByteArrayOutputStream().also { out ->
+            ZipOutputStream(out).use { z -> z.putNextEntry(ZipEntry(BackupFile.NOTE)); z.write("""{"madeAt":1,"app":"x","database":3}""".toByteArray()); z.closeEntry() }
+        }.toByteArray()
+        assertEquals("That file is not an EasyPay backup.", runCatching { BackupFile.read(ByteArrayInputStream(silent), tmp.newFolder("r5"), wanted) }.exceptionOrNull()?.message)
         // a note that says it is something else
         val foreign = ByteArrayOutputStream().also { out ->
             ZipOutputStream(out).use { z -> z.putNextEntry(ZipEntry(BackupFile.NOTE)); z.write("""{"kind":"something-else","madeAt":1,"app":"x","database":3}""".toByteArray()); z.closeEntry() }
