@@ -326,29 +326,65 @@ months of sales, not on production.
 
 Not asked through the API: what a login is refused (it needs a login). Not run: the owner's own
 emulator session (Testing sheik, 32 kept changes) was left alone.
-
-## 11. Record: the floor plan on the tablet (2026-10-11, afternoon)
-
-The owner: "we should have an option in the offline mode to edit tables, move them edit, make them
-bigger like floor designer". Section 7 listed "tables renamed/moved/removed" as not built. Built:
-
-- Server **0101** (dev only): `floor.save` (one room as the plan holds it: tables written as they
-  stand, the ones taken off removed, no other room touched; the whole room, so safe to send twice),
-  `room.rename`, `room.remove`. The rules are the back office's own (`saveFloor`, `renameFloor`,
-  `deleteFloor`). Suite `till-floor`, 48 checks; examples in `db/tests/fixtures/till-floor`.
-- Tablet: `core/data/FloorPlan` (the plan while it is changed, and what is sent), the three answered
-  alone in `LocalAnswers`, `feature/floor/FloorEditor.kt`. On Tables, **Edit plan** (only where the
-  tablet works on its own: a linked till's editor is the back office, and a whole room saved from a
-  till that had not synced would undo what was drawn there). One change a Save, never one a drag.
-- Decided here, not by the owner: a table with an open order cannot be removed on the tablet, nor a
-  room that holds one (the back office allows it and leaves the order without a table); the plan
-  being changed is kept by the view model, so an order opened meanwhile does not lose it; today's
-  shapes only (square, round, any width and depth): no turning, no walls, no booths.
-- Seen on an emulator with its window (made-up restaurant on the offline plan, 1280 x 800): a table
-  dragged, sized by its corner, two added at once, Save, the Tables screen showing the new plan; a
-  table with an open order refused; a room added, a table saved in it, the room renamed, then
-  removed. The queue read off it (13 changes, with two `floor.save`, `room.rename`, `room.remove`)
-  replayed against dev: every one taken, and the 7 tables the same on both, each where the till has
-  it (`read-till-state.cjs` now reads the tables, `replay-demo-outbox.cjs` compares them).
-- Not seen: on a real tablet; a manager's PIN asked for by someone who may not change settings; the
-  keyboard over the table-number box on a real tablet; Connect to the cloud with floor changes kept.
+
+## 11. Record: the floor plan on the tablet (2026-10-11, afternoon)
+
+The owner: "we should have an option in the offline mode to edit tables, move them edit, make them
+bigger like floor designer". Section 7 listed "tables renamed/moved/removed" as not built. Built:
+
+- Server **0101** (dev only): `floor.save` (one room as the plan holds it: tables written as they
+  stand, the ones taken off removed, no other room touched; the whole room, so safe to send twice),
+  `room.rename`, `room.remove`. The rules are the back office's own (`saveFloor`, `renameFloor`,
+  `deleteFloor`). Suite `till-floor`, 48 checks; examples in `db/tests/fixtures/till-floor`.
+- Tablet: `core/data/FloorPlan` (the plan while it is changed, and what is sent), the three answered
+  alone in `LocalAnswers`, `feature/floor/FloorEditor.kt`. On Tables, **Edit plan** (only where the
+  tablet works on its own: a linked till's editor is the back office, and a whole room saved from a
+  till that had not synced would undo what was drawn there). One change a Save, never one a drag.
+- Decided here, not by the owner: a table with an open order cannot be removed on the tablet, nor a
+  room that holds one (the back office allows it and leaves the order without a table); the plan
+  being changed is kept by the view model, so an order opened meanwhile does not lose it; today's
+  shapes only (square, round, any width and depth): no turning, no walls, no booths.
+- Seen on an emulator with its window (made-up restaurant on the offline plan, 1280 x 800): a table
+  dragged, sized by its corner, two added at once, Save, the Tables screen showing the new plan; a
+  table with an open order refused; a room added, a table saved in it, the room renamed, then
+  removed. The queue read off it (13 changes, with two `floor.save`, `room.rename`, `room.remove`)
+  replayed against dev: every one taken, and the 7 tables the same on both, each where the till has
+  it (`read-till-state.cjs` now reads the tables, `replay-demo-outbox.cjs` compares them).
+- Not seen: on a real tablet; a manager's PIN asked for by someone who may not change settings; the
+  keyboard over the table-number box on a real tablet; Connect to the cloud with floor changes kept.
+
+## 12. Record: EasyPay sets an offline business up, and the tablet fetches it (2026-10-11, evening)
+
+The owner: "I should be able to login to an offline plan client to make changes in the back office
+to reflect like the set up his onboarding", and, asked how: "in the superadmin, there should be a
+login to back office button". Also that evening: Save a backup stopped the till on their tablet, and
+"an offline tablet should be able to receive updates".
+
+- **/admin, "Login to back office"** (`0be7877`), on an offline client's page only. It writes
+  `backoffice.open` in the audit list and leaves the cookie `easypay-as` (the client's id, sent to
+  `/backoffice` only, eight hours). `adminInside` in `web/lib/tenant.ts` is asked on every page and
+  every save: the login must be a platform admin and the client on the offline plan, and the admin
+  stands in for the employee whose role holds `*`. The client's own login is still kept out. Suite
+  `admin-inside`, 19 checks. Decided here: other plans are not opened this way.
+- **The tablet, "Get changes from EasyPay"** (`a6a1748`), Settings, Support, beside Connect to the
+  cloud. Both run the one pull marked CONNECT, when tapped and never by themselves. What the server
+  sends replaces the tablet's row of the same thing, except (`core/sync/Fetched`, `OwnSettings`):
+  the tablet's count of its stock and its average cost; the settings it changed itself and has not
+  sent, now by the kind that wrote them (`OwnSettings.WRITES`); and, if the server's tables are
+  rewritten, nothing is emptied on a tablet that works on its own.
+- **Known and left:** a product, a table or a member of staff changed on the tablet AND in the back
+  office: the back office's lands on the tablet at the next fetch, and the day the business is made
+  Premium the tablet's kept change goes up and writes over the back office's. A kept change that
+  writes a new key into the settings must be added to `OwnSettings.WRITES` by hand: the test in
+  `LocalAnswersTest` only runs the three kinds it knows.
+- **Save a backup** (`405e215`): asking Android for its "save where?" screen threw on a tablet that
+  has none, and nothing caught it (the registry's `launch` rethrows; read in activity 1.11.0). The
+  tap is caught, and such a tablet keeps the file in Download/EasyPay (Android 10 on) or in
+  `Android/data/com.restopos.app/files/Backups`. Restore falls back to the older way of asking, then
+  to that folder.
+- **The key by the clock** (`39432fb`) on a tablet that works on its own says "up to date" or "could
+  not be reached" instead of only "works on its own". An offline tablet was always offered a newer
+  build (`GET /health`, no login, no database); nothing was built per plan.
+- **Not seen by anyone:** any of it on a tablet or an emulator (the two running were in use, and the
+  PC had no memory left for a third); a fetch against a server; the button in a browser; the crash
+  itself, whose note is still on the owner's tablet and goes up with that tablet's first fetch.
