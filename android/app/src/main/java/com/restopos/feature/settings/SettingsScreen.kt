@@ -346,6 +346,14 @@ class SettingsViewModel @Inject constructor(
     private fun ids(text: String): List<String> =
         runCatching { Json.parseToJsonElement(text).jsonArray.map { it.jsonPrimitive.content } }.getOrDefault(emptyList())
 
+    // A printer added or changed on this tablet (Add a printer, the set-up) shows at once: the page is loaded again.
+    init {
+        viewModelScope.launch {
+            val store = session.storeId() ?: return@launch
+            db.ops().printersFlow(store).collect { load() }
+        }
+    }
+
     fun load() = viewModelScope.launch {
         val store = session.storeId()?.let { db.catalog().store(it) }
         val device = session.deviceId()?.let { db.catalog().device(it) }

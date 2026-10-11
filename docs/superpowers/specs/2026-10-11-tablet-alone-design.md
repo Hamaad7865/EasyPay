@@ -182,11 +182,43 @@ checks. The till's database is 18. 474 unit tests, 39 of them of the tablet's ow
 | Staff changed or switched off, roles and permissions, discounts | done |
 | Add-ons, variants, the receipt's notes, the service charge | done |
 | Backup to a file, and a tablet filled from one | done |
-| Which printer a category prints on (a kitchen printer beside the counter's) | **not built**: one printer for everything works |
+| A second printer, and which printer a category prints on | done (section 8) |
 | A table renamed, moved or removed after it was added | **not built**: rooms and tables can be added |
 | Order types (their names, which go to the kitchen) | **not built**: the ones a new client is given |
 | The receipt's logo | **not built** |
 | Products from a file | **not built** |
 | A shop's purchase orders, deliveries and counts | **not built** (their rules are; their screens say "Coming with the next build") |
 | An EasyPay barcode made for a new product | **not built** offline: made when the product reaches the server |
+
+## 8. Record, the last of the night: a kitchen printer, and four checks
+
+**A second printer, and which categories print on it** (migration 0098, on dev only; suite
+`till-office` 108 checks; 475 unit tests). Settings > Printers has Add a printer; a category's sheet,
+in a restaurant, ticks the printers its orders print on. Seen on the hidden emulator, the restaurant
+alone: the counter's printer set not to take kitchen orders, a second printer added, one category
+ticked for it, an order sent: **the kitchen order printed on the second printer and nothing on the
+first** (two stand-in printers on this PC). The tablet's 8 changes replayed against dev: every one
+taken.
+
+**Checked before the morning**
+
+- **The dev database takes the plan `offline`**: no rule on the column names the plans, /admin hands
+  the word to `platform.set_tenant_plan` as typed, and a client made on it in a transaction that was
+  rolled back had no Premium and was told `offline` in the settings a till pulls.
+- **An old sale is not refused for being old.** `push_receipt_create`, `push_shift_open`,
+  `push_shift_close` and `push_ticket_create` read a sale's own time and compare it with nothing: a
+  queue kept for months is taken as one kept for minutes.
+- **A tablet with no key can sign in to be connected.** The key is not in a backup, so a tablet
+  filled from one has none; Connect to the cloud was asked to sign in and kept it to itself. It says
+  so now, and This till and Support show Sign in. Not run: it needs a real login.
+- **All of the night's commits are this session's**, and migrations 0094 to 0098 and the till's
+  database versions 17 and 18 were not taken by anyone else meanwhile.
+
+**A risk at the moment of connecting, known and not yet closed.** Connect to the cloud pulls before
+it pushes. The owner's change of plan rewrote the client's settings on the server, so for the few
+seconds until the queue has gone up and come back, the tablet shows the server's old copy of what it
+had changed while alone in those settings: the business's details, the receipt's notes, the service
+charge, the one-printer switch. They come back with the queue. If the server refused one of those
+changes, that one would be lost. Pushing before applying what was pulled closes it; it is the first
+thing to do before this is used by a paying client.
 
