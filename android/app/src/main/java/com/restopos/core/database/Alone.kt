@@ -67,6 +67,15 @@ interface AloneDao {
     @Query("SELECT number FROM purchase_orders") suspend fun orderNumbers(): List<String>
     @Query("SELECT number FROM deliveries") suspend fun deliveryNumbers(): List<String>
 
+    // ---- counts of the shelves (server 0074, 0092) ----
+    @Query("SELECT * FROM stock_counts WHERE id = :id") suspend fun count(id: String): StockCountEntity?
+    @Upsert suspend fun putCount(row: StockCountEntity)
+    @Query("SELECT * FROM stock_count_lines WHERE count_id = :count") suspend fun countLines(count: String): List<StockCountLineEntity>
+    @Query("DELETE FROM stock_count_lines WHERE count_id = :count") suspend fun dropCountLines(count: String)
+    @Upsert suspend fun putCountLines(rows: List<StockCountLineEntity>)
+    // a count this tablet began has no number until it is completed
+    @Query("SELECT number FROM stock_counts WHERE number IS NOT NULL") suspend fun countNumbers(): List<String>
+
     // ---- tables ----
     @Query("SELECT * FROM tables WHERE store_id = :store AND deleted_at IS NULL") suspend fun tables(store: String): List<TableEntity>
     // any table of that id: another store's, or one that was removed

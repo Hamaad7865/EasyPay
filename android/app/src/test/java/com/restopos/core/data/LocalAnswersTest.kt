@@ -89,6 +89,16 @@ class FakeAlone : AloneDao {
     override suspend fun putDeliveryLines(rows: List<com.restopos.core.database.DeliveryLineEntity>) { deliveryLines += rows }
     override suspend fun orderNumbers() = orders.values.map { it.number }
     override suspend fun deliveryNumbers() = deliveries.values.map { it.number }
+    val counts = LinkedHashMap<String, com.restopos.core.database.StockCountEntity>()
+    val countLines = ArrayList<com.restopos.core.database.StockCountLineEntity>()
+    override suspend fun count(id: String) = counts[id]
+    override suspend fun putCount(row: com.restopos.core.database.StockCountEntity) { counts[row.id] = row }
+    override suspend fun countLines(count: String) = countLines.filter { it.count_id == count }
+    override suspend fun dropCountLines(count: String) { countLines.removeAll { it.count_id == count } }
+    override suspend fun putCountLines(rows: List<com.restopos.core.database.StockCountLineEntity>) {
+        rows.forEach { r -> countLines.removeAll { it.count_id == r.count_id && it.item_id == r.item_id && it.variant_id == r.variant_id }; countLines += r }
+    }
+    override suspend fun countNumbers() = counts.values.mapNotNull { it.number }
     override suspend fun tables(store: String) = tables.values.filter { it.store_id == store && it.deleted_at == null }
     override suspend fun table(id: String) = tables[id]
     val elements = LinkedHashMap<String, com.restopos.core.database.FloorElementEntity>()
@@ -627,8 +637,9 @@ class LocalAnswersTest {
     private val order = id(300); private val delivery = id(310)
     private val stockIds get() = mapOf(
         "order-1" to order, "delivery-1" to delivery, "store-1" to store, "supplier-1" to sup,
-        "item-plain" to plain, "item-sized" to sized, "variant-s" to small,
+        "item-plain" to plain, "item-sized" to sized, "variant-s" to small, "variant-m" to medium, "count-1" to count,
     )
+    private val medium = id(115); private val count = id(320)
     private fun stockFixture(name: String): JsonObject {
         var text = StockFixtures.payload(name).toString()
         stockIds.forEach { (k, v) -> text = text.replace("\"$k\"", "\"$v\"") }
@@ -769,8 +780,84 @@ class LocalAnswersTest {
         assertEquals(3, dao.movements.size)
     }
 
-    @Test fun `the tablet can answer an order and a delivery by itself`() {
-        assertTrue(listOf("po.save", "po.send", "po.cancel", "po.close", "delivery.receive").all { local.answers(it) })
+    @Test fun `the tablet can answer an order, a delivery and a count by itself`() {
+        assertTrue(listOf("po.save", "po.send", "po.cancel", "po.close", "delivery.receive", "count.complete").all { local.answers(it) })
+    }
+
+    // ---- a count of the shelves (the server's count_from_till and count_complete, 0074 and 0092) ----
+    private fun counting(lines: String, uncounted: String = "leave", kind: String = "all", scope: String = "", text: String = "", at: String = store, ahead: Long = 0) =
+        """{"id":"$count","store_id":"$at","scope_kind":"$kind","scope_id":"$scope","scope_text":"$text","started_at":"2026-10-10T08:00:00Z","clock_ahead_ms":$ahead,"uncounted":"$uncounted","lines":[$lines]}"""
+    private fun tally(item: String, variant: String, n: Int?, out: Boolean = false) =
+        """{"item_id":"$item","variant_id":"$variant","counted":${n ?: "null"},"counted_at":${if (n == null) "null" else "\"2026-10-10T08:05:00Z\""},"left_out":$out}"""
+    private fun level(item: String, variant: String = "") = dao.levels["$store/$item/$variant"]
+
+    @Test fun `a count completed, as the server's example`() {
+        shelves()
+        dao.variants += ItemVariantEntity(medium, tenant, sized, "M", 49900)
+        dao.levels["$store/$plain/"] = StockLevelEntity(store, plain, "", qty = 10000, avg_cost = 4000.0)
+        dao.levels["$store/$sized/$small"] = StockLevelEntity(store, sized, small, qty = 3000, avg_cost = 18000.0)
+        // soap counted 9 where the tablet holds 10; the small shirts not counted and left as they are; the medium left out
+        assertEquals("done", ask("count.complete", stockFixture("count-complete")))
+        val c = dao.counts[count]!!
+        assertEquals(listOf("C-0001", "completed", "all", null, "The whole shop", "leave", owner, clock), listOf(c.number, c.status, c.scope_kind, c.scope_id, c.title, c.uncounted, c.completed_by, c.completed_at))
+        assertEquals(9000, level(plain)!!.qty)
+        assertEquals(3000, level(sized, small)!!.qty)
+        val m = dao.movements.single()
+        assertEquals(listOf(plain, "", -1000, "count", 4000.0, "count", count, owner), listOf(m.item_id, m.variant_id, m.qty, m.reason, m.unit_cost, m.ref_type, m.ref_id, m.employee_id))
+        val lines = dao.countLines.associateBy { it.item_id to it.variant_id }
+        assertEquals(listOf<Any?>(9000, 10000, -1000, 4000.0, false), lines[plain to ""]!!.let { listOf(it.counted, it.expected, it.diff, it.unit_cost, it.left_out) })
+        assertEquals(listOf<Any?>(null, 3000, null, false), lines[sized to small]!!.let { listOf(it.counted, it.expected, it.diff, it.left_out) })
+        assertEquals(true, lines[sized to medium]!!.left_out)
+        // sent again after a lost answer: it was completed the first time
+        assertEquals("done", ask("count.complete", stockFixture("count-complete")))
+        assertEquals(listOf(9000, 1), listOf(level(plain)!!.qty, dao.movements.size))
+    }
+
+    @Test fun `a sale after a line was counted is no difference, and what was not counted can be set to nothing`() {
+        shelves()
+        // the tablet's own open count of Clothing: the soap was counted 9 when the tablet held 10, and one was sold since
+        dao.counts[count] = com.restopos.core.database.StockCountEntity(count, store, null, "category", scope_id = cat, title = "Clothing", status = "open", started_by = owner, created_at = 1)
+        dao.countLines += com.restopos.core.database.StockCountLineEntity(count, plain, "", 9000, 5, expected = 10000)
+        dao.levels["$store/$plain/"] = StockLevelEntity(store, plain, "", qty = 9000, avg_cost = 4000.0)
+        dao.levels["$store/$sized/$small"] = StockLevelEntity(store, sized, small, qty = 3000)
+        dao.levels["$store/$sized/$large"] = StockLevelEntity(store, sized, large, qty = 2000)
+        val sent = counting(tally(plain, "", 9000) + "," + tally(sized, small, null) + "," + tally(sized, large, null, out = true), uncounted = "zero", kind = "category", scope = cat)
+        assertEquals("done", ask("count.complete", sent))
+        // one short when it was counted, and the one sold since stays sold: 8 now
+        assertEquals(8000, level(plain)!!.qty)
+        // not counted, and set to nothing; left out, and left alone
+        assertEquals(listOf(0, 2000), listOf(level(sized, small)!!.qty, level(sized, large)!!.qty))
+        val lines = dao.countLines.associateBy { it.item_id to it.variant_id }
+        assertEquals(listOf<Any?>(9000, 10000, -1000), lines[plain to ""]!!.let { listOf(it.counted, it.expected, it.diff) })
+        assertEquals(listOf<Any?>(0, 3000, -3000), lines[sized to small]!!.let { listOf(it.counted, it.expected, it.diff) })
+        assertEquals(listOf(-1000, -3000), dao.movements.map { it.qty })
+        val c = dao.counts[count]!!
+        assertEquals(listOf("C-0001", "completed", "category", cat, "Clothing", "zero", owner), listOf(c.number, c.status, c.scope_kind, c.scope_id, c.title, c.uncounted, c.started_by))
+    }
+
+    @Test fun `what a count is refused for`() {
+        shelves()
+        val soap = tally(plain, "", 1000)
+        assertEquals("bad-scope", ask("count.complete", counting(soap, kind = "shelf")))
+        assertEquals("bad-scope", ask("count.complete", counting(soap, kind = "category", scope = id(29))))
+        assertEquals("bad-scope", ask("count.complete", counting(soap, kind = "brand", text = "  ")))
+        assertEquals("unknown-store", ask("count.complete", counting(soap, at = otherStore)))
+        assertEquals("bad-uncounted", ask("count.complete", counting(soap, uncounted = "guess")))
+        assertEquals("nothing-to-count", ask("count.complete", counting("")))
+        assertEquals("bad-payload", ask("count.complete", counting(soap, ahead = 90_000_000)))
+        assertEquals("bad-quantity", ask("count.complete", counting(tally(plain, "", -1))))
+        assertEquals("bad-quantity", ask("count.complete", counting("""{"item_id":"$plain","variant_id":"","counted":1000,"counted_at":null,"left_out":false}""")))
+        assertEquals("unknown-item", ask("count.complete", counting(tally(id(199), "", 1000))))
+        assertEquals("not-counted", ask("count.complete", counting(tally(fee, "", 1000))))
+        assertEquals("pick-variant", ask("count.complete", counting(tally(sized, "", 1000))))
+        assertEquals("unknown-line", ask("count.complete", counting(tally(sized, id(198), 1000))))
+        // a line that is left out is not checked, and one whose product is gone is not written: with only those there is nothing
+        assertEquals("nothing-to-count", ask("count.complete", counting(tally(id(199), "", null, out = true))))
+        assertTrue(dao.counts.isEmpty() && dao.countLines.isEmpty() && dao.movements.isEmpty())
+        // a brand's count is called by the brand
+        assertEquals("done", ask("count.complete", counting(soap + "," + tally(id(199), "", null, out = true), kind = "brand", text = " Maison ")))
+        assertEquals(listOf("Maison", "Maison", null), dao.counts[count]!!.let { listOf(it.title, it.scope_text, it.scope_id) })
+        assertEquals(1, dao.countLines.size)
     }
 
     // ---- roles, staff, discounts (the server's 0095, sections S and D of its suite) ----
@@ -1043,9 +1130,9 @@ class LocalAnswersTest {
     }
 
     @Test fun `a change this tablet cannot answer by itself says so`() {
-        // a count is completed as one change, which the tablet does not answer yet (orders and deliveries it does)
-        assertEquals("not-alone", ask("count.complete", "{}"))
-        assertFalse(local.answers("count.complete"))
+        // a booking belongs to Premium, which is the cloud: nothing of it is answered on a tablet that works on its own
+        assertEquals("not-alone", ask("booking.upsert", "{}"))
+        assertFalse(local.answers("booking.upsert"))
         assertTrue(local.answers("item.save") && local.answers("tax.save") && local.answers("tables.add"))
     }
 

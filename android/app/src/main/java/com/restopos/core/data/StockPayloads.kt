@@ -39,6 +39,30 @@ object StockPayloads {
     // po.send, po.cancel and po.close carry the same: which order.
     fun poState(id: String, approvedBy: String?): JsonObject = buildJsonObject { put("id", id) }.approved(approvedBy)
 
+    // count.complete: a count as the tablet kept it, with exactly its lines.
+    // A moment goes as the tablet's clock says it ("2026-10-10T08:05:00Z"),
+    // with how far that clock is ahead of the server's beside it; a line
+    // nobody counted says so with nulls.
+    fun countComplete(
+        id: String, store: String, kind: String, scopeId: String?, scopeText: String?, startedAt: Long, clockAheadMs: Long,
+        uncounted: String, lines: List<CountBook.Line>, approvedBy: String?,
+    ): JsonObject = buildJsonObject {
+        fun moment(ms: Long) = java.time.Instant.ofEpochMilli(ms).toString()
+        put("id", id); put("store_id", store); put("scope_kind", kind); put("scope_id", scopeId.orEmpty()); put("scope_text", scopeText.orEmpty())
+        put("started_at", moment(startedAt)); put("clock_ahead_ms", clockAheadMs); put("uncounted", uncounted)
+        put("lines", buildJsonArray {
+            lines.forEach { l ->
+                add(buildJsonObject {
+                    put("item_id", l.item); put("variant_id", l.variant)
+                    val at = l.countedAt
+                    if (l.counted != null && at != null) { put("counted", l.counted); put("counted_at", moment(at)) }
+                    else { put("counted", kotlinx.serialization.json.JsonNull); put("counted_at", kotlinx.serialization.json.JsonNull) }
+                    put("left_out", l.leftOut)
+                })
+            }
+        })
+    }.approved(approvedBy)
+
     // delivery.receive. With an order the supplier is the order's, and none is sent.
     fun deliveryReceive(d: DeliveryForm.Delivery, store: String, approvedBy: String?): JsonObject = buildJsonObject {
         put("id", d.id); put("store_id", store); put("order_id", d.order.orEmpty()); put("supplier_id", if (d.order != null) "" else d.supplier.orEmpty())

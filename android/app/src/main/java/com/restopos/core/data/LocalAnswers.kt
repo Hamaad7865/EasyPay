@@ -14,6 +14,8 @@ import com.restopos.core.database.PrinterEntity
 import com.restopos.core.database.PurchaseOrderEntity
 import com.restopos.core.database.PurchaseOrderLineEntity
 import com.restopos.core.database.SettingsEntity
+import com.restopos.core.database.StockCountEntity
+import com.restopos.core.database.StockCountLineEntity
 import com.restopos.core.database.StockLevelEntity
 import com.restopos.core.database.StockMovementEntity
 import com.restopos.core.database.SupplierEntity
@@ -93,6 +95,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             "po.cancel" -> poState(p, "cancel")
             "po.close" -> poState(p, "close")
             "delivery.receive" -> deliveryReceive(p, employee)
+            "count.complete" -> countComplete(p, employee)
             "role.save" -> roleSave(p, tenant)
             "role.remove" -> roleRemove(p)
             "staff.update" -> staffUpdate(p)
@@ -722,6 +725,85 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         dao.putMovement(StockMovementEntity(newId(), store, l.item, l.variant, l.qty, "receive", unit_cost = l.cost.toDouble(), ref_type = "delivery", ref_id = delivery, employee_id = employee, created_at = at))
     }
 
+    // ---- push_count_complete: count_from_till, count_complete (0074, 0092) ----
+    // A count as the tablet kept it, completed as one change: exactly the
+    // lines given. A line that was counted is set to its figure against what
+    // the tablet held of it WHEN it was counted (kept in its row while the
+    // count was open), so what was sold after someone counted the shelf stays
+    // sold: the server reaches the same figure by adding up what moved since.
+    // A line nobody counted is left as it is or set to nothing, as chosen; a
+    // line left out is neither. Sent again, it was completed the first time.
+    private suspend fun countComplete(p: JsonObject, employee: String?) {
+        val id = p.id("id"); val store = p.id("store_id")
+        val scope = maybeId(p, "scope_id")
+        val ahead = p.long("clock_ahead_ms") ?: 0L
+        // a clock more than a day out is not a clock to set anything right by
+        if (ahead > 86_400_000L || ahead < -86_400_000L) bad()
+        val was = dao.count(id)
+        if (was != null && was.status != "open") return
+        val kind = p.str("scope_kind")?.takeIf { it in setOf("all", "category", "supplier", "brand") } ?: throw Refused("bad-scope")
+        if (store !in dao.storeIds()) throw Refused("unknown-store")
+        val uncounted = p.str("uncounted")?.takeIf { it == "leave" || it == "zero" } ?: throw Refused("bad-uncounted")
+        val title = when (kind) {
+            "all" -> "The whole shop"
+            "category" -> scope?.let { dao.category(it)?.name }
+            "supplier" -> scope?.let { dao.supplier(it)?.name }
+            else -> (p.str("scope_text") ?: "").trim().take(120).ifEmpty { null }
+        } ?: throw Refused("bad-scope")
+        val rows = (p["lines"] as? JsonArray)?.takeIf { it.isNotEmpty() } ?: throw Refused("nothing-to-count")
+
+        class Sent(val item: String, val variant: String, val counted: Int?, val at: Long?, val out: Boolean)
+        val sent = ArrayList<Sent>()
+        for (row in rows) {
+            val l = (row as? JsonObject) ?: bad()
+            val item = l.id("item_id")
+            val variant = l.str("variant_id") ?: ""
+            if (variant.isNotEmpty() && !UUID.matches(variant)) bad()
+            val out = l.bool("left_out") ?: false
+            val counted = l.long("counted")
+            val at = l.str("counted_at")?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() ?: bad() }
+            if (counted != null && (counted < 0 || counted > Int.MAX_VALUE || at == null)) throw Refused("bad-quantity")
+            if (out) {
+                // left out: not checked, and a product or a variant that is gone is not written at all
+                val there = dao.item(item)?.let { it.deleted_at == null } == true && (variant.isEmpty() || dao.variantsOf(item).any { it.id == variant })
+                if (!there) continue
+            } else lineOk(DocLines.Line(item, variant, 0, 0))
+            sent += Sent(item, variant, counted?.toInt(), at, out)
+        }
+        if (sent.isEmpty()) throw Refused("nothing-to-count")
+
+        val now = clock()
+        // what the tablet held of each line at the moment it was counted
+        val held = dao.countLines(id).associate { (it.item_id to it.variant_id) to it.expected }
+        val written = ArrayList<StockCountLineEntity>()
+        for (l in sent.sortedWith(compareBy<Sent> { it.item }.thenBy { it.variant })) {
+            if (l.out) { written += StockCountLineEntity(id, l.item, l.variant, l.counted, if (l.counted == null) null else l.at, left_out = true); continue }
+            val level = dao.levelsOf(store, l.item).firstOrNull { it.variant_id == l.variant } ?: StockLevelEntity(store, l.item, l.variant)
+            if (l.counted == null && uncounted == "leave") {
+                written += StockCountLineEntity(id, l.item, l.variant, expected = level.qty, unit_cost = level.avg_cost)
+                continue
+            }
+            // not counted and set to nothing: against what it holds now
+            val before = if (l.counted == null) level.qty else held[l.item to l.variant] ?: level.qty
+            val counted = l.counted ?: 0
+            val diff = counted - before
+            written += StockCountLineEntity(id, l.item, l.variant, counted, l.at ?: now, expected = before, diff = diff, unit_cost = level.avg_cost)
+            if (diff != 0) {
+                dao.putLevels(listOf(level.copy(qty = level.qty + diff)))
+                // the tablet's own line in the stock history; the server writes its own the day this is sent
+                dao.putMovement(StockMovementEntity(newId(), store, l.item, l.variant, diff, "count", unit_cost = level.avg_cost, ref_type = "count", ref_id = id, employee_id = employee, created_at = now))
+            }
+        }
+        dao.dropCountLines(id)
+        dao.putCountLines(written)
+        dao.putCount(
+            (was ?: StockCountEntity(id, store, scope_kind = kind, title = title, status = "open", started_by = employee, created_at = now)).copy(
+                number = nextNumber("C-", dao.countNumbers()), scope_kind = kind, scope_id = if (kind == "category" || kind == "supplier") scope else null,
+                scope_text = if (kind == "brand") title else null, title = title, status = "completed", uncounted = uncounted, completed_by = employee, completed_at = now,
+            ),
+        )
+    }
+
     // ---- push_role_save, push_role_remove (0095) ----
     private suspend fun roleSave(p: JsonObject, tenant: String) {
         val id = p.id("id")
@@ -949,7 +1031,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             "role.save", "role.remove", "staff.update", "discount.save", "discount.remove",
             "addon.save", "addon.remove", "settings.save", "variants.make", "variants.save", "variant.remove",
             "floor.save", "room.rename", "room.remove",
-            "po.save", "po.send", "po.cancel", "po.close", "delivery.receive",
+            "po.save", "po.send", "po.cancel", "po.close", "delivery.receive", "count.complete",
         )
         private val IN_REASONS = setOf("receive", "found")
         private val OUT_REASONS = setOf("damaged", "expired", "lost", "internal", "supplier_return")
