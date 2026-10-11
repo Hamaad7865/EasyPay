@@ -72,6 +72,23 @@ class FakeAlone : AloneDao {
     override suspend fun supplier(id: String) = suppliers[id]
     override suspend fun suppliersNamed(name: String, not: String) = suppliers.values.count { it.name.lowercase() == name.lowercase() && it.deleted_at == null && it.id != not }
     override suspend fun putSupplier(row: SupplierEntity) { suppliers[row.id] = row }
+    val orders = LinkedHashMap<String, com.restopos.core.database.PurchaseOrderEntity>()
+    val orderLines = ArrayList<com.restopos.core.database.PurchaseOrderLineEntity>()
+    val deliveries = LinkedHashMap<String, com.restopos.core.database.DeliveryEntity>()
+    val deliveryLines = ArrayList<com.restopos.core.database.DeliveryLineEntity>()
+    override suspend fun order(id: String) = orders[id]
+    override suspend fun putOrder(row: com.restopos.core.database.PurchaseOrderEntity) { orders[row.id] = row }
+    override suspend fun orderLines(order: String) = orderLines.filter { it.order_id == order }
+    override suspend fun dropOrderLines(order: String) { orderLines.removeAll { it.order_id == order } }
+    override suspend fun putOrderLines(rows: List<com.restopos.core.database.PurchaseOrderLineEntity>) {
+        rows.forEach { r -> orderLines.removeAll { it.order_id == r.order_id && it.item_id == r.item_id && it.variant_id == r.variant_id }; orderLines += r }
+    }
+    override suspend fun delivery(id: String) = deliveries[id]
+    override suspend fun deliveriesOf(order: String) = deliveries.values.count { it.order_id == order }
+    override suspend fun putDelivery(row: com.restopos.core.database.DeliveryEntity) { deliveries[row.id] = row }
+    override suspend fun putDeliveryLines(rows: List<com.restopos.core.database.DeliveryLineEntity>) { deliveryLines += rows }
+    override suspend fun orderNumbers() = orders.values.map { it.number }
+    override suspend fun deliveryNumbers() = deliveries.values.map { it.number }
     override suspend fun tables(store: String) = tables.values.filter { it.store_id == store && it.deleted_at == null }
     override suspend fun table(id: String) = tables[id]
     val elements = LinkedHashMap<String, com.restopos.core.database.FloorElementEntity>()
@@ -605,6 +622,157 @@ class LocalAnswersTest {
         assertEquals("done", ask("supplier.save", row(33, "Maurilait")))
     }
 
+    // ---- orders to suppliers and what arrives (the server's 0074 and 0092: its suites purchase-orders and till-stock) ----
+    private val plain = id(110); private val sized = id(111); private val small = id(112); private val large = id(113); private val fee = id(114)
+    private val order = id(300); private val delivery = id(310)
+    private val stockIds get() = mapOf(
+        "order-1" to order, "delivery-1" to delivery, "store-1" to store, "supplier-1" to sup,
+        "item-plain" to plain, "item-sized" to sized, "variant-s" to small,
+    )
+    private fun stockFixture(name: String): JsonObject {
+        var text = StockFixtures.payload(name).toString()
+        stockIds.forEach { (k, v) -> text = text.replace("\"$k\"", "\"$v\"") }
+        return obj(text)
+    }
+    // a product counted as itself, one counted by its variants, and one that is not counted
+    private fun shelves() {
+        dao.items[plain] = ItemEntity(plain, tenant, cat, "Soap", 9900, track_stock = true, cost = 4000)
+        dao.items[sized] = ItemEntity(sized, tenant, cat, "Shirt", 49900, track_stock = true)
+        dao.variants += ItemVariantEntity(small, tenant, sized, "S", 49900)
+        dao.variants += ItemVariantEntity(large, tenant, sized, "L", 49900)
+        dao.items[fee] = ItemEntity(fee, tenant, null, "Delivery fee", 5000)
+    }
+    private fun line(item: String, variant: String, qty: Int, cost: Long) = """{"item_id":"$item","variant_id":"$variant","qty":$qty,"unit_cost":$cost}"""
+    private fun po(id: String, lines: String, supplier: String = sup, at: String = store) =
+        """{"id":"$id","store_id":"$at","supplier_id":"$supplier","expected_on":"","note":"","lines":[$lines]}"""
+    private fun got(id: String, order: String, lines: String, supplier: String = "", at: String = store) =
+        """{"id":"$id","store_id":"$at","order_id":"$order","supplier_id":"$supplier","arrived_on":"2026-10-10","invoice_no":" INV-88 ","note":"","lines":[$lines]}"""
+
+    @Test fun `an order written, saved again and sent, as the server's examples`() {
+        shelves()
+        assertEquals("done", ask("po.save", stockFixture("po-save")))
+        val o = dao.orders[order]!!
+        assertEquals(listOf("PO-0001", "draft", sup, store, "2026-10-20", null, owner), listOf(o.number, o.status, o.supplier_id, o.store_id, o.expected_on, o.note, o.created_by))
+        assertEquals(listOf(Triple(plain, "", 12000) to 4500L, Triple(sized, small, 6000) to 18000L), dao.orderLines.map { Triple(it.item_id, it.variant_id, it.qty) to it.unit_cost })
+        // saved again: the lines are the ones given, two of a product made one at the cost averaged by quantity, and the number stays
+        assertEquals("done", ask("po.save", po(order, line(plain, "", 3000, 4500) + "," + line(plain, "", 1000, 4900))))
+        assertEquals(listOf(Triple(plain, "", 4000) to 4600L), dao.orderLines.map { Triple(it.item_id, it.variant_id, it.qty) to it.unit_cost })
+        assertEquals(listOf("PO-0001", null), dao.orders[order]!!.let { listOf(it.number, it.expected_on) })
+        // a second order takes the next number
+        assertEquals("done", ask("po.save", po(id(301), line(plain, "", 1000, 4500))))
+        assertEquals("PO-0002", dao.orders[id(301)]!!.number)
+        assertEquals("done", ask("po.send", stockFixture("po-send")))
+        assertEquals(listOf("sent", clock), dao.orders[order]!!.let { listOf(it.status, it.sent_at) })
+        // sent again after a lost answer: it is sent, and nothing changes
+        clock += 5000
+        assertEquals("done", ask("po.send", stockFixture("po-send")))
+        assertEquals(clock - 5000, dao.orders[order]!!.sent_at)
+        // and it is a draft no longer
+        assertEquals("not-draft", ask("po.save", po(order, line(plain, "", 1000, 4500))))
+    }
+
+    @Test fun `what an order is refused for`() {
+        shelves()
+        assertEquals("unknown-supplier", ask("po.save", po(order, line(plain, "", 1000, 4500), supplier = id(39))))
+        assertEquals("unknown-store", ask("po.save", po(order, line(plain, "", 1000, 4500), at = otherStore)))
+        assertEquals("bad-payload", ask("po.save", po("not-an-id", line(plain, "", 1000, 4500))))
+        assertEquals("bad-payload", ask("po.save", po(order, "").replace("\"expected_on\":\"\"", "\"expected_on\":\"next week\"")))
+        // a line of nothing, of less than nothing, with no cost, or of no product
+        assertEquals("bad-line", ask("po.save", po(order, line(plain, "", 0, 4500))))
+        assertEquals("bad-line", ask("po.save", po(order, line(plain, "", -1000, 4500))))
+        assertEquals("bad-line", ask("po.save", po(order, """{"item_id":"$plain","variant_id":"","qty":1000}""")))
+        assertEquals("bad-line", ask("po.save", po(order, """{"variant_id":"","qty":1000,"unit_cost":1}""")))
+        assertEquals("bad-line", ask("po.save", po(order, "").replace("\"lines\":[]", "\"lines\":null")))
+        // the four things wrong with a line's product
+        assertEquals("unknown-item", ask("po.save", po(order, line(id(199), "", 1000, 4500))))
+        assertEquals("not-counted", ask("po.save", po(order, line(fee, "", 1000, 4500))))
+        assertEquals("pick-variant", ask("po.save", po(order, line(sized, "", 1000, 4500))))
+        assertEquals("unknown-line", ask("po.save", po(order, line(sized, id(198), 1000, 4500))))
+        assertEquals("unknown-line", ask("po.save", po(order, line(plain, small, 1000, 4500))))
+        assertTrue(dao.orders.isEmpty() && dao.orderLines.isEmpty())
+        // an empty draft may be saved, and cannot be sent
+        assertEquals("done", ask("po.save", po(order, "")))
+        assertEquals("no-lines", ask("po.send", """{"id":"$order"}"""))
+        assertEquals("unknown-order", ask("po.send", """{"id":"${id(399)}"}"""))
+        assertEquals("not-part", ask("po.close", """{"id":"$order"}"""))
+        assertEquals("done", ask("po.cancel", """{"id":"$order"}"""))
+        assertEquals("done", ask("po.cancel", """{"id":"$order"}"""))
+        assertEquals("cancelled", dao.orders[order]!!.status)
+        assertEquals("not-draft", ask("po.send", """{"id":"$order"}"""))
+        // a supplier that was removed takes no new order
+        ask("supplier.remove", """{"id":"$sup"}""")
+        assertEquals("unknown-supplier", ask("po.save", po(id(302), line(plain, "", 1000, 4500))))
+    }
+
+    @Test fun `a delivery against an order, in two parts, as the server's example`() {
+        shelves()
+        dao.levels["$store/$plain/"] = StockLevelEntity(store, plain, "", qty = 2000, avg_cost = 4000.0)
+        ask("po.save", stockFixture("po-save"))
+        // not while it is a draft
+        assertEquals("not-open", ask("delivery.receive", stockFixture("delivery-receive")))
+        ask("po.send", stockFixture("po-send"))
+        assertEquals("done", ask("delivery.receive", stockFixture("delivery-receive")))
+        val d = dao.deliveries[delivery]!!
+        assertEquals(listOf("D-0001", order, sup, store, "2026-10-10", "INV-88", null, owner), listOf(d.number, d.order_id, d.supplier_id, d.store_id, d.arrived_on, d.invoice_no, d.note, d.received_by))
+        // 2 on the shelf at 40.00 and 10 arriving at 46.00: twelve at 45.00
+        val l = dao.levels["$store/$plain/"]!!
+        assertEquals(12000, l.qty)
+        assertEquals(4500.0, l.avg_cost, 0.0)
+        val m = dao.movements.single()
+        assertEquals(listOf(plain, "", 10000, "receive", 4600.0, "delivery", delivery, owner), listOf(m.item_id, m.variant_id, m.qty, m.reason, m.unit_cost, m.ref_type, m.ref_id, m.employee_id))
+        // what was last paid is what it costs
+        assertEquals(4600L, dao.items[plain]!!.cost)
+        // ten of twelve soaps and none of the shirts: part received
+        assertEquals("part", dao.orders[order]!!.status)
+        assertEquals(listOf(10000, 0), dao.orderLines.sortedBy { it.item_id }.map { it.received })
+        // the same delivery sent again changes nothing
+        assertEquals("done", ask("delivery.receive", stockFixture("delivery-receive")))
+        assertEquals(listOf(12000, 1), listOf(dao.levels["$store/$plain/"]!!.qty, dao.movements.size))
+        // an order with something received cannot be cancelled, and a part-received one can be closed
+        assertEquals("already-received", ask("po.cancel", """{"id":"$order"}"""))
+        // the rest arrives, with something that was not ordered
+        assertEquals("done", ask("delivery.receive", got(id(311), order, line(plain, "", 2000, 4600) + "," + line(sized, small, 6000, 18000) + "," + line(sized, large, 1000, 19000))))
+        assertEquals("received", dao.orders[order]!!.status)
+        assertEquals("D-0002", dao.deliveries[id(311)]!!.number)
+        assertEquals(listOf(18000L, 19000L), listOf(dao.variants.first { it.id == small }.cost, dao.variants.first { it.id == large }.cost))
+        assertEquals(listOf(6000 to 18000.0, 1000 to 19000.0), listOf(dao.levels["$store/$sized/$small"]!!, dao.levels["$store/$sized/$large"]!!).map { it.qty to it.avg_cost })
+        // nothing more is received against it
+        assertEquals("not-open", ask("delivery.receive", got(id(312), order, line(plain, "", 1000, 4600))))
+        assertEquals("not-part", ask("po.close", """{"id":"$order"}"""))
+    }
+
+    @Test fun `a delivery with no order, the average it leaves, and what it is refused for`() {
+        shelves()
+        // nothing on the shelf: it costs what this delivery cost
+        assertEquals("done", ask("delivery.receive", got(delivery, "", line(plain, "", 3000, 4533), supplier = sup)))
+        assertEquals(listOf(null, sup), dao.deliveries[delivery]!!.let { listOf(it.order_id, it.supplier_id) })
+        assertEquals(3000 to 4533.0, dao.levels["$store/$plain/"]!!.let { it.qty to it.avg_cost })
+        // 3 at 45.33 and 4 at 46.00: seven at 45.712857, kept to four decimals of a cent as the server keeps it
+        assertEquals("done", ask("delivery.receive", got(id(311), "", line(plain, "", 4000, 4600))))
+        assertEquals(7000 to 4571.2857, dao.levels["$store/$plain/"]!!.let { it.qty to it.avg_cost })
+        assertNull(dao.deliveries[id(311)]!!.supplier_id)
+        // a shelf that had gone below nothing costs what arrives
+        dao.levels["$store/$sized/$small"] = StockLevelEntity(store, sized, small, qty = -2000, avg_cost = 9999.0)
+        assertEquals("done", ask("delivery.receive", got(id(312), "", line(sized, small, 5000, 17000))))
+        assertEquals(3000 to 17000.0, dao.levels["$store/$sized/$small"]!!.let { it.qty to it.avg_cost })
+        // lines of nothing are passed over, and with nothing left nothing was received
+        assertEquals("nothing-received", ask("delivery.receive", got(id(313), "", line(plain, "", 0, 4600))))
+        assertEquals("nothing-received", ask("delivery.receive", got(id(313), "", "")))
+        assertEquals("bad-line", ask("delivery.receive", got(id(313), "", line(plain, "", -1, 4600))))
+        assertEquals("unknown-order", ask("delivery.receive", got(id(313), id(399), line(plain, "", 1000, 4600))))
+        assertEquals("unknown-store", ask("delivery.receive", got(id(313), "", line(plain, "", 1000, 4600), at = otherStore)))
+        assertEquals("unknown-supplier", ask("delivery.receive", got(id(313), "", line(plain, "", 1000, 4600), supplier = id(39))))
+        assertEquals("pick-variant", ask("delivery.receive", got(id(313), "", line(sized, "", 1000, 4600))))
+        assertEquals("not-counted", ask("delivery.receive", got(id(313), "", line(fee, "", 1000, 4600))))
+        assertEquals("bad-payload", ask("delivery.receive", got(id(313), "", line(plain, "", 1000, 4600)).replace("2026-10-10", "the 10th")))
+        assertNull(dao.deliveries[id(313)])
+        assertEquals(3, dao.movements.size)
+    }
+
+    @Test fun `the tablet can answer an order and a delivery by itself`() {
+        assertTrue(listOf("po.save", "po.send", "po.cancel", "po.close", "delivery.receive").all { local.answers(it) })
+    }
+
     // ---- roles, staff, discounts (the server's 0095, sections S and D of its suite) ----
     @Test fun `a role added, its ticks changed, and what the sheet did not offer kept`() {
         val sent = fixture("role-save", mapOf("role-1" to id(42)))
@@ -875,8 +1043,9 @@ class LocalAnswersTest {
     }
 
     @Test fun `a change this tablet cannot answer by itself says so`() {
-        assertEquals("not-alone", ask("po.save", "{}"))
-        assertFalse(local.answers("po.save"))
+        // a count is completed as one change, which the tablet does not answer yet (orders and deliveries it does)
+        assertEquals("not-alone", ask("count.complete", "{}"))
+        assertFalse(local.answers("count.complete"))
         assertTrue(local.answers("item.save") && local.answers("tax.save") && local.answers("tables.add"))
     }
 

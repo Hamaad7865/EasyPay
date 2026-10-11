@@ -3,12 +3,16 @@ package com.restopos.core.data
 import com.restopos.core.common.Uuid7
 import com.restopos.core.database.AloneDao
 import com.restopos.core.database.CategoryEntity
+import com.restopos.core.database.DeliveryEntity
+import com.restopos.core.database.DeliveryLineEntity
 import com.restopos.core.database.EmployeeEntity
 import com.restopos.core.database.EmployeeStoreEntity
 import com.restopos.core.database.FloorElementEntity
 import com.restopos.core.database.ItemEntity
 import com.restopos.core.database.ItemTaxCrossRef
 import com.restopos.core.database.PrinterEntity
+import com.restopos.core.database.PurchaseOrderEntity
+import com.restopos.core.database.PurchaseOrderLineEntity
 import com.restopos.core.database.SettingsEntity
 import com.restopos.core.database.StockLevelEntity
 import com.restopos.core.database.StockMovementEntity
@@ -84,6 +88,11 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             "tax.save" -> taxSave(p, tenant)
             "supplier.save" -> supplierSave(p, tenant)
             "supplier.remove" -> supplierRemove(p)
+            "po.save" -> poSave(p, employee)
+            "po.send" -> poState(p, "send")
+            "po.cancel" -> poState(p, "cancel")
+            "po.close" -> poState(p, "close")
+            "delivery.receive" -> deliveryReceive(p, employee)
             "role.save" -> roleSave(p, tenant)
             "role.remove" -> roleRemove(p)
             "staff.update" -> staffUpdate(p)
@@ -550,6 +559,169 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         if (was.deleted_at == null) dao.putSupplier(was.copy(deleted_at = now()))
     }
 
+    // ---- doc_lines, stock_line_ok (0074): the lines of an order or a delivery ----
+    // One line a product and variant, the quantities added and the cost
+    // averaged by quantity, in the order the server takes them: by product,
+    // then by variant, a product's own line last. skipZero: a delivery's line
+    // of nothing is passed over, where an order's is a bad line.
+    private fun docLines(of: kotlinx.serialization.json.JsonElement?, skipZero: Boolean): List<DocLines.Line> {
+        val rows = (of as? JsonArray) ?: throw Refused("bad-line")
+        fun whole(x: JsonObject, key: String): Long? = x.prim(key)?.let { it.longOrNull ?: it.contentOrNull?.toLongOrNull() ?: throw Refused("bad-line") }
+        val read = rows.map { row ->
+            val x = (row as? JsonObject) ?: throw Refused("bad-line")
+            val item = x.str("item_id")?.takeIf { UUID.matches(it) } ?: throw Refused("bad-line")
+            val variant = x.str("variant_id") ?: ""
+            if (variant.isNotEmpty() && !UUID.matches(variant)) throw Refused("bad-line")
+            val qty = whole(x, "qty") ?: throw Refused("bad-line")
+            if (qty < 0 || qty > Int.MAX_VALUE || (qty == 0L && !skipZero)) throw Refused("bad-line")
+            val cost = whole(x, "unit_cost")
+            if (qty > 0 && (cost == null || cost < 0)) throw Refused("bad-line")
+            DocLines.Line(item, variant, qty.toInt(), cost ?: 0)
+        }
+        return DocLines.merged(read).sortedWith(compareBy<DocLines.Line> { it.item }.thenBy { it.variant.isEmpty() }.thenBy { it.variant })
+    }
+
+    private suspend fun lineOk(l: DocLines.Line) {
+        val item = dao.item(l.item)?.takeIf { it.deleted_at == null } ?: throw Refused("unknown-item")
+        val counted = item.track_stock || item.category_id?.let { c -> dao.category(c)?.is_stock } == true
+        if (!counted) throw Refused("not-counted")
+        // a product with variants is ordered and received by the variant, never as itself
+        val variants = dao.variantsOf(l.item)
+        if (l.variant.isEmpty()) { if (variants.isNotEmpty()) throw Refused("pick-variant") }
+        else if (variants.none { it.id == l.variant }) throw Refused("unknown-line")
+    }
+
+    // a day as the server reads one (2026-10-20), or none; anything else is a bad payload
+    private fun day(p: JsonObject, key: String): String? {
+        val text = p.str(key)?.ifEmpty { null } ?: return null
+        return runCatching { java.time.LocalDate.parse(text).toString() }.getOrNull() ?: bad()
+    }
+    // an id that may be left empty, and has to be one when it is not
+    private fun maybeId(p: JsonObject, key: String): String? = p.str(key)?.ifEmpty { null }?.also { if (!UUID.matches(it)) bad() }
+    private suspend fun liveSupplier(id: String): Boolean = dao.supplier(id)?.let { it.deleted_at == null } == true
+
+    // next_doc_number (0074): PO-0007, D-0012. The tablet counts on from the
+    // highest number it holds. The server gives its own the day the change is
+    // sent, and the row comes back with it: the same number, unless something
+    // was numbered there meanwhile (an order written in EasyPay's office).
+    private fun nextNumber(prefix: String, held: List<String>): String {
+        val top = held.filter { it.startsWith(prefix) }.mapNotNull { it.removePrefix(prefix).toIntOrNull() }.maxOrNull() ?: 0
+        return prefix + (top + 1).toString().padStart(4, '0')
+    }
+
+    // ---- push_po_save: po_save_as, po_save (0074, 0092) ----
+    // A draft, new or saved again. Saved again its lines are the ones given,
+    // and it keeps its number.
+    private suspend fun poSave(p: JsonObject, employee: String?) {
+        val id = p.id("id"); val store = p.id("store_id"); val supplier = p.id("supplier_id")
+        val expected = day(p, "expected_on")
+        val note = (p.str("note") ?: "").trim().ifEmpty { null }
+        val was = dao.order(id)?.takeIf { it.deleted_at == null }
+        if (!liveSupplier(supplier)) throw Refused("unknown-supplier")
+        if (was == null) { if (store !in dao.storeIds()) throw Refused("unknown-store") }
+        else if (was.status != "draft") throw Refused("not-draft")
+        val lines = docLines(p["lines"] ?: JsonArray(emptyList()), skipZero = false)
+        lines.forEach { lineOk(it) }
+        val at = clock()
+        dao.putOrder(
+            was?.copy(supplier_id = supplier, expected_on = expected, note = note, updated_at = at)
+                ?: PurchaseOrderEntity(id, store, nextNumber("PO-", dao.orderNumbers()), supplier, "draft", expected, note, created_by = employee, created_at = at, updated_at = at),
+        )
+        dao.dropOrderLines(id)
+        dao.putOrderLines(lines.map { PurchaseOrderLineEntity(id, it.item, it.variant, it.qty, it.cost) })
+    }
+
+    // ---- push_po_state: po_send, po_cancel, po_close (0074, 0092) ----
+    // Asked again of an order that is there already (sent again after a lost
+    // answer), it is done and nothing changes.
+    private suspend fun poState(p: JsonObject, what: String) {
+        val id = p.id("id")
+        val o = dao.order(id)?.takeIf { it.deleted_at == null } ?: throw Refused("unknown-order")
+        val there = when (what) {
+            "send" -> o.status in setOf("sent", "part", "received")
+            "cancel" -> o.status == "cancelled"
+            else -> o.status == "closed"
+        }
+        if (there) return
+        val at = clock()
+        when (what) {
+            "send" -> {
+                if (o.status != "draft") throw Refused("not-draft")
+                if (dao.orderLines(id).isEmpty()) throw Refused("no-lines")
+                dao.putOrder(o.copy(status = "sent", sent_at = at, updated_at = at))
+            }
+            "cancel" -> {
+                if (dao.deliveriesOf(id) > 0) throw Refused("already-received")
+                if (o.status !in setOf("draft", "sent")) throw Refused("not-open")
+                dao.putOrder(o.copy(status = "cancelled", updated_at = at))
+            }
+            else -> {
+                if (o.status != "part") throw Refused("not-part")
+                dao.putOrder(o.copy(status = "closed", updated_at = at))
+            }
+        }
+    }
+
+    // ---- push_delivery_receive: delivery_receive (0074, 0092) ----
+    // Written once: the stock goes up, what was paid becomes what the product
+    // costs, and an order it was for is part received or received.
+    private suspend fun deliveryReceive(p: JsonObject, employee: String?) {
+        val id = p.id("id"); val store = p.id("store_id")
+        val orderId = maybeId(p, "order_id"); val supplierId = maybeId(p, "supplier_id")
+        val arrived = day(p, "arrived_on")
+        // sent again after a lost answer: it was received the first time
+        if (dao.delivery(id) != null) return
+        var at = store; var from = supplierId
+        val order = orderId?.let { dao.order(it)?.takeIf { o -> o.deleted_at == null } ?: throw Refused("unknown-order") }
+        if (order != null) {
+            if (order.status !in setOf("sent", "part")) throw Refused("not-open")
+            // the order says which shop and which supplier
+            at = order.store_id; from = order.supplier_id
+        } else {
+            if (store !in dao.storeIds()) throw Refused("unknown-store")
+            if (supplierId != null && !liveSupplier(supplierId)) throw Refused("unknown-supplier")
+        }
+        val lines = docLines(p["lines"] ?: JsonArray(emptyList()), skipZero = true)
+        if (lines.isEmpty()) throw Refused("nothing-received")
+        lines.forEach { lineOk(it) }
+        val now = clock()
+        dao.putDelivery(DeliveryEntity(
+            id, at, nextNumber("D-", dao.deliveryNumbers()), order?.id, from,
+            arrived ?: Instant.ofEpochMilli(now).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString(),
+            (p.str("invoice_no") ?: "").trim().ifEmpty { null }, (p.str("note") ?: "").trim().ifEmpty { null }, employee, created_at = now,
+        ))
+        dao.putDeliveryLines(lines.map { DeliveryLineEntity(id, it.item, it.variant, it.qty, it.cost) })
+        for (l in lines) {
+            moveIn(at, l, id, employee, now)
+            // what was last paid is what the product costs (after the stock has moved, as the server has it)
+            if (l.variant.isEmpty()) dao.item(l.item)?.takeIf { it.cost != l.cost }?.let { dao.putItem(it.copy(cost = l.cost)) }
+            else dao.variant(l.variant)?.takeIf { it.cost != l.cost }?.let { dao.putVariants(listOf(it.copy(cost = l.cost))) }
+        }
+        if (order != null) {
+            // what has now arrived of each line of the order; something that was not ordered counts for no line
+            val after = dao.orderLines(order.id).map { ol ->
+                lines.firstOrNull { it.item == ol.item_id && it.variant == ol.variant_id }?.let { ol.copy(received = ol.received + it.qty) } ?: ol
+            }
+            dao.putOrderLines(after)
+            val all = after.isNotEmpty() && after.all { it.received >= it.qty }
+            dao.putOrder(order.copy(status = if (all) "received" else "part", updated_at = now))
+        }
+    }
+
+    // stock_move, stock_level_for (0074): what arrives at a known cost goes on
+    // the shelf and moves the average of what is there, to four decimals as
+    // the server keeps it. A shelf that held nothing, or less, costs what this
+    // delivery cost.
+    private suspend fun moveIn(store: String, l: DocLines.Line, delivery: String, employee: String?, at: Long) {
+        val level = dao.levelsOf(store, l.item).firstOrNull { it.variant_id == l.variant } ?: StockLevelEntity(store, l.item, l.variant)
+        val avg = if (level.qty <= 0) l.cost.toDouble()
+        else java.math.BigDecimal(level.qty).multiply(java.math.BigDecimal.valueOf(level.avg_cost)).add(java.math.BigDecimal(l.qty).multiply(java.math.BigDecimal(l.cost)))
+            .divide(java.math.BigDecimal(level.qty.toLong() + l.qty), 4, java.math.RoundingMode.HALF_UP).toDouble()
+        dao.putLevels(listOf(level.copy(qty = level.qty + l.qty, avg_cost = avg)))
+        // the tablet's own line in the stock history; the server writes its own the day this is sent
+        dao.putMovement(StockMovementEntity(newId(), store, l.item, l.variant, l.qty, "receive", unit_cost = l.cost.toDouble(), ref_type = "delivery", ref_id = delivery, employee_id = employee, created_at = at))
+    }
+
     // ---- push_role_save, push_role_remove (0095) ----
     private suspend fun roleSave(p: JsonObject, tenant: String) {
         val id = p.id("id")
@@ -777,6 +949,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             "role.save", "role.remove", "staff.update", "discount.save", "discount.remove",
             "addon.save", "addon.remove", "settings.save", "variants.make", "variants.save", "variant.remove",
             "floor.save", "room.rename", "room.remove",
+            "po.save", "po.send", "po.cancel", "po.close", "delivery.receive",
         )
         private val IN_REASONS = setOf("receive", "found")
         private val OUT_REASONS = setOf("damaged", "expired", "lost", "internal", "supplier_return")

@@ -53,6 +53,20 @@ interface AloneDao {
     @Query("SELECT COUNT(*) FROM suppliers WHERE LOWER(name) = LOWER(:name) AND deleted_at IS NULL AND id <> :not") suspend fun suppliersNamed(name: String, not: String): Int
     @Upsert suspend fun putSupplier(row: SupplierEntity)
 
+    // ---- orders to suppliers, and what arrives (server 0074, 0092) ----
+    @Query("SELECT * FROM purchase_orders WHERE id = :id") suspend fun order(id: String): PurchaseOrderEntity?
+    @Upsert suspend fun putOrder(row: PurchaseOrderEntity)
+    @Query("SELECT * FROM purchase_order_lines WHERE order_id = :order") suspend fun orderLines(order: String): List<PurchaseOrderLineEntity>
+    @Query("DELETE FROM purchase_order_lines WHERE order_id = :order") suspend fun dropOrderLines(order: String)
+    @Upsert suspend fun putOrderLines(rows: List<PurchaseOrderLineEntity>)
+    @Query("SELECT * FROM deliveries WHERE id = :id") suspend fun delivery(id: String): DeliveryEntity?
+    @Query("SELECT COUNT(*) FROM deliveries WHERE order_id = :order") suspend fun deliveriesOf(order: String): Int
+    @Upsert suspend fun putDelivery(row: DeliveryEntity)
+    @Upsert suspend fun putDeliveryLines(rows: List<DeliveryLineEntity>)
+    // every number this tablet holds, to give the next one: PO-0007, D-0012
+    @Query("SELECT number FROM purchase_orders") suspend fun orderNumbers(): List<String>
+    @Query("SELECT number FROM deliveries") suspend fun deliveryNumbers(): List<String>
+
     // ---- tables ----
     @Query("SELECT * FROM tables WHERE store_id = :store AND deleted_at IS NULL") suspend fun tables(store: String): List<TableEntity>
     // any table of that id: another store's, or one that was removed
