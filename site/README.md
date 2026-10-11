@@ -56,8 +56,7 @@ in a hidden pane it rightly stands still.
 The site is four pages, so that none is long: Home, Product, Features and
 Pricing. They share the head, the bar and the foot word for word, and each
 has the Restaurant / Shop switch (what was picked is kept from page to page).
-A part of the site has one home: `WHERE` in the script that built them says
-which page holds which section (`why`, `offline`, `features` and `demo` at
+A part of the site has one home (`why`, `offline`, `features` and `demo` at
 Home; `qr`, `floor`, `kitchen`, `payment`, `selling`, `stock` and `returns`
 on Features; `parts`, `backoffice`, `more` and `works` on Product; `pricing`,
 `start` and `faq` on Pricing), and a link to a section is written with its
