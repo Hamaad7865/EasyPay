@@ -130,24 +130,37 @@ jobs:
       # only). Named after this run. The plan allows ten branches in all, so
       # of the restore points this workflow made only the two newest are
       # kept; a branch made by hand, whatever its name, is never touched.
+      #
+      # Room is made BEFORE the new one: of this workflow's own, all but the
+      # newest go first, and the one made here is then the second. It used to
+      # make the new one first, and v0.9.4 stopped there ("branches limit
+      # exceeded"): the project stood at ten, two of them this workflow's,
+      # which is the number it keeps, so it would never have made room by
+      # itself. A run started again after it had made its restore point finds
+      # it there and makes no second one of the same name.
       - name: restore point
         if: steps.pending.outputs.any == 'yes'
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          POINT: production-before-run-${{ github.run_id }}
         run: |
-          neon branches create --project-id "$NEON_PROJECT_ID" --name "production-before-run-${{ github.run_id }}" --parent production --compute false
           neon branches list --project-id "$NEON_PROJECT_ID" --output json > branches.json
           node -e '
             const all = JSON.parse(require("fs").readFileSync("branches.json", "utf8"));
-            const mine = all.filter((b) => /^production-before-run-\d+$/.test(b.name) && !b.default && !b.protected)
+            const mine = all.filter((b) => /^production-before-run-\d+$/.test(b.name) && !b.default && !b.protected && b.name !== process.env.POINT)
               .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-            for (const b of mine.slice(2)) console.log(b.name);
+            for (const b of mine.slice(1)) console.log(b.name);
           ' > old.txt
           while read -r old; do
             [ -n "$old" ] || continue
-            echo "Removing the restore point $old (two newer ones are kept)."
+            echo "Removing the restore point $old (the newest is kept, and this run makes another)."
             neon branches delete "$old" --project-id "$NEON_PROJECT_ID"
           done < old.txt
+          if node -e 'process.exit(JSON.parse(require("fs").readFileSync("branches.json", "utf8")).some((b) => b.name === process.env.POINT) ? 0 : 1)'; then
+            echo "The restore point $POINT is there already, from this run's first try."
+          else
+            neon branches create --project-id "$NEON_PROJECT_ID" --name "$POINT" --parent production --compute false
+          fi
       - name: apply
         if: steps.pending.outputs.any == 'yes'
         env:
