@@ -150,7 +150,15 @@ class ReceiveViewModel @Inject constructor(
     }
     fun withoutOrder() { notNow(); marked.value = emptySet(); keep(DeliveryForm.Delivery(Uuid7.next(), arrivedOn = today())) }
     // The editor is left: what was typed stays kept, and Receive stock offers it again.
-    fun leave() { if (!busy.value) { _draft.value = null; problem.value = null; confirming.value = false } }
+    // One begun with no order and left with nothing on it is not kept: there is nothing to come back to.
+    fun leave() {
+        if (busy.value) return
+        val d = _draft.value
+        _draft.value = null
+        problem.value = null
+        confirming.value = false
+        if (d != null && d.order == null && d.supplier == null && d.lines.isEmpty() && d.invoice.isBlank() && d.note.isBlank()) viewModelScope.launch { stock.dropDeliveryDraft() }
+    }
     fun throwAway() = viewModelScope.launch { if (!busy.value) { stock.dropDeliveryDraft(); _draft.value = null; problem.value = null; confirming.value = false } }
 
     // ---- typing it ----

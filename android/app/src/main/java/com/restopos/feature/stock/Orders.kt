@@ -162,7 +162,14 @@ class OrdersViewModel @Inject constructor(
         keep(was ?: OrderForm.Order(o.id, o.supplier_id, o.expected_on.orEmpty(), o.note.orEmpty(), db.stock().orderLines(o.id).map { DocLines.Line(it.item_id, it.variant_id, it.qty, it.unit_cost) }))
     }
     // The editor is left: what was typed stays kept, and New order offers it again.
-    fun leave() { if (!busy.value) { _draft.value = null; problem.value = null } }
+    // One that was opened and left with nothing on it is not kept: there is nothing to come back to.
+    fun leave() {
+        if (busy.value) return
+        val o = _draft.value
+        _draft.value = null
+        problem.value = null
+        if (o != null && o.supplier == null && o.lines.isEmpty() && o.expectedOn.isBlank() && o.note.isBlank()) viewModelScope.launch { stock.dropOrderDraft() }
+    }
 
     // ---- writing it ----
     fun supplier(id: String) { _draft.value?.let { keep(it.copy(supplier = id)) } }
