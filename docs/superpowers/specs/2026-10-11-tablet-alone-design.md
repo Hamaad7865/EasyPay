@@ -147,3 +147,46 @@ offline plan (`DEMO_SHOP --es plan offline`). Nothing is pushed; production is u
 - `db/tests/backoffice-plan.test.cjs` had one check failing before any of this ("N2 and loses
   nothing else"); it is not this work's and is not fixed here.
 
+## 7. Record, continued: add-ons, settings, variants (the same night)
+
+Migrations 0096 and 0097, on the dev branch only. The server's suite `till-office` stands at 101
+checks. The till's database is 18. 474 unit tests, 39 of them of the tablet's own answers.
+
+**Built, each on the server, as a rule on the tablet, and as a screen**
+
+- **Add-ons** (restaurants): Menu > Add-ons lists the groups; a group's sheet has its name, the fewest
+  and the most that may be picked, and its choices with their prices, saved whole. An item's second
+  page ticks the groups it carries.
+- **The receipt's two notes and the service charge**: Settings > Receipt.
+- **Variants** (shops): on a product's panel, Variants (its options and their values; every
+  combination it does not have becomes a variant) and, on each variant's row, Codes (barcode, SKU,
+  cost, and removing it). The tablet makes each variant's id, which is why the server has its own
+  change for this and does not use the back office's function: a tablet alone sells a variant before
+  the server has heard of it.
+
+**Seen** (hidden emulator, the owner asleep; then each tablet's queue replayed against dev, rolled back)
+
+- A restaurant alone: a group of add-ons with two choices, ticked on two items; an order at a table
+  asked for the choice and priced it; a note for the top of the receipt and a service charge of 10 %
+  saved; the printed receipt (a stand-in printer) carried the note, "+ Cheese", and the service
+  charge, Rs 379.50 in all. **16 changes replayed, every one taken**, both sales' figures the till's
+  to the cent.
+- A shop alone: four variants made on a product, one given its barcode, SKU and cost, one removed,
+  one sold. **8 changes replayed, every one taken**, the sale of the tablet-made variant among them.
+
+**What an offline business still cannot do on the tablet** (section 4's table, after this night)
+
+| Thing | State |
+|---|---|
+| Products, categories, stock, taxes, suppliers, the set-up's tables, printer, details, staff and PINs | done, answered alone |
+| Staff changed or switched off, roles and permissions, discounts | done |
+| Add-ons, variants, the receipt's notes, the service charge | done |
+| Backup to a file, and a tablet filled from one | done |
+| Which printer a category prints on (a kitchen printer beside the counter's) | **not built**: one printer for everything works |
+| A table renamed, moved or removed after it was added | **not built**: rooms and tables can be added |
+| Order types (their names, which go to the kitchen) | **not built**: the ones a new client is given |
+| The receipt's logo | **not built** |
+| Products from a file | **not built** |
+| A shop's purchase orders, deliveries and counts | **not built** (their rules are; their screens say "Coming with the next build") |
+| An EasyPay barcode made for a new product | **not built** offline: made when the product reaches the server |
+

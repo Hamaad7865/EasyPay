@@ -80,4 +80,13 @@ New refusal codes: `bad-options`, `too-many-variants`, `has-stock`, `bad-limits`
 
 ## Record
 
-(filled in when the build has run)
+Built the night of 2026-10-11, **not as this plan lays it out**: the owner asked that night for the
+tablet standing alone, so this was built on that (`docs/superpowers/specs/2026-10-11-tablet-alone-design.md`,
+sections 6 and 7 carry the record). What differs from the plan above:
+
+- The migrations are **0096** (add-ons, an item's groups, and `settings.save`) and **0097**
+  (variants), not 0095, which went to roles, staff and discounts.
+- `variants.make` carries the lines with the tablet's own ids (`lines: [{id, values}]`), not `values`
+  per option: a tablet alone needs the ids before the server has them.
+- `variants.save` has no price, as planned; `barcodes.make` was **not built**.
+- Each change is also answered on a tablet that works on its own (`LocalAnswers`).
