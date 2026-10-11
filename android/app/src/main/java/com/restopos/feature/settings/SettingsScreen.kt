@@ -424,25 +424,33 @@ class SettingsViewModel @Inject constructor(
     // is asked once whether the business has been made Premium. It has: the
     // tablet syncs from now on, and what it kept goes up by itself, with the
     // till's own key and nobody signing in. It has not: nothing changes.
-    fun connect() = viewModelScope.launch {
-        com.restopos.core.ui.Toaster.say("Asking EasyPay whether this business is on Premium…")
+    fun connect() = asked(fetching = false)
+
+    // "Get changes from EasyPay", on the same tablet. An offline business has
+    // no back office of its own: EasyPay sets it up from its office (the
+    // products, the taxes, the staff), and this key brings that here. It is
+    // the same question, asked once and only when the key is tapped, so a
+    // tablet that works on its own still wakes nothing by itself; what it
+    // takes and what it keeps of its own is core/sync/Fetched.
+    fun fetch() = asked(fetching = true)
+
+    private fun asked(fetching: Boolean) = viewModelScope.launch {
+        com.restopos.core.ui.Toaster.say(if (fetching) "Asking EasyPay for what it set up for this business…" else "Asking EasyPay whether this business is on Premium…")
         val id = SyncScheduler.connect(context)
         val work = androidx.work.WorkManager.getInstance(context)
-        var state: androidx.work.WorkInfo.State? = null
+        var info: androidx.work.WorkInfo? = null
         // the answer is waited for a little; with no network the question stays and is asked when there is one
         for (n in 1..40) {
             kotlinx.coroutines.delay(500)
-            state = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { work.getWorkInfoById(id).get()?.state }.getOrNull() }
-            if (state?.isFinished == true) break
+            info = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { work.getWorkInfoById(id).get() }.getOrNull() }
+            if (info?.state?.isFinished == true) break
         }
-        val stillAlone = PosSettings.parse(db.ops().settings()).alone
-        com.restopos.core.ui.Toaster.say(when {
-            stillAlone && session.needsSignIn.first() -> "This tablet has to sign in once before it can be connected. Tap Sign in, with the login of this business, then Connect to the cloud again."
-            !stillAlone -> "This business is on Premium: the tablet is connected, and what it kept is being sent to the cloud."
-            state == androidx.work.WorkInfo.State.SUCCEEDED -> "This business is not on Premium. Nothing has changed: the tablet goes on working on its own."
-            state?.isFinished == true -> "EasyPay could not be reached. Try again when the tablet is online."
-            else -> "No answer yet. The tablet asks again as soon as it is online."
-        })
+        val told = PosSettings.parse(db.ops().settings())
+        val done = info?.state == androidx.work.WorkInfo.State.SUCCEEDED
+        com.restopos.core.ui.Toaster.say(com.restopos.core.sync.Fetched.answer(
+            fetching = fetching, connected = !told.alone, signIn = told.alone && session.needsSignIn.first(), done = done, finished = info?.state?.isFinished == true,
+            brought = if (done) com.restopos.core.sync.Fetched.said(info?.outputData?.getStringArray(SyncScheduler.BROUGHT)?.toSet().orEmpty(), told.retail) else null,
+        ))
     }
 
     // Sends what is waiting and fetches what changed in the back office.
@@ -1354,10 +1362,17 @@ private fun SupportPage(vm: SettingsViewModel, shop: Boolean, network: String, o
             Figure("Changes the server refused", rejected.toString())
         }
     }
+    // A tablet that works on its own asks EasyPay only when one of these is
+    // tapped: for what EasyPay set up for the business from its office, or
+    // whether the business is on Premium. A row of their own: four keys with
+    // these names do not fit one row of a 10-inch.
+    if (alone) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (signInWanted) Action("Sign in", primary = true, onClick = onSignIn)
+        Action("Get changes from EasyPay") { vm.fetch() }
+        Action("Connect to the cloud") { vm.connect() }
+    }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (alone && signInWanted) Action("Sign in", primary = true, onClick = onSignIn)
-        if (alone) Action("Connect to the cloud") { vm.connect() }
-        else if (needsSignIn) Action("Sign in", primary = true, onClick = onSignIn) else Action("Sync now") { vm.sync() }
+        if (!alone) { if (needsSignIn) Action("Sign in", primary = true, onClick = onSignIn) else Action("Sync now") { vm.sync() } }
         Action("Save a backup", primary = alone) {
             scope.launch {
                 val name = vm.backupName()
@@ -1368,6 +1383,10 @@ private fun SupportPage(vm: SettingsViewModel, shop: Boolean, network: String, o
         }
         Action(if (rejected > 0) "Refused changes ($rejected)" else "Refused changes", onClick = onRejected)
     }
+    if (alone) Note(
+        "Get changes from EasyPay brings what EasyPay set up for this business from its office: products, prices, taxes, staff, printers. " +
+            "It needs the internet for a moment, and changes nothing of what this tablet holds of its own: its sales and its count of the stock.",
+    )
     Note(
         if (alone) "A backup is one file with everything this tablet holds: the products, the staff, every sale. This tablet works on its own, so that file is the only copy besides the tablet itself. Save one often, on a USB stick or a Drive, and keep it away from the tablet. A new tablet is filled from it at its first screen, under Restore from a backup."
         else "A backup is one file with everything this tablet holds. A tablet that is not set up yet can be filled from it at its first screen, under Restore from a backup.",

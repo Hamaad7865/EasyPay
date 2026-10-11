@@ -88,8 +88,10 @@ class PullWorker @AssistedInject constructor(
         val store = session.storeId() ?: return Result.success()
         // A tablet that works on its own says nothing to the server: the
         // database it would wake is the cost the offline plan does not have.
-        // Its queue waits. Only "Connect to the cloud" (CONNECT) goes through,
-        // to learn whether the business has been made Premium.
+        // Its queue waits. Only what someone asks for on purpose goes through
+        // (CONNECT: "Connect to the cloud" and "Get changes from EasyPay"),
+        // to learn whether the business has been made Premium and to take
+        // what EasyPay set up for it since.
         val connect = inputData.getBoolean(SyncScheduler.CONNECT, false)
         // Not before the first pull has ended: the plan arrives early in it,
         // and a first pull cut short has to be taken up again, or the tablet
@@ -129,6 +131,8 @@ class PullWorker @AssistedInject constructor(
         return try {
             val saved = db.sync().cursor(store)
             var epochs = saved?.epochs ?: ""
+            // the tables this pull brought rows of: what a tablet that asked on purpose says came (Fetched)
+            val brought = sortedSetOf<String>()
             // page after page until the server has no more (PullPaging)
             PullPaging.read(saved?.cursor ?: 0) { cursor ->
                 val page = api.pull(store, cursor)
@@ -136,17 +140,24 @@ class PullWorker @AssistedInject constructor(
                 if (epochs.isNotEmpty() && pageEpochs.isNotEmpty() && pageEpochs != epochs) {
                     // The server rewrote a table's history: the cursor means
                     // nothing now. Drop the catalog mirror and pull from the start.
+                    // Not on a tablet that works on its own: what it made
+                    // itself is on no server, so emptying it would lose it.
+                    // It keeps what it has and is sent everything again,
+                    // which lands over its rows of the same things.
+                    val onItsOwn = com.restopos.core.data.PosSettings.parse(db.ops().settings()).alone
                     db.withTransaction {
-                        db.catalog().clearCatalog()
-                        db.retail().clearVariants()
-                        db.retail().clearLevels()
-                        db.staff().clearStaff()
-                        db.tables().clearTables()
-                        db.ops().clearPrinters()
-                        db.ops().clearSettings()
-                        db.customers().clear()
-                        // a shop's stock papers as the server sent them; a count or a draft of this tablet's own stays
-                        db.stock().clearFromServer()
+                        if (!onItsOwn) {
+                            db.catalog().clearCatalog()
+                            db.retail().clearVariants()
+                            db.retail().clearLevels()
+                            db.staff().clearStaff()
+                            db.tables().clearTables()
+                            db.ops().clearPrinters()
+                            db.ops().clearSettings()
+                            db.customers().clear()
+                            // a shop's stock papers as the server sent them; a count or a draft of this tablet's own stays
+                            db.stock().clearFromServer()
+                        }
                         db.sync().saveCursor(SyncStateEntity(store, 0, pageEpochs))
                     }
                     epochs = pageEpochs
@@ -154,6 +165,7 @@ class PullWorker @AssistedInject constructor(
                 } else {
                     if (pageEpochs.isNotEmpty()) epochs = pageEpochs
                     applier.apply(store, page.changes, page.nextCursor, epochs)
+                    page.changes.forEach { (table, rows) -> if (rows.isNotEmpty()) brought.add(table) }
                     PullPaging.Page(page.nextCursor, page.hasMore)
                 }
             }
@@ -171,7 +183,7 @@ class PullWorker @AssistedInject constructor(
             runCatching { requests.run() }
             // the server took this till: whatever asked for a sign-in before is over
             session.setNeedsSignIn(false)
-            Result.success()
+            Result.success(workDataOf(SyncScheduler.BROUGHT to brought.toTypedArray()))
         } catch (e: AuthRequired) {
             // The session is gone. Nothing is lost: the tablet shows a sign-in
             // prompt, and signing in again resumes syncing.
@@ -201,10 +213,15 @@ object SyncScheduler {
     // Marks the one sync a tablet that works on its own makes: "Connect to the cloud".
     internal const val CONNECT = "connect"
     private const val CONNECT_WORK = "connect-now"
+    // What a pull that ended well says of itself: the tables it brought rows of.
+    const val BROUGHT = "brought"
 
     // Asks the server once whether the business has been made Premium. It
     // has: the tablet syncs from then on, and what it kept goes up. It has
-    // not: nothing changes. Returns the id of the work, to watch it end.
+    // not: the tablet goes on working on its own, with whatever EasyPay set
+    // up for the business since it last asked, which comes with the answer
+    // ("Get changes from EasyPay" asks the same). Returns the id of the
+    // work, to watch it end.
     fun connect(context: Context): java.util.UUID {
         val req = OneTimeWorkRequestBuilder<PullWorker>()
             .setInputData(workDataOf(ASKED to true, CONNECT to true))

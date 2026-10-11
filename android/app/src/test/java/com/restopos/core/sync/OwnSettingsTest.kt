@@ -45,6 +45,25 @@ class OwnSettingsTest {
         assertEquals(server, OwnSettings.kept(server, "not json"))
     }
 
+    // A tablet that works on its own and only added its printer: what EasyPay
+    // set up for it since, in its back office, is taken when it fetches.
+    @Test fun only_what_a_waiting_change_wrote_is_kept() {
+        val from = server.replace("\"servicePct\":0", "\"servicePct\":12,\"receipt\":{\"footer\":\"See you soon\"}").replace("Chez Aisha", "Chez Aisha Ltd")
+        val kept = keys(OwnSettings.kept(from, own, listOf("printer.save")))
+        assertEquals("true", kept["onePrinter"].toString())
+        assertEquals("12", kept["servicePct"].toString())
+        assertEquals("""{"footer":"See you soon"}""", kept["receipt"].toString())
+        assertEquals("""{"name":"Chez Aisha Ltd"}""", kept["company"].toString())
+        // its own notes on the receipt are waiting too: those stay, with the service charge the same change writes
+        val both = keys(OwnSettings.kept(from, own, listOf("printer.save", "settings.save")))
+        assertEquals("""{"header":"Open every day","footer":"Thank you"}""", both["receipt"].toString())
+        assertEquals("10", both["servicePct"].toString())
+        assertEquals("""{"name":"Chez Aisha Ltd"}""", both["company"].toString())
+        // nothing waiting: the server's, whole
+        assertEquals(from, OwnSettings.kept(from, own, emptyList()))
+        assertEquals(OwnSettings.KEYS, OwnSettings.WRITES.values.flatten().toSet())
+    }
+
     @Test fun a_key_the_tablet_never_wrote_is_not_made_up() {
         val kept = keys(OwnSettings.kept(server, """{"plan":"offline","servicePct":5}"""))
         assertEquals("5", kept["servicePct"].toString())

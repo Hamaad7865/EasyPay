@@ -15,15 +15,28 @@ object OwnSettings {
     // The kept changes that write into the settings (LocalAnswers): the
     // business's details, the receipt's notes and the service charge, and
     // the one-printer switch.
-    val KINDS = listOf("company.save", "settings.save", "printer.save")
+    // Which of them writes what.
+    val WRITES = mapOf(
+        "company.save" to setOf("company"),
+        "settings.save" to setOf("receipt", "servicePct"),
+        "printer.save" to setOf("onePrinter"),
+    )
+    val KINDS = WRITES.keys.toList()
 
     // What those changes write, and so what the tablet keeps of its own.
-    val KEYS = setOf("company", "receipt", "servicePct", "onePrinter")
+    val KEYS = WRITES.values.flatten().toSet()
 
-    // The server's settings with the tablet's own values for KEYS put back
-    // over them. A key the tablet does not have is the server's.
-    fun kept(server: String, own: String?): String {
-        val mine = read(own).filterKeys { it in KEYS }
+    // The server's settings with the tablet's own values put back over them,
+    // for what the kept changes still waiting (`waiting`, their kinds) write.
+    // A key the tablet does not have is the server's, and so is what no
+    // waiting change wrote: a tablet that only added a printer on its own
+    // still takes the receipt's notes EasyPay set up for it since ("Get
+    // changes from EasyPay", Fetched). Until that was told apart, one kept
+    // change of any of the three held back all four keys, for as long as the
+    // tablet worked on its own.
+    fun kept(server: String, own: String?, waiting: Collection<String> = KINDS): String {
+        val keys = waiting.flatMap { WRITES[it].orEmpty() }.toSet()
+        val mine = read(own).filterKeys { it in keys }
         return if (mine.isEmpty()) server else JsonObject(read(server) + mine).toString()
     }
 

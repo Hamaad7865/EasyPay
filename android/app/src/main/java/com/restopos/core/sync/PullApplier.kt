@@ -104,6 +104,11 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
             // and is in the server's figure once the sale has gone up, which
             // every sync does before it pulls.
             val retail = db.retail()
+            // Not so on a tablet that works on its own: its sales never went
+            // up, so the server's figure is the one of the day it was set up.
+            // What it counts itself stays (Fetched.level). As this page finds
+            // the tablet: the plan may be arriving with the page itself.
+            val alone = com.restopos.core.data.PosSettings.parse(db.ops().settings()).alone
             changes["item_variants"]?.let { rows ->
                 retail.upsertVariants(rows.mapNotNull {
                     val item = str(it, "item_id") ?: return@mapNotNull null
@@ -122,10 +127,13 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                     val at = str(it, "store_id") ?: store
                     val variant = str(it, "variant_id") ?: ""
                     if (str(it, "deleted_at") != null) retail.dropLevel(at, item, variant)
-                    else kept.add(StockLevelEntity(
-                        at, item, variant, (lng(it, "qty") ?: 0).toInt(), lng(it, "server_seq"),
-                        avg_cost = dbl(it, "avg_cost") ?: 0.0, reorder_point = lng(it, "reorder_point")?.toInt(), reorder_qty = lng(it, "reorder_qty")?.toInt(),
-                    ))
+                    else {
+                        val sent = StockLevelEntity(
+                            at, item, variant, (lng(it, "qty") ?: 0).toInt(), lng(it, "server_seq"),
+                            avg_cost = dbl(it, "avg_cost") ?: 0.0, reorder_point = lng(it, "reorder_point")?.toInt(), reorder_qty = lng(it, "reorder_qty")?.toInt(),
+                        )
+                        kept.add(if (alone) Fetched.level(retail.levelsOf(at, item).firstOrNull { l -> l.variant_id == variant }, sent) else sent)
+                    }
                 }
                 retail.upsertLevels(kept)
             }
@@ -222,7 +230,8 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                 // What this tablet changed in its settings while it worked on
                 // its own, and has not sent yet, stays as the tablet has it:
                 // the server's copy of it is the older one (OwnSettings).
-                val data = if (db.outbox().pendingOf(OwnSettings.KINDS) > 0) OwnSettings.kept(sent, ops.settings()) else sent
+                val waiting = OwnSettings.KINDS.filter { kind -> db.outbox().pendingOf(listOf(kind)) > 0 }
+                val data = if (waiting.isNotEmpty()) OwnSettings.kept(sent, ops.settings(), waiting) else sent
                 ops.upsertSettings(SettingsEntity(str(it, "tenant_id") ?: "", data))
                 val told = com.restopos.core.data.PosSettings.parse(data)
                 com.restopos.core.common.Money.decimals = told.decimals
