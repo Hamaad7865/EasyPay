@@ -313,6 +313,12 @@ app.post("/devices/register", async (c) => {
   }
   const deviceId = body.deviceId;
   try {
+    if (await byCodeOnly(auth.tenantId, deviceId)) return c.json(BY_CODE, 403);
+  } catch (err) {
+    console.error("plan not read:", (err as Error).message);
+    return c.json({ error: "register failed" }, 503);
+  }
+  try {
     // A till that was deactivated (by its business in the back office, or by
     // the platform admin) stays deactivated: registering again must not
     // quietly bring it back. Its unsynced sales still push.
@@ -351,6 +357,69 @@ app.post("/devices/register", async (c) => {
     }
     return c.json({ error: "register failed" }, 400);
   }
+});
+
+// A business that runs on its tablet (the plan "offline") bought the till for
+// one tablet, and each of its tablets is set up with a code EasyPay made for
+// it (migration 0099, POST /devices/redeem below). Its login sets up no new
+// tablet: with it anyone could set up as many as they liked. A tablet that is
+// this business's till already is let through, to be named again.
+const BY_CODE = { error: "This business's tablets are set up with a code, not with a login. Ask EasyPay for a code for this tablet." };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+async function byCodeOnly(tenantId: string, deviceId: string): Promise<boolean> {
+  if (!UUID.test(deviceId)) return false; // refused further down, as before
+  const r = await pool.query(
+    `select lower(btrim(coalesce(t.plan, ''))) = 'offline'
+            and not exists (select 1 from pos_devices d where d.id = $2::uuid and d.tenant_id = t.id) as only
+       from tenants t where t.id = $1::uuid`,
+    [tenantId, deviceId],
+  );
+  return r.rows[0]?.only === true;
+}
+
+// A tablet set up with its code: no login. The code says which business and
+// which store; the tablet is registered as that store's next till, or, for a
+// tablet that replaces another, as the till it replaces (the answer names the
+// till it now is, whatever id the tablet sent). It is given the till's key as
+// a login's set-up gives it, and syncs with that from then on. A code is used
+// once; the tablet that used it may ask again if the answer never reached it.
+//   404  not a code of ours
+//   409  used by another tablet, taken back, or the tablet was replaced
+//   403  the business is suspended, or the till was deactivated
+// The code is never written to the log.
+type Redeemed = { ok: boolean; why?: string; tenant_id?: string; business?: string; store_id?: string; device_id?: string; key?: string; last_receipt_seq?: string | number; name?: string; code?: string; moved?: boolean };
+app.post("/devices/redeem", async (c) => {
+  type CodeBody = { code?: string; deviceId?: string; tablet?: string; name?: string; appVersion?: string };
+  const body: CodeBody = await c.req.json<CodeBody>().catch((): CodeBody => ({}));
+  const code = String(body.code ?? "").slice(0, 64);
+  const deviceId = String(body.deviceId ?? "");
+  const tablet = String(body.tablet ?? "").trim();
+  if (!UUID.test(deviceId)) return c.json({ error: "deviceId required (client-minted UUID)" }, 400);
+  if (!tablet || tablet.length > 80) return c.json({ error: "tablet required" }, 400);
+  let r: Redeemed | undefined;
+  try {
+    r = (await pool.query(`select redeem_tablet_code($1, $2::uuid, $3, $4, $5) as r`, [
+      code, deviceId, tablet, typeof body.name === "string" ? body.name : null, typeof body.appVersion === "string" ? body.appVersion : null,
+    ])).rows[0]?.r;
+  } catch (err) {
+    console.error("code not checked:", (err as Error).message);
+    return c.json({ error: "The code could not be checked just now. Try again in a moment." }, 503);
+  }
+  if (!r?.ok || !r.device_id || !r.key) {
+    const why = r?.why ?? "bad-code";
+    if (why === "used") return c.json({ error: "This code has already set up another tablet. One code sets up one tablet: ask EasyPay for a code for this one.", why }, 409);
+    if (why === "ended") return c.json({ error: "This code is no longer good: it was taken back, or its tablet was replaced. Ask EasyPay for a new one.", why }, 409);
+    if (why === "suspended") return c.json({ error: "This account is suspended. Contact EasyPay to reactivate.", why }, 403);
+    if (why === "till-off") return c.json({ error: "The till this code is for was deactivated. Contact EasyPay.", why }, 403);
+    if (why === "no-owner") return c.json({ error: "This business has no owner login, so its tablets cannot be set up yet. Contact EasyPay.", why }, 409);
+    if (why === "bad-device") return c.json({ error: "This tablet could not be set up as a new till. Contact EasyPay.", why }, 409);
+    return c.json({ error: "That is not a code EasyPay gave. Check it and type it again.", why: "bad-code" }, 404);
+  }
+  await heard(c.req.raw, r.device_id, "seen");
+  return c.json({
+    deviceId: r.device_id, tenantId: r.tenant_id, storeId: r.store_id, business: r.business ?? "", name: r.name ?? "", code: r.code ?? "",
+    lastReceiptSeq: Number(r.last_receipt_seq ?? 0), syncKey: r.key, moved: r.moved === true,
+  });
 });
 
 // A key for a till that was set up before tills had keys, or whose key was
