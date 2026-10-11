@@ -51,7 +51,7 @@ object Fetched {
         setOf("employees", "employee_stores") to "staff",
         setOf("roles") to "roles",
         setOf("printers") to "printers",
-        setOf("tables") to "tables",
+        setOf("tables", "floor_elements") to "tables",
         setOf("payment_types") to "payment types",
         setOf("dining_options") to "order types",
         setOf("suppliers") to "suppliers",

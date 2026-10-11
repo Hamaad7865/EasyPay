@@ -15,7 +15,7 @@ overrule.
   nothing refuses it.
 - **A booth and a bar stool are tables**: two more values of `tables.shape` (`booth`, `stool`). They seat
   guests and take orders, so they have a number of their own in the store and count toward its 300. A
-  stool is one seat; a booth is a table with a bench along its far side.
+  stool is one seat; a booth is a table drawn with a bench down each long side.
 - **Walls, doors, windows and a bar counter are not tables**: `floor_elements`, a table of their own
   (`id`, `store_id`, `area`, `kind`, `x`, `y`, `w`, `h`, `rotation`, `sort_order`). Had they been rows of
   `tables`, everything that reads tables would have had to step round them: the unique number, the 300,
@@ -48,6 +48,32 @@ overrule.
   its number stays upright.
 - **Tablet, Edit plan:** two keys turn what is picked by 15 degrees (a finger cannot work a small handle),
   and an element is added from a list as a piece of a usual size, then moved, sized and turned.
+
+## Two places to draw one plan (an offline business)
+
+An offline business's plan can now be drawn in two places: on its tablet (Edit plan), and by EasyPay in
+the back office kept for it. The tablet's changes stay in its queue; the back office's are on the server.
+"Get changes from EasyPay" brings a table or an element only when its row was written on the server since
+the tablet last asked (the pull's cursor), and what it brings replaces the tablet's row of the same thing,
+as it does for a product or a tax (`Fetched`). Read in the code, not run:
+
+- Nobody saved the plan in the back office: nothing of the plan is sent, and the owner's drawing stays.
+- EasyPay saved a room in the back office: Save plan writes every table and element of that room, so the
+  whole room is sent. On the tablet that room's tables go back to where the back office has them, whichever
+  was drawn last; a table the owner removed comes back; a table or a wall the owner added stays, and may
+  stand on top of another.
+- On Connect to the cloud the tablet's queue is replayed, so the server takes the tablet's saves in turn.
+
+Nothing was built to choose between the two: which drawing wins is the owner's to say. Holding the
+tablet's rooms back (as `OwnSettings` holds its settings) would mean a plan changed in the back office
+never reaches a tablet whose owner once drew on it, since an offline tablet's queue never empties.
+
+## Releasing it
+
+It has a version of its own, 0.9.4 (build 17), so that a tag named for 0.9.3 on this commit is refused.
+It goes out with a `v*` tag, which carries migration 0102, the back office and the tablets' build
+together. Not with a `live-*` tag: that would put the back office's booths, stools and walls in front of
+offline tablets still on 0.9.3 or older, whose own rules know two shapes and no elements.
 
 ## Not in this piece
 
