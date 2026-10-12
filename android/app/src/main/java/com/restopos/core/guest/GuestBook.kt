@@ -6,7 +6,9 @@ import com.restopos.core.database.TillDatabase
 import com.restopos.core.sync.SessionStore
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,6 +26,17 @@ class GuestKick @Inject constructor() {
 // either its lines at the till's own names and prices or why it cannot be
 // taken as it is.
 data class GuestShown(val id: String, val table: String, val tableName: String, val placedAt: Long, val checked: Checked)
+
+// How many orders wait for an answer, and how many of those nobody at the
+// till has looked at yet: the number on the top bar's phone key. The owner:
+// "the phone icon should show like a 1 above, if unseen and then another QR
+// order, then 2 and goes on".
+data class GuestCount(val waiting: Int = 0, val fresh: Int = 0)
+
+object GuestSeen {
+    // waiting: the ids of the orders that wait; seen: the ones the list was opened on
+    fun count(waiting: List<String>, seen: Set<String>) = GuestCount(waiting.size, waiting.count { it !in seen })
+}
 
 // The orders guests sent from their tables, on the till: the ones that wait,
 // and the cashier's answer. Accepting puts the lines on the table's order, as
@@ -60,6 +73,13 @@ class GuestBook @Inject constructor(
             rows.map { r -> GuestShown(r.id, r.table_id, book.tables[r.table_id] ?: "A table", r.placed_at, GuestCheck.of(r.asOrder(), book)) }
         }
     }
+
+    // The orders the list was opened on. Kept while the till runs and no
+    // longer: after the app is started again every order that still waits
+    // counts as new, which it is to whoever starts the till.
+    private val seen = MutableStateFlow<Set<String>>(emptySet())
+    fun looked(ids: Collection<String>) { if (ids.isNotEmpty()) seen.update { it + ids } }
+    fun count(): Flow<GuestCount> = combine(db.guest().waiting(), seen) { rows, s -> GuestSeen.count(rows.map { it.id }, s) }
 
     // Accepts it: all of its lines go on the table's order, or none do and the
     // cashier is told why. Answers the table's id, whose order is now the one

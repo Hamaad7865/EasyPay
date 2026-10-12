@@ -96,7 +96,11 @@ handoff (`feature/main/MainShell.kt` holds every screen):
   again whenever a dish, an option or a table changes, is handed each order,
   and gives the cashier's answer. An order is kept on the tablet
   (`guest_orders`, database version 15), the till chimes and says which
-  table, and a green strip on Tables opens the ones that wait: each is shown
+  table, and the phone key on the top bar (every screen; a green strip on
+  Tables opens the same sheet) shows a number: red for the orders nobody has
+  looked at (`GuestSeen`, kept while the app runs), then the accent for the
+  ones that still wait for an answer. The sheet lists them, one line to an
+  order ("Table 1 placed an order"), and a line opens that order: it is shown
   at the till's own names and prices (`GuestCheck`: the phone sends no
   price), Accept puts its lines on the table's order (seating a free table)
   and opens it for Send to kitchen, Decline asks which of three sentences

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -110,6 +111,8 @@ import com.restopos.feature.cash.CashViewModel
 import com.restopos.feature.customers.CustomersScreen
 import com.restopos.feature.floor.FloorScreen
 import com.restopos.feature.floor.FloorViewModel
+import com.restopos.feature.floor.GuestOrders
+import com.restopos.feature.floor.PHONE
 import com.restopos.feature.kds.KdsScreen
 import com.restopos.feature.kds.KdsViewModel
 import com.restopos.feature.menu.MenuStockScreen
@@ -201,6 +204,7 @@ class ShellViewModel @Inject constructor(
     private val kitchen: com.restopos.core.data.Kitchen,
     private val screens: com.restopos.core.kitchen.ScreenLink,
     private val guests: com.restopos.core.guest.GuestLink,
+    private val guestBook: com.restopos.core.guest.GuestBook,
     private val requests: com.restopos.core.data.TillRequests,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
@@ -254,6 +258,19 @@ class ShellViewModel @Inject constructor(
         // "marked as ready".
         viewModelScope.launch { kitchen.ready.collect { label -> Toaster.say("$label is ready to hand over") } }
     }
+    // Ordering from the table (core/guest), on the top bar whichever screen is
+    // open. The owner: "there should be a phone small icon on the top right
+    // corner", with a number on it for the orders nobody has looked at, a
+    // list under it and Accept or Decline in each. The key is there where the
+    // restaurant's plan carries table ordering and the back office's switch
+    // is on (and for as long as an order still waits, whatever they say).
+    val ordering: StateFlow<Boolean> = db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).let { s -> s.premium && !s.retail && s.tableOrdering } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val guestOrders: StateFlow<List<com.restopos.core.guest.GuestShown>> = guestBook.waiting().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val guestCount: StateFlow<com.restopos.core.guest.GuestCount> = guestBook.count().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.restopos.core.guest.GuestCount())
+    val guestLine: StateFlow<com.restopos.core.guest.GuestState> = guests.state
+    fun guestsLooked(ids: List<String>) = guestBook.looked(ids)
+
     val clockAhead: StateFlow<Long?> = api.clockAhead
     val updateRequired: StateFlow<Boolean> = api.updateRequired
     // POS settings, Security: minutes without a touch before the till locks; 0 is never
@@ -483,6 +500,12 @@ fun MainShell(
     // once, as the till opens: is there a newer build? (the key by the clock shows a dot)
     LaunchedEffect(Unit) { shell.lookForUpdate() }
     val orderUi by order.ui.collectAsState()
+    // orders sent from the tables' codes: the phone key on the bar, and its sheet
+    val ordering by shell.ordering.collectAsState()
+    val guestOrders by shell.guestOrders.collectAsState()
+    val guestCount by shell.guestCount.collectAsState()
+    val guestLine by shell.guestLine.collectAsState()
+    var guestSheet by remember { mutableStateOf(false) }
     var drawer by remember { mutableStateOf(false) }
     var confirmSignOut by remember { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -597,6 +620,21 @@ fun MainShell(
                         }
                     }
                 }
+                // Orders from the tables' codes, on every screen: a tap lists the
+                // ones that wait. The number is how many nobody has looked at
+                // yet (red); once the list has been opened it is how many
+                // still wait for an answer (the accent), so that one looked at
+                // and left is not forgotten.
+                if (ordering || guestCount.waiting > 0) {
+                    Box {
+                        Box(Modifier.size(40.dp).press { guestSheet = true }.clip(RoundedCornerShape(12.dp)).background(V.Panel), contentAlignment = Alignment.Center) {
+                            VIcon(PHONE, 19.dp, if (guestCount.waiting > 0) V.Text else V.Text2)
+                        }
+                        if (guestCount.waiting > 0) Box(Modifier.align(Alignment.TopEnd).offset(x = 7.dp, y = (-7).dp)) {
+                            if (guestCount.fresh > 0) Badge(guestCount.fresh, V.Red, 18.dp) else Badge(guestCount.waiting, V.Blue, 18.dp)
+                        }
+                    }
+                }
                 // Sync and update, one small key by the clock: a tap sends what
                 // is waiting, fetches what changed in the back office and asks
                 // for a newer build of the till. Its dot says what is waiting:
@@ -686,6 +724,25 @@ fun MainShell(
     }
 
     if (updateSheet) UpdateSheet(update, onDismiss = { shell.updateSheet.value = false }, onFetch = { shell.fetchUpdate() }, onInstall = { shell.installUpdate() })
+
+    if (guestSheet) {
+        // looked at for as long as the list is up: an order that arrives meanwhile is seen as it comes
+        LaunchedEffect(guestOrders) { shell.guestsLooked(guestOrders.map { it.id }) }
+        GuestOrders(
+            guestOrders, now, onClose = { guestSheet = false },
+            // the table's order is then the one on the register, whichever screen this was
+            onAccept = { id -> guestSheet = false; floor.acceptGuest(id) { shell.go(Screen.Order); order.open() } },
+            onDecline = floor::declineGuest,
+            standing = when {
+                guestLine.trouble != null -> guestLine.trouble
+                !guestLine.wanted -> "Orders from the tables come in while a day is open on this till."
+                !guestLine.connected -> "Connecting to the ordering site."
+                else -> "This till is listening: an order makes a sound and shows here the moment it is placed."
+            },
+            // a payment works on the order that is on the register: accepting would put another there under it
+            held = if (screen == Screen.Pay || screen == Screen.Split) "A payment is under way. Finish it first: accepting opens the table's order on the register." else null,
+        )
+    }
 
     if (confirmSignOut) {
         Sheet(onDismiss = { confirmSignOut = false }, width = 560.dp) {

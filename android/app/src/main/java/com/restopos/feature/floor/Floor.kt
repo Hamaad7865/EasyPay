@@ -148,6 +148,8 @@ class FloorViewModel @Inject constructor(
             .onFailure { com.restopos.core.ui.Toaster.say(it.message ?: "That order could not be taken.") }
     }
     fun declineGuest(id: String, reason: String) { viewModelScope.launch { guestBook.decline(id, reason) } }
+    // the list was opened: what is in it no longer counts as new on the top bar's phone key
+    fun guestsLooked(ids: List<String>) = guestBook.looked(ids)
 
     val zone = MutableStateFlow<String?>(null)
     val selected = MutableStateFlow<String?>(null)
@@ -333,7 +335,10 @@ fun FloorScreen(
                     )
                     VBtn("Look", bg = V.On, fg = V.OnText, height = 40.dp, radius = 10.dp, size = 14.sp) { looking = true }
                 }
-                if (looking) GuestOrders(guests, now, onClose = { looking = false }, onAccept = { id -> looking = false; vm.acceptGuest(id, onOrder) }, onDecline = vm::declineGuest)
+                if (looking) {
+                    androidx.compose.runtime.LaunchedEffect(guests) { vm.guestsLooked(guests.map { it.id }) }
+                    GuestOrders(guests, now, onClose = { looking = false }, onAccept = { id -> looking = false; vm.acceptGuest(id, onOrder) }, onDecline = vm::declineGuest)
+                }
             }
             if (assigning != null) {
                 Row(

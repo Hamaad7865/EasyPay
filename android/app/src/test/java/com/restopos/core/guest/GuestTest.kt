@@ -226,4 +226,19 @@ class GuestTest {
         assertEquals(lines, GuestWire.lines(GuestWire.write(lines)))
         assertEquals(emptyList<GuestLine>(), GuestWire.lines("not json"))
     }
+
+    // The number on the phone key: an order counts as new until the list has
+    // been opened on it, and as waiting until it is answered.
+    @Test
+    fun `the phone key counts what nobody has looked at, and what still waits`() {
+        assertEquals(GuestCount(0, 0), GuestSeen.count(emptyList(), emptySet()))
+        assertEquals(GuestCount(1, 1), GuestSeen.count(listOf("a"), emptySet()))
+        assertEquals(GuestCount(2, 2), GuestSeen.count(listOf("a", "b"), emptySet()))
+        // the list was opened on the first; a second came after
+        assertEquals(GuestCount(2, 1), GuestSeen.count(listOf("a", "b"), setOf("a")))
+        // looked at and not answered: it still waits
+        assertEquals(GuestCount(2, 0), GuestSeen.count(listOf("a", "b"), setOf("a", "b")))
+        // answered ones are no longer in the list, whatever was looked at
+        assertEquals(GuestCount(1, 1), GuestSeen.count(listOf("c"), setOf("a", "b")))
+    }
 }

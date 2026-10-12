@@ -181,7 +181,7 @@ class GuestLink @Inject constructor(
                 if (fresh) {
                     val table = session.storeId()?.let { db.tables().tablesNow(it) }.orEmpty().firstOrNull { it.id == o.table }?.name
                     Chime.order()
-                    Toaster.say((table ?: "A table") + " sent an order. It is waiting on Tables.")
+                    Toaster.say((table?.let { com.restopos.core.common.tableLabel(it) } ?: "A table") + " placed an order. Tap the phone key at the top to see it.")
                 } else kick.now() // one this till has answered and the site never heard: it is told again
             }
             is FromRelay.Answered -> db.guest().told(m.id)
