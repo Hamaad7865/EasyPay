@@ -14,6 +14,7 @@ index.html      Home: the headline, the three reasons, the line that drops, a li
 product.html    Product: its parts, the back office as it is, the small things, what it runs on
 features.html   Features: each feature of the till, with what can be pressed
 pricing.html    Pricing: the prices, how you start, the questions
+shop.html       A shop's own page: the counter, its back office, the price, its questions, a demo form
 404.html        what an address with nothing behind it answers
 sitemap.xml     the four pages, for search engines (see "Being found")
 robots.txt      what a search engine may read, and where the sitemap is
@@ -57,8 +58,9 @@ in a hidden pane it rightly stands still.
 ## The pages
 
 The site is four pages, so that none is long: Home, Product, Features and
-Pricing. They share the head, the bar and the foot word for word, and each
-has the Restaurant / Shop switch (what was picked is kept from page to page).
+Pricing, and a fifth for shops alone (below). They share the head, the bar
+and the foot word for word, and each of the four has the Restaurant / Shop
+switch (what was picked is kept from page to page).
 A part of the site has one home (`why`, `offline`, `features` and `demo` at
 Home; `qr`, `floor`, `kitchen`, `payment`, `selling`, `stock` and `returns`
 on Features; `parts`, `backoffice`, `more` and `works` on Product; `pricing`,
@@ -68,6 +70,19 @@ to the bar or the foot is made in all four files.
 
 The pages are plain files: nothing builds them. Cloudflare Pages serves
 `features.html` at `/features` too.
+
+`shop.html` (`/shop`) is a shop's page and nothing else: `<html
+data-for="shop">` is written in the file, there is no switch on it, and its
+head keeps "shop" as the visitor's choice, so the pages opened from it are
+shown for a shop. It is there because a search engine reads a page as it is
+first drawn, which for the other four is a restaurant's: a shop's words
+were behind the switch. It has its own demo form, so its "Book a demo" keys
+stay on the page. Its words are its own, short, and each of its cards leads
+to the part of Features or Product that says more. The bar's panel, the
+sheet a phone opens and the foot of every page link to it ("POS for
+shops"). What it says of a shop is held to the same list as the rest (see
+"What the page may say"), and it gives the Starter pack's price: one more
+place for "The prices".
 
 ## The pictures of the back office
 
@@ -128,11 +143,12 @@ each wording would compete with Home and is not wanted.
 Each of the other pages has a search of its own, said in its title and
 description: Features is the features of a restaurant's and a shop's POS,
 Product is the POS system on an Android tablet with its back office, Pricing
-is what a POS system costs in Mauritius. A title stays under 60 characters
+is what a POS system costs in Mauritius, and the shop's page is a retail POS
+system for shops in Mauritius. A title stays under 60 characters
 and a description under 160, or a search engine cuts them; no two pages
 share either.
 
-- `sitemap.xml` lists the four pages at the addresses their canonical links
+- `sitemap.xml` lists the five pages at the addresses their canonical links
   name, without `.html`. A page added to the site is added there.
 - `robots.txt` opens the site to every search engine, keeps the back office
   and this file out, and names the sitemap. Before it existed Cloudflare
@@ -157,9 +173,10 @@ Cloudflare (www to easypaypos.com, permanent, keeping the path) is the
 tidier answer. It is not done by `_worker.js`, which would then run on
 every visit.
 
-A shop's words are in the same pages as a restaurant's, behind the switch,
-and `/#shop` is not an address of its own to a search engine. A search for a
-shop's POS would be answered better by a page of its own; none is built.
+A shop's words in the four pages are behind the switch, and `/#shop` is not
+an address of its own to a search engine. That is what `shop.html` is for
+(see "The pages"). A restaurant needs no such page: the four pages are a
+restaurant's as they are first drawn.
 
 ## See it
 
@@ -207,6 +224,15 @@ screen changes, its Help changes, and this page is read against it again.
 title, the headline, the first question): it is his claim to make, and the
 first question answers it with what the product does, not with a ranking.
 
+**MRA e-invoicing** is named in one question, on Pricing and on the shop's
+page, and only to say that it is not built: EasyPay does not send invoices
+to the MRA. The answer then says what there is (the BRN and VAT number on
+the receipt, the tax types, the tax report), each of which is in the code.
+It is never in a title, a description or a headline, the words "ready" and
+"compliant" are not used of it, and nothing is said of the MRA's own rules
+or of a date. The day it is built, the answer changes; until then it stays
+"Not yet".
+
 **QR ordering from the table** is on the page as a Premium feature. Guests
 reach it at order.easypaypos.com, which answers only once the relay is
 deployed (`cloudflare/relay/deploy.cjs --apply`, the owner's to run). The
@@ -234,7 +260,9 @@ among the questions, the pricing section's headline, and the foot of its
 table. What comes with Premium is also marked where it is described
 (Bookings under Front of house, the kitchen screen under Kitchen and bar).
 They are also in what Home's head tells a search engine (the two offers in
-its `application/ld+json`) and in `pricing.html`'s title and description.
+its `application/ld+json`), in `pricing.html`'s title and description, and
+on `shop.html` (its description, the line under its buttons, "The price"
+and its first question), which gives the Starter pack alone.
 
 Offline is said with the same care everywhere: the till keeps selling,
 taking payments, printing and closing the day, and sends everything on

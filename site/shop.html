@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en" data-for="shop">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retail POS system for shops in Mauritius | EasyPay</title>
+<meta name="description" content="EasyPay is a retail POS system for shops in Mauritius: scan to sell, stock that counts itself and returns from the receipt. Works offline. Rs 5,000, once.">
+<link rel="canonical" href="https://easypaypos.com/shop">
+<meta name="theme-color" content="#fafaf6">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="EasyPay">
+<meta property="og:title" content="EasyPay | Retail POS system for shops in Mauritius">
+<meta property="og:description" content="A shop&rsquo;s counter, stock and returns on one Android tablet, with a back office in your browser. Starter pack Rs 5,000, paid once.">
+<meta property="og:url" content="https://easypaypos.com/shop">
+<meta property="og:image" content="https://easypaypos.com/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/site.css">
+<link rel="stylesheet" href="css/mock.css">
+<link rel="stylesheet" href="css/real.css">
+<script>
+  // before anything is drawn: script is on. This page is always a shop's
+  // (the mark is on <html> itself), and the pages a visitor opens from here
+  // are shown for a shop too.
+  (function (d) {
+    d.classList.add("js");
+    try { localStorage.setItem("easypay-for", "shop"); } catch (e) {}
+  })(document.documentElement);
+</script>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-go" viewBox="0 0 24 24"><path d="m6 17 5-5-5-5M13 17l5-5-5-5"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14M18 13l-6 6-6-6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z"/></symbol>
+  <symbol id="i-wa" viewBox="0 0 24 24"><path d="M3.6 20.4 5 16.2a8.4 8.4 0 1 1 3 2.9z"/><path d="M9.2 8.4c.2 3.1 2.9 5.9 6 6.2l1.1-1.5-1.9-1.1-.9.8a5 5 0 0 1-2.1-2.2l.8-.9-1.1-1.9z"/></symbol>
+  <symbol id="i-bars" viewBox="0 0 24 24"><path d="M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12"/></symbol>
+  <symbol id="i-floor" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="6" rx="1.5"/><rect x="14" y="4" width="7" height="6" rx="1.5"/><rect x="3" y="14" width="7" height="6" rx="1.5"/><circle cx="17.5" cy="17" r="3"/></symbol>
+  <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/></symbol>
+  <symbol id="i-split" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 10h18M12 10v9"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.2"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M3 8 12 3l9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v.01M14 20v.01M17 20h4v-3"/></symbol>
+  <symbol id="i-screen" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 8V4h10v4M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M7 14h10v6H7z"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+</svg>
+
+<div class="wash" aria-hidden="true"></div>
+<div class="dots-layer" aria-hidden="true"><canvas class="dots"></canvas></div>
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="site-head">
+  <div class="nav">
+    <a class="brand" href="index.html" aria-label="EasyPay, the home page">
+      <img src="assets/mark.png" alt="" width="22" height="34">
+      <span>EasyPay</span>
+    </a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="product.html">Product</a>
+      <div class="nav-drop">
+        <button class="nav-key" type="button" aria-expanded="false" aria-controls="nav-product">Features <svg class="ico"><use href="#i-chev"/></svg></button>
+        <div class="nav-panel" id="nav-product">
+          <div class="nav-col">
+            <p>For restaurants</p>
+            <a href="features.html#qr"><svg class="ico"><use href="#i-qr"/></svg><span><b>QR ordering</b>Guests order from their table, on their phone</span></a>
+            <a href="features.html#floor"><svg class="ico"><use href="#i-floor"/></svg><span><b>Front of house</b>The floor plan, tables and bookings</span></a>
+            <a href="features.html#kitchen"><svg class="ico"><use href="#i-ticket"/></svg><span><b>Kitchen and bar</b>Each ticket to the right printer</span></a>
+            <a href="features.html#payment"><svg class="ico"><use href="#i-split"/></svg><span><b>Payment</b>Split bills, cash and receipts</span></a>
+            <a href="features.html"><svg class="ico"><use href="#i-go"/></svg><span><b>Every feature</b>All of them on one page, to try</span></a>
+          </div>
+          <div class="nav-col">
+            <p>For shops</p>
+            <a href="shop.html"><svg class="ico"><use href="#i-tag"/></svg><span><b>POS for shops</b>A shop's till, stock and price on one page</span></a>
+            <a href="features.html#selling"><svg class="ico"><use href="#i-bars"/></svg><span><b>Selling</b>Scan or tap, sizes, weight, parked sales</span></a>
+            <a href="features.html#stock"><svg class="ico"><use href="#i-box"/></svg><span><b>Stock</b>What is left, deliveries and counts</span></a>
+            <a href="features.html#returns"><svg class="ico"><use href="#i-back"/></svg><span><b>Returns</b>Refund or exchange from the receipt</span></a>
+            <a href="features.html"><svg class="ico"><use href="#i-go"/></svg><span><b>Every feature</b>All of them on one page, to try</span></a>
+          </div>
+        </div>
+      </div>
+      <a href="pricing.html">Pricing</a>
+      <a href="pricing.html#faq">Questions</a>
+    </nav>
+    <div class="nav-end">
+      <a class="nav-signin" data-signin hidden>Sign in</a>
+      <a class="btn-demo" href="#demo">Book a demo <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-sheet" aria-label="Menu"><i></i><i></i></button>
+    </div>
+  </div>
+  <div class="nav-sheet" id="nav-sheet" hidden>
+    <p>For restaurants</p>
+    <a href="features.html#qr">QR ordering</a>
+    <a href="features.html#floor">Front of house</a>
+    <a href="features.html#kitchen">Kitchen and bar</a>
+    <a href="features.html#payment">Payment</a>
+    <p>For shops</p>
+    <a href="shop.html">POS for shops</a>
+    <a href="features.html#selling">Selling</a>
+    <a href="features.html#stock">Stock</a>
+    <a href="features.html#returns">Returns</a>
+    <p>EasyPay</p>
+    <a href="product.html">The whole product</a>
+    <a href="features.html">Every feature</a>
+    <a href="product.html#backoffice">Back office</a>
+    <a href="pricing.html">Pricing</a>
+    <a href="pricing.html#faq">Questions</a>
+    <a data-signin hidden>Sign in</a>
+    <a class="btn-demo" href="#demo">Book a demo <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ================= hero ================= -->
+<section class="hero" id="top">
+  <div class="wrap">
+    <div class="hero-copy" data-solid>
+      <div class="pick" data-rise style="--i:0">
+        <p class="eyebrow">Retail POS system for shops</p>
+        <p class="eyebrow dim">Made for Mauritius</p>
+      </div>
+      <h1 data-rise style="--i:1">The best POS for shops in Mauritius.</h1>
+      <p class="lede" data-rise style="--i:2">EasyPay is a retail POS system on one Android tablet. Scan or tap to sell, see what is left of every product, and take a return from the barcode on its receipt. Sales carry on when the internet drops.</p>
+      <div class="hero-cta" data-rise style="--i:3">
+        <a class="btn-demo" href="#demo">Book a demo <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a>
+        <a class="btn-line" data-wa hidden><svg class="ico"><use href="#i-wa"/></svg>WhatsApp us</a>
+      </div>
+      <a class="hero-price" href="pricing.html#pricing" data-rise style="--i:4">
+        <span><b>Starter pack</b>Rs 5,000, once</span>
+        <svg class="ico"><use href="#i-down"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ================= at the counter ================= -->
+<section class="index" id="counter">
+  <div class="wrap">
+    <div class="head head--mid" data-solid>
+      <p class="eyebrow" data-reveal>At the counter</p>
+      <h2 data-reveal="focus">A shop's whole day on one till. <span class="dim">From the first scan to the close.</span></h2>
+    </div>
+    <div class="index-grid" data-solid>
+      <a class="index-card" href="features.html#selling" data-reveal><svg class="ico"><use href="#i-bars"/></svg><b>Selling</b><span>A scanner or a tile rings a product up. Sizes, colours and weight, a discount, and a sale parked while you serve the next customer.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+      <a class="index-card" href="features.html#stock" data-reveal><svg class="ico"><use href="#i-box"/></svg><b>Stock</b><span>Every tile says what is left, and a sale takes from stock by itself. Purchase orders, deliveries and counts keep it true.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+      <a class="index-card" href="features.html#returns" data-reveal><svg class="ico"><use href="#i-back"/></svg><b>Returns and exchanges</b><span>Scan the barcode at the foot of a receipt and its sale opens. Refund what comes back, or exchange it and settle the difference.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+      <a class="index-card" href="product.html#backoffice" data-reveal><svg class="ico"><use href="#i-tag"/></svg><b>Barcode labels</b><span>A product with no barcode gets one of its own, and its labels print on a sheet or on a roll.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+      <a class="index-card" href="product.html#more" data-reveal><svg class="ico"><use href="#i-plus"/></svg><b>Staff and the drawer</b><span>A PIN for each member of staff, a manager's PIN for a refund or a changed price, and a drawer counted when the day closes.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+      <a class="index-card" href="index.html#offline" data-reveal><svg class="ico"><use href="#i-check"/></svg><b>Without the internet</b><span>Sales, payments and receipts carry on with no connection. Everything reaches the back office when it returns.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+    </div>
+    <p class="index-all" data-reveal><a class="btn-demo" href="features.html#selling">Try the till's pieces <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a><a class="btn-line" href="product.html">The whole product</a></p>
+  </div>
+</section>
+
+<!-- ================= back office ================= -->
+<section class="office" id="backoffice">
+  <div class="wrap">
+    <div class="head head--mid" data-solid>
+      <p class="eyebrow" data-reveal>Back office</p>
+      <h2 data-reveal="focus">Your shop, in your browser. <span class="dim">These are its real pages.</span></h2>
+    </div>
+    <div class="stage stage--office" data-solid data-reveal>
+      <div class="tour" data-tour>
+          <div class="tour-tabs" role="tablist" aria-label="Pages of a shop’s back office">
+            <button type="button" role="tab" aria-selected="true" data-shot="shop-products" data-alt="The Products page: products with their category, cost, margin, stock, price and whether they are on sale" data-says="Every product with its sizes and colours, what it costs you, its margin, its barcode and what is left. A spreadsheet brings your catalog in.">Products</button>
+            <button type="button" role="tab" aria-selected="false" data-shot="shop-stock" data-alt="The Stock on hand page: the worth of the stock, what is low or out, and every product with what is left of it" data-says="What the shop holds today and what it is worth, with what is running low and what has run out.">Stock</button>
+            <button type="button" role="tab" aria-selected="false" data-shot="shop-sales" data-alt="The Item sales page: products ranked by what they brought in, with their cost, profit and margin" data-says="Your best sellers first, each with what it brought in, what it cost and the profit it left.">Sales and profit</button>
+            <button type="button" role="tab" aria-selected="false" data-shot="shop-value" data-alt="The Stock value page: what the stock cost and what it would sell for, by category and by supplier" data-says="The cost of your stock and what it would sell for, by category and by supplier, and a list of what to order again.">Stock value</button>
+          </div>
+          <figure class="webapp">
+            <div class="webapp-bar" aria-hidden="true"><i></i><i></i><i></i><span>easypaypos.com/backoffice</span></div>
+            <img data-tour-img src="assets/shots/shop-products-1000.webp" srcset="assets/shots/shop-products-1000.webp 1000w, assets/shots/shop-products.webp 2000w" sizes="(max-width: 1348px) 84vw, 1140px" width="2000" height="1250" alt="The Products page: products with their category, cost, margin, stock, price and whether they are on sale" loading="lazy" decoding="async">
+          </figure>
+          <p class="tour-says" data-tour-says aria-live="polite">Every product with its sizes and colours, what it costs you, its margin, its barcode and what is left. A spreadsheet brings your catalog in.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= the price, and getting started ================= -->
+<section class="start" id="start">
+  <div class="wrap start-grid">
+    <div class="copy" data-solid>
+      <p class="eyebrow" data-reveal>The price</p>
+      <h2 data-reveal="focus">Rs 5,000, once, for each tablet.</h2>
+      <ol class="steps">
+        <li data-reveal><h3>What you pay for</h3><p>The Starter pack: the till, the back office, your stock, your reports and barcode labels. <a href="pricing.html#pricing">See all it includes</a>.</p></li>
+        <li data-reveal><h3>We open your shop</h3><p>We create your account and your logins and set the till up with you. Your products come in from a spreadsheet.</p></li>
+        <li data-reveal><h3>Install and sell</h3><p>Install EasyPay on your tablet, sign in, connect the printer and print a test page. The next receipt is a real one.</p></li>
+      </ol>
+    </div>
+    <div class="kit" data-solid data-reveal>
+      <p class="kit-title">What you need</p>
+      <dl>
+        <div><dt>A tablet</dt><dd>Android 8 or later, used in landscape.<span>Required</span></dd></div>
+        <div><dt>A receipt printer</dt><dd>ESC/POS, 58 mm or 80 mm paper, on your network or by USB cable.<span>Required</span></dd></div>
+        <div><dt>A barcode scanner</dt><dd>Any scanner that types like a keyboard, by USB or Bluetooth.<span>Recommended</span></dd></div>
+        <div><dt>A cash drawer</dt><dd>Opened from the till, and counted when the day closes.<span>Optional</span></dd></div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- ================= questions ================= -->
+<section class="faq" id="faq">
+  <div class="wrap faq-grid">
+    <div class="head" data-solid>
+      <p class="eyebrow" data-reveal>Questions</p>
+      <h2 data-reveal="focus">What shops ask us first.</h2>
+      <ul class="faq-links" data-reveal>
+        <li><a href="pricing.html#pricing">What the Starter pack includes <svg class="ico"><use href="#i-go"/></svg></a></li>
+        <li><a href="index.html#offline">What carries on without a connection <svg class="ico"><use href="#i-go"/></svg></a></li>
+        <li><a href="pricing.html#faq">More questions <svg class="ico"><use href="#i-go"/></svg></a></li>
+      </ul>
+    </div>
+    <div class="faq-list" data-solid>
+      <details data-reveal>
+        <summary>How much does a POS system for a shop cost?<svg class="ico"><use href="#i-plus"/></svg></summary>
+        <p>EasyPay's Starter pack is Rs 5,000, paid once for each tablet. It comes with the till, the back office, your stock and your reports. The tablet, the printer and the scanner are yours to choose.</p>
+      </details>
+      <details data-reveal>
+        <summary>Does it keep selling when the internet goes down?<svg class="ico"><use href="#i-plus"/></svg></summary>
+        <p>Yes. Sales and payments are kept on the tablet and sent to the back office when the connection returns, and receipts print over your own network or a USB cable. Changes to products, prices and staff wait for the connection, and so does setting up a new tablet.</p>
+      </details>
+      <details data-reveal>
+        <summary>Can I bring in the products I already have?<svg class="ico"><use href="#i-plus"/></svg></summary>
+        <p>Yes. The back office reads a spreadsheet of your products with their sizes, colours, prices and barcodes, shows you what it understood, and adds them in one go.</p>
+      </details>
+      <details data-reveal>
+        <summary>Do I need a barcode scanner?<svg class="ico"><use href="#i-plus"/></svg></summary>
+        <p>No, but a counter is faster with one. Any scanner that types like a keyboard works, by USB or Bluetooth, and every product also has a tile to tap. Scanning with the tablet's camera is not supported yet.</p>
+      </details>
+      <details data-reveal>
+        <summary>My products have no barcodes. What then?<svg class="ico"><use href="#i-plus"/></svg></summary>
+        <p>The back office gives a product a barcode of its own and prints its labels, on a sheet or on a roll, for you to stick on.</p>
+      </details>
+      <details data-reveal>
+        <summary>Can I take card payments?<svg class="ico"><use href="#i-plus"/></svg></summary>
+        <p>Yes, on your own card terminal. Take the payment there, then record it on the till as a card payment. The till does not talk to the terminal itself.</p>
+      </details>
+      <details data-reveal>
+        <summary>Does EasyPay do MRA e-invoicing?<svg class="ico"><use href="#i-plus"/></svg></summary>
+        <p>Not yet. EasyPay does not send invoices to the MRA's e-invoicing system today. What it does: your BRN and VAT number print on every receipt with the VAT in the total, a product can be at 15%, zero-rated or exempt, and the back office has a tax report laid out for your VAT return. If your business is required to e-invoice, tell us when you book a demo and we will tell you where it stands.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ================= book a demo ================= -->
+<section class="demo" id="demo">
+  <div class="wrap">
+    <div class="demo-panel" data-solid>
+      <div class="demo-copy">
+        <p class="eyebrow" data-reveal>Book a demo</p>
+        <h2 data-reveal="focus">See it with your own products. <span class="dim">Then judge it yourself.</span></h2>
+        <p class="demo-lede" data-reveal>Tell us about your shop and we will arrange a time to show you a sale, a return and a stock check on the till, and the back office behind it.</p>
+        <p class="demo-direct" data-direct hidden data-reveal></p>
+      </div>
+      <form class="demo-form" data-demo-form novalidate data-reveal>
+        <label>Your name<input name="name" type="text" autocomplete="name" required></label>
+        <label><b>Shop</b><input name="business" type="text" autocomplete="organization" required></label>
+        <label>Phone or WhatsApp<input name="phone" type="tel" autocomplete="tel" inputmode="tel" required></label>
+        <label>Anything we should know? <span>Optional</span><textarea name="note" rows="3" placeholder="What you sell, how many products, a scanner or printers you already have"></textarea></label>
+        <p class="form-error" role="alert" hidden>Add your name, your shop and a phone number so we can reach you.</p>
+        <div class="form-send">
+          <button class="btn-demo btn-demo--light" type="submit" data-via="whatsapp" hidden>Send on WhatsApp <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></button>
+          <button class="btn-demo btn-demo--light" type="submit" data-via="email">Send by e-mail <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></button>
+        </div>
+        <p class="form-hint" data-hint>This opens your own e-mail app with the message written. Nothing is sent until you press send there.</p>
+      </form>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-foot" data-solid>
+  <div class="wrap foot-grid">
+    <div class="foot-brand">
+      <img src="assets/badge.png" alt="EasyPay. Making it easier for you." width="132" height="136">
+      <p>A point of sale (POS) system for restaurants and shops, made for Mauritius.</p>
+    </div>
+    <nav aria-label="The till">
+      <h4>The till</h4>
+      <a href="features.html#qr">QR ordering</a><a href="features.html#floor">Front of house</a><a href="features.html#kitchen">Kitchen and bar</a><a href="features.html#payment">Payment</a><a href="features.html#selling">Selling in a shop</a><a href="features.html#stock">Stock</a><a href="features.html#returns">Returns</a>
+    </nav>
+    <nav aria-label="The back office">
+      <h4>The back office</h4>
+      <a href="product.html#backoffice"><span data-only="restaurant">Menu and stock</span><span data-only="shop">Catalog and stock</span></a><a href="product.html#backoffice">Reports</a><a href="product.html#backoffice">Staff and roles</a><a data-signin hidden>Sign in</a>
+    </nav>
+    <nav aria-label="Start">
+      <h4>Start</h4>
+      <a href="product.html">The whole product</a><a href="shop.html">POS for shops</a><a href="pricing.html">Pricing</a><a href="pricing.html#start">What you need</a><a href="pricing.html#faq">Questions</a><a href="#demo">Book a demo</a><a data-call hidden></a>
+    </nav>
+  </div>
+  <div class="wrap foot-end"><span>© 2026 EasyPay</span><span>easypaypos.com</span></div>
+</footer>
+
+<script src="js/config.js"></script>
+<script src="js/main.js"></script>
+<script src="js/play.js"></script>
+</body>
+</html>
