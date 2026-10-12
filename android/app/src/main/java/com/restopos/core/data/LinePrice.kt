@@ -73,4 +73,8 @@ object LinePrice {
     enum class Stock { Plenty, Few, None }
     fun stock(qty: Long): Stock = if (qty <= 0) Stock.None else if (qty <= 5000) Stock.Few else Stock.Plenty
     fun left(qty: Long, weighed: Boolean): String = if (qty <= 0) "Out" else qty(qty.toInt(), weighed) + " left"
+
+    // How many things a line is, for the count beside the sale's total ("7 items"):
+    // what is weighed is one thing, whatever it weighs, and so is part of one.
+    fun pieces(qty: Int, weighed: Boolean): Int = if (weighed) 1 else maxOf(1, (qty + 500) / 1000)
 }

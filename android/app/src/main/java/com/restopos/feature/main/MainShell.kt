@@ -633,22 +633,26 @@ fun MainShell(
                 }
             }
             SyncNotices(needsSignIn, pending, rejected, onSignIn, onRejected, clockAhead, updateRequired)
+            // Where the till goes once a sale is paid in full: from the payment
+            // screen's last card, or straight from Fast on the sell or order screen.
+            val paid: (String) -> Unit = { kind ->
+                when {
+                    // a shop's sale is paid: the sell screen again, with an empty sale
+                    retail -> { shell.go(Screen.Sell); sell.open() }
+                    kind == "dine" -> { floor.pick(null); shell.go(Screen.Floor) }
+                    kind == "takeaway" || kind == "delivery" -> shell.go(Screen.Takeaway)
+                    else -> shell.quick { order.open() }
+                }
+            }
+            val fast = { pay.fast(onScreen = { shell.go(Screen.Pay) }, onPaid = paid) }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (screen) {
                     Screen.Floor -> FloorScreen(floor, assigning, onAssigned = { shell.assigning.value = null }, onOrder = { shell.go(Screen.Order) }, onPay = { shell.go(Screen.Pay) }, onBookings = { shell.go(Screen.Bookings) })
-                    Screen.Order -> OrderScreen(order, onBack = home, onPay = { shell.go(Screen.Pay) }, onSplit = { shell.go(Screen.Split) }, onSent = { shell.go(Screen.Floor) }, onGone = home)
-                    Screen.Pay -> PayScreen(pay, onBack = { shell.go(if (retail) Screen.Sell else Screen.Order) }, onSplit = { shell.go(Screen.Split) }) { kind ->
-                        when {
-                            // a shop's sale is paid: the sell screen again, with an empty sale
-                            retail -> { shell.go(Screen.Sell); sell.open() }
-                            kind == "dine" -> { floor.pick(null); shell.go(Screen.Floor) }
-                            kind == "takeaway" || kind == "delivery" -> shell.go(Screen.Takeaway)
-                            else -> shell.quick { order.open() }
-                        }
-                    }
+                    Screen.Order -> OrderScreen(order, onBack = home, onPay = { shell.go(Screen.Pay) }, onFast = { fast() }, onSplit = { shell.go(Screen.Split) }, onSent = { shell.go(Screen.Floor) }, onGone = home)
+                    Screen.Pay -> PayScreen(pay, onBack = { shell.go(if (retail) Screen.Sell else Screen.Order) }, onSplit = { shell.go(Screen.Split) }, onFinish = paid)
                     Screen.Split -> SplitScreen(onBack = { shell.go(if (retail) Screen.Sell else Screen.Order) }, onPay = { shell.go(Screen.Pay) })
                     Screen.Sell -> RetailSellScreen(
-                        sell, more, onPay = { shell.go(Screen.Pay) }, onReceipts = { shell.go(Screen.Receipts) },
+                        sell, more, onPay = { shell.go(Screen.Pay) }, onFast = { fast() }, onReceipts = { shell.go(Screen.Receipts) },
                         onReceipt = { id -> receipts.showId(id); shell.go(Screen.Receipts) }, onStock = { shell.go(Screen.StockCheck) },
                     )
                     Screen.Products -> { val vm: ProductsViewModel = hiltViewModel(); ProductsScreen(vm, onLabel = { item -> labels.tap(item); shell.go(Screen.Labels) }) }

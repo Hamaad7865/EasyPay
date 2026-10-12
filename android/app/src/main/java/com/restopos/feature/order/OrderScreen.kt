@@ -1,9 +1,7 @@
 package com.restopos.feature.order
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,6 +14,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -34,8 +33,9 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,12 +50,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -70,20 +70,28 @@ import com.restopos.core.database.DiscountEntity
 import com.restopos.core.database.EmployeeEntity
 import com.restopos.core.database.ItemEntity
 import com.restopos.core.database.TableEntity
+import com.restopos.core.database.TicketLineModEntity
 import com.restopos.core.ui.Caps
+import com.restopos.core.ui.FastKey
 import com.restopos.core.ui.Field
 import com.restopos.core.ui.Gap
+import com.restopos.core.ui.GoRow
 import com.restopos.core.ui.IconKey
 import com.restopos.core.ui.L
 import com.restopos.core.ui.Motion
+import com.restopos.core.ui.PayKey
 import com.restopos.core.ui.PictureBand
 import com.restopos.core.ui.Pos
+import com.restopos.core.ui.Rail
+import com.restopos.core.ui.RailKey
 import com.restopos.core.ui.Seg
 import com.restopos.core.ui.SegOption
+import com.restopos.core.ui.SellFit
 import com.restopos.core.ui.Sheet
 import com.restopos.core.ui.SheetHead
 import com.restopos.core.ui.Stepper
 import com.restopos.core.ui.T
+import com.restopos.core.ui.TotalRow
 import com.restopos.core.ui.V
 import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.VI
@@ -101,59 +109,66 @@ import java.util.Locale
 private fun colorOf(c: CategoryEntity?, index: Int): Color = com.restopos.core.ui.catColor(c?.color, index)
 private val HM = SimpleDateFormat("HH:mm", Locale.US)
 
-// The order screen: the order down the left with what the kitchen has and
-// what it has not, the menu on the right.
+// The order screen, after the board the owner approved for selling: the menu
+// on the left (a search over the categories, listed down the side, the items
+// as cards, and under them the keys of the lit line's options), the order on
+// the right with what the kitchen has and what it has not, and under it its
+// total, then Send, Fast and Pay. Settings, Display puts the order on the left.
+// onFast: the order paid in cash, the exact amount, without the payment screen.
 @Composable
-fun OrderScreen(vm: OrderViewModel, onBack: (board: Boolean) -> Unit, onPay: () -> Unit, onSplit: () -> Unit, onSent: () -> Unit, onGone: (board: Boolean) -> Unit) {
+fun OrderScreen(vm: OrderViewModel, onBack: (board: Boolean) -> Unit, onPay: () -> Unit, onFast: () -> Unit, onSplit: () -> Unit, onSent: () -> Unit, onGone: (board: Boolean) -> Unit) {
     val ui by vm.ui.collectAsState()
     val sheet by vm.sheet.collectAsState()
     val asking by vm.asking.collectAsState()
     var more by remember { mutableStateOf(false) }
-    val left by vm.leftHanded.collectAsState()
+    val orderLeft by vm.orderLeft.collectAsState()
     LaunchedEffect(Unit) { vm.open() }
     // while this screen is open, a scanned barcode adds its item
     LaunchedEffect(Unit) { com.restopos.core.common.Scanner.codes.collect { vm.scanned(it) } }
 
     // On a screen that is not tall (a 10-inch, where the till is drawn larger:
-    // core/ui/ScreenFit) the order's column gives way, so that the order itself
-    // can still be read: its head, its lines, its total and its keys are a little
-    // lower and the tax goes under the word Total. A takeaway shows three lines
-    // of it then, where it would show one. A tall screen is drawn as before.
+    // core/ui/ScreenFit) the order gives way, so that the order itself can still
+    // be read: its head, its lines, its total and its keys are a little lower.
+    // On one that is not wide, the list of categories and the order are
+    // narrower (core/ui/SellParts). A large screen is drawn in full.
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val low = maxHeight < 600.dp
-        Row(Modifier.fillMaxSize()) {
-            if (left) Menu(ui, vm, Modifier.weight(1f))
-            Column(Modifier.width(390.dp).fillMaxHeight().background(V.Panel).drawBehind { drawRect(V.Stroke, Offset(if (left) 0f else size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height)) }) {
-                Head(ui, vm, low) { onBack(ui.board) }
-                Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
+        val narrow = SellFit.narrow(maxWidth)
+        Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (!orderLeft) Menu(ui, vm, narrow, low, Modifier.weight(1f))
+            Column(Modifier.width(SellFit.sale(narrow)).fillMaxHeight().clip(RoundedCornerShape(20.dp)).background(V.Panel)) {
+                Head(ui, vm, low, onMore = { more = true }) { onBack(ui.board) }
                 Lines(ui, vm, low, Modifier.weight(1f))
-                Totals(ui, low)
-                Column(Modifier.fillMaxWidth().background(V.PanelFoot).padding(start = 16.dp, end = 16.dp, bottom = if (low) 12.dp else 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val fn = if (low) 42.dp else 48.dp
+                Column(
+                    Modifier.fillMaxWidth().background(V.PanelFoot).padding(start = 16.dp, end = 16.dp, top = if (low) 8.dp else 12.dp, bottom = if (low) 10.dp else 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (low) 6.dp else 8.dp),
+                ) {
+                    Totals(ui, low)
+                    val fn = if (low) 40.dp else 44.dp
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (ui.dine) Fn(L.printBill, VI.Print, V.Soft, Modifier.weight(1f), fn) { vm.printBill() }
                         // a counter sale can wait while the next customer is served
                         else if (ui.kind == "counter" || ui.kind == "tab") Fn(L.newSale, VI.Plus, if (!ui.empty) V.Soft else V.Off, Modifier.weight(1f), fn) { vm.newSale() }
                         Fn(L.split, VI.Split, V.Soft, Modifier.weight(1f), fn) { if (vm.mayPay()) onSplit() }
                         Fn(L.clearNew, VI.Close, if (ui.unsent > 0) V.RedText else V.Off, Modifier.weight(1f), fn) { vm.clearNew() }
-                        Fn(L.more, VI.More, V.Soft, Modifier.weight(1f), fn) { more = true }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val key = if (low) 56.dp else 66.dp
+                    GoRow(low) {
+                        // A table's bill is printed and brought before it is paid: it has Send
+                        // and Pay, half each. The others have Fast between them.
                         val on = ui.unsent > 0 && !ui.busy
-                        VBtn(
-                            L.send + if (ui.unsent > 0) " · ${ui.unsent}" else "", Modifier.weight(1f), if (on) V.Blue else V.Key, if (on) Color.White else V.Text3,
-                            key, size = 16.sp, weight = 800, pad = 10.dp,
-                        ) { vm.send(onSent) }
-                        val due = ui.totals.total
-                        VBtn(
-                            "${L.pay} · ${Money.format(due)}", Modifier.weight(1f), if (!ui.empty) V.Green else V.GreenOff, if (!ui.empty) V.GreenInk else V.GreenOffText,
-                            key, size = 16.sp, weight = 800, pad = 10.dp,
-                        ) { if (vm.mayPay()) onPay() }
+                        Box(
+                            (if (ui.dine) Modifier.weight(1f) else Modifier.width(if (narrow) 92.dp else 104.dp)).fillMaxHeight()
+                                .press { vm.send(onSent) }.clip(RoundedCornerShape(16.dp)).background(if (on) V.Blue else V.Key).padding(horizontal = 8.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            T((if (ui.dine) L.send else L.sendShort) + if (ui.unsent > 0) " · ${ui.unsent}" else "", 16.sp, 800, if (on) Color.White else V.Text3, lines = 2, align = TextAlign.Center, height = 19.sp)
+                        }
+                        if (!ui.dine) FastKey(!ui.empty, if (narrow) 84.dp else 96.dp) { if (vm.mayPay()) onFast() }
+                        PayKey(L.pay, !ui.empty) { if (vm.mayPay()) onPay() }
                     }
                 }
             }
-            if (!left) Menu(ui, vm, Modifier.weight(1f))
+            if (orderLeft) Menu(ui, vm, narrow, low, Modifier.weight(1f))
         }
     }
 
@@ -166,35 +181,45 @@ fun OrderScreen(vm: OrderViewModel, onBack: (board: Boolean) -> Unit, onPay: () 
 // What the order is, and what can be said about it up front: how many
 // guests at a table; for the others what kind of order it is and who it is for.
 @Composable
-private fun Head(ui: OrderUi, vm: OrderViewModel, low: Boolean, onBack: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = if (low) 10.dp else 14.dp), verticalArrangement = Arrangement.spacedBy(if (low) 8.dp else 12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            IconKey(VI.Back, tint = V.Text, width = 2.2f, onClick = onBack)
+private fun Head(ui: OrderUi, vm: OrderViewModel, low: Boolean, onMore: () -> Unit, onBack: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = if (low) 4.dp else 8.dp, bottom = if (low) 6.dp else 8.dp),
+        verticalArrangement = Arrangement.spacedBy(if (low) 6.dp else 8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            IconKey(VI.Back, bg = Color.Transparent, tint = V.Text, width = 2.2f, onClick = onBack)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                T(ui.title, 20.sp, 800, spacing = (-0.3).sp)
+                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    T(ui.title, 19.sp, 800, spacing = (-0.3).sp, modifier = Modifier.weight(1f, fill = false))
+                    if (ui.count > 0) T("(${ui.count})", 15.sp, 700, V.Text3, Modifier.padding(bottom = 1.dp))
+                }
                 T(ui.sub, 13.sp, 600, V.Text2)
             }
             if (ui.dine) Stepper(ui.covers.toString(), L.covers, onDown = { vm.covers(-1) }, onUp = { vm.covers(1) })
+            IconKey(VI.More, bg = Color.Transparent, tint = V.Text, icon = 22.dp, width = 3f, onClick = onMore)
         }
         if (!ui.dine && ui.modes.size > 1) {
-            Seg(ui.modes.take(4).map { m -> SegOption(m.name, m.id == ui.typeId) { vm.setType(m.id) } }, Modifier.fillMaxWidth(), V.Well, if (low) 38.dp else 42.dp, 12.dp, fill = true, size = 14.sp)
+            Seg(ui.modes.take(4).map { m -> SegOption(m.name, m.id == ui.typeId) { vm.setType(m.id) } }, Modifier.fillMaxWidth().padding(horizontal = 6.dp), V.Well, if (low) 36.dp else 40.dp, 12.dp, fill = true, size = 14.sp)
         }
         if (ui.board) {
             // typed here, saved after a pause; another order starts them afresh
             var name by remember(ui.session) { mutableStateOf(ui.ticket?.name ?: "") }
             var phone by remember(ui.session) { mutableStateOf(ui.ticket?.phone ?: "") }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.padding(horizontal = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Field(name, { name = it.take(60); vm.contact(name = name, phone = phone) }, "Customer name", Modifier.weight(1f))
                 Field(phone, { phone = it.take(24); vm.contact(name = name, phone = phone) }, "+230 5…", Modifier.weight(1f), phone = true)
             }
             if (ui.kind == "delivery") {
                 var address by remember(ui.session) { mutableStateOf(ui.ticket?.address ?: "") }
-                Field(address, { address = it.take(160); vm.contact(address = address) }, "Delivery address · e.g. Royal Rd, Grand Baie", Modifier.fillMaxWidth())
+                Field(address, { address = it.take(160); vm.contact(address = address) }, "Delivery address · e.g. Royal Rd, Grand Baie", Modifier.fillMaxWidth().padding(horizontal = 6.dp))
             }
         }
     }
 }
 
+// The order's lines, each on a card: how many, what, its options one by one
+// with what each is charged, its kitchen note, what it comes to. The line the
+// keys under the menu are for is lit.
 @Composable
 private fun Lines(ui: OrderUi, vm: OrderViewModel, low: Boolean, modifier: Modifier) {
     if (ui.empty) {
@@ -205,6 +230,7 @@ private fun Lines(ui: OrderUi, vm: OrderViewModel, low: Boolean, modifier: Modif
         }
         return
     }
+    val keys by vm.keys.collectAsState()
     // A line just added is brought into sight: the list shows a few at a time,
     // and what was tapped last is what the cashier looks for.
     val list = rememberLazyListState()
@@ -213,21 +239,21 @@ private fun Lines(ui: OrderUi, vm: OrderViewModel, low: Boolean, modifier: Modif
         if (ui.fresh.size > had[0]) list.animateScrollToItem((list.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
         had[0] = ui.fresh.size
     }
-    LazyColumn(modifier.fillMaxWidth(), list) {
+    LazyColumn(modifier.fillMaxWidth(), list, contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (ui.sent.isNotEmpty()) {
-            item { Caps(L.inKitchen, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = if (low) 8.dp else 12.dp, bottom = 4.dp), size = 11.sp) }
+            item { Caps(L.inKitchen, modifier = Modifier.padding(start = 4.dp, top = if (low) 2.dp else 4.dp), size = 11.sp) }
             items(ui.sent, key = { it.line.id }) { l ->
                 val on = ui.selected == l.line.id
                 val paid = l.line.paid
-                Column(Modifier.fillMaxWidth().background(if (on) V.RowOn else Color.Transparent)) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (on) V.RowOn else V.Key2)) {
                     Row(
-                        Modifier.fillMaxWidth().clickable(enabled = !paid) { vm.select(if (on) null else l.line.id) }.padding(horizontal = 16.dp, vertical = 9.dp),
+                        Modifier.fillMaxWidth().clickable(enabled = !paid) { vm.select(if (on) null else l.line.id) }.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        T(l.units.toString(), 15.sp, 800, V.Text2, Modifier.width(26.dp))
+                        T(l.units.toString(), 15.sp, 800, V.Text2, Modifier.width(24.dp))
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             T(l.line.name_snapshot, 15.sp, 600, V.Dim, lines = 2)
-                            if (l.detail.isNotEmpty()) T(l.detail, 13.sp, 500, V.Text2, lines = 2)
+                            Options(ui.mods[l.line.id], l)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 VIcon(VI.Check, 12.dp, V.GreenText, 3f)
                                 val at = l.line.sent_to_kitchen_at?.let { runCatching { HM.format(java.util.Date(java.time.Instant.parse(it).toEpochMilli())) }.getOrNull() }
@@ -237,7 +263,7 @@ private fun Lines(ui: OrderUi, vm: OrderViewModel, low: Boolean, modifier: Modif
                         T(Money.format(l.amount), 15.sp, 700, V.Dim)
                     }
                     if (on) {
-                        Row(Modifier.fillMaxWidth().inSight().padding(start = 52.dp, end = 16.dp, bottom = 12.dp)) {
+                        Row(Modifier.fillMaxWidth().inSight().padding(start = 46.dp, end = 12.dp, bottom = 10.dp)) {
                             Gap()
                             VBtn("Void · tell the kitchen", bg = V.RedWash, fg = V.RedText, height = 44.dp, radius = 10.dp, size = 14.sp) { vm.remove(l.line.id) }
                         }
@@ -246,23 +272,29 @@ private fun Lines(ui: OrderUi, vm: OrderViewModel, low: Boolean, modifier: Modif
             }
         }
         if (ui.fresh.isNotEmpty()) {
-            item { Caps(L.notSent, V.BlueText, Modifier.padding(start = 16.dp, end = 16.dp, top = if (low) 8.dp else 14.dp, bottom = 4.dp), 11.sp) }
+            item { Caps(L.notSent, V.BlueText, Modifier.padding(start = 4.dp, top = if (low) 4.dp else 6.dp), 11.sp) }
             items(ui.fresh, key = { it.line.id }) { l ->
                 val on = ui.selected == l.line.id
-                Column(Modifier.fillMaxWidth().background(if (on) V.RowOn else Color.Transparent)) {
+                val lit = on || keys?.lineId == l.line.id
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (lit) V.RowOn else V.Key2)) {
                     Row(
-                        Modifier.fillMaxWidth().heightIn(min = if (low) 48.dp else 52.dp).clickable { vm.select(if (on) null else l.line.id) }.padding(horizontal = 16.dp, vertical = if (low) 9.dp else 11.dp),
+                        Modifier.fillMaxWidth().heightIn(min = if (low) 44.dp else 48.dp).clickable { vm.select(if (on) null else l.line.id) }
+                            .padding(start = 12.dp, end = 4.dp, top = if (low) 6.dp else 8.dp, bottom = if (low) 6.dp else 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        T(l.units.toString(), 15.sp, 800, modifier = Modifier.width(26.dp))
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        T(l.units.toString(), 15.sp, 800, modifier = Modifier.width(24.dp).padding(top = 6.dp))
+                        Column(Modifier.weight(1f).padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             T(l.line.name_snapshot, 15.sp, 700, lines = 2)
-                            if (l.detail.isNotEmpty()) T(l.detail, 13.sp, 500, V.Text2, lines = 2)
+                            Options(ui.mods[l.line.id], l)
                         }
-                        T(Money.format(l.amount), 15.sp, 700)
+                        T(Money.format(l.amount), 15.sp, 700, modifier = Modifier.padding(top = 6.dp))
+                        // taken off at once, as Remove under it does
+                        Box(Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).clickable { vm.remove(l.line.id) }, contentAlignment = Alignment.Center) {
+                            VIcon(VI.Trash, 16.dp, V.Text3)
+                        }
                     }
                     if (on) {
-                        Row(Modifier.fillMaxWidth().inSight().padding(start = 52.dp, end = 16.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth().inSight().padding(start = 46.dp, end = 12.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Box(Modifier.size(52.dp, 44.dp).clip(RoundedCornerShape(10.dp)).background(V.Hover).clickable { vm.bump(l, -1) }, contentAlignment = Alignment.Center) { T("−", 20.sp, 700) }
                             Box(Modifier.size(52.dp, 44.dp).clip(RoundedCornerShape(10.dp)).background(V.Hover).clickable { vm.bump(l, 1) }, contentAlignment = Alignment.Center) { T("+", 20.sp, 700) }
                             Gap()
@@ -275,42 +307,35 @@ private fun Lines(ui: OrderUi, vm: OrderViewModel, low: Boolean, modifier: Modif
     }
 }
 
+// A line's options under its name, one to a row with what each is charged,
+// then its kitchen note. Read from the line's own options (OrderUi.mods);
+// before they are read, the line's description says them on one row.
+@Composable
+private fun Options(mods: List<TicketLineModEntity>?, l: LineInfo) {
+    if (mods.isNullOrEmpty()) {
+        if (l.mods.isNotBlank()) T(l.mods, 13.sp, 500, V.Text2, lines = 2)
+    } else {
+        mods.forEach { m ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                T("+ " + m.name_snapshot, 13.sp, 500, V.Text2, Modifier.weight(1f))
+                if (m.price != 0L) T(Money.format(m.price), 13.sp, 500, V.Text2)
+            }
+        }
+    }
+    l.line.note?.takeIf { it.isNotBlank() }?.let { T("“$it”", 13.sp, 500, V.Text3, lines = 2) }
+}
+
 @Composable
 private fun Totals(ui: OrderUi, low: Boolean) {
     val t = ui.totals
-    Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
-    Column(
-        Modifier.fillMaxWidth().background(V.PanelFoot).padding(start = 16.dp, end = 16.dp, top = if (low) 8.dp else 12.dp, bottom = if (low) 10.dp else 14.dp),
-        verticalArrangement = Arrangement.spacedBy(if (low) 4.dp else 6.dp),
-    ) {
+    Column(verticalArrangement = Arrangement.spacedBy(if (low) 2.dp else 4.dp)) {
         if (t.service > 0 || t.discount > 0) Small(L.subtotal, Money.format(t.subtotal))
         if (t.discount > 0) Small("${L.discount} · ${ui.discount?.name ?: ""}", "− " + Money.format(t.discount), V.AmberText)
         if (t.service > 0) Small(L.serviceCharge, Money.format(t.service))
         if (ui.paid > 0) Small("Already paid", "− " + Money.format(ui.paid), V.GreenText, 700)
-        val taxed = L.t("of which tax", "dont taxes", "ladan tax")
-        if (low) {
-            // the tax under the word Total, on the line the amount is on
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column {
-                    T(L.total, 16.sp, 700)
-                    T("$taxed ${Money.format(t.tax)}", 12.sp, 600, V.Text3)
-                }
-                Gap()
-                T(Money.format(t.total), 28.sp, 800, spacing = (-0.6).sp)
-            }
-            return@Column
-        }
-        Row(verticalAlignment = Alignment.Bottom) {
-            T(L.total, 16.sp, 700)
-            Gap()
-            T(Money.format(t.total), 28.sp, 800, spacing = (-0.6).sp)
-        }
-        Row {
-            T(taxed, 13.sp, 600, V.Text3)
-            Gap()
-            T(Money.format(t.tax), 13.sp, 600, V.Text3)
-        }
+        Small(L.t("Of which tax", "Dont taxes", "Ladan tax"), Money.format(t.tax), V.Text3)
     }
+    TotalRow(L.total, ui.count, Money.format(t.total), low)
 }
 
 @Composable
@@ -324,7 +349,7 @@ private fun Small(label: String, value: String, color: Color = V.Text2, weight: 
 @Composable
 private fun Fn(label: String, icon: String, fg: Color, modifier: Modifier, height: Dp, onClick: () -> Unit) {
     Row(
-        modifier.height(height).clip(RoundedCornerShape(10.dp)).background(V.Key).clickable(onClick = onClick).padding(horizontal = 2.dp),
+        modifier.height(height).clip(RoundedCornerShape(12.dp)).background(V.Key).clickable(onClick = onClick).padding(horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
     ) {
         VIcon(icon, 14.dp, fg)
@@ -333,17 +358,20 @@ private fun Fn(label: String, icon: String, fg: Color, modifier: Modifier, heigh
     }
 }
 
-// The menu: the categories as chips, a search, and the items as cards. A
-// category's colour (or the one the back office gave an item) is a rail down
-// the card's leading edge and a wash from it, not the whole card.
-@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+// The menu: a search over the whole menu, the categories in a list down the
+// side, the items as cards, and under them the keys of the lit line's
+// options. A category's colour (or the one the back office gave an item) is
+// a rail down the card's leading edge and a wash from it, not the whole card.
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Menu(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
+private fun Menu(ui: OrderUi, vm: OrderViewModel, narrow: Boolean, low: Boolean, modifier: Modifier) {
     val cats by vm.cats.collectAsState()
     val cat by vm.cat.collectAsState()
     val q by vm.query.collectAsState()
     val items by vm.items.collectAsState()
     val withOptions by vm.withOptions.collectAsState()
+    val catCounts by vm.catCounts.collectAsState()
+    val keys by vm.keys.collectAsState()
     val searching = q.isNotBlank()
     val index = remember(cats) { cats.mapIndexed { i, c -> c.id to i }.toMap() }
     val byId = remember(cats) { cats.associateBy { it.id } }
@@ -351,112 +379,155 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, modifier: Modifier) {
     val counts = remember(ui.fresh) { ui.fresh.groupBy { it.line.item_id }.mapValues { e -> e.value.sumOf { it.units } } }
     val band = anyPictured(items) { it.id }
 
-    Column(modifier.fillMaxHeight().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        // every category stays in sight: the chips wrap onto another row rather than scroll away
-        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            cats.forEach { c ->
-                val on = !searching && c.id == cat
-                val bg by animateColorAsState(if (on) V.On else V.Panel, tween(160), label = "chip")
-                val fg by animateColorAsState(if (on) V.OnText else V.Text, tween(160), label = "chipName")
-                Row(
-                    Modifier.height(46.dp).press { vm.pickCat(c.id) }.clip(RoundedCornerShape(23.dp)).background(bg)
-                        .border(1.dp, if (on) bg else V.Stroke, RoundedCornerShape(23.dp)).padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp),
-                ) {
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(colorOf(c, index[c.id] ?: 0)))
-                    T(c.name, 14.sp, 700, fg)
-                }
+    Column(modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.fillMaxWidth()) {
+            Field(q, { vm.query.value = it.take(40) }, L.search, Modifier.fillMaxWidth(), height = 52.dp, bg = V.Panel, size = 16.sp, leading = { VIcon(VI.Search, 20.dp, V.Text2) })
+            if (searching) {
+                Box(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) { IconKey(VI.Close, size = 40.dp, onClick = { vm.query.value = "" }) }
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                T(if (searching) "Results for “${q.trim()}”" else byId[cat]?.name ?: "", 20.sp, 800, spacing = (-0.3).sp, modifier = Modifier.weight(1f, fill = false))
-                T("${items.size} items", 13.sp, 600, V.Text3)
+        Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Rail(SellFit.rail(narrow)) {
+                items(cats, key = { it.id }) { c -> RailKey(c.name, catCounts[c.id], !searching && c.id == cat, colorOf(c, index[c.id] ?: 0)) { vm.pickCat(c.id) } }
             }
-            Box(Modifier.width(320.dp)) {
-                Field(q, { vm.query.value = it.take(40) }, L.search, Modifier.fillMaxWidth(), bg = V.Panel, leading = { VIcon(VI.Search, 18.dp, V.Text2) })
-                if (searching) {
-                    Box(
-                        Modifier.align(Alignment.CenterEnd).padding(end = 6.dp).size(34.dp).clip(RoundedCornerShape(8.dp)).background(V.Key).clickable { vm.query.value = "" },
-                        contentAlignment = Alignment.Center,
-                    ) { T("✕", 12.sp, 800, V.Dim) }
-                }
-            }
-        }
-        // Another category's items come up into place. The ones that are there
-        // when the screen opens are simply there.
-        val seen = remember { arrayOfNulls<String>(1) }
-        val shown = remember(cat) { Animatable(if (seen[0] == null) 1f else 0f).also { if (cat != null) seen[0] = cat } }
-        LaunchedEffect(shown) { shown.animateTo(1f, Motion.enter(200)) }
-        LazyVerticalGrid(
-            GridCells.Adaptive(150.dp), Modifier.weight(1f).fillMaxWidth().graphicsLayer { alpha = shown.value; translationY = (1f - shown.value) * 10.dp.toPx() },
-            horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            if (items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                T(if (searching) "Nothing on the menu matches that search." else (if (com.restopos.core.data.Journey.alone) "No items in this category yet. Add them on Menu & stock." else "No items in this category yet. Add them in the back office, under Items."), 15.sp, 500, V.Text2, Modifier.padding(40.dp), lines = 3)
-            }
-            items(items, key = { it.id }) { i ->
-                val out = !i.is_available
-                val hue = Pos.css(i.tile_color, colorOf(byId[i.category_id], index[i.category_id] ?: 0))
-                val n = counts[i.id] ?: 0
-                val tag = i.tags.split(',').firstOrNull { it.isNotBlank() }?.trim()?.replaceFirstChar { it.uppercase() }
-                val rail = if (out) V.Stroke2 else hue
-                val source = remember { MutableInteractionSource() }
-                val press = rememberPress(source, 0.97f)
-                // Its count jumps when one more of it goes on the order, and only
-                // then: not when the card is merely shown again.
-                val pop = remember { Animatable(1f) }
-                LaunchedEffect(i.id) {
-                    vm.added.collectLatest { id ->
-                        if (id == i.id) {
-                            pop.snapTo(1.28f)
-                            pop.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = 500f))
+            BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
+                // as many keys to a row under the menu as cards above them
+                val cols = ((maxWidth + 10.dp) / 160.dp).toInt().coerceAtLeast(2)
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (searching) {
+                        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            T("Results for “${q.trim()}”", 18.sp, 800, spacing = (-0.3).sp, modifier = Modifier.weight(1f, fill = false))
+                            T("${items.size} items", 13.sp, 600, V.Text3)
                         }
                     }
-                }
-                // how many of it are on the order and not sent yet
-                val count: @Composable (Modifier) -> Unit = { at ->
-                    if (n > 0) {
-                        Box(
-                            at.graphicsLayer { scaleX = pop.value; scaleY = pop.value }.heightIn(min = 26.dp).widthIn(min = 26.dp)
-                                .clip(RoundedCornerShape(13.dp)).background(V.On).padding(horizontal = 7.dp),
-                            contentAlignment = Alignment.Center,
-                        ) { T(n.toString(), 13.sp, 800, V.OnText) }
-                    }
-                }
-                Column(
-                    Modifier.graphicsLayer { scaleX = press.value; scaleY = press.value }
-                        .clip(RoundedCornerShape(14.dp)).background(V.Panel)
-                        .border(1.dp, V.Stroke, RoundedCornerShape(14.dp))
-                        .combinedClickable(interactionSource = source, indication = null, onClick = { vm.tap(i) }, onLongClick = { vm.tap(i, ask = true) }),
-                ) {
-                    // Its picture along the top, the count in its corner; an item with none shows its initials on its category's colour.
-                    if (band) Box {
-                        PictureBand(i.id, i.name, if (out) V.Well else hue.copy(alpha = 0.18f).compositeOver(V.Well), off = out)
-                        count(Modifier.align(Alignment.TopEnd).padding(8.dp))
-                    }
-                    // The name and the price, on the card's own ground: the category's colour is a rail down their side and a wash from it.
-                    Box(
-                        Modifier.fillMaxWidth().height(if (band) 88.dp else 104.dp)
-                            .drawBehind {
-                                if (!out) drawRect(Brush.horizontalGradient(0f to hue.copy(alpha = 0.20f), 0.8f to hue.copy(alpha = 0.03f)))
-                                drawRect(rail, size = Size(4.dp.toPx(), size.height))
-                            }
-                            .padding(start = 16.dp, end = 12.dp, top = if (band) 10.dp else 12.dp, bottom = if (band) 10.dp else 11.dp),
+                    // Another category's items come up into place. The ones that are there
+                    // when the screen opens are simply there.
+                    val seen = remember { arrayOfNulls<String>(1) }
+                    val shown = remember(cat) { Animatable(if (seen[0] == null) 1f else 0f).also { if (cat != null) seen[0] = cat } }
+                    LaunchedEffect(shown) { shown.animateTo(1f, Motion.enter(200)) }
+                    LazyVerticalGrid(
+                        GridCells.Adaptive(150.dp), Modifier.weight(1f).fillMaxWidth().graphicsLayer { alpha = shown.value; translationY = (1f - shown.value) * 10.dp.toPx() },
+                        horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        T(i.name, 15.sp, 700, if (out) V.Text3 else V.Text, Modifier.align(Alignment.TopStart).padding(end = if (n > 0 && !band) 30.dp else 0.dp), lines = if (band) 2 else 3, height = 19.sp)
-                        Row(Modifier.align(Alignment.BottomStart).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            T(if (i.open_price) "Enter price" else Money.format(i.price), 14.sp, 700, if (out) V.Text3 else V.Text2)
-                            Gap()
-                            // what else there is to know about it, said quietly
-                            val note = if (out) "Sold out" else listOfNotNull(tag, if (withOptions.contains(i.id)) "Options" else null).joinToString(" · ")
-                            if (note.isNotEmpty()) T(note, 12.sp, if (out) 700 else 600, if (out) V.RedText else V.Text3)
+                        if (items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                            T(if (searching) "Nothing on the menu matches that search." else (if (com.restopos.core.data.Journey.alone) "No items in this category yet. Add them on Menu & stock." else "No items in this category yet. Add them in the back office, under Items."), 15.sp, 500, V.Text2, Modifier.padding(40.dp), lines = 3)
                         }
-                        if (!band) count(Modifier.align(Alignment.TopEnd))
+                        items(items, key = { it.id }) { i -> MenuCard(i, byId, index, counts[i.id] ?: 0, withOptions.contains(i.id), band, vm) }
                     }
+                    keys?.let { OptionKeysPanel(it, ui.notes, vm, cols, low) }
                 }
             }
         }
+    }
+}
+
+// An item's card: its picture along the top with how many are on the order
+// unsent in its corner, its name and price under it on the card's own ground.
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MenuCard(i: ItemEntity, byId: Map<String, CategoryEntity>, index: Map<String, Int>, n: Int, options: Boolean, band: Boolean, vm: OrderViewModel) {
+    val out = !i.is_available
+    val hue = Pos.css(i.tile_color, colorOf(byId[i.category_id], index[i.category_id] ?: 0))
+    val tag = i.tags.split(',').firstOrNull { it.isNotBlank() }?.trim()?.replaceFirstChar { it.uppercase() }
+    val rail = if (out) V.Stroke2 else hue
+    val source = remember { MutableInteractionSource() }
+    val press = rememberPress(source, 0.97f)
+    // Its count jumps when one more of it goes on the order, and only
+    // then: not when the card is merely shown again.
+    val pop = remember { Animatable(1f) }
+    LaunchedEffect(i.id) {
+        vm.added.collectLatest { id ->
+            if (id == i.id) {
+                pop.snapTo(1.28f)
+                pop.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = 500f))
+            }
+        }
+    }
+    // how many of it are on the order and not sent yet
+    val count: @Composable (Modifier) -> Unit = { at ->
+        if (n > 0) {
+            Box(
+                at.graphicsLayer { scaleX = pop.value; scaleY = pop.value }.heightIn(min = 26.dp).widthIn(min = 26.dp)
+                    .clip(RoundedCornerShape(13.dp)).background(V.On).padding(horizontal = 7.dp),
+                contentAlignment = Alignment.Center,
+            ) { T(n.toString(), 13.sp, 800, V.OnText) }
+        }
+    }
+    Column(
+        Modifier.graphicsLayer { scaleX = press.value; scaleY = press.value }
+            .clip(RoundedCornerShape(14.dp)).background(V.Panel)
+            .border(1.dp, V.Stroke, RoundedCornerShape(14.dp))
+            .combinedClickable(interactionSource = source, indication = null, onClick = { vm.tap(i) }, onLongClick = { vm.tap(i, ask = true) }),
+    ) {
+        // Its picture along the top, the count in its corner; an item with none shows its initials on its category's colour.
+        if (band) Box {
+            PictureBand(i.id, i.name, if (out) V.Well else hue.copy(alpha = 0.18f).compositeOver(V.Well), off = out)
+            count(Modifier.align(Alignment.TopEnd).padding(8.dp))
+        }
+        // The name and the price, on the card's own ground: the category's colour is a rail down their side and a wash from it.
+        Box(
+            Modifier.fillMaxWidth().height(if (band) 88.dp else 104.dp)
+                .drawBehind {
+                    if (!out) drawRect(Brush.horizontalGradient(0f to hue.copy(alpha = 0.20f), 0.8f to hue.copy(alpha = 0.03f)))
+                    drawRect(rail, size = Size(4.dp.toPx(), size.height))
+                }
+                .padding(start = 16.dp, end = 12.dp, top = if (band) 10.dp else 12.dp, bottom = if (band) 10.dp else 11.dp),
+        ) {
+            T(i.name, 15.sp, 700, if (out) V.Text3 else V.Text, Modifier.align(Alignment.TopStart).padding(end = if (n > 0 && !band) 30.dp else 0.dp), lines = if (band) 2 else 3, height = 19.sp)
+            Row(Modifier.align(Alignment.BottomStart).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                T(if (i.open_price) "Enter price" else Money.format(i.price), 14.sp, 700, if (out) V.Text3 else V.Text2)
+                Gap()
+                // what else there is to know about it, said quietly
+                val note = if (out) "Sold out" else listOfNotNull(tag, if (options) "Options" else null).joinToString(" · ")
+                if (note.isNotEmpty()) T(note, 12.sp, if (out) 700 else 600, if (out) V.RedText else V.Text3)
+            }
+            if (!band) count(Modifier.align(Alignment.TopEnd))
+        }
+    }
+}
+
+// The keys under the menu (the approved board's "tap to add"): the options of
+// the lit line's item, as the options sheet's keys, then the kitchen notes, as
+// its note keys. A tap puts one on the line or takes it off. The panel keeps to
+// a few rows; more scroll in it, so the menu above keeps its room.
+@Composable
+private fun OptionKeysPanel(k: OptionKeys, notes: List<String>, vm: OrderViewModel, cols: Int, low: Boolean) {
+    // the till's kitchen notes, then any other the line carries (one typed in the options sheet)
+    val keys = k.ordered.map { m -> KeyOf(m.name, if (m.price != 0L) "+ " + Money.format(m.price) else null, m.id in k.picked, false) { vm.toggleOption(m) } } +
+        (notes + k.notes.filter { it !in notes }).map { n -> KeyOf(n, null, n in k.notes, true) { vm.toggleNote(n) } }
+    Column(Modifier.fillMaxWidth().heightIn(max = if (low) 150.dp else 196.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            T(k.item.name, 15.sp, 800)
+            T(L.optionsTap, 12.5.sp, 600, V.Text3, Modifier.weight(1f))
+            IconKey(VI.Close, size = 36.dp, bg = Color.Transparent, tint = V.Text2) { vm.closeKeys() }
+        }
+        Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            keys.chunked(cols).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    row.forEach { key -> OptionKey(key.label, key.price, key.on, key.note, Modifier.weight(1f), key.tap) }
+                    repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+}
+
+private class KeyOf(val label: String, val price: String?, val on: Boolean, val note: Boolean, val tap: () -> Unit)
+
+// One key under the menu. An option is drawn as the options sheet draws one
+// (lit: V.On); a kitchen note as its note keys (lit: the accent's wash).
+@Composable
+private fun OptionKey(label: String, price: String?, on: Boolean, note: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(if (note) 27.dp else 12.dp)
+    val bg = when { note && on -> V.BlueWash; on -> V.On; else -> V.Key }
+    val line = when { note && on -> V.Blue; note -> V.Key; on -> V.On; else -> V.Stroke2 }
+    val ink = when { note && on -> V.BlueSoft; note -> V.Dim; on -> V.OnText; else -> V.Text }
+    Column(
+        modifier.height(54.dp).clip(shape).background(bg).border(1.5.dp, line, shape).clickable(onClick = onClick).padding(horizontal = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
+    ) {
+        T(label, 14.5.sp, 700, ink)
+        price?.let { T(it, 12.sp, 700, ink.copy(alpha = 0.8f)) }
     }
 }
 

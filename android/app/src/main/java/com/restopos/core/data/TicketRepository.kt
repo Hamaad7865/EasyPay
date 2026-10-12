@@ -508,6 +508,26 @@ class TicketRepository @Inject constructor(
         if (qty > 0) addItem(itemId, qty, mods, line.note, line.course, line.seat, again = true, price = line.unit_price.takeIf { item.open_price }).getOrThrow()
     }
 
+    // Another set of options, or another kitchen note, on a line the kitchen
+    // has not had: the keys under the menu on the order screen. The line is put
+    // back with them as a quantity change puts it back (setQty), with the same
+    // quantity, course, seat and typed price. Returns the line that holds it
+    // now; one already on the order that is the same in every way takes it,
+    // as adding it from the menu would.
+    suspend fun reoption(lineId: String, mods: List<ModPick>, note: String?): Result<String> = runCatching {
+        val line = db.tickets().line(lineId) ?: error("That line is gone")
+        require(line.voided_at == null && line.sent_to_kitchen_at == null && !line.paid) { "That line is already in the kitchen" }
+        val itemId = line.item_id ?: error("bad line")
+        val item = db.catalog().item(itemId) ?: error("unknown item")
+        val linked = db.catalog().modifiersForItem(itemId).map { it.id }.toSet()
+        mods.forEach { require(linked.contains(it.id)) { "bad modifier" } }
+        val before = db.tickets().lines(line.ticket_id).first().map { it.id }.toSet()
+        voidLine(lineId, "options change").getOrThrow()
+        addItem(itemId, line.qty, mods, note?.ifBlank { null }, line.course, line.seat, again = true, price = line.unit_price.takeIf { item.open_price }).getOrThrow()
+        // whether it went onto a line of its own or onto one already there, that line is new (setQty puts a line back as a new one)
+        db.tickets().lines(line.ticket_id).first().lastOrNull { it.id !in before }?.id ?: error("The line was not put back")
+    }
+
     // Split check: takes `units` off a line and puts them on a new line of the
     // same order, on the check given. Same item, price, note, course, taxes
     // and kitchen state: nothing is voided and nothing goes to the kitchen

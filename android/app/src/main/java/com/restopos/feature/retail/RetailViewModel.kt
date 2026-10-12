@@ -69,6 +69,8 @@ data class SaleUi(
     val open: String? = null, // the line whose keys are showing
 ) {
     val empty: Boolean get() = lines.isEmpty()
+    // how many things are on the sale, beside its total
+    val count: Int get() = lines.sumOf { LinePrice.pieces(it.line.qty, it.weighed) }
     // the lines at their listed prices, and everything taken off them
     val listed: Long get() = totals.subtotal + lineOff
     val off: Long get() = lineOff + totals.discount
@@ -131,6 +133,9 @@ class RetailViewModel @Inject constructor(
         .map { rows -> rows.associateBy { it.item_id } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
     val variantCounts: StateFlow<Map<String, Int>> = db.retail().variantCounts().map { rows -> rows.associate { it.item_id to it.n } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+    // how many products each category holds, beside its name in the list of categories
+    val catCounts: StateFlow<Map<String, Int>> = db.catalog().itemsPerCategory().map { rows -> rows.associate { it.id to it.n } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
     // the sales set aside: counter orders that are open, hold something, and are not the one on screen
     val parked: StateFlow<List<OrderInfo>> = combine(store.flatMapLatest { s -> if (s == null) emptyFlow() else service.orders(s) }, _ui) { orders, ui ->

@@ -3,13 +3,13 @@ package com.restopos.feature.retail
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -27,7 +27,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,16 +52,23 @@ import com.restopos.core.database.DiscountEntity
 import com.restopos.core.database.ItemEntity
 import com.restopos.core.database.ReceiptEntity
 import com.restopos.core.ui.Caps
+import com.restopos.core.ui.FastKey
 import com.restopos.core.ui.Field
 import com.restopos.core.ui.Gap
+import com.restopos.core.ui.GoRow
 import com.restopos.core.ui.IconKey
 import com.restopos.core.ui.L
+import com.restopos.core.ui.PayKey
 import com.restopos.core.ui.PictureBand
+import com.restopos.core.ui.Rail
+import com.restopos.core.ui.RailKey
 import com.restopos.core.ui.ScanKey
 import com.restopos.core.ui.ScanPill
+import com.restopos.core.ui.SellFit
 import com.restopos.core.ui.Sheet
 import com.restopos.core.ui.SheetHead
 import com.restopos.core.ui.T
+import com.restopos.core.ui.TotalRow
 import com.restopos.core.ui.V
 import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.VI
@@ -82,15 +88,17 @@ private val HM = SimpleDateFormat("HH:mm", Locale.US)
 // A barcode, as six bars: the mark on the search box.
 private const val BARS = "M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12"
 
-// A shop's sell screen, after the approved "Sell" board: the sale down the
-// left (its lines, what it comes to, Park, Discount, Pay), the products on
-// the right (a box to scan or search into, the categories, a tile for each
-// product with what is left of it).
+// A shop's sell screen, after the board the owner approved for selling: the
+// products on the left (a box to scan or search into over the categories,
+// listed down the side, and a card for each product with what is left of it),
+// the sale on the right (its lines, what it comes to, Park, Discount, then
+// Fast and Pay). The theme is the till's own: only the layout is the board's.
 // more: the till's cash drawer, behind the More sheet's drawer and cash keys.
 // onReceipts: where a refund or an exchange starts. onReceipt: a receipt's
 // barcode was scanned here; its id goes to the Receipts screen, which opens it.
+// onFast: the sale paid in cash, the exact amount, without the payment screen.
 @Composable
-fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit, onReceipts: () -> Unit, onReceipt: (String) -> Unit, onStock: () -> Unit) {
+fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit, onFast: () -> Unit, onReceipts: () -> Unit, onReceipt: (String) -> Unit, onStock: () -> Unit) {
     val ui by vm.ui.collectAsState()
     val picking by vm.picking.collectAsState()
     val asking by vm.asking.collectAsState()
@@ -103,16 +111,18 @@ fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit
     LaunchedEffect(Unit) { Scanner.codes.collect { vm.scanned(it, onReceipt) } }
 
     // On a screen that is not tall (a 10-inch, where the till is drawn larger: core/ui/ScreenFit)
-    // the sale's column gives way, as an order's does: its head, its keys and Pay are a little
-    // lower, which leaves the sale one more line. A tall screen is drawn as before.
+    // the sale gives way, as an order's does: its head, its keys and Pay are a little
+    // lower, which leaves the sale one more line. On one that is not wide, the list of
+    // categories and the sale are narrower (core/ui/SellParts). A large screen is drawn in full.
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val low = maxHeight < 600.dp
-        Row(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = if (low) 10.dp else 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        val narrow = SellFit.narrow(maxWidth)
+        Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Products(vm, narrow, Modifier.weight(1f))
             Sale(
-                ui, parked.size, exchange, vm, low, onParked = { sheet = "parked" }, onCustomer = { sheet = "customer" }, onDiscount = { sheet = "discount" },
-                onClear = { sheet = "clear" }, onMore = { sheet = "more" }, onSaleNote = { sheet = "note" }, onNote = { noting = it }, onPay = onPay,
+                ui, parked.size, exchange, vm, low, narrow, onParked = { sheet = "parked" }, onCustomer = { sheet = "customer" }, onDiscount = { sheet = "discount" },
+                onClear = { sheet = "clear" }, onMore = { sheet = "more" }, onSaleNote = { sheet = "note" }, onNote = { noting = it }, onPay = onPay, onFast = onFast,
             )
-            Products(vm, Modifier.weight(1f))
         }
     }
 
@@ -150,24 +160,43 @@ fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit
 
 @Composable
 private fun Sale(
-    ui: SaleUi, parked: Int, exchange: ExchangeDraft?, vm: RetailViewModel, low: Boolean,
+    ui: SaleUi, parked: Int, exchange: ExchangeDraft?, vm: RetailViewModel, low: Boolean, narrow: Boolean,
     onParked: () -> Unit, onCustomer: () -> Unit, onDiscount: () -> Unit, onClear: () -> Unit, onMore: () -> Unit, onSaleNote: () -> Unit,
-    onNote: (SaleLine) -> Unit, onPay: () -> Unit,
+    onNote: (SaleLine) -> Unit, onPay: () -> Unit, onFast: () -> Unit,
 ) {
-    Column(Modifier.width(440.dp).fillMaxHeight().clip(RoundedCornerShape(20.dp)).background(V.Panel)) {
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 10.dp, top = if (low) 6.dp else 12.dp, bottom = if (low) 6.dp else 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            T("Sale", 18.sp, 800)
+    Column(Modifier.width(SellFit.sale(narrow)).fillMaxHeight().clip(RoundedCornerShape(20.dp)).background(V.Panel)) {
+        // the sale and how many things are on it; the sales set aside; More; clearing it
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 6.dp, top = if (low) 4.dp else 8.dp, bottom = if (low) 4.dp else 6.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                T("Sale", 19.sp, 800, spacing = (-0.3).sp)
+                if (!ui.empty) T("(${ui.count})", 15.sp, 700, V.Text3, Modifier.padding(bottom = 1.dp))
+            }
             if (parked > 0) {
                 Box(Modifier.height(30.dp).press { onParked() }.clip(RoundedCornerShape(15.dp)).background(V.AmberWash).padding(horizontal = 11.dp), contentAlignment = Alignment.Center) {
                     T("$parked parked", 12.sp, 700, V.AmberText)
                 }
             }
-            Gap()
-            Box(Modifier.height(44.dp).widthIn(max = 190.dp).press { onCustomer() }.clip(RoundedCornerShape(22.dp)).background(if (ui.customer != null) V.Key else Color.Transparent).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-                T(ui.customer ?: "Add customer", 14.sp, if (ui.customer != null) 700 else 600, if (ui.customer != null) V.Text else V.Text2)
-            }
+            // More is for an empty sale too: the receipt a customer asks for again is the one just paid
+            IconKey(VI.More, bg = Color.Transparent, tint = V.Text, icon = 22.dp, width = 3f, onClick = onMore)
             if (!ui.empty) IconKey(VI.Trash, bg = Color.Transparent, tint = V.Text3, onClick = onClear)
         }
+
+        // who the sale is for
+        val named = ui.customer != null
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp).height(40.dp).clip(RoundedCornerShape(12.dp))
+                .then(if (named) Modifier.background(V.Key) else Modifier.border(1.dp, V.Stroke2, RoundedCornerShape(12.dp)))
+                .clickable(onClick = onCustomer).padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            VIcon(VI.Person, 18.dp, if (named) V.Text else V.BlueText)
+            T(ui.customer ?: "Add customer", 14.sp, 700, if (named) V.Text else V.BlueText, Modifier.weight(1f))
+            VIcon(VI.Chevron, 16.dp, V.Text3)
+        }
+        Spacer(Modifier.height(8.dp))
 
         // an exchange: what comes back, kept until this sale is paid
         exchange?.let { ex ->
@@ -186,7 +215,7 @@ private fun Sale(
         if (ui.empty) {
             Column(Modifier.weight(1f).fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
                 T(if (exchange != null) "Scan what the customer takes instead" else "Scan a product to start", 16.sp, 700)
-                T("or tap one on the right", 14.sp, 500, V.Text2)
+                T("or tap one on the left", 14.sp, 500, V.Text2)
             }
         } else {
             // a line just added is brought into sight: what was scanned last is what the cashier looks for
@@ -196,12 +225,18 @@ private fun Sale(
                 if (ui.lines.size > had[0]) list.animateScrollToItem(ui.lines.size - 1)
                 had[0] = ui.lines.size
             }
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(), list) {
+            LazyColumn(
+                Modifier.weight(1f).fillMaxWidth(), list,
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 items(ui.lines, key = { it.line.id }) { l -> Line(l, ui.open == l.line.id, vm, onNote) }
             }
         }
 
-        Column(Modifier.fillMaxWidth().background(V.PanelFoot).padding(start = 16.dp, end = 16.dp, top = if (low) 10.dp else 14.dp, bottom = if (low) 12.dp else 16.dp), verticalArrangement = Arrangement.spacedBy(if (low) 8.dp else 12.dp)) {
+        Column(
+            Modifier.fillMaxWidth().background(V.PanelFoot).padding(start = 16.dp, end = 16.dp, top = if (low) 8.dp else 12.dp, bottom = if (low) 10.dp else 14.dp),
+            verticalArrangement = Arrangement.spacedBy(if (low) 6.dp else 8.dp),
+        ) {
             // the note on the whole sale, as the receipt will carry it: tap to change it
             ui.ticket?.note?.takeIf { it.isNotBlank() }?.let { note ->
                 Row(Modifier.fillMaxWidth().clickable(onClick = onSaleNote), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -209,28 +244,28 @@ private fun Sale(
                     T("“$note”", 13.sp, 600, V.Text2, Modifier.weight(1f), lines = 2, height = 17.sp)
                 }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(if (low) 2.dp else 4.dp)) {
                 Small(L.subtotal, Money.format(ui.listed))
                 if (ui.off != 0L) Small("Discounts" + (ui.discount?.let { " · ${it.name}" } ?: ""), Money.format(-ui.off))
                 if (ui.totals.tax != 0L) Small(if (ui.taxOnTop == 0L) "VAT, included" else "VAT", Money.format(ui.totals.tax))
                 if (ui.totals.rounding != 0L) Small("Rounding", Money.format(ui.totals.rounding))
             }
-            val key = if (low) 42.dp else 48.dp
+            // an exchange: what is left once the goods that come back have paid their part
+            val due = if (exchange == null || ui.empty) ui.totals.total else ui.totals.total - exchange.credit
+            val settled = exchange != null && !ui.empty && due == 0L
+            TotalRow(if (due < 0) "Give back" else L.total, ui.count, Money.format(if (due < 0) -due else due), low)
+            val key = if (low) 40.dp else 44.dp
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                VBtn("Park sale", Modifier.weight(1f), height = key, radius = 14.dp, pad = 10.dp, fg = if (ui.empty) V.Off else V.Text) { vm.park() }
-                VBtn(if (ui.discount != null) "Discount · ${ui.discount.name}" else "Discount on sale", Modifier.weight(1.35f), height = key, radius = 14.dp, pad = 10.dp, fg = if (ui.empty) V.Off else V.Text, onClick = onDiscount)
-                // More is for an empty sale too: the receipt a customer asks for again is the one just paid
-                VBtn(L.more, Modifier.weight(0.85f), height = key, radius = 14.dp, pad = 10.dp, icon = VI.More, onClick = onMore)
+                VBtn("Park sale", Modifier.weight(1f), height = key, radius = 12.dp, pad = 10.dp, fg = if (ui.empty) V.Off else V.Text) { vm.park() }
+                VBtn(
+                    if (ui.discount != null) "Discount · ${ui.discount.name}" else "Discount on sale", Modifier.weight(1.35f),
+                    height = key, radius = 12.dp, pad = 10.dp, fg = if (ui.empty) V.Off else V.Text, icon = VI.Tag, onClick = onDiscount,
+                )
             }
-            Row(
-                Modifier.fillMaxWidth().height(if (low) 56.dp else 64.dp).press { if (vm.mayPay()) onPay() }.clip(RoundedCornerShape(16.dp)).background(if (ui.empty) V.GreenOff else V.Green).padding(horizontal = 22.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // an exchange: what is left once the goods that come back have paid their part
-                val due = if (exchange == null || ui.empty) ui.totals.total else ui.totals.total - exchange.credit
-                T(if (due < 0) "Give back" else if (exchange != null && !ui.empty && due == 0L) "Exchange" else L.pay, 19.sp, 800, if (ui.empty) V.GreenOffText else V.GreenInk)
-                Gap()
-                T(if (exchange != null && !ui.empty && due == 0L) "Nothing to pay" else Money.format(if (due < 0) -due else due), 19.sp, 800, if (ui.empty) V.GreenOffText else V.GreenInk)
+            GoRow(low) {
+                // an exchange is settled on the payment screen, which asks how the difference goes
+                if (exchange == null) FastKey(!ui.empty, SellFit.fast(narrow)) { if (vm.mayPay()) onFast() }
+                PayKey(if (due < 0) "Give back" else if (settled) "Exchange" else L.pay, !ui.empty) { if (vm.mayPay()) onPay() }
             }
         }
     }
@@ -244,40 +279,50 @@ private fun Small(label: String, value: String) {
     }
 }
 
-// One line: what it is, how many, what it comes to. Tapped, it shows the
-// keys for what can be done to it.
+// One line, on a card: what it is and what it comes to, then the price it is
+// sold at and how many. The minus of the last one is a bin: it takes the line
+// off. Tapped, the card shows the keys for what else can be done to the line.
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Line(l: SaleLine, open: Boolean, vm: RetailViewModel, onNote: (SaleLine) -> Unit) {
     val line = l.line
-    Column(Modifier.fillMaxWidth().background(if (open) V.RowOn else Color.Transparent)) {
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Column(Modifier.weight(1f).clickable { vm.toggle(line.id) }, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                T(l.name, 15.sp, 700, lines = 2, height = 19.sp)
-                T(LinePrice.sub(l.variant, line.list_price, line.unit_price, line.price_label, l.weighed) { Money.format(it) }, 13.sp, 500, V.Text2, lines = 2, height = 17.sp)
-                line.note?.takeIf { it.isNotBlank() }?.let { T("“$it”", 13.sp, 500, V.Text3, lines = 2, height = 17.sp) }
-            }
-            if (l.weighed) {
-                // what is weighed has a weight, not a count: tap to weigh it again
-                Box(Modifier.height(48.dp).press { vm.askQty(l) }.clip(RoundedCornerShape(14.dp)).background(V.Well).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-                    T(LinePrice.qty(line.qty, true), 15.sp, 800)
-                }
-            } else {
-                Row(Modifier.clip(RoundedCornerShape(14.dp)).background(V.Well).padding(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    StepKey("−") { vm.bump(l, -1) }
-                    Box(Modifier.widthIn(min = 40.dp).height(44.dp).clickable { vm.askQty(l) }.padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
-                        T(LinePrice.qty(line.qty, false), 16.sp, 800)
-                    }
-                    StepKey("+") { vm.bump(l, 1) }
-                }
-            }
-            Column(Modifier.width(104.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (open) V.RowOn else V.Key2)) {
+        Column(
+            Modifier.fillMaxWidth().clickable { vm.toggle(line.id) }.padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                T(l.name, 15.sp, 700, modifier = Modifier.weight(1f), lines = 2, height = 19.sp)
+                l.was?.let { T(Money.format(it), 12.5.sp, 500, V.Text3, Modifier.padding(top = 2.dp), strike = true) }
                 T(Money.format(l.amount), 15.sp, 800)
-                l.was?.let { T(Money.format(it), 12.sp, 500, V.Text2, strike = true) }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    T(LinePrice.sub(l.variant, line.list_price, line.unit_price, line.price_label, l.weighed) { Money.format(it) }, 13.sp, 500, V.Text2, lines = 2, height = 17.sp)
+                    line.note?.takeIf { it.isNotBlank() }?.let { T("“$it”", 13.sp, 500, V.Text3, lines = 2, height = 17.sp) }
+                }
+                if (l.weighed) {
+                    // what is weighed has a weight, not a count: tap to weigh it again
+                    Box(
+                        Modifier.height(40.dp).press { vm.askQty(l) }.clip(RoundedCornerShape(10.dp)).background(V.Panel).border(1.dp, V.Stroke, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { T(LinePrice.qty(line.qty, true), 14.sp, 800) }
+                    Box(Modifier.size(40.dp).press(0.92f) { vm.remove(line.id) }, contentAlignment = Alignment.Center) { VIcon(VI.Trash, 17.dp, V.RedText) }
+                } else {
+                    Row(Modifier.clip(RoundedCornerShape(10.dp)).background(V.Panel).border(1.dp, V.Stroke, RoundedCornerShape(10.dp)), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(42.dp, 40.dp).press(0.92f) { vm.bump(l, -1) }, contentAlignment = Alignment.Center) {
+                            if (line.qty <= 1000) VIcon(VI.Trash, 17.dp, V.RedText) else T("−", 20.sp, 700)
+                        }
+                        Box(Modifier.widthIn(min = 34.dp).height(40.dp).clickable { vm.askQty(l) }.padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
+                            T(LinePrice.qty(line.qty, false), 15.sp, 800)
+                        }
+                        Box(Modifier.size(42.dp, 40.dp).press(0.92f) { vm.bump(l, 1) }, contentAlignment = Alignment.Center) { T("+", 20.sp, 700) }
+                    }
+                }
             }
         }
         if (open) {
-            FlowRow(Modifier.fillMaxWidth().inSight().padding(start = 16.dp, end = 16.dp, bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(Modifier.fillMaxWidth().inSight().padding(start = 12.dp, end = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val label = line.price_label.takeIf { line.price_kind == "discount" }
                 LineKey("No discount", line.price_kind == null) { vm.noDiscount(l) }
                 listOf(10, 20).forEach { pct -> LineKey("$pct% off", label == "$pct% off") { vm.percentOff(l, pct) } }
@@ -310,45 +355,48 @@ private fun LineKey(label: String, on: Boolean, plain: Boolean = false, onClick:
 // ---------------------------------------------------------------- the products
 
 @Composable
-private fun Products(vm: RetailViewModel, modifier: Modifier) {
+private fun Products(vm: RetailViewModel, narrow: Boolean, modifier: Modifier) {
     val cats by vm.cats.collectAsState()
     val cat by vm.cat.collectAsState()
     val q by vm.query.collectAsState()
     val items by vm.products.collectAsState()
     val left by vm.left.collectAsState()
     val variants by vm.variantCounts.collectAsState()
+    val counts by vm.catCounts.collectAsState()
     val byId = remember(cats) { cats.associateBy { it.id } }
     val searching = q.isNotBlank()
     val scan by vm.scanMode.collectAsState()
     val band = anyPictured(items) { it.id }
 
-    Column(modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ScanKey(scan) { vm.setScanMode(it) }
             // scan mode: nothing to type into, so nothing brings the keyboard up
             if (scan) ScanPill(Modifier.weight(1f))
             else Box(Modifier.weight(1f)) {
                 Field(
-                    q, { vm.query.value = it.take(60) }, "Scan, or search a name, SKU or barcode", Modifier.fillMaxWidth(), height = 56.dp, bg = V.Panel, size = 16.sp,
+                    q, { vm.query.value = it.take(60) }, "Scan, or search a name, SKU or barcode", Modifier.fillMaxWidth(), height = 52.dp, bg = V.Panel, size = 16.sp,
                     leading = { VIcon(BARS, 22.dp, V.BlueText) }, onDone = { vm.enter() },
                 )
                 if (searching) {
                     Box(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) { IconKey(VI.Close, size = 40.dp, onClick = { vm.query.value = "" }) }
                 }
             }
+            ScanKey(scan, 52.dp) { vm.setScanMode(it) }
         }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CatKey("All", !searching && cat == null) { vm.pickCat(null) }
-            cats.forEach { c -> CatKey(c.name, !searching && cat == c.id) { vm.pickCat(c.id) } }
-        }
-        LazyVerticalGrid(GridCells.Adaptive(176.dp), Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                T(
-                    if (searching) "Nothing matches “${q.trim()}”. A scanned code that no product carries adds nothing." else (if (com.restopos.core.data.Journey.alone) "No products here yet. They are added on Products & stock." else "No products here yet. They are added in the back office, under Products."),
-                    15.sp, 500, V.Text2, Modifier.padding(40.dp), lines = 3,
-                )
+        Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Rail(SellFit.rail(narrow)) {
+                item(key = "all") { RailKey("All", null, !searching && cat == null) { vm.pickCat(null) } }
+                items(cats, key = { it.id }) { c -> RailKey(c.name, counts[c.id], !searching && cat == c.id) { vm.pickCat(c.id) } }
             }
-            items(items, key = { it.id }) { i -> Tile(i, byId[i.category_id], left[i.id]?.qty, variants[i.id] ?: 0, band) { vm.tap(i) } }
+            LazyVerticalGrid(GridCells.Adaptive(150.dp), Modifier.weight(1f).fillMaxHeight(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                    T(
+                        if (searching) "Nothing matches “${q.trim()}”. A scanned code that no product carries adds nothing." else (if (com.restopos.core.data.Journey.alone) "No products here yet. They are added on Products & stock." else "No products here yet. They are added in the back office, under Products."),
+                        15.sp, 500, V.Text2, Modifier.padding(40.dp), lines = 3,
+                    )
+                }
+                items(items, key = { it.id }) { i -> SellTile(i, byId[i.category_id], left[i.id]?.qty, variants[i.id] ?: 0, band) { vm.tap(i) } }
+            }
         }
     }
 }
@@ -360,22 +408,29 @@ internal fun CatKey(label: String, on: Boolean, onClick: () -> Unit) {
     }
 }
 
-// A product: its category, its name, its price, and what is left of it.
-// "Not stocked" is a product whose stock nobody counts (a service, a bag).
-// band: the grid it is in shows pictures (anyPictured), so the card has its
-// picture along the top and the name and the price under it; the category's
-// name, which the keys above the grid say already, gives its line to that.
-@Composable
-internal fun Tile(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants: Int, band: Boolean, onClick: () -> Unit) {
+// What a card says of a product's stock, and how loudly. "Not stocked" is a
+// product whose stock nobody counts (a service, a bag).
+private fun stockNote(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants: Int): Pair<String, Color> {
     val counted = i.track_stock || cat?.is_stock == true
     val weighed = i.sold_by == "weight"
     val qty = left ?: 0L
-    val (note, tone) = when {
+    return when {
         !i.is_available -> "Not on sale" to V.Text3
         variants > 0 -> (if (counted) "$variants variants, ${LinePrice.left(qty, weighed).lowercase()}" else "$variants variants") to V.Text2
         !counted -> "Not stocked" to V.Text2
         else -> LinePrice.left(qty, weighed) to when (LinePrice.stock(qty)) { LinePrice.Stock.Plenty -> V.Text2; LinePrice.Stock.Few -> V.AmberText; LinePrice.Stock.None -> V.RedText }
     }
+}
+
+// A product: its category, its name, its price, and what is left of it.
+// band: the grid it is in shows pictures (anyPictured), so the card has its
+// picture along the top and the name and the price under it; the category's
+// name, which the keys above the grid say already, gives its line to that.
+// The products' pane of the stock screens (ProductPane) draws these.
+@Composable
+internal fun Tile(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants: Int, band: Boolean, onClick: () -> Unit) {
+    val weighed = i.sold_by == "weight"
+    val (note, tone) = stockNote(i, cat, left, variants)
     val ink = if (i.is_available) V.Text else V.Text3
     Column(Modifier.press(0.97f, onClick).clip(RoundedCornerShape(18.dp)).background(V.Panel)) {
         // V.Key: lighter than the card, so the band of a product with no picture is not a hole in it (V.Well is the screen's own colour)
@@ -393,6 +448,33 @@ internal fun Tile(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants: In
                 Gap()
                 T(note, 12.sp, 700, tone, align = TextAlign.End, lines = 2, height = 15.sp)
             }
+        }
+    }
+}
+
+// A product's card on the sell screen. In a grid that shows pictures its
+// picture is along the top with what is left of it on the picture's corner,
+// and under it the name and the price alone, on one line each: four cards
+// to a row (three on a 10-inch) leave no room for more. A grid that shows no
+// picture has the cards Tile draws, which say it all in words.
+@Composable
+private fun SellTile(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants: Int, band: Boolean, onClick: () -> Unit) {
+    if (!band) { Tile(i, cat, left, variants, false, onClick); return }
+    val weighed = i.sold_by == "weight"
+    val (note, tone) = stockNote(i, cat, left, variants)
+    val ink = if (i.is_available) V.Text else V.Text3
+    Column(Modifier.press(0.97f, onClick).clip(RoundedCornerShape(16.dp)).background(V.Panel)) {
+        Box {
+            // V.Key: lighter than the card, so the band of a product with no picture is not a hole in it
+            PictureBand(i.id, i.name, V.Key, off = !i.is_available)
+            Box(
+                Modifier.align(Alignment.BottomStart).padding(8.dp).height(24.dp).clip(RoundedCornerShape(12.dp)).background(V.Panel).padding(horizontal = 9.dp),
+                contentAlignment = Alignment.Center,
+            ) { T(note, 12.sp, 800, tone) }
+        }
+        Column(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            T(i.name, 14.5.sp, 700, ink)
+            T(if (i.open_price) "Enter price" else Money.format(i.price) + if (weighed) " /kg" else "", 15.sp, 800, ink)
         }
     }
 }

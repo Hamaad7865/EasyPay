@@ -25,19 +25,29 @@ handoff (`feature/main/MainShell.kt` holds every screen):
   Open order; with nothing ordered, Free the table, which closes the empty
   order (`ticket.cancel`). Tap a reserved one: the booking, "Guests arrived ·
   seat now", Release table.
-- **Order:** the order on the left, split into what the kitchen has and what
-  is new. A table's order has a covers stepper; any other order has its kind
-  (Counter, Takeaway, Delivery, a tab), and a takeaway or delivery has the
-  customer's name, phone and address. Tap a new line for minus, plus and
-  Remove; tap a sent line for Void (the kitchen gets a VOID ticket; needs
-  `sale.void_sent_line` or an approval). The menu is on the right: categories
-  in their colours, a search over the whole menu, items as tiles with their
-  price, a tag, OPTIONS, SOLD OUT, and how many are on the order unsent. An
-  item with add-on groups asks its options; press and hold any item to add a
-  kitchen note or several at once. Under the order: Print bill (tables),
-  Split, Clear new, More (discount, move to another table, change server,
-  order note, customer, print the kitchen order again, cancel the order),
-  then Send to kitchen and Pay.
+- **Order:** laid out as the owner's approved selling board, in the till's
+  own theme: the menu on the left, the order on the right (Settings, Display,
+  "Order on the left" turns it round). The order is split into what the
+  kitchen has and what is new, each line on a card with its options one to a
+  row and what each is charged. A table's order has a covers stepper; any
+  other order has its kind (Counter, Takeaway, Delivery, a tab), and a
+  takeaway or delivery has the customer's name, phone and address. Tap a new
+  line for minus, plus and Remove (its bin takes it off at once); tap a sent
+  line for Void (the kitchen gets a VOID ticket; needs `sale.void_sent_line`
+  or an approval). The menu: a search over the whole menu, the categories in
+  a list down its side with their colours and how many items each holds, and
+  the items as cards with their price, a tag, OPTIONS, SOLD OUT, and how many
+  are on the order unsent. An item whose options may all be left empty goes
+  straight on the order, and its options and the kitchen notes come up as
+  keys under the menu, for that line (or any new line of it tapped on the
+  order): a tap puts one on or takes it off. An item with a group that needs
+  a pick asks in the options sheet; press and hold any item for the sheet
+  (how many, kitchen notes, all at once). Under the order: its total, Print
+  bill (tables) or New sale, Split, Clear new; then Send, Fast (not at a
+  table: the whole order paid in cash, the exact amount, without the payment
+  screen) and Pay. More (discount, move to another table, change server,
+  order note, customer, print the kitchen order again, cancel the order) is
+  the key with three dots beside the order's name.
 - **Send to kitchen** puts what the kitchen has not had on the kitchen display
   as one ticket, prints it on the printers its categories are ticked for, and
   marks it sent. A printer that does not answer does not hold the order back:

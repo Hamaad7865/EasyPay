@@ -268,7 +268,10 @@ private val PENDING_DINING = stringPreferencesKey("pending_dining")
 private val PERIOD_SEQ = intPreferencesKey("period_seq")
 private val PAY_CHECK = intPreferencesKey("pay_check")
 private val SPLIT_SHARES = stringPreferencesKey("split_shares")
-private val LEFT_HANDED = booleanPreferencesKey("left_handed")
+// The order on the left of the menu (Settings, Display). It was "left_handed",
+// which put the order on the right when the order was on the left by default;
+// the right is the default now, so that key is no longer read.
+private val ORDER_LEFT = booleanPreferencesKey("order_left")
 private val KEEP_AWAKE = booleanPreferencesKey("keep_awake")
 private val SCAN_MODE = booleanPreferencesKey("scan_mode")
 private val SCANNERS = stringPreferencesKey("scanners")
@@ -380,8 +383,8 @@ class SessionStore(private val context: Context) {
     suspend fun splitShares(): String? = store.data.map { it[SPLIT_SHARES] }.first()
     suspend fun setSplitShares(json: String?) { store.edit { if (json == null) it.remove(SPLIT_SHARES) else it[SPLIT_SHARES] = json } }
     // How this tablet is set up for the people using it (Settings, Display).
-    val leftHanded: Flow<Boolean> = store.data.map { it[LEFT_HANDED] ?: false }
-    suspend fun setLeftHanded(on: Boolean) { store.edit { it[LEFT_HANDED] = on } }
+    val orderLeft: Flow<Boolean> = store.data.map { it[ORDER_LEFT] ?: false }
+    suspend fun setOrderLeft(on: Boolean) { store.edit { it[ORDER_LEFT] = on } }
     val keepAwake: Flow<Boolean> = store.data.map { it[KEEP_AWAKE] ?: true }
     suspend fun setKeepAwake(on: Boolean) { store.edit { it[KEEP_AWAKE] = on } }
     // Scan mode, a shop's: the scan key beside the search box is lit, and a

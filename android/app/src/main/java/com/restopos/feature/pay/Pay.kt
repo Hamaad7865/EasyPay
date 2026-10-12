@@ -368,6 +368,39 @@ class PayViewModel @Inject constructor(
         record(s, covered.map { it.info.line.id }, all)
     }
 
+    // Fast, beside Pay on the sell and order screens: the whole bill paid in
+    // cash, the exact amount, without this screen. It is recorded as Charge
+    // records it (the receipt prints, the drawer opens, what the kitchen has
+    // not had goes to it), and onPaid goes on as the card after a payment
+    // does. A bill this screen would have to ask about first (shares already
+    // taken on it, an exchange, no cash payment type) opens the screen instead.
+    private var fasting = false
+    fun fast(onScreen: () -> Unit, onPaid: (kind: String) -> Unit) = viewModelScope.launch {
+        if (fasting || _ui.value.busy) return@launch
+        fasting = true
+        try {
+            reset()
+            if (kept() != null) { onScreen(); return@launch }
+            load("full")
+            val s = _ui.value
+            if (s.gone) { reset(); Toaster.say("There is nothing to pay on this sale"); return@launch }
+            val cash = s.methods.firstOrNull { it.kind == "cash" }
+            if (s.exchangeOf != null || cash == null) { reset(); onScreen(); return@launch }
+            val covered = s.lines.filter { !it.info.line.paid }.map { it.info.line.id }
+            // a bill that comes to nothing is closed with no payment, as Charge closes it
+            val with = if (s.amount > 0) listOf(Share(cash.name, PayInput(cash.id, s.amount, s.amount, 0, null))) else emptyList()
+            recordNow(s.copy(method = cash, tend = ""), covered, with)
+            val done = _ui.value.done
+            reset()
+            if (done != null) {
+                Toaster.say("${Money.format(done.total)} paid · ${done.method}")
+                onPaid(done.kind)
+            }
+        } finally {
+            fasting = false
+        }
+    }
+
     // An exchange: the goods that come back pay for the sale as far as they go.
     // The payment type picked is for the difference, whichever way it goes.
     private fun exchange(s: PayUi, covered: List<String>) {
@@ -402,7 +435,9 @@ class PayViewModel @Inject constructor(
         }
     }
 
-    private fun record(s: PayUi, covered: List<String>, with: List<Share>) = viewModelScope.launch {
+    private fun record(s: PayUi, covered: List<String>, with: List<Share>) = viewModelScope.launch { recordNow(s, covered, with) }
+
+    private suspend fun recordNow(s: PayUi, covered: List<String>, with: List<Share>) {
         _ui.value = s.copy(busy = true)
         val t = tickets.activeTicket()
         val payments = with.map { it.input }.filter { it.amount > 0 }

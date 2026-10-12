@@ -9,6 +9,7 @@ import com.restopos.core.data.Approvals
 import com.restopos.core.data.Calc
 import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.LineInfo
+import com.restopos.core.data.LineNotes
 import com.restopos.core.data.ModPick
 import com.restopos.core.data.NeedsApproval
 import com.restopos.core.data.OrderInfo
@@ -27,7 +28,9 @@ import com.restopos.core.database.ModifierEntity
 import com.restopos.core.database.ModifierGroupEntity
 import com.restopos.core.database.TableEntity
 import com.restopos.core.database.TicketEntity
+import com.restopos.core.database.TicketLineModEntity
 import com.restopos.core.database.TillDatabase
+import com.restopos.core.guest.OptionRules
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.ui.L
 import com.restopos.core.ui.Toaster
@@ -73,16 +76,30 @@ data class OrderUi(
     val selected: String? = null,
     val busy: Boolean = false,
     val notes: List<String> = emptyList(), // the kitchen notes offered when an item is added
+    val mods: Map<String, List<TicketLineModEntity>> = emptyMap(), // each line's options, with what each is charged
 ) {
     val dine: Boolean get() = kind == "dine"
     val board: Boolean get() = kind == "takeaway" || kind == "delivery"
     val unsent: Int get() = fresh.sumOf { it.units }
     val empty: Boolean get() = sent.isEmpty() && fresh.isEmpty()
     val covers: Int get() = ticket?.covers ?: 1
+    // how many things are on the order and not paid, beside its name and its total
+    val count: Int get() = (sent + fresh).filter { !it.line.paid }.sumOf { it.units }
 }
 
 // The options of an item being added.
 data class OptionSheet(val item: ItemEntity, val groups: List<ModifierGroupEntity>, val mods: List<ModifierEntity>)
+
+// The keys under the menu: the options and the kitchen notes of one line the
+// kitchen has not had, the one lit on the order. picked: its options' ids;
+// notes: the notes it carries. A tap on a key changes that line.
+data class OptionKeys(
+    val lineId: String, val item: ItemEntity, val groups: List<ModifierGroupEntity>, val mods: List<ModifierEntity>,
+    val picked: List<String>, val notes: List<String>,
+) {
+    // the options in their groups' order
+    val ordered: List<ModifierEntity> get() = groups.flatMap { g -> mods.filter { it.group_id == g.id } }
+}
 
 private val HM = SimpleDateFormat("HH:mm", Locale.US)
 
@@ -117,9 +134,15 @@ class OrderViewModel @Inject constructor(
     // the items that ask a question when they are added
     val withOptions: StateFlow<Set<String>> = db.service().itemGroups().map { rows -> rows.map { it.item_id }.toSet() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+    // how many items each category holds, beside its name in the list of categories
+    val catCounts: StateFlow<Map<String, Int>> = db.catalog().itemsPerCategory().map { rows -> rows.associate { it.id to it.n } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
-    // Settings, Display: the order on the right and the menu on the left
-    val leftHanded: StateFlow<Boolean> = session.leftHanded.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    // Settings, Display: the order on the left and the menu on the right (the order is on the right otherwise)
+    val orderLeft: StateFlow<Boolean> = session.orderLeft.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    private val _keys = MutableStateFlow<OptionKeys?>(null)
+    val keys: StateFlow<OptionKeys?> = _keys
 
     private val _sheet = MutableStateFlow<OptionSheet?>(null)
     val sheet: StateFlow<OptionSheet?> = _sheet
@@ -140,6 +163,7 @@ class OrderViewModel @Inject constructor(
     fun open() = viewModelScope.launch {
         query.value = ""
         _sheet.value = null
+        _keys.value = null
         reload(fresh = true)
     }
 
@@ -151,6 +175,8 @@ class OrderViewModel @Inject constructor(
         val type = types.firstOrNull { it.id == typeId }
         val kind = type?.kind ?: if (table != null) "dine" else "counter"
         val lines = if (t == null) emptyList() else service.describe(db.tickets().lines(t.id).first())
+        // each line's options one by one, with what each is charged: read only for the lines that have any
+        val mods = lines.filter { it.mods.isNotBlank() }.associate { it.line.id to db.tickets().lineMods(it.line.id) }
         val discount = tickets.pendingDiscount()
         val waiter = (t?.opened_by ?: staff.id())?.let { db.staff().employee(it)?.name }
         val typeName = when (kind) { "counter" -> L.quick; else -> type?.name ?: L.quick }
@@ -173,10 +199,78 @@ class OrderViewModel @Inject constructor(
             waiter = waiter,
             selected = before.selected?.takeIf { id -> lines.any { it.line.id == id && !it.line.paid } },
             notes = PosSettings.parse(db.ops().settings()).kitchenNotes,
+            mods = mods,
         )
+        // the keys under the menu are for a line not yet sent: one sent, paid or taken off lets them go
+        _keys.value?.let { k -> if (_ui.value.fresh.none { it.line.id == k.lineId }) _keys.value = null }
     }
 
-    fun select(lineId: String?) { _ui.value = _ui.value.copy(selected = lineId) }
+    // A line tapped on the order: its keys open under it, and if it is one the
+    // kitchen has not had and its item has options, they are the keys under
+    // the menu. Tapped again, it closes and the keys stay.
+    fun select(lineId: String?) {
+        _ui.value = _ui.value.copy(selected = lineId)
+        if (lineId != null) viewModelScope.launch { light(lineId) }
+    }
+
+    fun closeKeys() { _keys.value = null }
+
+    // Lights a line for the keys under the menu: one not yet sent whose item
+    // has options, none of which must be picked (one that needs a pick was
+    // asked in the options sheet, and is changed by taking it off and adding
+    // it again). Any other line puts the keys away.
+    private suspend fun light(lineId: String) {
+        val l = _ui.value.fresh.firstOrNull { it.line.id == lineId }
+        val item = l?.line?.item_id?.let { db.catalog().item(it) }
+        val groups = item?.let { db.catalog().groupsForItem(it.id) }.orEmpty()
+        if (l == null || item == null || groups.isEmpty() || OptionRules.anyNeeded(groups.map { it.min_select })) { _keys.value = null; return }
+        _keys.value = OptionKeys(lineId, item, groups, db.catalog().modifiersForItem(item.id), db.tickets().modIds(lineId), LineNotes.split(l.line.note))
+    }
+
+    // A tap on an option's key under the menu: it goes on the lit line, or
+    // comes off it, as the options sheet would have it (core/guest/OptionRules).
+    fun toggleOption(m: ModifierEntity) = viewModelScope.launch {
+        val k = _keys.value ?: return@launch
+        val g = k.groups.firstOrNull { it.id == m.group_id } ?: return@launch
+        val inGroup = k.mods.filter { it.group_id == g.id }.map { it.id }.toSet()
+        val mine = k.picked.filter { it in inGroup }
+        val now = OptionRules.tap(mine, m.id, g.min_select, g.max_select)
+        if (now == mine) { Toaster.say("${g.name}: up to ${OptionRules.most(g.max_select)}"); return@launch }
+        reline(k, k.picked.filter { it !in inGroup } + now, k.notes)
+    }
+
+    // A tap on a kitchen note's key: on the lit line, or off it.
+    fun toggleNote(note: String) = viewModelScope.launch {
+        val k = _keys.value ?: return@launch
+        reline(k, k.picked, LineNotes.toggle(k.notes, note))
+    }
+
+    // A key tapped again before the line is put back is let go: the line it
+    // was for is no longer there, and the next tap is on the one that is.
+    private var relining = false
+    private suspend fun reline(k: OptionKeys, picked: List<String>, notes: List<String>) {
+        if (relining) return
+        relining = true
+        try { relineNow(k, picked, notes) } finally { relining = false }
+    }
+
+    private suspend fun relineNow(k: OptionKeys, picked: List<String>, notes: List<String>) {
+        val byId = k.mods.associateBy { it.id }
+        val picks = picked.mapNotNull { byId[it] }.map { ModPick(it.id, it.name, it.price) }
+        val open = _ui.value.selected == k.lineId
+        tickets.reoption(k.lineId, picks, LineNotes.join(notes)).fold(
+            onSuccess = { id ->
+                // the line is put back as a new one: the keys follow it before the
+                // order is read again, so they do not go away for a moment
+                _keys.value = k.copy(lineId = id, picked = picked, notes = notes)
+                reload()
+                // it stays lit, and stays open if it was
+                if (open) _ui.value = _ui.value.copy(selected = id)
+                light(id)
+            },
+            onFailure = { Toaster.say(it.message); reload() },
+        )
+    }
 
     // Tapping an item. One with options asks first; the others go straight on.
     // One whose price is typed at the sale (a service, anything charged
@@ -194,12 +288,22 @@ class OrderViewModel @Inject constructor(
         put(item, ask, null)
     }
 
+    // An item with no options, or with options none of which must be picked,
+    // goes straight on the order; the second has its options as keys under the
+    // menu, for the line it went on (the owner's approved board: "tap to add").
+    // One whose options need a pick asks in the options sheet, as does any
+    // item pressed and held (how many, kitchen notes, all at once).
     private suspend fun put(item: ItemEntity, ask: Boolean, price: Long?) {
         val groups = db.catalog().groupsForItem(item.id)
-        if (groups.isEmpty() && !ask) {
-            tickets.addItem(item.id, 1000, emptyList(), null, price = price).fold({ _added.tryEmit(item.id) }, { Toaster.say(it.message) })
+        if (!ask && !OptionRules.anyNeeded(groups.map { it.min_select })) {
+            val ok = tickets.addItem(item.id, 1000, emptyList(), null, price = price).fold({ _added.tryEmit(item.id); true }, { Toaster.say(it.message); false })
             reload()
+            // the line it went on: the last one of it with no option and no note
+            val line = if (ok && groups.isNotEmpty()) _ui.value.fresh.lastOrNull { it.line.item_id == item.id && it.mods.isBlank() && it.line.note.isNullOrBlank() } else null
+            if (line != null) light(line.line.id) else if (ok) _keys.value = null
         } else {
+            // the keys under the menu were for another line: the sheet is for this item
+            _keys.value = null
             typedPrice = price
             _sheet.value = OptionSheet(item, groups, db.catalog().modifiersForItem(item.id))
         }

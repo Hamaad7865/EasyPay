@@ -63,6 +63,15 @@ class GuestTest {
         assertEquals(listOf("mild"), OptionRules.tap(emptyList(), "mild", min = 1, max = 1))
     }
 
+    // an item whose groups all may be left empty goes straight on the order, its options as keys under the menu
+    @Test
+    fun anItemAsksFirstOnlyWhenAGroupOfItsNeedsAPick() {
+        assertEquals(false, OptionRules.anyNeeded(emptyList()))
+        assertEquals(false, OptionRules.anyNeeded(listOf(0, 0)))
+        assertEquals(true, OptionRules.anyNeeded(listOf(0, 1)))
+        assertEquals(true, OptionRules.anyNeeded(listOf(2)))
+    }
+
     @Test
     fun whereNoneIsNeededATapOnThePickedOneClearsIt() {
         assertEquals(emptyList<String>(), OptionRules.tap(listOf("ice"), "ice", min = 0, max = 1))

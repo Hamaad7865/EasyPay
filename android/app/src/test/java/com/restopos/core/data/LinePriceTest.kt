@@ -125,4 +125,14 @@ class LinePriceTest {
         assertFalse(LinePrice.sameLine(labour, "labour", null, 10000, typed = true))
         assertFalse(LinePrice.sameLine(labour, "labour", null, 20000, typed = true))
     }
+
+    // the count beside the sale's total ("7 items")
+    @Test fun `a line counts as many things as it has, and what is weighed as one`() {
+        assertEquals(3, LinePrice.pieces(3000, weighed = false))
+        assertEquals(1, LinePrice.pieces(1000, weighed = false))
+        // 1.250 kg of rice is one thing on the sale
+        assertEquals(1, LinePrice.pieces(1250, weighed = true))
+        // part of one is still one
+        assertEquals(1, LinePrice.pieces(250, weighed = false))
+    }
 }
