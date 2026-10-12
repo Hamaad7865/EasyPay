@@ -90,6 +90,11 @@ class GuestBook @Inject constructor(
             is Checked.Fault -> error(c.why)
             is Checked.Ready -> c
         }
+        // The register is left first, with whatever order type was picked for
+        // the sale that was on it. Found by running it: an order accepted from
+        // Quick sale went on its table as a counter sale, because the type
+        // Quick sale had set was still the one a new order would take.
+        tickets.newTicket()
         tickets.openTable(ready.table)
         for (l in ready.lines) tickets.addItem(l.item.id, l.thousandths, l.mods, l.note).getOrThrow()
         if (db.guest().answer(id, "accepted", null, System.currentTimeMillis()) > 0) kick.now()
