@@ -41,7 +41,12 @@ handoff (`feature/main/MainShell.kt` holds every screen):
   for them in the options sheet, whether or not one must be picked (for one
   version, 0.9.7, those that could all be left out were keys under the menu;
   the owner asked for the sheet back); press and hold any item for the sheet
-  (how many, kitchen notes, all at once). Under the order: its total, Print
+  (how many, kitchen notes, all at once). In a group that takes more than
+  one thing, an add-on that is picked has minus, how many and plus on it
+  (three sausages on a grillade): each one counts towards the group's most,
+  a most of 0 is as many as they like, and the line, the receipt and the
+  kitchen say "3 × Sausage". Add-ons are charged once for the line, whatever
+  the line's own quantity. Under the order: its total, Print
   bill (tables) or New sale, Split, Clear new; then Send, Fast (not at a
   table: the whole order paid in cash, the exact amount, without the payment
   screen) and Pay. More (discount, move to another table, change server,

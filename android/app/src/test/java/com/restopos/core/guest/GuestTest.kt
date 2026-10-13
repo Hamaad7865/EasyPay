@@ -56,28 +56,79 @@ class GuestTest {
 
     // ---- options ----
 
+    private fun one(vararg options: String) = options.associateWith { 1 }
+
     @Test
     fun aTapOnAnOptionWhereOneIsNeededMovesThePickAndNeverClearsIt() {
-        assertEquals(listOf("hot"), OptionRules.tap(listOf("mild"), "hot", min = 1, max = 1))
-        assertEquals(listOf("mild"), OptionRules.tap(listOf("mild"), "mild", min = 1, max = 1))
-        assertEquals(listOf("mild"), OptionRules.tap(emptyList(), "mild", min = 1, max = 1))
+        assertEquals(one("hot"), OptionRules.tap(one("mild"), "hot", min = 1, max = 1))
+        assertEquals(one("mild"), OptionRules.tap(one("mild"), "mild", min = 1, max = 1))
+        assertEquals(one("mild"), OptionRules.tap(emptyMap(), "mild", min = 1, max = 1))
     }
 
     @Test
     fun whereNoneIsNeededATapOnThePickedOneClearsIt() {
-        assertEquals(emptyList<String>(), OptionRules.tap(listOf("ice"), "ice", min = 0, max = 1))
-        assertEquals(listOf("less"), OptionRules.tap(listOf("ice"), "less", min = 0, max = 1))
-        // a group that says "at most none" is one that takes one
-        assertEquals(listOf("rice"), OptionRules.tap(emptyList(), "rice", min = 0, max = 0))
+        assertEquals(emptyMap<String, Int>(), OptionRules.tap(one("ice"), "ice", min = 0, max = 1))
+        assertEquals(one("less"), OptionRules.tap(one("ice"), "less", min = 0, max = 1))
     }
 
     @Test
     fun whereSeveralMayBePickedATapAddsOrTakesAwayAndStopsAtTheMost() {
-        assertEquals(listOf("egg", "sauce"), OptionRules.tap(listOf("egg"), "sauce", min = 0, max = 3))
-        assertEquals(listOf("sauce"), OptionRules.tap(listOf("egg", "sauce"), "egg", min = 0, max = 3))
-        assertEquals(listOf("a", "b", "c"), OptionRules.tap(listOf("a", "b", "c"), "d", min = 0, max = 3))
+        assertEquals(one("egg", "sauce"), OptionRules.tap(one("egg"), "sauce", min = 0, max = 3))
+        assertEquals(one("sauce"), OptionRules.tap(one("egg", "sauce"), "egg", min = 0, max = 3))
+        assertEquals(one("a", "b", "c"), OptionRules.tap(one("a", "b", "c"), "d", min = 0, max = 3))
         assertTrue(OptionRules.tooFew(1, 0)); assertFalse(OptionRules.tooFew(1, 1)); assertFalse(OptionRules.tooFew(0, 0))
-        assertTrue(OptionRules.tooMany(3, 4)); assertFalse(OptionRules.tooMany(3, 3)); assertTrue(OptionRules.tooMany(0, 2)); assertFalse(OptionRules.tooMany(0, 1))
+        assertTrue(OptionRules.tooMany(3, 4)); assertFalse(OptionRules.tooMany(3, 3))
+    }
+
+    // The add-on editor says of it: "Most 0 is as many as they like". The
+    // sheet took it for one, so a second add-on took the place of the first.
+    @Test
+    fun aMostOfNoneIsAsManyAsTheyLike() {
+        assertEquals(one("rice", "egg"), OptionRules.tap(one("rice"), "egg", min = 0, max = 0))
+        assertEquals(mapOf("rice" to 30), OptionRules.more(mapOf("rice" to 29), "rice", max = 0))
+        assertFalse(OptionRules.tooMany(0, 2)); assertFalse(OptionRules.tooMany(0, 40))
+        assertTrue(OptionRules.room(mapOf("rice" to 12), max = 0))
+    }
+
+    // The owner: "if the customer is buying grillade + sausage as add on. We
+    // need to be able to select how much sausages he wants".
+    @Test
+    fun anAddOnCanBeTakenSeveralTimesAndEachOneCountsTowardsTheMost() {
+        val three = OptionRules.more(OptionRules.more(one("sausage"), "sausage", max = 3), "sausage", max = 3)
+        assertEquals(mapOf("sausage" to 3), three)
+        assertEquals(3, OptionRules.count(three))
+        // three sausages fill "up to 3": no fourth, and no egg beside them
+        assertEquals(three, OptionRules.more(three, "sausage", max = 3))
+        assertEquals(three, OptionRules.tap(three, "egg", min = 0, max = 3))
+        assertFalse(OptionRules.room(three, max = 3)); assertTrue(OptionRules.room(mapOf("sausage" to 2), max = 3))
+        // two sausages and an egg are three as well
+        assertEquals(mapOf("sausage" to 2, "egg" to 1), OptionRules.tap(mapOf("sausage" to 2), "egg", min = 0, max = 3))
+    }
+
+    @Test
+    fun oneFewerOfAnAddOnAndTheLastOneTakesItOff() {
+        assertEquals(mapOf("sausage" to 2), OptionRules.fewer(mapOf("sausage" to 3), "sausage"))
+        assertEquals(one("egg"), OptionRules.fewer(one("egg", "sausage"), "sausage"))
+        // a tap on a picked one takes all of it off, however many
+        assertEquals(one("egg"), OptionRules.tap(mapOf("sausage" to 3, "egg" to 1), "sausage", min = 0, max = 0))
+        // nothing is done to one that is not picked
+        assertEquals(one("egg"), OptionRules.fewer(one("egg"), "sausage"))
+        assertEquals(one("egg"), OptionRules.more(one("egg"), "sausage", max = 0))
+    }
+
+    @Test
+    fun whereOneThingIsChosenNothingIsCountedAndNoAddOnGoesPastNinetyNine() {
+        assertEquals(one("mild"), OptionRules.more(one("mild"), "mild", max = 1))
+        assertEquals(mapOf("rice" to 99), OptionRules.more(mapOf("rice" to 99), "rice", max = 0))
+    }
+
+    // A phone takes each option once: "as many as they like" is one of each there.
+    @Test
+    fun whatAPhoneIsToldOfAGroupsMost() {
+        assertEquals(5, OptionRules.mostOnAPhone(max = 0, options = 5))
+        assertEquals(3, OptionRules.mostOnAPhone(max = 3, options = 5))
+        assertEquals(20, OptionRules.mostOnAPhone(max = 0, options = 50))
+        assertEquals(1, OptionRules.mostOnAPhone(max = 0, options = 0))
     }
 
     // ---- an order held against the menu ----

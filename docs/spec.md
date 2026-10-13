@@ -305,7 +305,7 @@ Every table also has: `id uuid pk`, `tenant_id`, `created_at`, `updated_at`, `de
 **Transactions**
 - `tickets` (store_id, table_id, dining_option_id, name, status: open, paid, cancelled; opened_by, customer_id, note, covers)
 - `ticket_lines` (ticket_id, item_id, variant_id, name_snapshot, unit_price, qty, note, course, sent_to_kitchen_at, voided_at, voided_by, void_reason, kitchen_status)
-- `ticket_line_modifiers` (line_id, modifier_id, name_snapshot, price)
+- `ticket_line_modifiers` (line_id, modifier_id, name_snapshot, price, qty: how many of the add-on; price is for that many)
 - `ticket_line_taxes` (line_id, tax_id, name_snapshot, rate_bp, type)
 - `receipts` (store_id, device_id, shift_id, ticket_id, number, type: sale or refund; refund_of, subtotal, discount_total, tax_total, service_charge, rounding, total, employee_id, customer_id, device_time, needs_review)
 - `receipt_lines`, `receipt_line_modifiers`, `receipt_line_taxes` (full snapshots; never joined back to the catalog for display)

@@ -206,7 +206,7 @@ interface ServiceDao {
     suspend fun modSums(lines: List<String>): List<LineSum>
 
     @Query(
-        """SELECT m.line_id AS line_id, group_concat(m.name_snapshot, ' · ') AS text FROM ticket_line_modifiers m
+        """SELECT m.line_id AS line_id, group_concat(CASE WHEN m.qty > 1 THEN m.qty || ' × ' || m.name_snapshot ELSE m.name_snapshot END, ' · ') AS text FROM ticket_line_modifiers m
            WHERE m.line_id IN (:lines) GROUP BY m.line_id""",
     )
     suspend fun modTexts(lines: List<String>): List<LineText>

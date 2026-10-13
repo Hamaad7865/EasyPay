@@ -12,6 +12,7 @@ import com.restopos.core.database.TicketLineEntity
 import com.restopos.core.database.TicketLineModEntity
 import com.restopos.core.database.TicketLineTaxEntity
 import com.restopos.core.database.TillDatabase
+import com.restopos.core.guest.OptionRules
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.sync.pushNow
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -46,7 +47,9 @@ data class DiscountPick(
     val approvedBy: String? = null,
 )
 
-data class ModPick(val id: String, val name: String, val price: Long)
+// An add-on picked for a line. qty: how many of it (three sausages); price:
+// what they add to the line in all, so for three at Rs 50 it is Rs 150.
+data class ModPick(val id: String, val name: String, val price: Long, val qty: Int = 1)
 
 // Ticket writes (spec 5.2): data row + outbox row in ONE Room transaction,
 // then an immediate push when online. Screens never call the network.
@@ -458,10 +461,13 @@ class TicketRepository @Inject constructor(
                 val linked = dao.modifiersForItem(itemId).map { it.id }.toSet()
                 mods.forEach { require(linked.contains(it.id)) { "bad modifier" } }
             }
-            val modIds = mods.map { it.id }.sorted()
+            require(mods.all { it.qty in 1..OptionRules.MOST_OF_ONE }) { "bad modifier" }
+            // the same add-ons, and as many of each: a grillade with one
+            // sausage and one with three are two lines
+            val picked = mods.map { it.id to it.qty }.sortedBy { it.first }
             val lines = db.tickets().lines(t.id).first()
             val match = lines.filter { it.voided_at == null && it.sent_to_kitchen_at == null && it.item_id == itemId && it.variant_id == null && it.price_kind == null && (it.note ?: "") == (note ?: "") && it.course == course && it.seat == seat }
-                .firstOrNull { db.tickets().modIds(it.id).sorted() == modIds }
+                .firstOrNull { l -> db.tickets().lineMods(l.id).map { it.modifier_id to it.qty }.sortedBy { it.first } == picked }
             if (match != null && price == null) {
                 setQty(match.id, match.qty + qty, "quantity change")
                 return@runCatching
@@ -472,14 +478,14 @@ class TicketRepository @Inject constructor(
             // the catalog changed while the tablet was offline.
             val modArr = buildJsonArray {
                 mods.forEach { m ->
-                    add(buildJsonObject { put("modifier_id", m.id); put("price", m.price); put("name", m.name) })
+                    add(buildJsonObject { put("modifier_id", m.id); put("price", m.price); put("name", m.name); put("qty", m.qty) })
                 }
             }
             db.withTransaction {
                 db.tickets().upsertLines(listOf(
                     TicketLineEntity(lineId, tenant, t.id, itemId, null, item.name, price ?: item.price, qty, note, course, seat = seat),
                 ))
-                db.tickets().upsertLineMods(mods.map { TicketLineModEntity(lineId, it.id, it.name, it.price) })
+                db.tickets().upsertLineMods(mods.map { TicketLineModEntity(lineId, it.id, it.name, it.price, it.qty) })
                 db.catalog().upsertLineTaxes(taxes.map { TicketLineTaxEntity(lineId, it.id, it.rate_bp, it.type) })
                 db.outbox().enqueue(op("ticket.add_line", buildJsonObject {
                     put("id", lineId); put("ticket_id", t.id); put("item_id", itemId)
@@ -502,7 +508,7 @@ class TicketRepository @Inject constructor(
         val item = db.catalog().item(itemId) ?: error("unknown item")
         require(qty <= line.qty || item.is_available) { "${item.name} is sold out" }
         // its options as they were rung up, at the prices charged then
-        val mods = db.tickets().lineMods(lineId).map { ModPick(it.modifier_id, it.name_snapshot, it.price) }
+        val mods = db.tickets().lineMods(lineId).map { ModPick(it.modifier_id, it.name_snapshot, it.price, it.qty) }
         voidLine(lineId, reason).getOrThrow()
         // one whose price was typed keeps the price typed for it
         if (qty > 0) addItem(itemId, qty, mods, line.note, line.course, line.seat, again = true, price = line.unit_price.takeIf { item.open_price }).getOrThrow()

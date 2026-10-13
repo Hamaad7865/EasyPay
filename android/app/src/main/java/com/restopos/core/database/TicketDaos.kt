@@ -23,7 +23,7 @@ interface TicketDao {
     @Query("SELECT * FROM ticket_lines WHERE ticket_id = :ticket AND voided_at IS NULL AND deleted_at IS NULL ORDER BY rowid")
     fun lines(ticket: String): Flow<List<TicketLineEntity>>
 
-    @Query("SELECT group_concat(name_snapshot, ' · ') FROM ticket_line_modifiers WHERE line_id = :line")
+    @Query("SELECT group_concat(CASE WHEN qty > 1 THEN qty || ' × ' || name_snapshot ELSE name_snapshot END, ' · ') FROM ticket_line_modifiers WHERE line_id = :line")
     suspend fun modText(line: String): String?
 
     @Upsert
@@ -51,9 +51,6 @@ interface TicketDao {
     @Query("SELECT * FROM tickets WHERE table_id = :table AND status = 'open' AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1")
     suspend fun openTicketForTable(table: String): TicketEntity?
 
-    @Query("SELECT modifier_id FROM ticket_line_modifiers WHERE line_id = :line")
-    suspend fun modIds(line: String): List<String>
-
     @Query("SELECT COALESCE(SUM(price), 0) FROM ticket_line_modifiers WHERE line_id = :line")
     suspend fun modSum(line: String): Long
 
@@ -71,7 +68,8 @@ interface TicketDao {
     @Query("SELECT * FROM ticket_lines WHERE ticket_id = :ticket AND deleted_at IS NULL ORDER BY rowid")
     suspend fun allLines(ticket: String): List<TicketLineEntity>
 
-    @Query("SELECT name_snapshot FROM ticket_line_modifiers WHERE line_id = :line")
+    // a line's add-ons as a receipt or a kitchen ticket prints them: "3 x Sausage"
+    @Query("SELECT CASE WHEN qty > 1 THEN qty || ' x ' || name_snapshot ELSE name_snapshot END FROM ticket_line_modifiers WHERE line_id = :line")
     suspend fun modNames(line: String): List<String>
 
     @Query("SELECT * FROM ticket_line_modifiers WHERE line_id = :line")

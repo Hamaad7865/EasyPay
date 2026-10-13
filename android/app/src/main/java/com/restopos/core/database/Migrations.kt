@@ -303,4 +303,12 @@ object Migrations {
             db.execSQL("CREATE TABLE IF NOT EXISTS `item_pictures` (`item_id` TEXT NOT NULL, `jpeg` BLOB NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`item_id`))")
         }
     }
+
+    // 21: how many of an add-on a line takes (server 0105): three sausages on
+    // a grillade. Every add-on already on a line is one of it, as it was.
+    val V20_V21 = object : Migration(20, 21) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `ticket_line_modifiers` ADD COLUMN `qty` INTEGER NOT NULL DEFAULT 1")
+        }
+    }
 }

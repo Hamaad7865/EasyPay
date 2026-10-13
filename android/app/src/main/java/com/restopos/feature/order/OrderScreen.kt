@@ -313,7 +313,7 @@ private fun Options(mods: List<TicketLineModEntity>?, l: LineInfo) {
     } else {
         mods.forEach { m ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                T("+ " + m.name_snapshot, 13.sp, 500, V.Text2, Modifier.weight(1f))
+                T("+ " + (if (m.qty > 1) "${m.qty} × " else "") + m.name_snapshot, 13.sp, 500, V.Text2, Modifier.weight(1f))
                 if (m.price != 0L) T(Money.format(m.price), 13.sp, 500, V.Text2)
             }
         }
@@ -478,44 +478,61 @@ private fun MenuCard(i: ItemEntity, byId: Map<String, CategoryEntity>, index: Ma
     }
 }
 
-// An item's options: one pick in each group that wants one, any of the
-// kitchen notes, how many.
+// An item's options: one pick in each group that wants one, as many of an
+// add-on as are wanted (three sausages on a grillade), any of the kitchen
+// notes, how many of the item.
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun OptionsSheet(s: OptionSheet, notes: List<String>, vm: OrderViewModel) {
-    // which options are picked, group by group. A group that needs one starts on its first.
+    val rules = com.restopos.core.guest.OptionRules
+    // what is picked, group by group: how many of each option. A group that needs one starts on its first.
     val picked = remember(s) {
-        mutableStateMapOf<String, List<String>>().apply {
-            s.groups.forEach { g -> if (g.min_select >= 1) s.mods.firstOrNull { it.group_id == g.id }?.let { put(g.id, listOf(it.id)) } }
+        mutableStateMapOf<String, Map<String, Int>>().apply {
+            s.groups.forEach { g -> if (g.min_select >= 1) s.mods.firstOrNull { it.group_id == g.id }?.let { put(g.id, mapOf(it.id to 1)) } }
         }
     }
     val said = remember(s) { mutableStateListOf<String>() }
     var other by remember(s) { mutableStateOf("") }
     var qty by remember(s) { mutableIntStateOf(1) }
-    val picks = s.mods.filter { m -> picked[m.group_id].orEmpty().contains(m.id) }
-    val short = s.groups.firstOrNull { g -> com.restopos.core.guest.OptionRules.tooFew(g.min_select, picked[g.id].orEmpty().size) }
+    // each add-on picked, with how many of it and what they come to
+    val picks = s.mods.mapNotNull { m -> picked[m.group_id]?.get(m.id)?.let { n -> ModPick(m.id, m.name, m.price * n, n) } }
+    val short = s.groups.firstOrNull { g -> rules.tooFew(g.min_select, rules.count(picked[g.id].orEmpty())) }
 
     Sheet(onDismiss = { vm.closeSheet() }) {
         SheetHead(s.item.name, Money.format(s.item.price)) { vm.closeSheet() }
         s.groups.forEach { g ->
             val mine = picked[g.id].orEmpty()
-            val max = com.restopos.core.guest.OptionRules.most(g.max_select)
+            val max = g.max_select
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Caps(g.name + if (max > 1) " · up to $max" else "")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     s.mods.filter { it.group_id == g.id }.forEach { m ->
-                        val on = mine.contains(m.id)
+                        val n = mine[m.id]
+                        val on = n != null
+                        val ink = if (on) V.OnText else V.Text
                         Row(
                             Modifier.height(54.dp).clip(RoundedCornerShape(12.dp)).background(if (on) V.On else V.Key)
-                                .border(1.5.dp, if (on) V.On else V.Stroke2, RoundedCornerShape(12.dp))
-                                .clickable {
-                                    // what a tap leaves picked is one rule, also held to an order sent from a table (core/guest)
-                                    picked[g.id] = com.restopos.core.guest.OptionRules.tap(mine, m.id, g.min_select, g.max_select)
-                                }.padding(horizontal = 18.dp),
-                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                .border(1.5.dp, if (on) V.On else V.Stroke2, RoundedCornerShape(12.dp)),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            T(m.name, 15.sp, 700, if (on) V.OnText else V.Text)
-                            if (m.price != 0L) T("+" + Money.format(m.price), 12.sp, 700, (if (on) V.OnText else V.Text).copy(alpha = 0.8f))
+                            Row(
+                                // what a tap leaves picked is one rule, also held to an order sent from a table (core/guest)
+                                Modifier.fillMaxHeight().clickable { picked[g.id] = rules.tap(mine, m.id, g.min_select, g.max_select) }.padding(horizontal = 18.dp),
+                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                T(m.name, 15.sp, 700, ink)
+                                if (m.price != 0L) T("+" + Money.format(m.price), 12.sp, 700, ink.copy(alpha = 0.8f))
+                            }
+                            // how many of it, where the group takes more than one thing
+                            if (n != null && !rules.single(max)) {
+                                val room = rules.room(mine, max) && n < rules.MOST_OF_ONE
+                                Box(Modifier.width(1.dp).height(30.dp).background(ink.copy(alpha = 0.25f)))
+                                Box(Modifier.size(46.dp, 54.dp).clickable { picked[g.id] = rules.fewer(mine, m.id) }, contentAlignment = Alignment.Center) { T("−", 20.sp, 700, ink) }
+                                Box(Modifier.widthIn(min = 22.dp), contentAlignment = Alignment.Center) { T(n.toString(), 17.sp, 800, ink) }
+                                Box(Modifier.size(46.dp, 54.dp).clickable(enabled = room) { picked[g.id] = rules.more(mine, m.id, max) }, contentAlignment = Alignment.Center) {
+                                    T("+", 20.sp, 700, ink.copy(alpha = if (room) 1f else 0.35f))
+                                }
+                            }
                         }
                     }
                 }
@@ -542,7 +559,7 @@ private fun OptionsSheet(s: OptionSheet, notes: List<String>, vm: OrderViewModel
             VBtn(
                 if (short != null) "Pick ${short.name}" else "Add to order · ${Money.format(each)}", Modifier.weight(1f),
                 if (short == null) V.Blue else V.Key, if (short == null) Color.White else V.Text3, 60.dp, size = 16.sp, weight = 800, enabled = short == null,
-            ) { vm.confirm(qty, picks.map { ModPick(it.id, it.name, it.price) }, (said + listOfNotNull(other.trim().ifEmpty { null })).joinToString(" · ")) }
+            ) { vm.confirm(qty, picks, (said + listOfNotNull(other.trim().ifEmpty { null })).joinToString(" · ")) }
         }
     }
 }

@@ -97,7 +97,11 @@ data class TicketLineModEntity(
     val line_id: String,
     val modifier_id: String,
     val name_snapshot: String,
+    // what the add-on adds to the line in all: for three at Rs 50, Rs 150.
+    // Every sum of a line's add-ons adds this as it is.
     val price: Long = 0,
+    // how many of it the line takes (server 0105)
+    val qty: Int = 1,
 )
 
 @Entity(tableName = "item_taxes", primaryKeys = ["item_id", "tax_id"])

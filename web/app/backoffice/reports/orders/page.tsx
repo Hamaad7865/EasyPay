@@ -54,7 +54,8 @@ export default async function OrderDetails({ searchParams }: { searchParams: Sea
         `select rl.receipt_id, rl.name_snapshot as name, rl.unit_price, rl.qty, rl.list_price, rl.price_kind, rl.price_label,
                 (select e.name from ticket_lines tl join employees e on e.tenant_id = $1 and e.id = tl.price_by
                   where tl.tenant_id = $1 and tl.id = rl.ticket_line_id and rl.price_kind is not null) as price_by,
-                (select string_agg(m.name_snapshot, ', ') from receipt_line_modifiers m where m.tenant_id = $1 and m.receipt_line_id = rl.id) as mods,
+                (select string_agg(case when m.qty > 1 then m.qty || ' × ' || m.name_snapshot else m.name_snapshot end, ', ')
+                   from receipt_line_modifiers m where m.tenant_id = $1 and m.receipt_line_id = rl.id) as mods,
                 coalesce((select sum(m.price) from receipt_line_modifiers m where m.tenant_id = $1 and m.receipt_line_id = rl.id), 0) as mod_total,
                 (select string_agg(x.name_snapshot, ', ') from receipt_line_taxes x where x.tenant_id = $1 and x.receipt_line_id = rl.id) as tax
            from receipt_lines rl where rl.tenant_id = $1 and rl.receipt_id = any($2::uuid[]) order by rl.created_at, rl.id`,

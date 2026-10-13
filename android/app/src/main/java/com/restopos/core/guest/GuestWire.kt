@@ -76,7 +76,7 @@ object GuestMenu {
                 groups.forEach { g ->
                     add(buildJsonObject {
                         put("id", g.id); put("name", g.name.take(60))
-                        put("min", g.min_select.coerceIn(0, 20)); put("max", OptionRules.most(g.max_select).coerceAtMost(20))
+                        put("min", g.min_select.coerceIn(0, 20)); put("max", OptionRules.mostOnAPhone(g.max_select, options[g.id].orEmpty().size))
                         put("opts", buildJsonArray {
                             options[g.id].orEmpty().take(60).forEach { o -> add(buildJsonObject { put("id", o.id); put("name", o.name.take(60)); put("price", o.price) }) }
                         })
