@@ -18,12 +18,14 @@ import com.restopos.core.sync.pushNow
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -383,6 +385,11 @@ class TicketRepository @Inject constructor(
         val t = db.tickets().ticket(ticketId) ?: return@runCatching
         if (t.no_show_at != null || t.status == "cancelled") return@runCatching
         val open = t.status == "open"
+        // Parts of the bill already taken on the payment screen are only
+        // written down there until the bill is covered (PayViewModel): closing
+        // the order now would lose them from every record.
+        val taken = session.splitShares()?.let { kept -> runCatching { Json.parseToJsonElement(kept).jsonObject.containsKey(ticketId) }.getOrDefault(false) } ?: false
+        require(!(open && taken)) { "Part of this bill is already taken. Finish the payment, or give it back, on the payment screen first." }
         if (open) staff.allow("sale.void_sent_line", "mark an unpaid order as a no-show", approver)
         val now = System.currentTimeMillis()
         val lost = if (open) unpaid.coerceAtLeast(0) else 0

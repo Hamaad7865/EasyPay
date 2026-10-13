@@ -20,8 +20,8 @@ import java.util.Calendar
 // A clock face to choose a time of day on: the hand is turned to the hour,
 // then to the minutes. The owner, of when a takeaway is picked up: "you can
 // make it a clock and we turn its needles to select the time". It opens at
-// `at` (a moment), or at the time it is now. What the time means (today, not
-// already past) is the caller's rule (Pickup.at).
+// `at` (a moment), or at the time it is now. What the time means (today, or
+// tomorrow's small hours, and not already past) is the caller's rule (Pickup.at).
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClockSheet(title: String, sub: String?, at: Long?, onDismiss: () -> Unit, onPick: (hour: Int, minute: Int) -> Unit) {

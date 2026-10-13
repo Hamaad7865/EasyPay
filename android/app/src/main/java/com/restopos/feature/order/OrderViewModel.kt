@@ -370,7 +370,7 @@ class OrderViewModel @Inject constructor(
     // that time. False, and said, when it has already passed.
     fun pickup(hour: Int, minute: Int): Boolean {
         val at = Pickup.at(hour, minute, System.currentTimeMillis(), ZoneId.systemDefault())
-        if (at == null) { Toaster.say("That time has already passed today"); return false }
+        if (at == null) { Toaster.say("That time has already passed"); return false }
         viewModelScope.launch {
             // a name typed a moment ago goes on the order first
             contactJob?.cancel()

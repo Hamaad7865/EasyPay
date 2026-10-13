@@ -157,7 +157,7 @@ class BoardViewModel @Inject constructor(
     // the time turned to on the clock: today at that time; false, and said, when it has already passed
     fun at(o: OrderInfo, hour: Int, minute: Int): Boolean {
         val at = Pickup.at(hour, minute, System.currentTimeMillis(), ZoneId.systemDefault())
-        if (at == null) { Toaster.say("That time has already passed today"); return false }
+        if (at == null) { Toaster.say("That time has already passed"); return false }
         viewModelScope.launch { tickets.setDue(o.id, at) }
         return true
     }
@@ -250,7 +250,7 @@ fun BoardScreen(vm: BoardViewModel, onOrder: () -> Unit, onPay: () -> Unit) {
     clock?.let { o ->
         ClockSheet(
             "${o.label} · ${o.ticket.name ?: "Walk-in"}",
-            (if (o.kind == "delivery") "When it is delivered." else "When it is picked up.") + " Turn the hand to the hour, then to the minutes. Today only.",
+            (if (o.kind == "delivery") "When it is delivered." else "When it is picked up.") + " Turn the hand to the hour, then to the minutes.",
             o.ticket.due_at, onDismiss = { clock = null },
         ) { h, m -> if (vm.at(o, h, m)) clock = null }
     }

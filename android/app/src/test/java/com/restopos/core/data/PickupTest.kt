@@ -28,7 +28,17 @@ class PickupTest {
     @Test
     fun aTimeAlreadyPastIsRefused() {
         assertNull(Pickup.at(17, 4, at(17, 5, 40), zone))
-        assertNull(Pickup.at(0, 15, at(23, 50), zone))
+        assertNull(Pickup.at(18, 0, at(19, 0), zone))
+        assertNull(Pickup.at(12, 0, at(23, 50), zone))
+    }
+
+    // An order rung up at ten to midnight is given 00:05 by itself; the clock must take that time too.
+    @Test
+    fun lateInTheEveningATimeOfTheSmallHoursIsTomorrows() {
+        val tomorrow = { h: Int, m: Int -> LocalDateTime.of(2026, 10, 14, h, m).atZone(zone).toInstant().toEpochMilli() }
+        assertEquals(tomorrow(0, 15), Pickup.at(0, 15, at(23, 50), zone))
+        assertEquals(tomorrow(0, 3), Pickup.at(0, 3, at(23, 55), zone))
+        assertEquals(tomorrow(1, 30), Pickup.at(1, 30, at(21, 0), zone))
     }
 
     @Test

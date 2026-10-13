@@ -222,7 +222,7 @@ private fun Head(ui: OrderUi, vm: OrderViewModel, low: Boolean, onMore: () -> Un
             if (clock) {
                 ClockSheet(
                     if (ui.kind == "delivery") "When is it delivered?" else "When is it picked up?",
-                    "Turn the hand to the hour, then to the minutes. Today only.",
+                    "Turn the hand to the hour, then to the minutes.",
                     ui.ticket?.due_at, onDismiss = { clock = false },
                 ) { h, m -> if (vm.pickup(h, m)) clock = false }
             }

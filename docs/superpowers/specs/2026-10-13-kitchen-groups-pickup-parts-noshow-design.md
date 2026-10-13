@@ -38,7 +38,7 @@ A takeaway or delivery already had a time (`tickets.due_at`): set by itself to t
 
 - On a takeaway or delivery, a key with a clock sits beside the customer's name and phone. It shows the time once the order has one.
 - It opens a clock face: the hand is turned to the hour, then to the minutes. 24 hours.
-- Today only. A time already past is refused.
+- A time already past is refused. Late in the evening a time of the small hours is tomorrow's (one that passed more than half a day ago): at ten to midnight 00:15 can be chosen, as the time an order gets by itself can be past midnight too.
 - Choosing a time on an order that has nothing on it yet makes the order, as typing a name does.
 - The card on the board opens the same clock; its 5 and 15 minute keys stay.
 - The kitchen's paper says `PICK UP 18:30` under the order's name (`DELIVERY 18:30` for a delivery), and the kitchen screen's card says the same. It is the time the order had when it was sent; one changed afterwards is not printed again.
@@ -100,4 +100,4 @@ Takeaway
 
 Not seen: this till's Kitchen screen and a kitchen tablet (the made-up restaurant's plan has no kitchen display), a delivery, a time refused for being past, the Z itself on paper (the X has the same line; the list of each order is in the unit test only), the back office's page in a browser, a real tablet or printer.
 
-One thing to know: the clock takes a time today only, so a few minutes before midnight a pick-up after midnight cannot be turned to on it; the 5 and 15 minute keys on the board still move it there.
+Found by that run and changed after it, so not seen on the emulator: the clock took a time today only, and the order rung up at 23:48 had been given 00:03 by itself, a time the clock would have refused. A time that passed more than half a day ago is now tomorrow's. And an unpaid order with parts already taken on the payment screen is not made a no-show until they are finished or given back: they are only written down on that screen until the bill is covered.
