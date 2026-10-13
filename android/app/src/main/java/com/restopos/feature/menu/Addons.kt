@@ -220,7 +220,8 @@ private fun AddonSheet(editor: AddonEditor, edit: AddonEdit) {
     var rows by remember(edit) { mutableStateOf(edit.choices.map { AddonForm.Typed(it.id, it.name, if (it.price == 0L) "" else rupees(it.price), it.alone, it.max_qty > 1, if (it.max_qty > 1) it.max_qty.toString() else "") } + AddonForm.Typed(Uuid7.next())) }
     var removing by remember(edit) { mutableStateOf(false) }
 
-    Sheet(onDismiss = { editor.close() }, width = 720.dp, pad = 22.dp, gap = 10.dp, top = true) {
+    // kept low: with three choices and the row for the next, Save must still be on a 10-inch
+    Sheet(onDismiss = { editor.close() }, width = 720.dp, pad = 20.dp, gap = 8.dp, top = true) {
         if (removing && was != null) {
             SheetHead("Remove ${was.name}?", "It comes off every item that carries it. Orders already taken keep what was picked.") { editor.close() }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -245,7 +246,7 @@ private fun AddonSheet(editor: AddonEditor, edit: AddonEdit) {
             }
         }
         T(
-            AddonForm.rule(min.toIntOrNull() ?: 0, max.toIntOrNull() ?: 0) + ". Fewest 0 makes the group optional, 1 means one must be picked. Most 0 is as many as they like.",
+            AddonForm.rule(min.toIntOrNull() ?: 0, max.toIntOrNull() ?: 0) + ". Fewest 0: optional; 1: one must be picked. Most 0: as many as they like.",
             13.sp, 500, V.Text2, lines = 2,
         )
         Caps("Choices, and what each adds to the price", V.Text2)

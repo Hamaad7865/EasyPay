@@ -35,3 +35,16 @@ The notes offered under "Kitchen note" when an item is added (No onion, Rush) we
 - Saved with `settings.save`, which now takes `kitchenNotes` (migration 0108) beside the receipt's notes and the service charge, under the same permission (`settings.device`). A tablet that works on its own answers it itself.
 
 Not built: a number for a guest's phone; a note kept as a preset from the pop-up while an order is taken.
+
+## What was run, the night it was built
+
+On a test emulator (1280 x 800, the made-up restaurant that works on its own), the debug build installed over database 24: it went to 25 in place with no fault, and its three choices (All, Mayo, Sausage) were each one or none.
+
+- **The add-on sheet.** Every choice has the keys Alone and Several. Several pressed on Sausage lit it and put "× 5" beside it; saved, the tablet held Sausage 5, Mayo 1, All 1 and alone.
+- **The pop-up.** Mayo picked: no minus and plus on it. Sausage picked: minus, 1, plus. Plus pressed six times: it stopped at 5, and the key read 320 + 250.
+- **The kitchen notes.** Menu & stock, Add-ons: under the group, "Kitchen notes" with the five usual notes. One taken off came off the list; "No chilli" typed and added; saved, the tablet's settings held the six, and the pop-up offered "No chilli" with the rest.
+- One fault found by running it, and put right: for a group of three choices the add-on sheet's Remove, Cancel and Save were partly off the bottom of a 10-inch (the sheet slides, but they were out of sight, as once before). The sheet is a little tighter and the line about Fewest and Most is one line; seen again with the same group, the three keys are whole.
+
+Not seen: the back office's Add-ons page in a browser (it needs the owner's sign-in), a tablet that syncs saving either to the server (the suites on dev stand for it), a 15-inch, a real tablet.
+
+Something the run showed about the test, not the till: after a note is taken off, the notes may fit on one line and the box moves up, so a tap aimed at where the box was misses it; keys sent to a sheet with no box in use then pressed its close key.
