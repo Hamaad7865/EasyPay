@@ -24,7 +24,7 @@ object Parts {
         Routing.screenLines(lines, screens).map { (screen, mine) ->
             KdsPartEntity(
                 kds_id = ticket.id, screen_id = screen,
-                payload = Wire.encodeTicket(WireTicket(ticket.id, ticket.no, ticket.label, ticket.kind, ticket.covers, ticket.waiter, ticket.remark, ticket.created_at, mine)),
+                payload = Wire.encodeTicket(WireTicket(ticket.id, ticket.no, ticket.label, ticket.kind, ticket.covers, ticket.waiter, ticket.remark, ticket.created_at, mine, ticket.pickup)),
                 line_ids = buildJsonArray { mine.forEach { add(JsonPrimitive(it.id)) } }.toString(),
                 created_at = now,
             )

@@ -143,10 +143,11 @@ class DocBuilder @Inject constructor(
         val waiter = employee(t.opened_by) ?: staff.current.value?.employee?.name
         // for the kitchen a line's add-ons are a line for each add-on group
         val mods = kitchenModsOf(db, rows.map { it.id })
+        val pickup = Pickup.says(t.dining_option_id?.let { db.ops().dining(it) }?.kind, t.due_at)
         for ((pid, ls) in perPrinter) {
             val p = byId[pid] ?: continue
             val asked = lines(ls).mapIndexed { i, d -> d.copy(mods = mods[ls[i].id].orEmpty()) }
-            val doc = KitchenDoc(title, order, System.currentTimeMillis(), waiter, dining(t), t.covers, remark(t), asked, Routing.heading(p, printers, one))
+            val doc = KitchenDoc(title, order, System.currentTimeMillis(), waiter, dining(t), t.covers, remark(t), asked, Routing.heading(p, printers, one), pickup)
             // a ticket that did not print can be sent again from Settings, Printers
             printing.send(p, Docs.kitchen(doc, printing.paper(p)), "Kitchen ticket, $order").onFailure { errors.add(it.message ?: "${p.name} did not print") }
         }

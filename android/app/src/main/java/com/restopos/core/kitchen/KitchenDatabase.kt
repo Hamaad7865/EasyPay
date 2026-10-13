@@ -9,6 +9,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.restopos.core.sync.SessionStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -42,6 +44,7 @@ data class ScreenTicketRow(
     val received_at: Long,
     val bumped_at: Long?,
     val lines: String,
+    val pickup: String? = null,
 )
 
 // What a cook did, for the till it concerns, numbered as it is written. A
@@ -85,9 +88,18 @@ interface ScreenDao {
     @Query("DELETE FROM screen_marks") suspend fun clearMarks()
 }
 
-@Database(entities = [ScreenTicketRow::class, ScreenMarkRow::class], version = 1, exportSchema = true)
+@Database(entities = [ScreenTicketRow::class, ScreenMarkRow::class], version = 2, exportSchema = true)
 abstract class KitchenDatabase : RoomDatabase() {
     abstract fun screen(): ScreenDao
+
+    companion object {
+        // 2: when a takeaway is picked up, as the till sends it with a ticket.
+        val V1_V2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `screen_tickets` ADD COLUMN `pickup` TEXT")
+            }
+        }
+    }
 }
 
 // The shelf ScreenBook is handed on a kitchen tablet. It only keeps: every
@@ -99,11 +111,11 @@ class RoomScreenShelf @Inject constructor(private val db: KitchenDatabase, priva
 
     private fun ScreenTicketRow.ticket() = ScreenTicket(
         id, till, till_name, till_code, screen, no, label, kind, covers, waiter, remark, sent_at, received_at, bumped_at,
-        runCatching { json.decodeFromString(lineList, lines) }.getOrDefault(emptyList()),
+        runCatching { json.decodeFromString(lineList, lines) }.getOrDefault(emptyList()), pickup,
     )
 
     private fun ScreenTicket.row() = ScreenTicketRow(
-        id, till, tillName, tillCode, screen, no, label, kind, covers, waiter, remark, sentAt, receivedAt, bumpedAt, json.encodeToString(lineList, lines),
+        id, till, tillName, tillCode, screen, no, label, kind, covers, waiter, remark, sentAt, receivedAt, bumpedAt, json.encodeToString(lineList, lines), pickup,
     )
 
     override suspend fun epoch(): String = session.kitchenEpoch()

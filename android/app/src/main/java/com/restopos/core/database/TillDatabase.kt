@@ -65,7 +65,7 @@ import androidx.room.RoomDatabase
         FloorElementEntity::class,
         ItemPictureEntity::class,
     ],
-    version = 22,
+    version = 23,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {

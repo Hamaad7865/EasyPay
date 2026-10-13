@@ -89,7 +89,7 @@ class Kitchen @Inject constructor(
         return KdsTicketEntity(
             Uuid7.next(), ticketId, session.nextNumber("K"), table ?: t.order_no ?: t.name ?: "Counter",
             type?.name ?: if (table != null) "Dine-in" else "Counter", t.covers.takeIf { table != null },
-            waiter = waiter, remark = kitchenRemark(t),
+            waiter = waiter, remark = kitchenRemark(t), pickup = Pickup.says(type?.kind, t.due_at),
         )
     }
 

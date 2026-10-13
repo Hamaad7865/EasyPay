@@ -322,4 +322,13 @@ object Migrations {
             db.execSQL("UPDATE `modifiers` SET `alone` = 1 WHERE `deleted_at` IS NULL AND lower(trim(`name`)) IN ('all', 'none')")
         }
     }
+
+    // 23: when a takeaway is picked up, on its kitchen tickets: what the
+    // kitchen's paper says of it, kept for this till's Kitchen screen. A
+    // ticket sent before this says nothing, as its paper did.
+    val V22_V23 = object : Migration(22, 23) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `kds_tickets` ADD COLUMN `pickup` TEXT")
+        }
+    }
 }

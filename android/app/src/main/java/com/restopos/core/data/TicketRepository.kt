@@ -174,6 +174,10 @@ class TicketRepository @Inject constructor(
         pushNow(context)
     }
 
+    // The time turned to on the clock while the order is taken. Choosing one
+    // on an order with nothing on it yet makes the order, as typing a name does.
+    suspend fun setPickup(at: Long): Result<Unit> = runCatching { setDue(ensureTicket().id, at).getOrThrow() }
+
     // The bill was printed for the table (or the table was added to since).
     suspend fun setBill(ticketId: String, at: Long?): Result<Unit> = runCatching {
         val t = db.tickets().openTicket(ticketId) ?: return@runCatching

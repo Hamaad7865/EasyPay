@@ -24,11 +24,14 @@ data class WireLine(val id: String, val qty: Int, val name: String, val detail: 
 
 // One screen's part of one send: what the cooks at that screen are to make.
 // `id` is the kitchen ticket's, `no` its number of the day (K-numbers count
-// per till), `label` the table or the order's number.
+// per till), `label` the table or the order's number. `pickup` is when a
+// takeaway is picked up, as the paper says it ("PICK UP 18:30"); a till
+// built before it sends none, and a screen built before it reads past it.
 @Serializable
 data class WireTicket(
     val id: String, val no: Int, val label: String, val kind: String, val covers: Int? = null,
     val waiter: String? = null, val remark: String? = null, val sentAt: Long, val lines: List<WireLine>,
+    val pickup: String? = null,
 )
 
 // What a thing is now, never "flip it": the same mark twice changes nothing,

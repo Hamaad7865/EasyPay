@@ -28,6 +28,9 @@ data class KdsTicketEntity(
     // kitchen's paper has them; a kitchen screen shows them when asked to
     val waiter: String? = null,
     val remark: String? = null,
+    // when a takeaway is picked up, as the paper says it ("PICK UP 18:30"):
+    // the time the order had when this ticket was sent (Pickup.says)
+    val pickup: String? = null,
 )
 
 // One kitchen screen's part of a kitchen ticket (server 0086): the lines of

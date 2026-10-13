@@ -79,6 +79,7 @@ data class KitchenDoc(
     val note: String?,
     val lines: List<DocLine>,
     val station: String,
+    val pickup: String? = null, // "PICK UP 18:30": when a takeaway is picked up (Pickup.says)
 )
 
 data class CashSlipDoc(val type: String, val amount: Long, val reason: String?, val time: Long, val user: String?, val till: String)
@@ -287,7 +288,10 @@ object Docs {
         p.line(if (d.title == "ORDER") d.station.uppercase() else "${d.title} - ${d.station.uppercase()}")
         p.big(true)
         EscPos.wrap(d.order, paper.columns / 2).forEach { p.line(it) }
-        p.big(false).bold(false).align(EscPos.Align.Left)
+        p.big(false)
+        // when a takeaway is picked up, under who it is for
+        d.pickup?.let { p.tall(true).line(it).tall(false) }
+        p.bold(false).align(EscPos.Align.Left)
         p.row(stamp(d.time), d.waiter ?: "")
         val extra = listOfNotNull(d.dining, d.covers?.let { "$it guests" }).joinToString(" · ")
         if (extra.isNotBlank()) p.line(extra.replace("·", "-"))

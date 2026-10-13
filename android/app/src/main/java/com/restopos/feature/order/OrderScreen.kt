@@ -63,6 +63,7 @@ import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.LineInfo
 import com.restopos.core.data.ModPick
 import com.restopos.core.data.OrderInfo
+import com.restopos.core.data.Pickup
 import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.DiscountEntity
 import com.restopos.core.database.EmployeeEntity
@@ -71,6 +72,7 @@ import com.restopos.core.database.TableEntity
 import com.restopos.core.database.TicketLineModEntity
 import com.restopos.core.ui.Caps
 import com.restopos.core.ui.FastKey
+import com.restopos.core.ui.ClockSheet
 import com.restopos.core.ui.Field
 import com.restopos.core.ui.Gap
 import com.restopos.core.ui.GoRow
@@ -203,9 +205,26 @@ private fun Head(ui: OrderUi, vm: OrderViewModel, low: Boolean, onMore: () -> Un
             // typed here, saved after a pause; another order starts them afresh
             var name by remember(ui.session) { mutableStateOf(ui.ticket?.name ?: "") }
             var phone by remember(ui.session) { mutableStateOf(ui.ticket?.phone ?: "") }
+            var clock by remember(ui.session) { mutableStateOf(false) }
             Row(Modifier.padding(horizontal = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Field(name, { name = it.take(60); vm.contact(name = name, phone = phone) }, "Customer name", Modifier.weight(1f))
                 Field(phone, { phone = it.take(24); vm.contact(name = name, phone = phone) }, "+230 5…", Modifier.weight(1f), phone = true)
+                // when it is picked up: a clock, and the time once the order has one
+                Row(
+                    Modifier.height(46.dp).clip(RoundedCornerShape(10.dp)).background(V.Well).border(1.dp, V.Stroke, RoundedCornerShape(10.dp))
+                        .clickable { clock = true }.padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    VIcon(VI.Clock, 18.dp, V.Dim)
+                    ui.ticket?.due_at?.let { T(Pickup.time(it), 15.sp, 700) }
+                }
+            }
+            if (clock) {
+                ClockSheet(
+                    if (ui.kind == "delivery") "When is it delivered?" else "When is it picked up?",
+                    "Turn the hand to the hour, then to the minutes. Today only.",
+                    ui.ticket?.due_at, onDismiss = { clock = false },
+                ) { h, m -> if (vm.pickup(h, m)) clock = false }
             }
             if (ui.kind == "delivery") {
                 var address by remember(ui.session) { mutableStateOf(ui.ticket?.address ?: "") }

@@ -208,6 +208,17 @@ class DocsTest {
         assertTrue(void.contains("VOID - KITCHEN"))
     }
 
+    // The owner: "in the kitchen receipt it should say, the time the customer will pick up the order".
+    @Test
+    fun aTakeawaysKitchenTicketSaysWhenItIsPickedUp() {
+        val doc = KitchenDoc("ORDER", "A-12 · Ravi", 1_790_000_000_000, "Priya", "Takeaway", null, null, receipt.lines, "Kitchen", pickup = "PICK UP 18:30")
+        val lines = read(Docs.kitchen(doc, Paper(32, 2, true))).lines
+        assertTrue(lines.any { it.trim() == "PICK UP 18:30" })
+        // under who it is for, above the items
+        assertTrue(lines.indexOfFirst { it.contains("PICK UP") } < lines.indexOfFirst { it.contains("Dholl puri") })
+        assertFalse(read(Docs.kitchen(doc.copy(pickup = null), Paper(32, 2, true))).lines.any { it.contains("PICK UP") })
+    }
+
     @Test
     fun aCashSlipSaysWhoWhenWhyAndHowMuch() {
         val p = read(Docs.cashSlip(CashSlipDoc("out", 70000, "Bread from the bakery", 1_790_000_000_000, "Priya", "T1"), shop, Paper(32, 3, true), 2))

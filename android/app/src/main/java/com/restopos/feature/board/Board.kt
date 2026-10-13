@@ -37,6 +37,7 @@ import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Money
 import com.restopos.core.data.OrderInfo
 import com.restopos.core.data.OrderOps
+import com.restopos.core.data.Pickup
 import com.restopos.core.data.ServiceRepository
 import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.DiningOptionEntity
@@ -44,7 +45,9 @@ import com.restopos.core.database.EmployeeEntity
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.ui.Chip
+import com.restopos.core.ui.ClockSheet
 import com.restopos.core.ui.Gap
+import com.restopos.core.ui.IconKey
 import com.restopos.core.ui.L
 import com.restopos.core.ui.Sheet
 import com.restopos.core.ui.SheetHead
@@ -133,6 +136,13 @@ class BoardViewModel @Inject constructor(
 
     suspend fun riders(): List<EmployeeEntity> = session.storeId()?.let { db.staff().staff(it).first() } ?: emptyList()
     fun rider(o: OrderInfo, name: String) = viewModelScope.launch { tickets.setRider(o.id, name) }
+    // the time turned to on the clock: today at that time; false, and said, when it has already passed
+    fun at(o: OrderInfo, hour: Int, minute: Int): Boolean {
+        val at = Pickup.at(hour, minute, System.currentTimeMillis(), ZoneId.systemDefault())
+        if (at == null) { Toaster.say("That time has already passed today"); return false }
+        viewModelScope.launch { tickets.setDue(o.id, at) }
+        return true
+    }
     fun later(o: OrderInfo, minutes: Int) = viewModelScope.launch { tickets.setDue(o.id, (o.ticket.due_at ?: System.currentTimeMillis()) + minutes * 60_000L) }
 }
 
@@ -146,6 +156,7 @@ fun BoardScreen(vm: BoardViewModel, onOrder: () -> Unit, onPay: () -> Unit) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(15_000) } }
     var details by remember { mutableStateOf<OrderInfo?>(null) }
+    var clock by remember { mutableStateOf<OrderInfo?>(null) }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -182,6 +193,8 @@ fun BoardScreen(vm: BoardViewModel, onOrder: () -> Unit, onPay: () -> Unit) {
             SheetHead("${o.label} · ${o.ticket.name ?: "Walk-in"}", "When it is wanted" + if (o.kind == "delivery") ", and who brings it." else ".") { details = null }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 T("Due ${o.ticket.due_at?.let { HM.format(Date(it)) } ?: "—"}", 17.sp, 800, modifier = Modifier.weight(1f))
+                // the clock face, for a time that is not a few minutes away
+                IconKey(VI.Clock, size = 48.dp, tint = V.Text) { clock = o; details = null }
                 VBtn("− 5 min", height = 48.dp) { vm.later(o, -5); details = null }
                 VBtn("+ 5 min", height = 48.dp) { vm.later(o, 5); details = null }
                 VBtn("+ 15 min", height = 48.dp) { vm.later(o, 15); details = null }
@@ -196,6 +209,14 @@ fun BoardScreen(vm: BoardViewModel, onOrder: () -> Unit, onPay: () -> Unit) {
                 }
             }
         }
+    }
+
+    clock?.let { o ->
+        ClockSheet(
+            "${o.label} · ${o.ticket.name ?: "Walk-in"}",
+            (if (o.kind == "delivery") "When it is delivered." else "When it is picked up.") + " Turn the hand to the hour, then to the minutes. Today only.",
+            o.ticket.due_at, onDismiss = { clock = null },
+        ) { h, m -> if (vm.at(o, h, m)) clock = null }
     }
 }
 

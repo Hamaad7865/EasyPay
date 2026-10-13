@@ -13,6 +13,7 @@ import com.restopos.core.data.ModPick
 import com.restopos.core.data.NeedsApproval
 import com.restopos.core.data.OrderInfo
 import com.restopos.core.data.OrderOps
+import com.restopos.core.data.Pickup
 import com.restopos.core.data.PosSettings
 import com.restopos.core.data.ServiceRepository
 import com.restopos.core.data.StaffMember
@@ -49,6 +50,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.time.ZoneId
 import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
@@ -362,6 +364,21 @@ class OrderViewModel @Inject constructor(
         val active = tickets.activeTicket()?.id
         if (if (forTicket != null) active != forTicket else _ui.value.session != forTurn) return
         tickets.setContact(what.first?.trim(), what.second?.trim(), what.third?.trim()).onFailure { Toaster.say(it.message) }
+    }
+
+    // The time turned to on the clock for a takeaway or a delivery: today at
+    // that time. False, and said, when it has already passed.
+    fun pickup(hour: Int, minute: Int): Boolean {
+        val at = Pickup.at(hour, minute, System.currentTimeMillis(), ZoneId.systemDefault())
+        if (at == null) { Toaster.say("That time has already passed today"); return false }
+        viewModelScope.launch {
+            // a name typed a moment ago goes on the order first
+            contactJob?.cancel()
+            saveContact()
+            tickets.setPickup(at).onFailure { Toaster.say(it.message) }
+            reload()
+        }
+        return true
     }
 
     fun mayPay(): Boolean {

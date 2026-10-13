@@ -28,6 +28,7 @@ data class ScreenTicket(
     val id: String, val till: String, val tillName: String, val tillCode: String, val screen: String,
     val no: Int, val label: String, val kind: String, val covers: Int?, val waiter: String?, val remark: String?,
     val sentAt: Long, val receivedAt: Long, val bumpedAt: Long? = null, val lines: List<ScreenLine>,
+    val pickup: String? = null, // when a takeaway is picked up, as the till sent it
 )
 
 // Where a kitchen tablet keeps what it was sent and what the cooks did: its
@@ -103,6 +104,7 @@ class ScreenBook(
                     t.id, req.till, req.tillName, req.tillCode, req.screen, t.no, t.label, t.kind, t.covers, t.waiter, t.remark, t.sentAt,
                     receivedAt = was?.receivedAt ?: (now - waited), bumpedAt = was?.bumpedAt,
                     lines = t.lines.map { l -> ScreenLine(l.id, l.qty, l.name, l.detail, kept[l.id]?.done ?: false, kept[l.id]?.voided ?: false) },
+                    pickup = t.pickup,
                 ),
             )
         }

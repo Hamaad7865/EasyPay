@@ -94,6 +94,7 @@ data class KdsLine(
 data class KdsCard(
     val id: String, val no: String, val label: String, val kind: String, val covers: Int?,
     val waiter: String?, val remark: String?, val since: Long, val lines: List<KdsLine>,
+    val pickup: String? = null, // "PICK UP 18:30": when a takeaway is picked up
 )
 
 data class Station(val id: String, val name: String)
@@ -138,7 +139,7 @@ class KdsViewModel @Inject constructor(
         }
         KdsUi(
             tickets.mapNotNull { t ->
-                rows[t.id]?.takeIf { it.isNotEmpty() }?.let { KdsCard(t.id, "#${t.no}", t.label, t.kind, t.covers, t.waiter, t.remark, t.created_at, it) }
+                rows[t.id]?.takeIf { it.isNotEmpty() }?.let { KdsCard(t.id, "#${t.no}", t.label, t.kind, t.covers, t.waiter, t.remark, t.created_at, it, t.pickup) }
             },
             stations.map { Station(it.id, it.name) },
             bumped > 0,
@@ -251,6 +252,8 @@ fun KdsBoard(ui: KdsUi, prefs: KitchenPrefs, onTap: (String) -> Unit, onBump: (S
                                 )
                                 T(c.no, (13 * k).sp, 500, head.second)
                             }
+                            // when a takeaway is picked up: always shown, it is what the cooks work to
+                            c.pickup?.let { T(it, (16 * k).sp, 800, head.second) }
                         }
                         // what was said about the whole order: an allergy, who to ring
                         if (prefs.remark && !c.remark.isNullOrBlank()) {

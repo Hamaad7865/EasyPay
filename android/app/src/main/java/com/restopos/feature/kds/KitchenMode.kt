@@ -85,7 +85,7 @@ internal fun kitchenCards(held: List<ScreenTicket>): List<KdsCard> {
     return open.map { t ->
         KdsCard(
             t.id, if (several && t.tillCode.isNotBlank()) "${t.tillCode} #${t.no}" else "#${t.no}", t.label, t.kind, t.covers, t.waiter, t.remark,
-            since = t.receivedAt, lines = t.lines.map { KdsLine(it.id, it.qty, it.name, it.detail, it.done, it.voided) },
+            since = t.receivedAt, lines = t.lines.map { KdsLine(it.id, it.qty, it.name, it.detail, it.done, it.voided) }, pickup = t.pickup,
         )
     }
 }
