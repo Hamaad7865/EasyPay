@@ -22,11 +22,6 @@ object OptionRules {
         }
     }
 
-    // Whether any of an item's groups needs a pick ("choose 1"). Such an item
-    // asks first, in the options sheet; one whose groups all may be left empty
-    // goes straight on the order, its options as keys under the menu.
-    fun anyNeeded(mins: Iterable<Int>) = mins.any { it >= 1 }
-
     fun tooFew(min: Int, picked: Int) = picked < min
     fun tooMany(max: Int, picked: Int) = picked > most(max)
 }

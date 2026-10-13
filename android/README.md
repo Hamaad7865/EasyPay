@@ -37,11 +37,10 @@ handoff (`feature/main/MainShell.kt` holds every screen):
   or an approval). The menu: a search over the whole menu, the categories in
   a list down its side with their colours and how many items each holds, and
   the items as cards with their price, a tag, OPTIONS, SOLD OUT, and how many
-  are on the order unsent. An item whose options may all be left empty goes
-  straight on the order, and its options and the kitchen notes come up as
-  keys under the menu, for that line (or any new line of it tapped on the
-  order): a tap puts one on or takes it off. An item with a group that needs
-  a pick asks in the options sheet; press and hold any item for the sheet
+  are on the order unsent. An item with groups of options or add-ons asks
+  for them in the options sheet, whether or not one must be picked (for one
+  version, 0.9.7, those that could all be left out were keys under the menu;
+  the owner asked for the sheet back); press and hold any item for the sheet
   (how many, kitchen notes, all at once). Under the order: its total, Print
   bill (tables) or New sale, Split, Clear new; then Send, Fast (not at a
   table: the whole order paid in cash, the exact amount, without the payment

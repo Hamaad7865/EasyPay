@@ -34,8 +34,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -135,7 +133,7 @@ fun OrderScreen(vm: OrderViewModel, onBack: (board: Boolean) -> Unit, onPay: () 
         val low = maxHeight < 600.dp
         val narrow = SellFit.narrow(maxWidth)
         Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (!orderLeft) Menu(ui, vm, narrow, low, Modifier.weight(1f))
+            if (!orderLeft) Menu(ui, vm, narrow, Modifier.weight(1f))
             Column(Modifier.width(SellFit.sale(narrow)).fillMaxHeight().clip(RoundedCornerShape(20.dp)).background(V.Panel)) {
                 Head(ui, vm, low, onMore = { more = true }) { onBack(ui.board) }
                 Lines(ui, vm, low, Modifier.weight(1f))
@@ -168,7 +166,7 @@ fun OrderScreen(vm: OrderViewModel, onBack: (board: Boolean) -> Unit, onPay: () 
                     }
                 }
             }
-            if (orderLeft) Menu(ui, vm, narrow, low, Modifier.weight(1f))
+            if (orderLeft) Menu(ui, vm, narrow, Modifier.weight(1f))
         }
     }
 
@@ -230,7 +228,6 @@ private fun Lines(ui: OrderUi, vm: OrderViewModel, low: Boolean, modifier: Modif
         }
         return
     }
-    val keys by vm.keys.collectAsState()
     // A line just added is brought into sight: the list shows a few at a time,
     // and what was tapped last is what the cashier looks for.
     val list = rememberLazyListState()
@@ -275,8 +272,7 @@ private fun Lines(ui: OrderUi, vm: OrderViewModel, low: Boolean, modifier: Modif
             item { Caps(L.notSent, V.BlueText, Modifier.padding(start = 4.dp, top = if (low) 4.dp else 6.dp), 11.sp) }
             items(ui.fresh, key = { it.line.id }) { l ->
                 val on = ui.selected == l.line.id
-                val lit = on || keys?.lineId == l.line.id
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (lit) V.RowOn else V.Key2)) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (on) V.RowOn else V.Key2)) {
                     Row(
                         Modifier.fillMaxWidth().heightIn(min = if (low) 44.dp else 48.dp).clickable { vm.select(if (on) null else l.line.id) }
                             .padding(start = 12.dp, end = 4.dp, top = if (low) 6.dp else 8.dp, bottom = if (low) 6.dp else 8.dp),
@@ -364,14 +360,13 @@ private fun Fn(label: String, icon: String, fg: Color, modifier: Modifier, heigh
 // a rail down the card's leading edge and a wash from it, not the whole card.
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Menu(ui: OrderUi, vm: OrderViewModel, narrow: Boolean, low: Boolean, modifier: Modifier) {
+private fun Menu(ui: OrderUi, vm: OrderViewModel, narrow: Boolean, modifier: Modifier) {
     val cats by vm.cats.collectAsState()
     val cat by vm.cat.collectAsState()
     val q by vm.query.collectAsState()
     val items by vm.items.collectAsState()
     val withOptions by vm.withOptions.collectAsState()
     val catCounts by vm.catCounts.collectAsState()
-    val keys by vm.keys.collectAsState()
     val searching = q.isNotBlank()
     val index = remember(cats) { cats.mapIndexed { i, c -> c.id to i }.toMap() }
     val byId = remember(cats) { cats.associateBy { it.id } }
@@ -390,9 +385,7 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, narrow: Boolean, low: Boolean,
             Rail(SellFit.rail(narrow)) {
                 items(cats, key = { it.id }) { c -> RailKey(c.name, catCounts[c.id], !searching && c.id == cat, colorOf(c, index[c.id] ?: 0)) { vm.pickCat(c.id) } }
             }
-            BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
-                // as many keys to a row under the menu as cards above them
-                val cols = ((maxWidth + 10.dp) / 160.dp).toInt().coerceAtLeast(2)
+            Box(Modifier.weight(1f).fillMaxHeight()) {
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (searching) {
                         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -414,7 +407,6 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, narrow: Boolean, low: Boolean,
                         }
                         items(items, key = { it.id }) { i -> MenuCard(i, byId, index, counts[i.id] ?: 0, withOptions.contains(i.id), band, vm) }
                     }
-                    keys?.let { OptionKeysPanel(it, ui.notes, vm, cols, low) }
                 }
             }
         }
@@ -483,51 +475,6 @@ private fun MenuCard(i: ItemEntity, byId: Map<String, CategoryEntity>, index: Ma
             }
             if (!band) count(Modifier.align(Alignment.TopEnd))
         }
-    }
-}
-
-// The keys under the menu (the approved board's "tap to add"): the options of
-// the lit line's item, as the options sheet's keys, then the kitchen notes, as
-// its note keys. A tap puts one on the line or takes it off. The panel keeps to
-// a few rows; more scroll in it, so the menu above keeps its room.
-@Composable
-private fun OptionKeysPanel(k: OptionKeys, notes: List<String>, vm: OrderViewModel, cols: Int, low: Boolean) {
-    // the till's kitchen notes, then any other the line carries (one typed in the options sheet)
-    val keys = k.ordered.map { m -> KeyOf(m.name, if (m.price != 0L) "+ " + Money.format(m.price) else null, m.id in k.picked, false) { vm.toggleOption(m) } } +
-        (notes + k.notes.filter { it !in notes }).map { n -> KeyOf(n, null, n in k.notes, true) { vm.toggleNote(n) } }
-    Column(Modifier.fillMaxWidth().heightIn(max = if (low) 150.dp else 196.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            T(k.item.name, 15.sp, 800)
-            T(L.optionsTap, 12.5.sp, 600, V.Text3, Modifier.weight(1f))
-            IconKey(VI.Close, size = 36.dp, bg = Color.Transparent, tint = V.Text2) { vm.closeKeys() }
-        }
-        Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            keys.chunked(cols).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    row.forEach { key -> OptionKey(key.label, key.price, key.on, key.note, Modifier.weight(1f), key.tap) }
-                    repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
-                }
-            }
-        }
-    }
-}
-
-private class KeyOf(val label: String, val price: String?, val on: Boolean, val note: Boolean, val tap: () -> Unit)
-
-// One key under the menu. An option is drawn as the options sheet draws one
-// (lit: V.On); a kitchen note as its note keys (lit: the accent's wash).
-@Composable
-private fun OptionKey(label: String, price: String?, on: Boolean, note: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(if (note) 27.dp else 12.dp)
-    val bg = when { note && on -> V.BlueWash; on -> V.On; else -> V.Key }
-    val line = when { note && on -> V.Blue; note -> V.Key; on -> V.On; else -> V.Stroke2 }
-    val ink = when { note && on -> V.BlueSoft; note -> V.Dim; on -> V.OnText; else -> V.Text }
-    Column(
-        modifier.height(54.dp).clip(shape).background(bg).border(1.5.dp, line, shape).clickable(onClick = onClick).padding(horizontal = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
-    ) {
-        T(label, 14.5.sp, 700, ink)
-        price?.let { T(it, 12.sp, 700, ink.copy(alpha = 0.8f)) }
     }
 }
 

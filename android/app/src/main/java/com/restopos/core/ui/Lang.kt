@@ -71,8 +71,6 @@ object L {
     val inKitchen get() = t("In the kitchen", "En cuisine", "Dan lakwizinn")
     val notSent get() = t("New · not sent", "Nouveau · non envoyé", "Nouvo · pankor avoye")
     val remove get() = t("Remove", "Retirer", "Tire")
-    // the item's options and kitchen notes, as keys under the menu
-    val optionsTap get() = t("tap to add or take off", "touchez pour ajouter ou retirer", "tap pou azoute ouswa tire")
     // a shop's till
     val sell get() = t("Sell", "Vendre", "Vande")
     val productsStock get() = t("Products & stock", "Produits & stock", "Prodwi & stok")
