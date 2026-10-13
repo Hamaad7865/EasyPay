@@ -185,8 +185,12 @@ private fun AddonSheet(editor: AddonEditor, edit: AddonEdit) {
                 IconKey(VI.Close, size = 48.dp) { rows = rows.filterNot { it.id == r.id }.ifEmpty { listOf(AddonForm.Typed(Uuid7.next())) } }
             }
         }
-        T("Alone: picking that choice takes the group's others off, and picking another takes it off. For a choice such as All or None.", 13.sp, 500, V.Text2, lines = 2)
-        Row { VBtn("Another choice", height = 44.dp, radius = 12.dp, size = 14.sp, icon = VI.Plus) { rows = rows + AddonForm.Typed(Uuid7.next()) } }
+        // what Alone means, beside the key and not under the rows: a line of its
+        // own pushed Save off a 10-inch for a group of three choices
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            VBtn("Another choice", height = 44.dp, radius = 12.dp, size = 14.sp, icon = VI.Plus) { rows = rows + AddonForm.Typed(Uuid7.next()) }
+            T("Alone (All, None): picking it takes the others off, and another takes it off.", 13.sp, 500, V.Text2, Modifier.weight(1f), lines = 2)
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (was != null) VBtn("Remove", height = 50.dp, fg = V.RedText, enabled = !busy) { removing = true }
             Box(Modifier.weight(1f))
