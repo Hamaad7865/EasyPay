@@ -485,12 +485,12 @@ private fun MenuCard(i: ItemEntity, byId: Map<String, CategoryEntity>, index: Ma
 @Composable
 private fun OptionsSheet(s: OptionSheet, notes: List<String>, vm: OrderViewModel) {
     val rules = com.restopos.core.guest.OptionRules
-    // what is picked, group by group: how many of each option. A group that needs one starts on its first.
-    val picked = remember(s) {
-        mutableStateMapOf<String, Map<String, Int>>().apply {
-            s.groups.forEach { g -> if (g.min_select >= 1) s.mods.firstOrNull { it.group_id == g.id }?.let { put(g.id, mapOf(it.id to 1)) } }
-        }
-    }
+    // what is picked, group by group: how many of each option. Nothing is
+    // when the sheet opens, even in a group that needs one (it used to start
+    // on its first; the owner: "nothing should be selected").
+    val picked = remember(s) { mutableStateMapOf<String, Map<String, Int>>() }
+    // the choices picked by themselves: All among the sauces takes the others off
+    val alone = remember(s) { s.mods.filter { it.alone }.map { it.id }.toSet() }
     val said = remember(s) { mutableStateListOf<String>() }
     var other by remember(s) { mutableStateOf("") }
     var qty by remember(s) { mutableIntStateOf(1) }
@@ -517,19 +517,19 @@ private fun OptionsSheet(s: OptionSheet, notes: List<String>, vm: OrderViewModel
                         ) {
                             Row(
                                 // what a tap leaves picked is one rule, also held to an order sent from a table (core/guest)
-                                Modifier.fillMaxHeight().clickable { picked[g.id] = rules.tap(mine, m.id, g.min_select, g.max_select) }.padding(horizontal = 18.dp),
+                                Modifier.fillMaxHeight().clickable { picked[g.id] = rules.tap(mine, m.id, g.min_select, g.max_select, alone) }.padding(horizontal = 18.dp),
                                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 T(m.name, 15.sp, 700, ink)
                                 if (m.price != 0L) T("+" + Money.format(m.price), 12.sp, 700, ink.copy(alpha = 0.8f))
                             }
                             // how many of it, where the group takes more than one thing
-                            if (n != null && !rules.single(max)) {
+                            if (n != null && !rules.single(max) && m.id !in alone) {
                                 val room = rules.room(mine, max) && n < rules.MOST_OF_ONE
                                 Box(Modifier.width(1.dp).height(30.dp).background(ink.copy(alpha = 0.25f)))
                                 Box(Modifier.size(46.dp, 54.dp).clickable { picked[g.id] = rules.fewer(mine, m.id) }, contentAlignment = Alignment.Center) { T("−", 20.sp, 700, ink) }
                                 Box(Modifier.widthIn(min = 22.dp), contentAlignment = Alignment.Center) { T(n.toString(), 17.sp, 800, ink) }
-                                Box(Modifier.size(46.dp, 54.dp).clickable(enabled = room) { picked[g.id] = rules.more(mine, m.id, max) }, contentAlignment = Alignment.Center) {
+                                Box(Modifier.size(46.dp, 54.dp).clickable(enabled = room) { picked[g.id] = rules.more(mine, m.id, max, alone) }, contentAlignment = Alignment.Center) {
                                     T("+", 20.sp, 700, ink.copy(alpha = if (room) 1f else 0.35f))
                                 }
                             }

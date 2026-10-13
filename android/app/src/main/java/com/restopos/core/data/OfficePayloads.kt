@@ -87,7 +87,7 @@ object OfficePayloads {
     // A group of add-ons, whole: a choice that is not in the list is removed by whoever takes this.
     fun addonSave(id: String, g: AddonForm.Group, approvedBy: String?): JsonObject = buildJsonObject {
         put("id", id); put("name", g.name); put("min", g.min); put("max", g.max)
-        putJsonArray("choices") { g.choices.forEach { c -> add(buildJsonObject { put("id", c.id); put("name", c.name); put("price", c.price) }) } }
+        putJsonArray("choices") { g.choices.forEach { c -> add(buildJsonObject { put("id", c.id); put("name", c.name); put("price", c.price); put("alone", c.alone) }) } }
         approvedBy?.let { put("approved_by", it) }
     }
 

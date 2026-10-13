@@ -8,10 +8,12 @@ import com.restopos.core.common.Money
 // 0 makes it optional and 1 means one must be picked; the most 0 is as many
 // as they like. The group is saved whole.
 object AddonForm {
-    data class Choice(val id: String, val name: String, val price: Long)
+    // alone: picking it takes the group's other choices off, and picking
+    // another takes it off (All among the sauces, None)
+    data class Choice(val id: String, val name: String, val price: Long, val alone: Boolean = false)
     data class Group(val name: String, val min: Int, val max: Int, val choices: List<Choice>)
     // a choice as its row holds it; id: made when the row was added, or the choice's own
-    data class Typed(val id: String, val name: String = "", val price: String = "")
+    data class Typed(val id: String, val name: String = "", val price: String = "", val alone: Boolean = false)
 
     fun read(name: String, min: String, max: String, rows: List<Typed>): Result<Group> = runCatching {
         val called = name.trim().take(40)
@@ -26,7 +28,7 @@ object AddonForm {
             require(n.isNotEmpty()) { "Give each choice a name" }
             val price = if (r.price.isBlank()) 0L else Money.parseRs(r.price) ?: throw IllegalArgumentException("The price of $n is not a number")
             require(price <= LinePrice.MOST) { "The price of $n is too large" }
-            Choice(r.id, n, price)
+            Choice(r.id, n, price, r.alone)
         }
         require(choices.size <= 50) { "A group holds 50 choices at most" }
         require(choices.map { it.name.lowercase() }.toSet().size == choices.size) { "Two choices have the same name" }

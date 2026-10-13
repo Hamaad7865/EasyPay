@@ -137,7 +137,7 @@ private fun AddonSheet(editor: AddonEditor, edit: AddonEdit) {
     var min by remember(edit) { mutableStateOf(was?.min_select?.toString() ?: "0") }
     var max by remember(edit) { mutableStateOf(was?.max_select?.toString() ?: "0") }
     // its choices, and one empty row to type the next into
-    var rows by remember(edit) { mutableStateOf(edit.choices.map { AddonForm.Typed(it.id, it.name, if (it.price == 0L) "" else rupees(it.price)) } + AddonForm.Typed(Uuid7.next())) }
+    var rows by remember(edit) { mutableStateOf(edit.choices.map { AddonForm.Typed(it.id, it.name, if (it.price == 0L) "" else rupees(it.price), it.alone) } + AddonForm.Typed(Uuid7.next())) }
     var removing by remember(edit) { mutableStateOf(false) }
 
     Sheet(onDismiss = { editor.close() }, width = 640.dp, pad = 22.dp, gap = 10.dp, top = true) {
@@ -176,9 +176,16 @@ private fun AddonSheet(editor: AddonEditor, edit: AddonEdit) {
                     r.price, { v -> rows = rows.map { if (it.id == r.id) it.copy(price = v.filter { c -> c.isDigit() || c == '.' }.take(9)) else it } }, "Free",
                     Modifier.weight(1f), height = 48.dp, number = true, size = 16.sp, leading = { T("Rs", 15.sp, 700, V.Text2) },
                 )
+                // picked alone: All among the sauces, None
+                Box(
+                    Modifier.height(48.dp).clip(RoundedCornerShape(12.dp)).background(if (r.alone) V.On else V.Key)
+                        .quietTap { rows = rows.map { if (it.id == r.id) it.copy(alone = !it.alone) else it } }.padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.Center,
+                ) { T("Alone", 14.sp, 700, if (r.alone) V.OnText else V.Text2) }
                 IconKey(VI.Close, size = 48.dp) { rows = rows.filterNot { it.id == r.id }.ifEmpty { listOf(AddonForm.Typed(Uuid7.next())) } }
             }
         }
+        T("Alone: picking that choice takes the group's others off, and picking another takes it off. For a choice such as All or None.", 13.sp, 500, V.Text2, lines = 2)
         Row { VBtn("Another choice", height = 44.dp, radius = 12.dp, size = 14.sp, icon = VI.Plus) { rows = rows + AddonForm.Typed(Uuid7.next()) } }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (was != null) VBtn("Remove", height = 50.dp, fg = V.RedText, enabled = !busy) { removing = true }

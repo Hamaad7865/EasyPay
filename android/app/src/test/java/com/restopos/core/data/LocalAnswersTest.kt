@@ -996,6 +996,21 @@ class LocalAnswersTest {
         assertEquals("bad-group", ask("addon.remove", """{"group_id":"${id(79)}"}"""))
     }
 
+    @Test fun `a choice picked alone is kept as the sheet says, and as it was where nothing is said`() {
+        val sauces = { all: String -> obj("""{"id":"${id(70)}","name":"Sauces","min":0,"max":0,"choices":[{"id":"${id(71)}","name":"All","price":0$all},{"id":"${id(72)}","name":"Mayo","price":0}]}""") }
+        assertEquals("done", ask("addon.save", sauces(""","alone":true""")))
+        assertEquals(listOf(true, false), listOf(dao.choices[id(71)]!!.alone, dao.choices[id(72)]!!.alone))
+        // a save that says nothing of it (a till built before) leaves it
+        assertEquals("done", ask("addon.save", sauces("")))
+        assertEquals(true, dao.choices[id(71)]!!.alone)
+        assertEquals("done", ask("addon.save", sauces(""","alone":false""")))
+        assertEquals(false, dao.choices[id(71)]!!.alone)
+        // what the sheet sends says it of every choice
+        val g = AddonForm.read("Sauces", "", "", listOf(AddonForm.Typed("c1", "All", "", alone = true), AddonForm.Typed("c2", "Mayo", ""))).getOrThrow()
+        assertEquals(listOf(true, false), g.choices.map { it.alone })
+        assertEquals(true, OfficePayloads.addonSave("g", g, null).toString().contains(""""name":"All","price":0,"alone":true"""))
+    }
+
     @Test fun `the add-on groups an item carries`() {
         dao.settings = SettingsEntity(tenant, """{"plan":"offline"}""")
         ask("addon.save", fixture("addon-save", addonIds))

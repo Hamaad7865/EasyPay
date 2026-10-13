@@ -6,7 +6,8 @@ import { Submit } from "../busy";
 
 export type Group = { id: string; name: string; min_select: number; max_select: number; items: number };
 // shown: the extra price as the till shows it ("+ Rs 25.00"), or "" when the choice is free
-export type Choice = { id: string; group_id: string; name: string; price: string; shown: string };
+// alone: picking it takes the group's other choices off, and picking another takes it off (All, None)
+export type Choice = { id: string; group_id: string; name: string; price: string; shown: string; alone: boolean };
 type Action = (f: FormData) => Promise<void>;
 
 // How many of a group's choices the waiter picks, in words.
@@ -134,6 +135,7 @@ export function AddonsTable({
                             <th>Choice</th>
                             <th>Extra price (Rs)</th>
                             <th>The till shows</th>
+                            <th title="Picking it takes the group's other choices off, and picking another takes it off. For a choice such as All or None.">Picked alone</th>
                             <th />
                           </tr>
                         </thead>
@@ -143,6 +145,7 @@ export function AddonsTable({
                               <td><input form={"m" + m.id} name="name" defaultValue={m.name} required maxLength={40} aria-label="Choice" /></td>
                               <td><input form={"m" + m.id} name="price" defaultValue={(Number(m.price) / 100).toString()} className="narrow" inputMode="decimal" aria-label="Extra price" /></td>
                               <td>{m.shown || <span className="muted">Free</span>}</td>
+                              <td><input form={"m" + m.id} name="alone" type="checkbox" defaultChecked={m.alone} aria-label={"Picked alone: " + m.name} /></td>
                               <td>
                                 <form id={"m" + m.id} action={saveChoice} className="row-actions">
                                   <input type="hidden" name="id" value={m.id} />
@@ -157,6 +160,7 @@ export function AddonsTable({
                             <td><input form={"n" + g.id} name="name" placeholder="New choice, e.g. Extra cheese" required maxLength={40} aria-label="New choice" style={{ minWidth: 280 }} /></td>
                             <td><input form={"n" + g.id} name="price" placeholder="0" className="narrow" inputMode="decimal" aria-label="Extra price" /></td>
                             <td />
+                            <td><input form={"n" + g.id} name="alone" type="checkbox" aria-label="Picked alone" /></td>
                             <td>
                               <form id={"n" + g.id} action={addChoice} className="row-actions">
                                 <input type="hidden" name="group" value={g.id} />
@@ -166,6 +170,7 @@ export function AddonsTable({
                           </tr>
                         </tbody>
                       </table>
+                      <p className="muted" style={{ margin: "8px 0 0" }}>Picked alone: choosing it takes the group&rsquo;s other choices off, and choosing another takes it off. For a choice such as All or None.</p>
                     </div>
                   </td>
                 </tr>

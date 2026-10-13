@@ -145,7 +145,7 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
             }
             changes["modifiers"]?.let { rows ->
                 dao.upsertModifiers(rows.map {
-                    ModifierEntity(id(it), str(it, "tenant_id") ?: "", str(it, "group_id") ?: "", str(it, "name") ?: "", lng(it, "price") ?: 0, str(it, "deleted_at"), lng(it, "server_seq"))
+                    ModifierEntity(id(it), str(it, "tenant_id") ?: "", str(it, "group_id") ?: "", str(it, "name") ?: "", lng(it, "price") ?: 0, str(it, "deleted_at"), lng(it, "server_seq"), alone = bool(it, "alone", false))
                 })
             }
             changes["taxes"]?.let { rows ->

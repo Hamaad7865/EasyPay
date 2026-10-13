@@ -24,20 +24,26 @@ object OptionRules {
     // picked clears it unless one is needed. Where several may be, a tap
     // takes one of an option or takes the option off, and a tap past the most
     // changes nothing.
-    fun tap(picked: Map<String, Int>, option: String, min: Int, max: Int): Map<String, Int> {
+    // alone: the group's choices that are picked by themselves (All among the
+    // sauces, None). Picking one takes the others off, and picking another
+    // takes it off; there is one of it or none.
+    fun tap(picked: Map<String, Int>, option: String, min: Int, max: Int, alone: Set<String> = emptySet()): Map<String, Int> {
         val on = option in picked
+        // what stays beside another choice
+        val beside = picked.filterKeys { it !in alone }
         return when {
             single(max) -> if (on && min == 0) emptyMap() else mapOf(option to 1)
             on -> picked - option
-            room(picked, max) -> picked + (option to 1)
+            option in alone -> mapOf(option to 1)
+            room(beside, max) -> beside + (option to 1)
             else -> picked
         }
     }
 
     // One more of an option that is picked, while the group has room for it.
-    fun more(picked: Map<String, Int>, option: String, max: Int): Map<String, Int> {
+    fun more(picked: Map<String, Int>, option: String, max: Int, alone: Set<String> = emptySet()): Map<String, Int> {
         val n = picked[option] ?: return picked
-        return if (single(max) || !room(picked, max) || n >= MOST_OF_ONE) picked else picked + (option to n + 1)
+        return if (single(max) || option in alone || !room(picked, max) || n >= MOST_OF_ONE) picked else picked + (option to n + 1)
     }
 
     // One fewer of it; the last one takes the option off.

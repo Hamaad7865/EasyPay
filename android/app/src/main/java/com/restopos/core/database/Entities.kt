@@ -93,6 +93,9 @@ data class ModifierEntity(
     val price: Long = 0,
     val deleted_at: String? = null,
     val server_seq: Long? = null,
+    // picked alone (server 0106): it takes the group's other choices off, and
+    // picking another takes it off. All among the sauces, or None.
+    val alone: Boolean = false,
 )
 
 @Entity(tableName = "taxes")

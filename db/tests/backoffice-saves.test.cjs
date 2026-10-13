@@ -231,9 +231,20 @@ function lib(name) {
       const cheese = (await q1(`select id from modifiers where group_id = $1 and name = 'Cheese'`, [group])).id;
       const bacon = (await q1(`insert into modifiers (tenant_id, group_id, name, price, deleted_at) values ($1, $2, 'Bacon', 3000, now()) returning id`, [tid, group])).id;
       const theirChoice = (await q1(`insert into modifiers (tenant_id, group_id, name, price) values ($1, $2, 'Their sauce', 100) returning id`, [other, theirs])).id;
-      const saveChoice = (id, name, price) => asApp(tid, () => saves.saveChoice(c, tid, id, name, price));
+      const saveChoice = (id, name, price, alone = false) => asApp(tid, () => saves.saveChoice(c, tid, id, name, price, alone));
       const saveGroup = (id, name, min, max) => asApp(tid, () => saves.saveGroup(c, tid, id, name, min, max));
       check('C3 a choice is changed: its name and its price', (await saveChoice(cheese, 'Cheddar', 3000)) === true && JSON.stringify(await choices(group)) === '[{"name":"Cheddar","price":3000}]', JSON.stringify(await choices(group)));
+      // picked alone (0106): All among the sauces
+      {
+        const alone = async (name) => (await q1(`select alone from modifiers where group_id = $1 and name = $2 and deleted_at is null`, [group, name])).alone;
+        const was = await alone('Cheddar');
+        await saveChoice(cheese, 'Cheddar', 3000, true);
+        const marked = await alone('Cheddar');
+        await saveChoice(cheese, 'Cheddar', 3000, false);
+        await asApp(tid, () => saves.addChoice(c, tid, group, 'All', 0, true));
+        check('C3 a choice is marked to be picked alone, unmarked, and one is added marked', was === false && marked === true && (await alone('Cheddar')) === false && (await alone('All')) === true, `${was} ${marked}`);
+        await c.query(`delete from modifiers where group_id = $1 and name = 'All'`, [group]);
+      }
       const lateChoice = await saveChoice(bacon, 'Bacon bits', 1);
       check('C4 a choice removed meanwhile is not said to be saved', lateChoice === false && (await one('modifiers', bacon)).name === 'Bacon', String(lateChoice));
       const foreignChoice = await saveChoice(theirChoice, 'Ours now', 1);

@@ -46,7 +46,10 @@ handoff (`feature/main/MainShell.kt` holds every screen):
   (three sausages on a grillade): each one counts towards the group's most,
   a most of 0 is as many as they like, and the line, the receipt and the
   kitchen say "3 × Sausage". Add-ons are charged once for the line, whatever
-  the line's own quantity. Under the order: its total, Print
+  the line's own quantity. Nothing is picked when the sheet opens, even in a
+  group that needs one. A choice marked Alone on the add-on sheet (All among
+  the sauces, None) takes the group's others off when it is picked, and is
+  taken off when another is. Under the order: its total, Print
   bill (tables) or New sale, Split, Clear new; then Send, Fast (not at a
   table: the whole order paid in cash, the exact amount, without the payment
   screen) and Pay. More (discount, move to another table, change server,

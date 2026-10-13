@@ -927,8 +927,10 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             if (cname.isEmpty()) throw Refused("name-required")
             named += cid
             // a choice that is another group's is left alone
-            if (dao.choice(cid)?.let { it.group_id != id } == true) continue
-            keep += com.restopos.core.database.ModifierEntity(cid, tenant, id, cname, price)
+            val had = dao.choice(cid)
+            if (had?.let { it.group_id != id } == true) continue
+            // picked alone (0106): what the sheet says, and as it was where nothing is said
+            keep += com.restopos.core.database.ModifierEntity(cid, tenant, id, cname, price, alone = c.bool("alone") ?: had?.alone ?: false)
         }
         dao.putGroup((was ?: com.restopos.core.database.ModifierGroupEntity(id, tenant, name)).copy(name = name, min_select = min.toInt(), max_select = max.toInt()))
         dao.putChoices(keep)

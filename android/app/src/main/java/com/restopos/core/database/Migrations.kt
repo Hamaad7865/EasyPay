@@ -311,4 +311,15 @@ object Migrations {
             db.execSQL("ALTER TABLE `ticket_line_modifiers` ADD COLUMN `qty` INTEGER NOT NULL DEFAULT 1")
         }
     }
+
+    // 22: a choice that is picked alone (server 0106): All among the sauces
+    // takes the others off, and another takes All off. A choice already
+    // called All or None is marked, as the server marks it, so a tablet that
+    // works on its own has it too; any other is marked on the add-on sheet.
+    val V21_V22 = object : Migration(21, 22) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `modifiers` ADD COLUMN `alone` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE `modifiers` SET `alone` = 1 WHERE `deleted_at` IS NULL AND lower(trim(`name`)) IN ('all', 'none')")
+        }
+    }
 }

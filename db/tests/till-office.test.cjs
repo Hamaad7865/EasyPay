@@ -321,6 +321,18 @@ const swap = (v, map) => (Array.isArray(v) ? v.map((x) => swap(x, map))
     row = await grp(grpA);
     check('A3 changed: a choice renamed, one dropped, one added', r.said === 'applied' && row.name === 'Toppings' && row.min_select === 1 && row.max_select === 3
       && JSON.stringify(await choices(grpA)) === JSON.stringify(['Cheddar:3000', 'Egg:1500']), JSON.stringify(await choices(grpA)));
+    // a choice picked alone (0106), such as All among the sauces
+    {
+      const alone = async (x) => (await q1(`select alone from modifiers where id = $1`, [x])).alone;
+      const toppings = (a, c) => rone(...ax('addon-save', { name: 'Toppings', min: 1, max: 3, choices: [{ id: chA, name: 'Cheddar', price: 3000, ...a }, { id: chC, name: 'Egg', price: 1500, ...c }] }));
+      r = await toppings({ alone: true }, { alone: false });
+      const marked = [await alone(chA), await alone(chC)];
+      await toppings({}, {});
+      const kept = await alone(chA);
+      await toppings({ alone: false }, {});
+      check('A3b a choice is marked to be picked alone, a till that says nothing of it leaves it, and it is unmarked when told',
+        r.said === 'applied' && marked[0] === true && marked[1] === false && kept === true && (await alone(chA)) === false, r.said + ' ' + JSON.stringify(marked) + ' ' + kept);
+    }
     r = await rone(...ax('addon-save', { min: 3, max: 2 }));
     const a4 = await rone(...ax('addon-save', { max: 21 }));
     check('A4 the most cannot be less than the fewest, nor more than 20', r.said === 'rejected:bad-limits' && a4.said === 'rejected:bad-limits', r.said + ' ' + a4.said);

@@ -122,6 +122,27 @@ class GuestTest {
         assertEquals(mapOf("rice" to 99), OptionRules.more(mapOf("rice" to 99), "rice", max = 0))
     }
 
+    // The owner, of sauces with a choice called All: "if we select mayo and
+    // select all it puts mayo and all we need a way when selecting all the
+    // rest should be deselected and when selecting mayo all should be
+    // deselected".
+    @Test
+    fun aChoicePickedAloneTakesTheOthersOffAndAnotherTakesItOff() {
+        val alone = setOf("all")
+        assertEquals(one("all"), OptionRules.tap(mapOf("mayo" to 2, "ketchup" to 1), "all", min = 0, max = 0, alone = alone))
+        assertEquals(one("mayo"), OptionRules.tap(one("all"), "mayo", min = 0, max = 0, alone = alone))
+        // the others still go together, and a tap on All takes it off
+        assertEquals(one("mayo", "ketchup"), OptionRules.tap(one("mayo"), "ketchup", min = 0, max = 0, alone = alone))
+        assertEquals(emptyMap<String, Int>(), OptionRules.tap(one("all"), "all", min = 0, max = 0, alone = alone))
+        // it goes on even where the others have filled the group
+        assertEquals(one("all"), OptionRules.tap(one("mayo", "ketchup"), "all", min = 1, max = 2, alone = alone))
+        // there is one of it or none
+        assertEquals(one("all"), OptionRules.more(one("all"), "all", max = 0, alone = alone))
+        assertEquals(mapOf("mayo" to 2), OptionRules.more(one("mayo"), "mayo", max = 0, alone = alone))
+        // where one thing is chosen the mark changes nothing
+        assertEquals(one("mayo"), OptionRules.tap(one("all"), "mayo", min = 1, max = 1, alone = alone))
+    }
+
     // A phone takes each option once: "as many as they like" is one of each there.
     @Test
     fun whatAPhoneIsToldOfAGroupsMost() {

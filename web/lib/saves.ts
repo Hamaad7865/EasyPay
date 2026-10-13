@@ -23,11 +23,13 @@ export async function setItemTax(c: PoolClient, tenantId: string, item: string, 
 
 // A choice added to a group of add-ons. False when the group is not there any
 // more (it was removed in another tab): there is nothing to add the choice to.
-export async function addChoice(c: PoolClient, tenantId: string, group: string, name: string, price: number): Promise<boolean> {
+// alone: picking it takes the group's other choices off, and picking another
+// takes it off (All, None).
+export async function addChoice(c: PoolClient, tenantId: string, group: string, name: string, price: number, alone = false): Promise<boolean> {
   const r = await c.query(
-    `insert into modifiers (tenant_id, group_id, name, price)
-       select $1, g.id, $3, $4 from modifier_groups g where g.tenant_id = $1 and g.id = $2 and g.deleted_at is null`,
-    [tenantId, group, name, price],
+    `insert into modifiers (tenant_id, group_id, name, price, alone)
+       select $1, g.id, $3, $4, $5 from modifier_groups g where g.tenant_id = $1 and g.id = $2 and g.deleted_at is null`,
+    [tenantId, group, name, price, alone],
   );
   return r.rowCount === 1;
 }
@@ -141,9 +143,9 @@ export async function saveGroup(c: PoolClient, tenantId: string, id: string, nam
   return r.rowCount === 1;
 }
 
-// A choice of an add-on group: its name and its price.
-export async function saveChoice(c: PoolClient, tenantId: string, id: string, name: string, price: number): Promise<boolean> {
-  const r = await c.query(`update modifiers set name = $3, price = $4 where tenant_id = $1 and id = $2 and deleted_at is null`, [tenantId, id, name, price]);
+// A choice of an add-on group: its name, its price, and whether it is picked alone.
+export async function saveChoice(c: PoolClient, tenantId: string, id: string, name: string, price: number, alone: boolean): Promise<boolean> {
+  const r = await c.query(`update modifiers set name = $3, price = $4, alone = $5 where tenant_id = $1 and id = $2 and deleted_at is null`, [tenantId, id, name, price, alone]);
   return r.rowCount === 1;
 }
 
