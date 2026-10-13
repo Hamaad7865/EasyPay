@@ -45,6 +45,8 @@ import com.restopos.core.data.Kitchen
 import com.restopos.core.data.PosSettings
 import com.restopos.core.data.Routing
 import com.restopos.core.data.ServiceRepository
+import com.restopos.core.data.kitchenDetail
+import com.restopos.core.data.kitchenModsOf
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.kitchen.KitchenPrefs
 import com.restopos.core.kitchen.KitchenPrefsStore
@@ -129,9 +131,10 @@ class KdsViewModel @Inject constructor(
         val ticked = cats.associate { c -> c.id to Routing.ids(c.printer_ids) }
         val stations = Routing.stations(ticked.values, printers, PosSettings.parse(settings).onePrinter)
         val catOf = HashMap<String, String?>()
+        val mods = kitchenModsOf(db, lines.map { it.id }, " × ")
         val rows = service.describe(lines).groupBy({ it.line.kds_id }) { l ->
             val cat = l.line.item_id?.let { id -> catOf.getOrPut(id) { db.catalog().item(id)?.category_id } }
-            KdsLine(l.line.id, l.units, l.line.name_snapshot, l.detail, l.line.kitchen_done, stations = Routing.stationsFor(ticked[cat], stations))
+            KdsLine(l.line.id, l.units, l.line.name_snapshot, kitchenDetail(mods[l.line.id].orEmpty(), l.line.note), l.line.kitchen_done, stations = Routing.stationsFor(ticked[cat], stations))
         }
         KdsUi(
             tickets.mapNotNull { t ->
@@ -266,7 +269,8 @@ fun KdsBoard(ui: KdsUi, prefs: KitchenPrefs, onTap: (String) -> Unit, onBump: (S
                                     T(l.units.toString(), (18 * k).sp, 600, if (off) V.Off else V.Text, Modifier.width((30 * k).dp), strike = off)
                                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                         T(l.name, (17 * k).sp, 600, if (off) V.Off else V.Text, lines = 3, height = (21 * k).sp, strike = off)
-                                        if (l.detail.isNotEmpty()) T(l.detail, (14 * k).sp, 500, if (off) V.Off else V.AmberText, lines = 3)
+                                        // a line for each add-on group, then the kitchen note
+                                        if (l.detail.isNotEmpty()) T(l.detail, (14 * k).sp, 500, if (off) V.Off else V.AmberText, lines = 8)
                                     }
                                     if (l.voided) Chip("VOID", V.RedWash, V.RedText)
                                 }

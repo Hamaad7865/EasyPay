@@ -199,7 +199,7 @@ class DocsTest {
         assertTrue(all.contains("KITCHEN"))
         assertTrue(all.contains("Table 4"))
         assertTrue(all.contains("2 x Dholl puri"))
-        assertTrue(all.contains("+ Achard"))
+        assertTrue(all.contains("* Achard"))
         assertTrue(all.contains("! No chili"))
         assertTrue(all.contains("REMARK: Birthday"))
         assertFalse(all.contains("120.00"))

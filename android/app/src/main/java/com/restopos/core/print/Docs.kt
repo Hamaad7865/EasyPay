@@ -304,7 +304,8 @@ object Docs {
             EscPos.wrap("${qty(l.qty)} x ${l.name}", paper.columns).forEach { p.line(it) }
             p.tall(false).bold(false)
             l.seat?.let { p.line("   Seat $it") }
-            l.mods.forEach { m -> p.wrapped("+ $m", indent = "   ") }
+            // a line for each add-on group, its choices side by side (DocBuilder.kitchen)
+            l.mods.forEach { m -> p.wrapped("* $m", indent = "   ") }
             l.note?.takeIf { it.isNotBlank() }?.let { p.bold(true).wrapped("! $it", indent = "   ").bold(false) }
         }
         d.note?.takeIf { it.isNotBlank() }?.let { p.rule(); p.bold(true).wrapped("REMARK: $it").bold(false) }

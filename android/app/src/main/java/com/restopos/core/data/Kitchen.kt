@@ -5,6 +5,7 @@ import androidx.room.withTransaction
 import com.restopos.core.common.Uuid7
 import com.restopos.core.database.KdsOutEntity
 import com.restopos.core.database.KdsTicketEntity
+import com.restopos.core.database.ModRow
 import com.restopos.core.database.OutboxEntity
 import com.restopos.core.database.TicketEntity
 import com.restopos.core.database.TicketLineEntity
@@ -31,6 +32,29 @@ import javax.inject.Singleton
 // kitchen's paper and on a kitchen screen.
 internal fun kitchenRemark(t: TicketEntity): String? =
     listOfNotNull(t.note, t.phone?.let { "Tel $it" }, t.address).joinToString(" · ").ifEmpty { null }
+
+// A line's add-ons as the kitchen reads them: a line for each add-on group,
+// its choices side by side in the order they were picked ("Mayo, Chili").
+// One whose group is not known (taken off the menu since) has a line of its
+// own. The customer's receipt keeps one add-on a line.
+internal fun kitchenMods(rows: List<ModRow>, times: String = " x "): List<String> {
+    val out = LinkedHashMap<Any, MutableList<String>>()
+    rows.forEachIndexed { i, r ->
+        out.getOrPut(r.group_id ?: i) { ArrayList() }.add(if (r.qty > 1) "${r.qty}$times${r.name}" else r.name)
+    }
+    return out.values.map { it.joinToString(", ") }
+}
+
+// The same for any number of lines at once, by line.
+internal suspend fun kitchenModsOf(db: TillDatabase, lineIds: List<String>, times: String = " x "): Map<String, List<String>> {
+    val rows = ArrayList<ModRow>()
+    lineIds.chunked(800).forEach { rows += db.service().modRows(it) }
+    return rows.groupBy { it.line_id }.mapValues { kitchenMods(it.value, times) }
+}
+
+// What a kitchen screen shows under a line: those lines, then the kitchen note.
+internal fun kitchenDetail(mods: List<String>, note: String?): String =
+    (mods + listOfNotNull(note?.takeIf { it.isNotBlank() })).joinToString("\n")
 
 // The kitchen display. Every send of an order is one ticket on it: the same
 // lines the kitchen printer gets on one paper. The cooks tick lines off, bump

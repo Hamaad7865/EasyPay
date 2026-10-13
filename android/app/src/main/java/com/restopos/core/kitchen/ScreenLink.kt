@@ -5,6 +5,8 @@ import com.restopos.core.data.Kitchen
 import com.restopos.core.data.PosSettings
 import com.restopos.core.data.Routing
 import com.restopos.core.data.ServiceRepository
+import com.restopos.core.data.kitchenDetail
+import com.restopos.core.data.kitchenModsOf
 import com.restopos.core.database.KdsScreenEntity
 import com.restopos.core.database.KdsTicketEntity
 import com.restopos.core.database.PrinterEntity
@@ -88,8 +90,9 @@ class ScreenLink @Inject constructor(
         if (screens.isEmpty()) return
         val wanted = lineIds.toSet()
         val rows = db.tickets().allLines(ticket.ticket_id).filter { it.id in wanted }
+        val mods = kitchenModsOf(db, rows.map { it.id }, " × ")
         val lines = service.describe(rows).map { l ->
-            WireLine(l.line.id, l.units, l.line.name_snapshot, l.detail) to l.line.item_id?.let { db.ops().categoryOfItem(it) }?.let { Routing.ids(it.printer_ids) }
+            WireLine(l.line.id, l.units, l.line.name_snapshot, kitchenDetail(mods[l.line.id].orEmpty(), l.line.note)) to l.line.item_id?.let { db.ops().categoryOfItem(it) }?.let { Routing.ids(it.printer_ids) }
         }
         val parts = Parts.of(ticket, lines, screens)
         if (parts.isNotEmpty()) db.service().upsertParts(parts)

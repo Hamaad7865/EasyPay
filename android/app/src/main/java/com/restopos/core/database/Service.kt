@@ -88,6 +88,8 @@ data class BookingEntity(
 // A line with the name of its add-ons, for lists that show many orders at once.
 data class LineSum(val line_id: String, val total: Long)
 data class LineText(val line_id: String, val text: String?)
+// One add-on of a line, with the add-on group it is of (null when the add-on is no longer on the menu).
+data class ModRow(val line_id: String, val group_id: String?, val name: String, val qty: Int)
 data class ItemGroups(val item_id: String, val names: String?)
 data class SoldRow(val name: String, val qty: Long)
 data class TicketCount(val ticket_id: String, val n: Int)
@@ -210,6 +212,13 @@ interface ServiceDao {
            WHERE m.line_id IN (:lines) GROUP BY m.line_id""",
     )
     suspend fun modTexts(lines: List<String>): List<LineText>
+
+    // the add-ons of some lines with the group each is of, in the order they were picked
+    @Query(
+        """SELECT m.line_id AS line_id, o.group_id AS group_id, m.name_snapshot AS name, m.qty AS qty FROM ticket_line_modifiers m
+           LEFT JOIN modifiers o ON o.id = m.modifier_id WHERE m.line_id IN (:lines) ORDER BY m.rowid""",
+    )
+    suspend fun modRows(lines: List<String>): List<ModRow>
 
     @Query("SELECT * FROM ticket_line_taxes WHERE line_id IN (:lines)")
     suspend fun taxesOf(lines: List<String>): List<TicketLineTaxEntity>
