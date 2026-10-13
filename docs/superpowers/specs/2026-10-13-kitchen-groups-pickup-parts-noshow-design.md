@@ -73,3 +73,31 @@ Bookings had No-show; a takeaway did not. One never collected stayed on the boar
 Server: migration 0107 adds to `tickets` when it was marked, what was unpaid, by whom and on which till; `ticket.cancel` carries the no-show. The tablet's database, version 23.
 
 Not built: taking a no-show back when the customer turns up after all (an unpaid one is rung up again); the stock its food used; a list of no-shows in the till's reports.
+
+## What was run, the night it was built
+
+On a test emulator (1280 x 800, the made-up restaurant that works on its own), the debug build installed over database 22: it went to 24 in place with no fault. A stand-in printer on the PC took the papers.
+
+- **The clock.** The key sits beside the name and the phone on a new takeaway. The face opened at the time it was; the hand set to 23 then 55 gave "Set 23:55", and that made order A-1 with that time on an order that had nothing on it. The key then showed 23:55. With the time on it, the name box shows about fifteen letters.
+- **The kitchen's paper**, as it came out for a takeaway with Mayo, Sausage and the note Rush:
+
+```
+KITCHEN ORDER
+A-3
+PICK UP 00:03
+13/10/2026 23:48                           Aisha
+Takeaway
+================================================
+1 x Ceramic mug, Blue
+   * Mayo, Sausage
+   ! Rush
+================================================
+```
+
+- **By amount.** The four choices fit their row. Rs 370: 200 typed on the pad and charged in cash, the screen said 170 remaining, charged by card: "Rs 370.00 · 2 payments", one receipt holding Cash 200.00 and Card 170.00.
+- **No-show.** A paid takeaway: it left the board, stayed paid, nothing owed, not in "collected today". An unpaid one of Rs 450: asked again, then closed with its item on it and 450.00 kept. As the cashier of the made-up restaurant, the same key asked for an approval ("Ben may not mark an unpaid order as a no-show"); cancelled, the order stayed as it was.
+- **The X report** printed after it: "No-shows, unpaid (1)  450.00" under Discounts given, Cash (4) 11,765.00 and Card (1) 170.00 by payment type, the sales unchanged by the no-show.
+
+Not seen: this till's Kitchen screen and a kitchen tablet (the made-up restaurant's plan has no kitchen display), a delivery, a time refused for being past, the Z itself on paper (the X has the same line; the list of each order is in the unit test only), the back office's page in a browser, a real tablet or printer.
+
+One thing to know: the clock takes a time today only, so a few minutes before midnight a pick-up after midnight cannot be turned to on it; the 5 and 15 minute keys on the board still move it there.
