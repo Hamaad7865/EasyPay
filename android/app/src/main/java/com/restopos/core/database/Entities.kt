@@ -96,6 +96,9 @@ data class ModifierEntity(
     // picked alone (server 0106): it takes the group's other choices off, and
     // picking another takes it off. All among the sauces, or None.
     val alone: Boolean = false,
+    // how many of it one line may take (server 0108): 1 is one or none
+    // (Mayo), more is a choice marked Several (Eggs: 5)
+    val max_qty: Int = 1,
 )
 
 @Entity(tableName = "taxes")

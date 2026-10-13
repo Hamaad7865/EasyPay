@@ -49,6 +49,15 @@ async function saveGroup(f: FormData) {
   });
 }
 
+// How many of a choice one line may take: 1 unless Several is ticked, then
+// the number beside it. A choice picked alone is one or none whatever is ticked.
+function several(f: FormData, alone: boolean): number {
+  if (alone || f.get("several") !== "on") return 1;
+  const n = Number(String(f.get("most") ?? "").trim());
+  if (!Number.isInteger(n) || n < 2 || n > 99) throw new Refused("Say how many of it can be taken, from 2 to 99, beside Several.");
+  return n;
+}
+
 async function addChoice(f: FormData) {
   "use server";
   await act("items.edit", back(f.get("group")), async (c, ctx) => {
@@ -57,7 +66,8 @@ async function addChoice(f: FormData) {
     const price = parseRs(String(f.get("price") || "0"));
     if (!name) throw new Refused("Give the choice a name.");
     if (price === null) throw new Refused("The price is not a number.");
-    if (!(await saves.addChoice(c, ctx.tenantId, group, name, price, f.get("alone") === "on"))) throw new Refused("That group is no longer there, so the choice was not added. Reload the page.");
+    const alone = f.get("alone") === "on";
+    if (!(await saves.addChoice(c, ctx.tenantId, group, name, price, alone, several(f, alone)))) throw new Refused("That group is no longer there, so the choice was not added. Reload the page.");
     return `${name} added.`;
   });
 }
@@ -73,7 +83,8 @@ async function saveChoice(f: FormData) {
     const name = text(f, "name", 40);
     const price = parseRs(String(f.get("price") || "0"));
     if (!name || price === null) throw new Refused("A choice needs a name and a price (0 for free).");
-    if (!(await saves.saveChoice(c, ctx.tenantId, id, name, price, f.get("alone") === "on"))) throw new Refused("That choice is no longer there. Reload the page.");
+    const alone = f.get("alone") === "on";
+    if (!(await saves.saveChoice(c, ctx.tenantId, id, name, price, alone, several(f, alone)))) throw new Refused("That choice is no longer there. Reload the page.");
     return `${name} saved.`;
   });
 }
@@ -93,7 +104,7 @@ export default async function AddonsPage({ searchParams }: { searchParams: Searc
       )
     ).rows as Group[],
     choices: (
-      await c.query(`select id, group_id, name, price, alone from modifiers where tenant_id = $1 and deleted_at is null order by created_at, name`, [ctx.tenantId])
+      await c.query(`select id, group_id, name, price, alone, max_qty from modifiers where tenant_id = $1 and deleted_at is null order by created_at, name`, [ctx.tenantId])
     ).rows as Omit<Choice, "shown">[],
   }));
   const choices: Choice[] = d.choices.map((m) => ({ ...m, price: String(m.price), shown: Number(m.price) === 0 ? "" : "+ " + money(Number(m.price), d.settings.decimals) }));

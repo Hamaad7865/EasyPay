@@ -542,13 +542,14 @@ private fun OptionsSheet(s: OptionSheet, notes: List<String>, vm: OrderViewModel
                                 T(m.name, 15.sp, 700, ink)
                                 if (m.price != 0L) T("+" + Money.format(m.price), 12.sp, 700, ink.copy(alpha = 0.8f))
                             }
-                            // how many of it, where the group takes more than one thing
-                            if (n != null && !rules.single(max) && m.id !in alone) {
-                                val room = rules.room(mine, max) && n < rules.MOST_OF_ONE
+                            // how many of it, for a choice that is taken several times (Eggs, not
+                            // Mayo: modifiers.max_qty) in a group that takes more than one thing
+                            if (n != null && !rules.single(max) && m.id !in alone && rules.several(m.max_qty)) {
+                                val room = rules.room(mine, max) && n < m.max_qty
                                 Box(Modifier.width(1.dp).height(30.dp).background(ink.copy(alpha = 0.25f)))
                                 Box(Modifier.size(46.dp, 54.dp).clickable { picked[g.id] = rules.fewer(mine, m.id) }, contentAlignment = Alignment.Center) { T("−", 20.sp, 700, ink) }
                                 Box(Modifier.widthIn(min = 22.dp), contentAlignment = Alignment.Center) { T(n.toString(), 17.sp, 800, ink) }
-                                Box(Modifier.size(46.dp, 54.dp).clickable(enabled = room) { picked[g.id] = rules.more(mine, m.id, max, alone) }, contentAlignment = Alignment.Center) {
+                                Box(Modifier.size(46.dp, 54.dp).clickable(enabled = room) { picked[g.id] = rules.more(mine, m.id, max, alone, m.max_qty) }, contentAlignment = Alignment.Center) {
                                     T("+", 20.sp, 700, ink.copy(alpha = if (room) 1f else 0.35f))
                                 }
                             }

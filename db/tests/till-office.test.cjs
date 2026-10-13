@@ -333,6 +333,24 @@ const swap = (v, map) => (Array.isArray(v) ? v.map((x) => swap(x, map))
       check('A3b a choice is marked to be picked alone, a till that says nothing of it leaves it, and it is unmarked when told',
         r.said === 'applied' && marked[0] === true && marked[1] === false && kept === true && (await alone(chA)) === false, r.said + ' ' + JSON.stringify(marked) + ' ' + kept);
     }
+    // a choice taken several times (0108): Eggs up to five, Mayo one or none
+    {
+      const most = async (x) => (await q1(`select max_qty from modifiers where id = $1`, [x])).max_qty;
+      const toppings = (a, c) => rone(...ax('addon-save', { name: 'Toppings', min: 1, max: 3, choices: [{ id: chA, name: 'Cheddar', price: 3000, ...a }, { id: chC, name: 'Egg', price: 1500, ...c }] }));
+      const before = [await most(chA), await most(chC)];
+      r = await toppings({}, { max_qty: 5 });
+      const marked = [await most(chA), await most(chC)];
+      await toppings({}, {});
+      const kept = await most(chC);
+      await toppings({}, { max_qty: 1 });
+      check('A3c a choice is one or none until it is marked, a till that says nothing of it leaves its number, and it is one again when told',
+        r.said === 'applied' && before.join() === '1,1' && marked.join() === '1,5' && kept === 5 && (await most(chC)) === 1, r.said + ' ' + before + ' ' + marked + ' ' + kept);
+      const none = await toppings({}, { max_qty: 0 });
+      const many = await toppings({}, { max_qty: 100 });
+      check('A3c a number that is not from 1 to 99 is refused', none.said === 'rejected:bad-payload' && many.said === 'rejected:bad-payload' && (await most(chC)) === 1, none.said + ' ' + many.said);
+      const pm = (((await pull(restoStore, resto)).changes || {}).modifiers || []).find((x) => x.id === chC);
+      check('A3c a pull hands the number out', !!pm && pm.max_qty === 1, JSON.stringify(pm && pm.max_qty));
+    }
     r = await rone(...ax('addon-save', { min: 3, max: 2 }));
     const a4 = await rone(...ax('addon-save', { max: 21 }));
     check('A4 the most cannot be less than the fewest, nor more than 20', r.said === 'rejected:bad-limits' && a4.said === 'rejected:bad-limits', r.said + ' ' + a4.said);
@@ -390,6 +408,18 @@ const swap = (v, map) => (Array.isArray(v) ? v.map((x) => swap(x, map))
     r = await rone('settings.save', { receipt: { footer: 'x'.repeat(400) } });
     st = await settings(resto);
     check('Z3 one note alone, cut to 300; the other stays', r.said === 'applied' && st.receipt.footer.length === 300 && st.receipt.header === 'Open every day, 9 to 9', String(st.receipt.footer.length));
+    // the notes offered when an item is added (0108): the list whole
+    r = await rone('settings.save', { kitchenNotes: [' Sans piment ', '', 7, 'Rush', 'x'.repeat(60)] });
+    st = await settings(resto);
+    check('Z8 the kitchen notes saved: trimmed, forty letters, what is empty or not words left out; the rest of the settings left',
+      r.said === 'applied' && JSON.stringify(st.kitchenNotes) === JSON.stringify(['Sans piment', 'Rush', 'x'.repeat(40)]) && st.servicePct === 10 && st.receipt.header === 'Open every day, 9 to 9', JSON.stringify(st.kitchenNotes));
+    r = await rone('settings.save', { kitchenNotes: Array.from({ length: 20 }, (_, i) => 'n' + i) });
+    const z6 = await rone('settings.save', { kitchenNotes: 'Rush' });
+    check('Z9 twelve notes at most, and what is not a list is refused', r.said === 'applied' && (await settings(resto)).kitchenNotes.length === 12 && z6.said === 'rejected:bad-payload', r.said + ' ' + z6.said);
+    r = await rone('settings.save', { kitchenNotes: [] });
+    const z7 = await rone('settings.save', { kitchenNotes: ['Rush'] }, restoCashier);
+    st = await settings(resto);
+    check('Z10 a list saved empty stays empty, and a waiter may not change it', r.said === 'applied' && Array.isArray(st.kitchenNotes) && st.kitchenNotes.length === 0 && z7.said === 'rejected:forbidden', r.said + ' ' + z7.said);
     r = await rone('settings.save', { servicePct: 0 }, restoCashier);
     check('Z4 a waiter may not', r.said === 'rejected:forbidden' && (await settings(resto)).servicePct === 10, r.said);
     r = await rone('settings.save', { something: 'else' });

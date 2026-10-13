@@ -1008,7 +1008,54 @@ class LocalAnswersTest {
         // what the sheet sends says it of every choice
         val g = AddonForm.read("Sauces", "", "", listOf(AddonForm.Typed("c1", "All", "", alone = true), AddonForm.Typed("c2", "Mayo", ""))).getOrThrow()
         assertEquals(listOf(true, false), g.choices.map { it.alone })
-        assertEquals(true, OfficePayloads.addonSave("g", g, null).toString().contains(""""name":"All","price":0,"alone":true"""))
+        assertEquals(true, OfficePayloads.addonSave("g", g, null).toString().contains(""""name":"All","price":0,"alone":true,"max_qty":1"""))
+    }
+
+    @Test fun `a choice taken several times keeps its number, and is left as it was where nothing is said`() {
+        val extras = { egg: String -> obj("""{"id":"${id(70)}","name":"Extras","min":0,"max":0,"choices":[{"id":"${id(71)}","name":"Egg","price":1500$egg},{"id":"${id(72)}","name":"Mayo","price":0}]}""") }
+        assertEquals("done", ask("addon.save", extras(""","max_qty":5""")))
+        assertEquals(listOf(5, 1), listOf(dao.choices[id(71)]!!.max_qty, dao.choices[id(72)]!!.max_qty))
+        // a save that says nothing of it (a till built before) leaves it
+        assertEquals("done", ask("addon.save", extras("")))
+        assertEquals(5, dao.choices[id(71)]!!.max_qty)
+        assertEquals("done", ask("addon.save", extras(""","max_qty":1""")))
+        assertEquals(1, dao.choices[id(71)]!!.max_qty)
+        assertEquals("bad-payload", ask("addon.save", extras(""","max_qty":100""")))
+        assertEquals("bad-payload", ask("addon.save", extras(""","max_qty":0""")))
+    }
+
+    @Test fun `the sheet reads how many of a choice, and sends it of every choice`() {
+        val g = AddonForm.read("Extras", "", "", listOf(AddonForm.Typed("c1", "Egg", "15", several = true, most = "5"), AddonForm.Typed("c2", "Mayo", ""))).getOrThrow()
+        assertEquals(listOf(5, 1), g.choices.map { it.maxQty })
+        val sent = OfficePayloads.addonSave("g", g, null).toString()
+        assertEquals(true, sent.contains(""""name":"Egg","price":1500,"alone":false,"max_qty":5"""))
+        assertEquals(true, sent.contains(""""name":"Mayo","price":0,"alone":false,"max_qty":1"""))
+        // several needs its number, from 2 to 99
+        val need = "Say how many of Egg can be taken, from 2 to 99"
+        listOf("", "1", "100", "x").forEach { n ->
+            assertEquals(need, AddonForm.read("Extras", "", "", listOf(AddonForm.Typed("c1", "Egg", "15", several = true, most = n))).exceptionOrNull()?.message)
+        }
+        // a number left in the box of a choice that is not marked means nothing
+        assertEquals(1, AddonForm.read("Extras", "", "", listOf(AddonForm.Typed("c1", "Egg", "15", several = false, most = "5"))).getOrThrow().choices[0].maxQty)
+        // a choice picked alone is never several
+        assertEquals(1, AddonForm.read("Sauces", "", "", listOf(AddonForm.Typed("c1", "All", "", alone = true, several = true, most = "5"))).getOrThrow().choices[0].maxQty)
+    }
+
+    @Test fun `the kitchen notes are saved whole, and nothing else of the settings is touched`() {
+        dao.settings = SettingsEntity(tenant, """{"plan":"offline","servicePct":10,"kitchenNotes":["Old"]}""")
+        assertEquals("done", ask("settings.save", """{"kitchenNotes":[" Sans piment ","",7,"Rush","${"x".repeat(60)}"]}"""))
+        var st = PosSettings.parse(dao.settings!!.data)
+        assertEquals(listOf("Sans piment", "Rush", "x".repeat(40)), st.kitchenNotes)
+        assertEquals(listOf(10, true), listOf(st.servicePct, st.alone))
+        assertEquals("done", ask("settings.save", """{"kitchenNotes":[${(1..20).joinToString(",") { "\"n$it\"" }}]}"""))
+        assertEquals(12, PosSettings.parse(dao.settings!!.data).kitchenNotes.size)
+        // a list saved empty stays empty
+        assertEquals("done", ask("settings.save", """{"kitchenNotes":[]}"""))
+        st = PosSettings.parse(dao.settings!!.data)
+        assertEquals(emptyList<String>(), st.kitchenNotes)
+        assertEquals("bad-payload", ask("settings.save", """{"kitchenNotes":"Rush"}"""))
+        // what the sheet sends
+        assertEquals("""{"kitchenNotes":["Rush","No salt"]}""", OfficePayloads.kitchenNotesSave(listOf("Rush", "No salt"), null).toString())
     }
 
     @Test fun `the add-on groups an item carries`() {

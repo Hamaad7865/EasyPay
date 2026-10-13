@@ -10,9 +10,17 @@ package com.restopos.core.guest
 // three sausages fill "up to 3". A most of 0 is as many as they like, which
 // is what the add-on editor says of it; a most of 1 is a group where one
 // thing is chosen (how it is cooked), and nothing is counted there.
+//
+// Not every option is a thing there can be three of. An option says how many
+// of it a line may take (modifiers.max_qty, server 0108): 1, which every
+// option is until it is marked Several, is one or none (Mayo); Eggs marked
+// up to 5 stop at five. Each one still counts towards the group's most.
 object OptionRules {
     // the most of one option on one line (the server's limit too, 0105)
     const val MOST_OF_ONE = 99
+
+    // whether an option is taken several times: its own number is more than one
+    fun several(most: Int) = most > 1
 
     fun single(max: Int) = max == 1
     fun count(picked: Map<String, Int>) = picked.values.sum()
@@ -40,10 +48,11 @@ object OptionRules {
         }
     }
 
-    // One more of an option that is picked, while the group has room for it.
-    fun more(picked: Map<String, Int>, option: String, max: Int, alone: Set<String> = emptySet()): Map<String, Int> {
+    // One more of an option that is picked, while the group has room for it
+    // and the option's own number (`most`) is not reached.
+    fun more(picked: Map<String, Int>, option: String, max: Int, alone: Set<String> = emptySet(), most: Int = MOST_OF_ONE): Map<String, Int> {
         val n = picked[option] ?: return picked
-        return if (single(max) || option in alone || !room(picked, max) || n >= MOST_OF_ONE) picked else picked + (option to n + 1)
+        return if (single(max) || option in alone || !room(picked, max) || n >= most.coerceAtMost(MOST_OF_ONE)) picked else picked + (option to n + 1)
     }
 
     // One fewer of it; the last one takes the option off.

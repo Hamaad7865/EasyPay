@@ -342,4 +342,13 @@ object Migrations {
             db.execSQL("ALTER TABLE `tickets` ADD COLUMN `no_show_by` TEXT")
         }
     }
+
+    // 25: how many of a choice one line may take (server 0108). Every choice
+    // already on a menu is one or none, as the server makes it: the ones that
+    // are counted (eggs, sausages) are marked Several by hand.
+    val V24_V25 = object : Migration(24, 25) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `modifiers` ADD COLUMN `max_qty` INTEGER NOT NULL DEFAULT 1")
+        }
+    }
 }

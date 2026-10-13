@@ -7,7 +7,8 @@ import { Submit } from "../busy";
 export type Group = { id: string; name: string; min_select: number; max_select: number; items: number };
 // shown: the extra price as the till shows it ("+ Rs 25.00"), or "" when the choice is free
 // alone: picking it takes the group's other choices off, and picking another takes it off (All, None)
-export type Choice = { id: string; group_id: string; name: string; price: string; shown: string; alone: boolean };
+// max_qty: how many of it one line may take; 1 is one or none, more is a choice taken several times (Eggs: 5)
+export type Choice = { id: string; group_id: string; name: string; price: string; shown: string; alone: boolean; max_qty: number };
 type Action = (f: FormData) => Promise<void>;
 
 // How many of a group's choices the waiter picks, in words.
@@ -136,6 +137,7 @@ export function AddonsTable({
                             <th>Extra price (Rs)</th>
                             <th>The till shows</th>
                             <th title="Picking it takes the group's other choices off, and picking another takes it off. For a choice such as All or None.">Picked alone</th>
+                            <th title="It can be taken more than once on one item, up to the number beside it: eggs, sausages. Not ticked, it is one or none.">Several</th>
                             <th />
                           </tr>
                         </thead>
@@ -146,6 +148,13 @@ export function AddonsTable({
                               <td><input form={"m" + m.id} name="price" defaultValue={(Number(m.price) / 100).toString()} className="narrow" inputMode="decimal" aria-label="Extra price" /></td>
                               <td>{m.shown || <span className="muted">Free</span>}</td>
                               <td><input form={"m" + m.id} name="alone" type="checkbox" defaultChecked={m.alone} aria-label={"Picked alone: " + m.name} /></td>
+                              <td>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+                                  <input form={"m" + m.id} name="several" type="checkbox" defaultChecked={m.max_qty > 1} aria-label={"Several: " + m.name} />
+                                  <span className="muted">up to</span>
+                                  <input form={"m" + m.id} name="most" defaultValue={m.max_qty > 1 ? String(m.max_qty) : ""} placeholder="5" className="narrow" inputMode="numeric" maxLength={2} style={{ width: 56 }} aria-label={"How many at most: " + m.name} />
+                                </span>
+                              </td>
                               <td>
                                 <form id={"m" + m.id} action={saveChoice} className="row-actions">
                                   <input type="hidden" name="id" value={m.id} />
@@ -162,6 +171,13 @@ export function AddonsTable({
                             <td />
                             <td><input form={"n" + g.id} name="alone" type="checkbox" aria-label="Picked alone" /></td>
                             <td>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+                                <input form={"n" + g.id} name="several" type="checkbox" aria-label="Several" />
+                                <span className="muted">up to</span>
+                                <input form={"n" + g.id} name="most" placeholder="5" className="narrow" inputMode="numeric" maxLength={2} style={{ width: 56 }} aria-label="How many at most" />
+                              </span>
+                            </td>
+                            <td>
                               <form id={"n" + g.id} action={addChoice} className="row-actions">
                                 <input type="hidden" name="group" value={g.id} />
                                 <Submit className="btn-sm">Add choice</Submit>
@@ -170,7 +186,7 @@ export function AddonsTable({
                           </tr>
                         </tbody>
                       </table>
-                      <p className="muted" style={{ margin: "8px 0 0" }}>Picked alone: choosing it takes the group&rsquo;s other choices off, and choosing another takes it off. For a choice such as All or None.</p>
+                      <p className="muted" style={{ margin: "8px 0 0" }}>Picked alone: choosing it takes the group&rsquo;s other choices off, and choosing another takes it off. For a choice such as All or None. Several: it can be taken more than once on one item, up to the number beside it (eggs, sausages); not ticked, it is one or none.</p>
                     </div>
                   </td>
                 </tr>

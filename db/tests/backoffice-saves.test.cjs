@@ -242,8 +242,16 @@ function lib(name) {
         const marked = await alone('Cheddar');
         await saveChoice(cheese, 'Cheddar', 3000, false);
         await asApp(tid, () => saves.addChoice(c, tid, group, 'All', 0, true));
+        // taken several times (0108): one or none until it is marked, then its number
+        const most = async (name) => (await q1(`select max_qty from modifiers where tenant_id = $1 and group_id = $2 and name = $3 and deleted_at is null`, [tid, group, name])).max_qty;
+        const single = await most('Cheddar');
+        await asApp(tid, () => saves.saveChoice(c, tid, cheese, 'Cheddar', 3000, false, 5));
+        const five = await most('Cheddar');
+        await asApp(tid, () => saves.saveChoice(c, tid, cheese, 'Cheddar', 3000, false));
+        await asApp(tid, () => saves.addChoice(c, tid, group, 'Egg', 1500, false, 4));
+        check('C3 a choice is one or none, is marked several with its number, unmarked, and one is added marked', single === 1 && five === 5 && (await most('Cheddar')) === 1 && (await most('Egg')) === 4 && (await most('All')) === 1, `${single} ${five}`);
         check('C3 a choice is marked to be picked alone, unmarked, and one is added marked', was === false && marked === true && (await alone('Cheddar')) === false && (await alone('All')) === true, `${was} ${marked}`);
-        await c.query(`delete from modifiers where group_id = $1 and name = 'All'`, [group]);
+        await c.query(`delete from modifiers where group_id = $1 and name in ('All', 'Egg')`, [group]);
       }
       const lateChoice = await saveChoice(bacon, 'Bacon bits', 1);
       check('C4 a choice removed meanwhile is not said to be saved', lateChoice === false && (await one('modifiers', bacon)).name === 'Bacon', String(lateChoice));

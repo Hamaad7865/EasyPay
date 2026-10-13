@@ -130,6 +130,9 @@ class MenuViewModel @Inject constructor(
     val addons = AddonEditor(service, approvals, viewModelScope)
     val groups: StateFlow<List<com.restopos.core.database.ModifierGroupEntity>> = db.catalog().groupsFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val choices: StateFlow<List<com.restopos.core.database.ModifierEntity>> = db.catalog().choicesFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    // the notes offered when an item is added, kept beside the add-ons
+    val notes: StateFlow<List<String>> = db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).kitchenNotes }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // The categories, made, changed and removed from this till; a list that
     // was showing one that is gone shows everything.
@@ -277,7 +280,8 @@ fun MenuStockScreen(vm: MenuViewModel) {
     CategorySheets(vm.categories, cats, counts, shop = false, printers = printers)
     val groups by vm.groups.collectAsState()
     val choices by vm.choices.collectAsState()
-    AddonSheets(vm.addons, groups, choices)
+    val notes by vm.notes.collectAsState()
+    AddonSheets(vm.addons, groups, choices, notes)
     stocking?.let { StockSheet(vm.stock, it) }
 
     pricing?.let { item ->

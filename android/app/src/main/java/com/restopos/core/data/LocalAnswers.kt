@@ -929,8 +929,10 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             // a choice that is another group's is left alone
             val had = dao.choice(cid)
             if (had?.let { it.group_id != id } == true) continue
+            // how many of it a line may take (0108): from 1 to 99, and as it was where nothing is said
+            val most = if ("max_qty" in c) (c.long("max_qty")?.takeIf { it in 1..99 } ?: bad()).toInt() else had?.max_qty ?: 1
             // picked alone (0106): what the sheet says, and as it was where nothing is said
-            keep += com.restopos.core.database.ModifierEntity(cid, tenant, id, cname, price, alone = c.bool("alone") ?: had?.alone ?: false)
+            keep += com.restopos.core.database.ModifierEntity(cid, tenant, id, cname, price, alone = c.bool("alone") ?: had?.alone ?: false, max_qty = most)
         }
         dao.putGroup((was ?: com.restopos.core.database.ModifierGroupEntity(id, tenant, name)).copy(name = name, min_select = min.toInt(), max_select = max.toInt()))
         dao.putChoices(keep)
@@ -948,7 +950,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         dao.putGroup(was.copy(deleted_at = now(), name = was.name.take(40) + " (removed " + stamp() + ")"))
     }
 
-    // ---- push_settings_save (0096): the receipt's two notes and the service charge ----
+    // ---- push_settings_save (0096, 0108): the receipt's two notes, the service charge, the kitchen notes ----
     private suspend fun settingsSave(p: JsonObject, tenant: String) {
         var patch = JsonObject(emptyMap())
         p["receipt"]?.let { r ->
@@ -965,6 +967,13 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             val pct = p.long("servicePct")
             if (pct == null || pct !in 0..30) throw Refused("bad-value")
             patch = JsonObject(patch + ("servicePct" to JsonPrimitive(pct.toInt())))
+        }
+        // the notes offered when an item is added, whole: twelve of forty letters
+        // at most, what is empty or not words left out; saved empty, it stays empty
+        p["kitchenNotes"]?.let { sent ->
+            val list = (sent as? JsonArray) ?: bad()
+            val notes = list.mapNotNull { n -> (n as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.take(40)?.takeIf { it.isNotEmpty() } }.take(12)
+            patch = JsonObject(patch + ("kitchenNotes" to JsonArray(notes.map { JsonPrimitive(it) })))
         }
         if (patch.isNotEmpty()) mergeSettings(tenant, patch)
     }

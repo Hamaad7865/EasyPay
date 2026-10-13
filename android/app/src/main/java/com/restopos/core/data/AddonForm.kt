@@ -10,10 +10,16 @@ import com.restopos.core.common.Money
 object AddonForm {
     // alone: picking it takes the group's other choices off, and picking
     // another takes it off (All among the sauces, None)
-    data class Choice(val id: String, val name: String, val price: Long, val alone: Boolean = false)
+    // maxQty: how many of it one line may take; 1 is one or none, more is a
+    // choice marked Several (Eggs: 5)
+    data class Choice(val id: String, val name: String, val price: Long, val alone: Boolean = false, val maxQty: Int = 1)
     data class Group(val name: String, val min: Int, val max: Int, val choices: List<Choice>)
     // a choice as its row holds it; id: made when the row was added, or the choice's own
-    data class Typed(val id: String, val name: String = "", val price: String = "", val alone: Boolean = false)
+    // several, most: the key Several and the number typed beside it
+    data class Typed(val id: String, val name: String = "", val price: String = "", val alone: Boolean = false, val several: Boolean = false, val most: String = "")
+
+    // the number the sheet offers when Several is first pressed
+    const val USUAL_MOST = "5"
 
     fun read(name: String, min: String, max: String, rows: List<Typed>): Result<Group> = runCatching {
         val called = name.trim().take(40)
@@ -28,7 +34,9 @@ object AddonForm {
             require(n.isNotEmpty()) { "Give each choice a name" }
             val price = if (r.price.isBlank()) 0L else Money.parseRs(r.price) ?: throw IllegalArgumentException("The price of $n is not a number")
             require(price <= LinePrice.MOST) { "The price of $n is too large" }
-            Choice(r.id, n, price, r.alone)
+            // a choice picked alone is one or none, whatever else is ticked
+            val most = if (r.several && !r.alone) r.most.trim().toIntOrNull()?.takeIf { it in 2..99 } ?: throw IllegalArgumentException("Say how many of $n can be taken, from 2 to 99") else 1
+            Choice(r.id, n, price, r.alone, most)
         }
         require(choices.size <= 50) { "A group holds 50 choices at most" }
         require(choices.map { it.name.lowercase() }.toSet().size == choices.size) { "Two choices have the same name" }

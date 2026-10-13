@@ -4,10 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -41,6 +45,7 @@ import com.restopos.core.ui.Toaster
 import com.restopos.core.ui.V
 import com.restopos.core.ui.VBtn
 import com.restopos.core.ui.VI
+import com.restopos.core.ui.VIcon
 import com.restopos.core.ui.quietTap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,10 +62,26 @@ class AddonEdit(val group: ModifierGroupEntity?, val id: String, val choices: Li
 class AddonEditor(private val service: ServiceRepository, private val approvals: Approvals, private val scope: CoroutineScope) {
     val listing = MutableStateFlow(false)
     val editing = MutableStateFlow<AddonEdit?>(null)
+    val noting = MutableStateFlow(false) // the kitchen notes are open
     val busy = MutableStateFlow(false)
 
     fun list() { listing.value = true }
     fun closeList() { listing.value = false }
+    fun notes() { noting.value = true }
+    fun closeNotes() { if (!busy.value) noting.value = false }
+
+    // The notes offered when an item is added, saved whole.
+    fun saveNotes(notes: List<String>, by: StaffMember? = null) {
+        if (busy.value) return
+        scope.launch {
+            busy.value = true
+            val out = service.saveKitchenNotes(notes, by)
+            busy.value = false
+            val need = out.exceptionOrNull() as? NeedsApproval
+            if (need != null && by == null) approvals.ask(need.permission, need.what) { who -> saveNotes(notes, who) }
+            else out.fold({ noting.value = false; Toaster.say("The kitchen notes are saved." + Journey.others) }, { Toaster.say(it.message ?: "That did not work") })
+        }
+    }
     fun new() { editing.value = AddonEdit(null, Uuid7.next(), emptyList()) }
     fun open(group: ModifierGroupEntity, choices: List<ModifierEntity>) { editing.value = AddonEdit(group, group.id, choices) }
     fun close() { if (!busy.value) editing.value = null }
@@ -98,12 +119,14 @@ private fun rupees(cents: Long): String = if (cents % 100 == 0L) (cents / 100).t
 
 // The list of groups, and the sheet of the one being changed.
 @Composable
-internal fun AddonSheets(editor: AddonEditor, groups: List<ModifierGroupEntity>, choices: List<ModifierEntity>) {
+internal fun AddonSheets(editor: AddonEditor, groups: List<ModifierGroupEntity>, choices: List<ModifierEntity>, notes: List<String> = emptyList()) {
     val listing by editor.listing.collectAsState()
     val editing by editor.editing.collectAsState()
+    val noting by editor.noting.collectAsState()
     val byGroup = choices.groupBy { it.group_id }
 
     editing?.let { AddonSheet(editor, it); return }
+    if (noting) { NotesSheet(editor, notes); return }
     if (!listing) return
     Sheet(onDismiss = { editor.closeList() }, width = 620.dp) {
         SheetHead("Add-ons", "What can be added to an item when it is ordered: extras, how it is cooked. Tap a group to change it.") { editor.closeList() }
@@ -121,6 +144,17 @@ internal fun AddonSheets(editor: AddonEditor, groups: List<ModifierGroupEntity>,
                 }
             }
         }
+        // the notes ticked for the kitchen in the same pop-up as the add-ons
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(V.Well).quietTap { editor.notes() }.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                T("Kitchen notes", 15.sp, 700)
+                T(if (notes.isEmpty()) "None yet: a note is typed each time" else notes.joinToString(", "), 13.sp, 500, V.Text2, lines = 2)
+            }
+            T(if (notes.size == 1) "1 note" else "${notes.size} notes", 13.sp, 700, V.Text3)
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             VBtn("Close", height = 52.dp) { editor.closeList() }
             Box(Modifier.weight(1f))
@@ -128,6 +162,52 @@ internal fun AddonSheets(editor: AddonEditor, groups: List<ModifierGroupEntity>,
         }
     }
 }
+
+// The notes offered when an item is added ("No onion", "Rush"): the list the
+// back office's Settings keeps, changed here too. The owner: "add somewhere
+// where we can add presets of kitchen note". Twelve notes of forty letters
+// at most; saved whole.
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun NotesSheet(editor: AddonEditor, saved: List<String>) {
+    val busy by editor.busy.collectAsState()
+    var notes by remember(saved) { mutableStateOf(saved) }
+    var typed by remember { mutableStateOf("") }
+    // the list with what is in the box added to it, or null when the box's note cannot go on it
+    fun added(): List<String>? {
+        val n = typed.trim().take(40)
+        return when {
+            n.isEmpty() -> notes
+            notes.any { it.equals(n, ignoreCase = true) } -> { Toaster.say("That note is already there"); null }
+            notes.size >= KITCHEN_NOTES_MOST -> { Toaster.say("Twelve notes at most. Take one off first."); null }
+            else -> notes + n
+        }
+    }
+    Sheet(onDismiss = { editor.closeNotes() }, width = 620.dp, top = true) {
+        SheetHead("Kitchen notes", "What can be ticked for the kitchen when an item is added. Twelve at most.") { editor.closeNotes() }
+        if (notes.isEmpty()) T("No note yet. Without any, a note is typed each time.", 14.sp, 500, V.Text2, lines = 2)
+        else FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            notes.forEach { n ->
+                Row(Modifier.height(44.dp).clip(RoundedCornerShape(22.dp)).background(V.Key).padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    T(n, 14.sp, 700)
+                    Box(Modifier.size(44.dp).quietTap { notes = notes - n }, contentAlignment = Alignment.Center) { VIcon(VI.Close, 16.dp, V.Text2) }
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Field(typed, { typed = it.take(40) }, "Another note, for example No onion", Modifier.weight(1f), height = 50.dp, size = 16.sp, onDone = { added()?.let { notes = it; typed = "" } })
+            VBtn("Add", height = 50.dp, icon = VI.Plus) { added()?.let { notes = it; typed = "" } }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f))
+            VBtn("Cancel", height = 50.dp, enabled = !busy) { editor.closeNotes() }
+            // a note still in the box is meant to be kept
+            VBtn(if (busy) "Saving…" else "Save", bg = V.Blue, fg = Color.White, height = 50.dp, weight = 800, enabled = !busy) { added()?.let { editor.saveNotes(it) } }
+        }
+    }
+}
+
+private const val KITCHEN_NOTES_MOST = 12
 
 @Composable
 private fun AddonSheet(editor: AddonEditor, edit: AddonEdit) {
@@ -137,10 +217,10 @@ private fun AddonSheet(editor: AddonEditor, edit: AddonEdit) {
     var min by remember(edit) { mutableStateOf(was?.min_select?.toString() ?: "0") }
     var max by remember(edit) { mutableStateOf(was?.max_select?.toString() ?: "0") }
     // its choices, and one empty row to type the next into
-    var rows by remember(edit) { mutableStateOf(edit.choices.map { AddonForm.Typed(it.id, it.name, if (it.price == 0L) "" else rupees(it.price), it.alone) } + AddonForm.Typed(Uuid7.next())) }
+    var rows by remember(edit) { mutableStateOf(edit.choices.map { AddonForm.Typed(it.id, it.name, if (it.price == 0L) "" else rupees(it.price), it.alone, it.max_qty > 1, if (it.max_qty > 1) it.max_qty.toString() else "") } + AddonForm.Typed(Uuid7.next())) }
     var removing by remember(edit) { mutableStateOf(false) }
 
-    Sheet(onDismiss = { editor.close() }, width = 640.dp, pad = 22.dp, gap = 10.dp, top = true) {
+    Sheet(onDismiss = { editor.close() }, width = 720.dp, pad = 22.dp, gap = 10.dp, top = true) {
         if (removing && was != null) {
             SheetHead("Remove ${was.name}?", "It comes off every item that carries it. Orders already taken keep what was picked.") { editor.close() }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -179,9 +259,27 @@ private fun AddonSheet(editor: AddonEditor, edit: AddonEdit) {
                 // picked alone: All among the sauces, None
                 Box(
                     Modifier.height(48.dp).clip(RoundedCornerShape(12.dp)).background(if (r.alone) V.On else V.Key)
-                        .quietTap { rows = rows.map { if (it.id == r.id) it.copy(alone = !it.alone) else it } }.padding(horizontal = 14.dp),
+                        // a choice picked alone is one or none: it is not several as well
+                        .quietTap { rows = rows.map { if (it.id == r.id) it.copy(alone = !it.alone, several = it.several && it.alone) else it } }.padding(horizontal = 14.dp),
                     contentAlignment = Alignment.Center,
                 ) { T("Alone", 14.sp, 700, if (r.alone) V.OnText else V.Text2) }
+                // taken several times (Eggs, not Mayo), up to the number beside it
+                Box(
+                    Modifier.height(48.dp).clip(RoundedCornerShape(12.dp)).background(if (r.several) V.On else V.Key)
+                        .quietTap {
+                            rows = rows.map {
+                                if (it.id != r.id) it
+                                else it.copy(several = !it.several, alone = it.alone && it.several, most = if (!it.several && it.most.isBlank()) AddonForm.USUAL_MOST else it.most)
+                            }
+                        }.padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) { T("Several", 14.sp, 700, if (r.several) V.OnText else V.Text2) }
+                if (r.several) {
+                    Field(
+                        r.most, { v -> rows = rows.map { if (it.id == r.id) it.copy(most = v.filter { c -> c.isDigit() }.take(2)) else it } }, "5",
+                        Modifier.width(66.dp), height = 48.dp, number = true, size = 16.sp, leading = { T("×", 15.sp, 700, V.Text2) },
+                    )
+                }
                 IconKey(VI.Close, size = 48.dp) { rows = rows.filterNot { it.id == r.id }.ifEmpty { listOf(AddonForm.Typed(Uuid7.next())) } }
             }
         }
@@ -189,7 +287,7 @@ private fun AddonSheet(editor: AddonEditor, edit: AddonEdit) {
         // own pushed Save off a 10-inch for a group of three choices
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             VBtn("Another choice", height = 44.dp, radius = 12.dp, size = 14.sp, icon = VI.Plus) { rows = rows + AddonForm.Typed(Uuid7.next()) }
-            T("Alone (All, None): picking it takes the others off, and another takes it off.", 13.sp, 500, V.Text2, Modifier.weight(1f), lines = 2)
+            T("Alone (All, None): picking it takes the others off. Several (Eggs): it can be taken more than once, up to its number.", 13.sp, 500, V.Text2, Modifier.weight(1f), lines = 2)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (was != null) VBtn("Remove", height = 50.dp, fg = V.RedText, enabled = !busy) { removing = true }

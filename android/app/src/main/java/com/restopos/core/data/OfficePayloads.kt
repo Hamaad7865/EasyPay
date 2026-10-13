@@ -87,7 +87,7 @@ object OfficePayloads {
     // A group of add-ons, whole: a choice that is not in the list is removed by whoever takes this.
     fun addonSave(id: String, g: AddonForm.Group, approvedBy: String?): JsonObject = buildJsonObject {
         put("id", id); put("name", g.name); put("min", g.min); put("max", g.max)
-        putJsonArray("choices") { g.choices.forEach { c -> add(buildJsonObject { put("id", c.id); put("name", c.name); put("price", c.price); put("alone", c.alone) }) } }
+        putJsonArray("choices") { g.choices.forEach { c -> add(buildJsonObject { put("id", c.id); put("name", c.name); put("price", c.price); put("alone", c.alone); put("max_qty", c.maxQty) }) } }
         approvedBy?.let { put("approved_by", it) }
     }
 
@@ -100,6 +100,12 @@ object OfficePayloads {
     fun settingsSave(header: String?, footer: String?, servicePct: Int?, approvedBy: String?): JsonObject = buildJsonObject {
         if (header != null || footer != null) put("receipt", buildJsonObject { header?.let { put("header", it) }; footer?.let { put("footer", it) } })
         servicePct?.let { put("servicePct", it) }
+        approvedBy?.let { put("approved_by", it) }
+    }
+
+    // The notes offered when an item is added, whole (server 0108).
+    fun kitchenNotesSave(notes: List<String>, approvedBy: String?): JsonObject = buildJsonObject {
+        putJsonArray("kitchenNotes") { notes.forEach { add(it) } }
         approvedBy?.let { put("approved_by", it) }
     }
 

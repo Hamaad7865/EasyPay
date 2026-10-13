@@ -470,6 +470,20 @@ class ServiceRepository @Inject constructor(
         }, OfficePayloads.settingsSave(header, footer, servicePct, staff.approvedBy("settings.device", approver)))
     }
 
+    // The notes offered when an item is added ("No onion", "Rush"), whole: the
+    // list the back office's Settings keeps (server 0108).
+    suspend fun saveKitchenNotes(notes: List<String>, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("settings.device", "change the kitchen notes", approver)
+        ask("settings.save", { code ->
+            when (code) {
+                "forbidden" -> "You are not allowed to change the kitchen notes. Ask a manager."
+                "unknown-op" -> "The server has to be updated before this can be changed from a till."
+                null -> "The server refused it."
+                else -> "The server refused it ($code)."
+            }
+        }, OfficePayloads.kitchenNotesSave(notes, staff.approvedBy("settings.device", approver)))
+    }
+
     // ---- a product's variants (server 0097) ----
     // whether the person signed in may see cost: a sheet shows it, and sends it, only then
     fun mayCost(): Boolean = staff.can("costs.view")
