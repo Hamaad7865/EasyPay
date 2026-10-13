@@ -69,7 +69,7 @@ function check(name, cond, extra) {
 
   const c = new Client({ connectionString: env.DATABASE_URL_UNPOOLED, ssl: { require: true } });
   await c.connect();
-  const tid = crypto.randomUUID();
+  const tid = crypto.randomUUID(), admin = crypto.randomUUID();
   const q1 = async (sql, args) => (await c.query(sql, args)).rows[0];
   await c.query(`insert into tenants (id, tenant_id, name) values ('${tid}','${tid}','ApiRegister-Probe')`);
   try {
@@ -136,7 +136,26 @@ function check(name, cond, extra) {
     const me = await call('GET', '/me', cashier.bearer);
     const ownPull = await call('GET', `/sync/pull?storeId=${store}&cursor=0&limit=5`, cashier.bearer);
     check('A4 a cashier\'s login still reads its own business and syncs a till it is signed in on', me.status === 200 && !!me.json && me.json.tenantId === tid && ownPull.status === 200, me.status + ' ' + ownPull.status);
+
+    // A5 a till that EasyPay removed (migration 0104): its tablet still holds
+    // what it sold, and is not set up again as it is
+    await c.query(`insert into platform.admins (auth_user_id, email) values ($1, $2)`, [admin, `test-admin-${admin}@example.com`]);
+    await c.query(`select platform.remove_till($1, $2)`, [admin, t3.deviceId]);
+    const gone = await call('GET', `/sync/pull?storeId=${store}&cursor=0&limit=5`, `Device ${t3.deviceId}:${own.json && own.json.syncKey}`);
+    check('A5 a removed till\'s key opens nothing', gone.status === 401, String(gone.status));
+    const back = await call('POST', '/devices/register', owner.bearer, t3);
+    check('A5 the tablet that was it is not set up again as it is, and is told to clear the app\'s data',
+      back.status === 409 && !!back.json && back.json.why === 'removed' && /Clear data/.test(back.json.error || ''), back.status + ' ' + back.said.slice(0, 160));
+    check('A5 no till was made for it', (await rowOf(t3.deviceId)).tills === 0);
+    const code = (await q1(`select tablet_code_make($1, $2, null) as r`, [tid, store])).r;
+    const byCode = await call('POST', '/devices/redeem', undefined, { code: code.code, deviceId: t3.deviceId, tablet: 'tablet-kept' });
+    const unused = await q1(`select used_at from tablet_codes where id = $1`, [code.id]);
+    check('A5 nor with a code, which stays to be used', byCode.status === 409 && !!byCode.json && byCode.json.why === 'removed' && unused.used_at === null, byCode.status + ' ' + byCode.said.slice(0, 120));
+    const fresh = await call('POST', '/devices/register', owner.bearer, till('T3'));
+    check('A5 cleared, the tablet has a new id and is set up, under the number that was freed', fresh.status === 200 && !!fresh.json && fresh.json.lastReceiptSeq === 0, fresh.status + ' ' + fresh.said.replace(/[0-9a-f]{64}/g, '<key>').slice(0, 120));
   } finally {
+    await c.query(`delete from platform.removed_tills where tenant_id = $1`, [tid]).catch(() => {});
+    await devguard.cleanupPlatform(c, admin, tid).catch(() => {});
     await devguard.cleanupTenant(c, tid);
     await c.end();
     server.close();

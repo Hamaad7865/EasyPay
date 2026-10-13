@@ -30,7 +30,11 @@ export type Till = {
   last_seen_at: string | null;
   last_receipt_seq: string;
   active: boolean;
+  // nothing recorded on it: no receipt, no day, no cash, no clock-in
+  bare: boolean;
 };
+// Is the client being set up, and how much has been rung up on it so far.
+export type Setup = { settingUp: boolean; receipts: number; orders: number };
 export type Audit = { action: string; detail: Record<string, unknown>; created_at: string; admin: string | null };
 export type { Login };
 
@@ -50,6 +54,11 @@ export type TenantActions = {
   moveTablet: CodeAction;
   endCode: Action;
   openBackOffice: Action;
+  removeTill: Action;
+  removeCode: Action;
+  goLive: Action;
+  backToSettingUp: Action;
+  clearTest: Action;
 };
 
 const ACTIONS: Record<string, string> = {
@@ -71,7 +80,14 @@ const ACTIONS: Record<string, string> = {
   "tablet.move": "Code made for a replacement tablet",
   "tablet.code_end": "Code taken back",
   "backoffice.open": "Back office opened by EasyPay",
+  "till.remove": "Till removed",
+  "tablet.code_remove": "Code removed",
+  "tenant.clear_test": "Test activity cleared",
+  "tenant.live": "Put live",
+  "tenant.setting_up": "Taken back to being set up",
 };
+
+const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 function auditNote(a: Audit): string {
   const d = a.detail ?? {};
@@ -79,11 +95,13 @@ function auditNote(a: Audit): string {
   if (a.action === "tenant.suspended") return String(d.reason ?? "");
   if (a.action === "login.add") return `${String(d.name)} as ${String(d.role)}`;
   if (a.action === "store.add") return `${String(d.name)} (${String(d.code)})`;
-  if (a.action === "till.deactivate" || a.action === "till.activate" || a.action === "tablet.move") return String(d.code ?? "");
+  if (a.action === "till.deactivate" || a.action === "till.activate" || a.action === "tablet.move" || a.action === "till.remove") return String(d.code ?? "");
+  if (a.action === "tablet.code_remove") return `ending ${String(d.hint ?? "")}`;
+  if (a.action === "tenant.clear_test") {
+    return [count(Number(d.receipts ?? 0), "receipt"), count(Number(d.orders ?? 0), "order"), count(Number(d.tills ?? 0), "till"), count(Number(d.codes ?? 0), "code")].join(", ");
+  }
   return "";
 }
-
-const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 // One restaurant's page as it is drawn. What it has is on the left (its
 // stores with their tills, its logins); what it is, is on the right (its
@@ -98,6 +116,7 @@ export function TenantView({
   roles,
   audit,
   codes,
+  setup,
   error,
   notice,
   actions,
@@ -109,11 +128,13 @@ export function TenantView({
   roles: string[];
   audit: Audit[];
   codes: TabletCode[];
+  setup: Setup;
   error?: string;
   notice?: string;
   actions: TenantActions;
 }) {
   const active = tenant.status === "active";
+  const offline = isOffline(tenant.plan);
   const which = <input type="hidden" name="tenant" value={tenant.id} />;
   return (
     <div>
@@ -127,13 +148,14 @@ export function TenantView({
       <div className="adm-title">
         <h1>{tenant.name}</h1>
         <span className={active ? "badge green" : "badge red"}>{active ? "Active" : "Suspended"}</span>
+        {setup.settingUp && <span className="badge amber">Setting up</span>}
       </div>
       <p className="lede">
         {cap(tenant.business_type)} · {cap(tenant.plan)} plan · ID {supportId(tenant.id)} · Created {day(tenant.created_at)}
       </p>
       <Notes error={error} notice={notice} />
       {/* An offline client has no back office of its own: EasyPay sets it up from here, for its owner. */}
-      {isOffline(tenant.plan) && (
+      {offline && (
         <form action={actions.openBackOffice} className="bo-banner">
           {which}
           <strong>This client runs on its tablet, and has no back office of its own</strong>
@@ -215,23 +237,44 @@ export function TenantView({
                             <span className={d.active ? "badge green" : "badge"}>{d.active ? "Active" : "Deactivated"}</span>
                           </td>
                           <td>
-                            <form action={actions.setTillActive} className="row-actions">
-                              {which}
-                              <input type="hidden" name="device" value={d.id} />
-                              <input type="hidden" name="active" value={d.active ? "false" : "true"} />
-                              {d.active ? (
-                                <ConfirmSubmit
-                                  className="btn-danger btn-sm"
-                                  title={`Deactivate ${d.name}?`}
-                                  text="It cannot register again. A till that is still signed in keeps selling and syncing; switch its login off to stop that. You can reactivate it here."
-                                  yes="Deactivate"
-                                >
-                                  Deactivate
-                                </ConfirmSubmit>
-                              ) : (
-                                <Submit className="btn-quiet btn-sm">Reactivate</Submit>
+                            <div className="row-actions">
+                              {/* Only a till with nothing recorded; and where the tablet keeps its sales to itself, only while the client is being set up. */}
+                              {d.bare && (!offline || setup.settingUp) && (
+                                <form action={actions.removeTill}>
+                                  {which}
+                                  <input type="hidden" name="device" value={d.id} />
+                                  <ConfirmSubmit
+                                    className="btn-quiet btn-sm"
+                                    title={`Remove ${d.name}?`}
+                                    text={
+                                      offline
+                                        ? "The till goes for good, with its key and the codes it was set up with. The tablet that is this till works on its own and keeps selling, but it can no longer be given a code: a backup of it can be restored to no tablet. Remove it only when what is on that tablet is not needed."
+                                        : "The till goes for good, with its key and the codes it was set up with, and its number is free again. The tablet that was it is set up again only after the EasyPay app's data is cleared on it."
+                                    }
+                                    yes="Remove"
+                                  >
+                                    Remove
+                                  </ConfirmSubmit>
+                                </form>
                               )}
-                            </form>
+                              <form action={actions.setTillActive}>
+                                {which}
+                                <input type="hidden" name="device" value={d.id} />
+                                <input type="hidden" name="active" value={d.active ? "false" : "true"} />
+                                {d.active ? (
+                                  <ConfirmSubmit
+                                    className="btn-danger btn-sm"
+                                    title={`Deactivate ${d.name}?`}
+                                    text="It cannot register again. A till that is still signed in keeps selling and syncing; switch its login off to stop that. You can reactivate it here."
+                                    yes="Deactivate"
+                                  >
+                                    Deactivate
+                                  </ConfirmSubmit>
+                                ) : (
+                                  <Submit className="btn-quiet btn-sm">Reactivate</Submit>
+                                )}
+                              </form>
+                            </div>
                           </td>
                         </tr>
                       )),
@@ -242,19 +285,21 @@ export function TenantView({
             </div>
             <p className="adm-note">
               Deactivating stops a till from registering again. It does not stop a till that is still signed in: that till keeps selling and syncing until
-              its login is switched off.
+              its login is switched off. A till with nothing recorded on it (no sale, no day, no cash) can be removed for good
+              {offline ? ", while the client is being set up" : ""}.
             </p>
           </section>
 
           <Tablets
             tenant={tenant.id}
-            offline={isOffline(tenant.plan)}
+            offline={offline}
             stores={stores}
             tills={tills.filter((d) => d.active).map((d) => ({ id: d.id, name: d.name, code: d.code, store: stores.find((st) => st.id === d.store_id)?.name ?? "" }))}
             codes={codes}
             addTablet={actions.addTablet}
             moveTablet={actions.moveTablet}
             endCode={actions.endCode}
+            removeCode={actions.removeCode}
           />
 
           <section className="card flush">
@@ -289,6 +334,95 @@ export function TenantView({
         </div>
 
         <div>
+          {/* Being set up, or live (migration 0104): what a client is tried with can be cleared only before it opens. */}
+          <section className="card flush">
+            <div className="card-head">
+              <div>
+                <h2>{setup.settingUp ? "Being set up" : "Live"}</h2>
+                <p>{offline ? "Its sales are on its tablet, not here." : `${count(setup.receipts, "receipt")} and ${count(setup.orders, "order")} so far.`}</p>
+              </div>
+            </div>
+            {setup.settingUp ? (
+              <div className="card-body">
+                {offline ? (
+                  <div className="adm-part">
+                    <strong>What it was tried with</strong>
+                    <span className="help">
+                      This client runs on its tablet: what was rung up while it was tried is on the tablet, and nothing of it is here to clear. A till it
+                      was tried with can be removed in the list, and a code that waits or is over too.
+                    </span>
+                  </div>
+                ) : (
+                  <form action={actions.clearTest} className="adm-part">
+                    {which}
+                    <strong>Clear test activity</strong>
+                    <span className="help">
+                      Removes what was rung up while it was tried: every order, receipt, refund, payment, day, cash movement, clock-in and booking, and
+                      its tills with their keys and the codes they were set up with (a code for a new tablet that nobody used yet stays). What the
+                      sales took off the shelves is put back. The menu, the stock with its deliveries
+                      and counts, suppliers, customers, tables, staff, logins, printers and settings stay. Before you clear, clear the EasyPay
+                      app&apos;s data on each tablet (the tablet&apos;s Settings, Apps, EasyPay, Storage); afterwards, set each one up again. This
+                      cannot be undone from here.
+                    </span>
+                    <label className="field">
+                      Type the client&apos;s name to confirm
+                      <input name="confirm" placeholder={tenant.name} required autoComplete="off" />
+                    </label>
+                    <ConfirmSubmit
+                      className="btn-danger"
+                      title={`Clear what ${tenant.name} was tried with?`}
+                      text={`${count(setup.receipts, "receipt")}, ${count(setup.orders, "order")} and ${count(tills.length, "till")} go for good. Its menu, stock, staff and settings stay. Every tablet has to be cleared and set up again.`}
+                      yes="Clear test activity"
+                    >
+                      Clear test activity
+                    </ConfirmSubmit>
+                  </form>
+                )}
+                <form action={actions.goLive} className="adm-part">
+                  {which}
+                  <strong>Go live</strong>
+                  <span className="help">
+                    The day it opens for real. From then on its sales are its books: nothing of them is cleared from here, and it can be taken back to
+                    being set up only while it has no receipt.
+                  </span>
+                  <ConfirmSubmit
+                    title={`Put ${tenant.name} live?`}
+                    text={
+                      !offline && setup.receipts > 0
+                        ? `It has ${count(setup.receipts, "receipt")} from its trying, and they will stay in its books: once it is live they cannot be cleared from here. Clear test activity first if they should go.`
+                        : "From now on its sales are its books: nothing of them is cleared from here."
+                    }
+                    yes="Go live"
+                  >
+                    Go live
+                  </ConfirmSubmit>
+                </form>
+              </div>
+            ) : (
+              <form action={actions.backToSettingUp} className="card-body">
+                {which}
+                <span className="help">
+                  Its sales are its books: nothing of them is cleared from here.{" "}
+                  {setup.receipts === 0
+                    ? "It has no receipt yet, so it can still be taken back to being set up, where a till can be removed and what it is tried with can be cleared."
+                    : "It has receipts, so it stays live."}
+                </span>
+                {setup.receipts === 0 && (
+                  <div className="inline" style={{ display: "flex", marginTop: 10 }}>
+                    <ConfirmSubmit
+                      className="btn-quiet"
+                      title={`Take ${tenant.name} back to being set up?`}
+                      text="What is rung up on it from now on can be cleared again, until it is put live."
+                      yes="Back to setting up"
+                    >
+                      Back to setting up
+                    </ConfirmSubmit>
+                  </div>
+                )}
+              </form>
+            )}
+          </section>
+
           <section className="card flush">
             <div className="card-head">
               <h2>Details</h2>

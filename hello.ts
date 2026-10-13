@@ -318,6 +318,7 @@ app.post("/devices/register", async (c) => {
     console.error("plan not read:", (err as Error).message);
     return c.json({ error: "register failed" }, 503);
   }
+  if (await wasRemoved(deviceId)) return c.json(REMOVED, 409);
   try {
     // A till that was deactivated (by its business in the back office, or by
     // the platform admin) stays deactivated: registering again must not
@@ -377,6 +378,27 @@ async function byCodeOnly(tenantId: string, deviceId: string): Promise<boolean> 
   return r.rows[0]?.only === true;
 }
 
+// A till that EasyPay removed (migration 0104: one till taken away, or a
+// client's trying cleared before it opens). The tablet that was that till
+// still holds what it sold, and set up again as it is it would send all of
+// it back. It is refused until its app's data is cleared: a tablet makes
+// itself a new id then, and starts clean. Never in the way of a set-up for
+// any other reason: if the question cannot be asked, the answer is no.
+const REMOVED = {
+  error:
+    "This tablet was a till that EasyPay removed. Clear the EasyPay app's data on it (the tablet's Settings, Apps, EasyPay, Storage, Clear data), then set it up again.",
+  why: "removed",
+};
+async function wasRemoved(deviceId: string): Promise<boolean> {
+  if (!UUID.test(deviceId)) return false; // refused elsewhere, as before
+  try {
+    return (await pool.query(`select till_removed($1::uuid) as r`, [deviceId])).rows[0]?.r === true;
+  } catch (err) {
+    console.error("removed tills not read:", (err as Error).message);
+    return false;
+  }
+}
+
 // A tablet set up with its code: no login. The code says which business and
 // which store; the tablet is registered as that store's next till, or, for a
 // tablet that replaces another, as the till it replaces (the answer names the
@@ -385,7 +407,8 @@ async function byCodeOnly(tenantId: string, deviceId: string): Promise<boolean> 
 // once; the tablet that used it may ask again if the answer never reached it.
 //   404  not a code of ours
 //   409  used by another tablet, taken back, or the tablet was replaced; or not the
-//        code of the till a backup is of (mustBe: what a tablet filled from one sends)
+//        code of the till a backup is of (mustBe: what a tablet filled from one sends);
+//        or the tablet was a till that was removed, and still holds that till's sales
 //   403  the business is suspended, or the till was deactivated
 // The code is never written to the log.
 type Redeemed = { ok: boolean; why?: string; tenant_id?: string; business?: string; store_id?: string; device_id?: string; key?: string; last_receipt_seq?: string | number; name?: string; code?: string; moved?: boolean };
@@ -400,6 +423,8 @@ app.post("/devices/redeem", async (c) => {
   // a tablet filled from a backup says which till it has to be (migration 0100)
   const mustBe = body.mustBe === undefined || body.mustBe === null ? null : String(body.mustBe);
   if (mustBe !== null && !UUID.test(mustBe)) return c.json({ error: "mustBe is a till's id" }, 400);
+  // before the code is looked at, so that it stays unused
+  if (await wasRemoved(deviceId)) return c.json(REMOVED, 409);
   let r: Redeemed | undefined;
   try {
     r = (await pool.query(`select redeem_tablet_code($1, $2::uuid, $3, $4, $5, $6::uuid) as r`, [

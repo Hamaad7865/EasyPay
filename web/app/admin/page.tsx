@@ -95,6 +95,7 @@ export default async function AdminHomePage({ searchParams }: { searchParams: Se
   const tenants = await db()
     .query(
       `select t.id, t.name, t.business_type, t.plan, t.status, t.status_reason, t.created_at,
+              platform.is_setting_up(t.id) as setting_up,
               (select count(*)::int from stores s where s.tenant_id = t.id and s.deleted_at is null) as stores,
               (select count(*)::int from employees e
                 where e.tenant_id = t.id and e.auth_user_id is not null and e.deleted_at is null) as logins,

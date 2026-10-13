@@ -39,7 +39,9 @@ function Answer({ answer, codes }: { answer: CodeAnswer; codes: TabletCode[] }) 
 
 // A client's tablets by code (migration 0099): one code sets up one tablet.
 // A code for a new tablet in a store, a code for the tablet that replaces a
-// till's, and the codes there are, with one nobody used yet to take back.
+// till's, and the codes there are, with one nobody used yet to take back. A
+// code that waits or is over can be removed from the list (0104); one in use
+// is a tablet at work, and goes with its till.
 export function Tablets({
   tenant,
   offline,
@@ -49,6 +51,7 @@ export function Tablets({
   addTablet,
   moveTablet,
   endCode,
+  removeCode,
 }: {
   tenant: string;
   offline: boolean;
@@ -58,6 +61,7 @@ export function Tablets({
   addTablet: CodeAction;
   moveTablet: CodeAction;
   endCode: Action;
+  removeCode: Action;
 }) {
   const [added, add] = useActionState(addTablet, null);
   const [moved, move] = useActionState(moveTablet, null);
@@ -146,12 +150,32 @@ export function Tablets({
                   )}
                 </td>
                 <td>
-                  {c.state === "waiting" && (
-                    <form action={endCode} className="row-actions">
-                      {which}
-                      <input type="hidden" name="code" value={c.id} />
-                      <Submit className="btn-sm">Take back</Submit>
-                    </form>
+                  {c.state !== "used" && (
+                    <div className="row-actions">
+                      {c.state === "waiting" && (
+                        <form action={endCode}>
+                          {which}
+                          <input type="hidden" name="code" value={c.id} />
+                          <Submit className="btn-sm">Take back</Submit>
+                        </form>
+                      )}
+                      <form action={removeCode}>
+                        {which}
+                        <input type="hidden" name="code" value={c.id} />
+                        <ConfirmSubmit
+                          className="btn-quiet btn-sm"
+                          title={`Remove the code ending ${c.hint}?`}
+                          text={
+                            c.state === "waiting"
+                              ? "It is taken off the list for good, and sets up nothing from then on."
+                              : "It is taken off the list for good. It is over already: nothing else changes."
+                          }
+                          yes="Remove"
+                        >
+                          Remove
+                        </ConfirmSubmit>
+                      </form>
+                    </div>
                   )}
                 </td>
               </tr>

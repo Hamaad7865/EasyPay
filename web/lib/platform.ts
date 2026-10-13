@@ -55,6 +55,17 @@ const MESSAGES: Record<string, string> = {
   "bad-business-type": "Choose restaurant or retail.",
   "open-orders": "This client has open orders. Close or cancel them on the till first, then change the type.",
   "not-a-platform-admin": "You are no longer a platform admin.",
+  // being set up, and live (migration 0104)
+  "already-live": "This client is live already.",
+  "already-setting-up": "This client is being set up already.",
+  "has-receipts": "This client has receipts, so it stays live: from its first sale its receipts are its books.",
+  "client-live": "This client is live: its sales are its books, and nothing of them is cleared from here.",
+  "client-offline": "This client runs on its tablet: what it sold is on the tablet, not here. Remove its tills one by one.",
+  "till-has-records":
+    "That till has sales, a day, cash or clock-ins recorded, so it is not removed. While the client is being set up, Clear test activity removes it with what it recorded. A live client's till is deactivated.",
+  "till-of-live-offline":
+    "This client runs on its tablet and is live: what that tablet sold cannot be seen from here, so its till is not removed. Deactivate it, or make a code for a replacement.",
+  "code-in-use": "That code is a tablet at work. It goes when its till is removed, and ends when a code for a replacement is made.",
 };
 
 export function adminMessage(e: unknown): string {

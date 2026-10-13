@@ -17,6 +17,7 @@ export type TenantLine = {
   plan: string;
   active: boolean;
   reason: string | null;
+  settingUp: boolean;
   stores: number;
   logins: number;
   tills: number;
@@ -117,6 +118,7 @@ export function TenantsTable({ rows, start }: { rows: TenantLine[]; start: Start
                   <td>{cap(r.plan)}</td>
                   <td>
                     <span className={r.active ? "badge green" : "badge red"}>{r.active ? "Active" : "Suspended"}</span>
+                    {r.settingUp && <span className="badge amber" style={{ marginLeft: 6 }}>Setting up</span>}
                     {r.reason && (
                       <span className="sub clip-note" title={r.reason}>
                         {r.reason}

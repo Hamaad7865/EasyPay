@@ -14,6 +14,8 @@ export type TenantRow = {
   plan: string;
   status: string;
   status_reason: string | null;
+  // being set up, not yet live (migration 0104)
+  setting_up: boolean;
   created_at: string;
   stores: number;
   logins: number;
@@ -51,6 +53,7 @@ export function AdminHome({
     plan: t.plan,
     active: t.status === "active",
     reason: t.status_reason,
+    settingUp: t.setting_up,
     stores: t.stores,
     logins: t.logins,
     tills: t.devices,

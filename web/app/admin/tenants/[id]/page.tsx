@@ -8,7 +8,7 @@ import { adminMessage, requirePlatformAdmin } from "@/lib/platform";
 import { loginForRestaurant, passwordProblem, removeLogin, setLoginPassword } from "@/lib/platform-auth";
 import { AS_COOKIE, AS_PATH, adminInside } from "@/lib/tenant";
 import type { CodeAnswer, TabletCode } from "./tablets";
-import { type Audit, type Login, type Store, type Tenant, TenantView, type Till } from "./view";
+import { type Audit, type Login, type Setup, type Store, type Tenant, TenantView, type Till } from "./view";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -298,6 +298,103 @@ async function endCode(formData: FormData) {
   back(tenantId, "notice", "Code taken back. It sets up nothing now.");
 }
 
+// A code that waits or is over is taken off the list (migration 0104). One in
+// use is a tablet at work: it goes with its till.
+async function removeCode(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  const codeId = String(formData.get("code") ?? "");
+  if (!UUID.test(codeId)) notFound();
+  const owned = await db().query(`select 1 from tablet_codes where id = $1 and tenant_id = $2`, [codeId, tenantId]);
+  if (!owned.rowCount) back(tenantId, "error", "That code does not exist.");
+  try {
+    await db().query(`select platform.remove_code($1, $2)`, [adminId, codeId]);
+  } catch (e) {
+    back(tenantId, "error", adminMessage(e));
+  }
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  back(tenantId, "notice", "Code removed.");
+}
+
+// A till with nothing recorded is removed, with its key and its codes: its
+// number is free again. What the database refuses (a till that sold, or the
+// till of a live client that runs on its tablet) comes back in words.
+async function removeTill(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  const deviceId = String(formData.get("device") ?? "");
+  if (!UUID.test(deviceId)) notFound();
+  const owned = await db().query(`select name from pos_devices where id = $1 and tenant_id = $2`, [deviceId, tenantId]);
+  if (!owned.rowCount) back(tenantId, "error", "That till does not exist.");
+  try {
+    await db().query(`select platform.remove_till($1, $2)`, [adminId, deviceId]);
+  } catch (e) {
+    back(tenantId, "error", adminMessage(e));
+  }
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  revalidatePath("/admin");
+  back(
+    tenantId,
+    "notice",
+    `${owned.rows[0].name} removed, with its key and its codes. The tablet that was it is set up again only after the EasyPay app's data is cleared on it.`,
+  );
+}
+
+async function goLive(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  try {
+    await db().query(`select platform.go_live($1, $2)`, [adminId, tenantId]);
+  } catch (e) {
+    back(tenantId, "error", adminMessage(e));
+  }
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  revalidatePath("/admin");
+  back(tenantId, "notice", "This client is live. From now on its sales are its books: nothing of them is cleared from here.");
+}
+
+async function backToSettingUp(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  try {
+    await db().query(`select platform.back_to_setting_up($1, $2)`, [adminId, tenantId]);
+  } catch (e) {
+    back(tenantId, "error", adminMessage(e));
+  }
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  revalidatePath("/admin");
+  back(tenantId, "notice", "This client is being set up again.");
+}
+
+// What a client being set up was tried with is cleared: its sales and its
+// tills go, its set-up stays (migration 0104). The client's name is typed, as
+// its own "Delete all transactions" asks: this cannot be undone from here.
+async function clearTest(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  const found = await db().query(`select name from tenants where id = $1 and deleted_at is null`, [tenantId]);
+  if (!found.rowCount) notFound();
+  if (String(formData.get("confirm") ?? "").trim().toLowerCase() !== String(found.rows[0].name).trim().toLowerCase()) {
+    back(tenantId, "error", "The name you typed is not this client's name. Nothing was cleared.");
+  }
+  let r = { receipts: 0, orders: 0, tills: 0, codes: 0 };
+  try {
+    r = (await db().query(`select platform.clear_test_activity($1, $2) as r`, [adminId, tenantId])).rows[0].r;
+  } catch (e) {
+    // a till that was sending at that moment held a row: nothing was done
+    const busy = e instanceof Error && /lock timeout|deadlock/i.test(e.message);
+    back(tenantId, "error", busy ? "A till was sending its sales at that moment. Nothing was cleared: try again." : adminMessage(e));
+  }
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  revalidatePath("/admin");
+  const n = (v: number, one: string) => `${Number(v)} ${one}${Number(v) === 1 ? "" : "s"}`;
+  back(
+    tenantId,
+    "notice",
+    `Cleared: ${n(r.receipts, "receipt")}, ${n(r.orders, "order")}, ${n(r.tills, "till")} and ${n(r.codes, "code")}. The menu, stock, staff and settings are as they were. Clear the EasyPay app's data on each tablet, then set it up again.`,
+  );
+}
+
 async function setActive(formData: FormData) {
   "use server";
   const { adminId, tenantId } = await tenantOf(formData);
@@ -335,7 +432,7 @@ export default async function TenantPage({
     )
   ).rows[0] as Tenant | undefined;
   if (!tenant) notFound();
-  const [stores, tills, logins, roles, audit, codes] = await Promise.all([
+  const [stores, tills, logins, roles, audit, codes, setup] = await Promise.all([
     pool
       .query(
         `select s.id, s.name, s.code
@@ -346,7 +443,7 @@ export default async function TenantPage({
     pool
       .query(
         `select d.id, d.store_id, d.name, d.code, d.app_version, d.last_seen_at, d.last_receipt_seq,
-                d.deleted_at is null as active
+                d.deleted_at is null as active, platform.till_is_bare(d.tenant_id, d.id) as bare
            from pos_devices d where d.tenant_id = $1 order by d.created_at`,
         [id],
       )
@@ -374,6 +471,14 @@ export default async function TenantPage({
       )
       .then((r) => r.rows as Audit[]),
     pool.query(`select platform.tablet_codes($1) as r`, [id]).then((r) => (r.rows[0]?.r ?? []) as TabletCode[]),
+    pool
+      .query(
+        `select platform.is_setting_up($1) as "settingUp",
+                (select count(*)::int from receipts where tenant_id = $1) as receipts,
+                (select count(*)::int from tickets where tenant_id = $1) as orders`,
+        [id],
+      )
+      .then((r) => r.rows[0] as Setup),
   ]);
   return (
     <TenantView
@@ -384,9 +489,13 @@ export default async function TenantPage({
       roles={roles}
       audit={audit}
       codes={codes}
+      setup={setup}
       error={sp.error}
       notice={sp.notice}
-      actions={{ setDetails, setPlan, setBusinessType, setStatus, addStore, setTillActive, addLogin, setPassword, setPin, setActive, addTablet, moveTablet, endCode, openBackOffice }}
+      actions={{
+        setDetails, setPlan, setBusinessType, setStatus, addStore, setTillActive, addLogin, setPassword, setPin, setActive,
+        addTablet, moveTablet, endCode, openBackOffice, removeTill, removeCode, goLive, backToSettingUp, clearTest,
+      }}
     />
   );
 }
