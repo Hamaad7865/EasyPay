@@ -42,9 +42,10 @@ On a test emulator (1280 x 800, the made-up restaurant that works on its own), t
 
 - **The add-on sheet.** Every choice has the keys Alone and Several. Several pressed on Sausage lit it and put "× 5" beside it; saved, the tablet held Sausage 5, Mayo 1, All 1 and alone.
 - **The pop-up.** Mayo picked: no minus and plus on it. Sausage picked: minus, 1, plus. Plus pressed six times: it stopped at 5, and the key read 320 + 250.
-- **The kitchen notes.** Menu & stock, Add-ons: under the group, "Kitchen notes" with the five usual notes. One taken off came off the list; "No chilli" typed and added; saved, the tablet's settings held the six, and the pop-up offered "No chilli" with the rest.
+- **The kitchen notes.** Menu & stock, Add-ons: under the group, "Kitchen notes" with the five usual notes. "No chilli" typed, added and saved: the tablet's settings held the six, and the pop-up offered "No chilli" with the rest. Then "Extra chutney" taken off and saved: the settings held the five that were left, and the pop-up no longer offered it. (The first try at taking one off was not saved: its sheet closed, see below.)
+- **The pop-up, as a picture:** Mayo picked with nothing beside it, Sausage picked with minus, 3 and plus, the notes as just saved.
 - One fault found by running it, and put right: for a group of three choices the add-on sheet's Remove, Cancel and Save were partly off the bottom of a 10-inch (the sheet slides, but they were out of sight, as once before). The sheet is a little tighter and the line about Fewest and Most is one line; seen again with the same group, the three keys are whole.
 
 Not seen: the back office's Add-ons page in a browser (it needs the owner's sign-in), a tablet that syncs saving either to the server (the suites on dev stand for it), a 15-inch, a real tablet.
 
-Something the run showed about the test, not the till: after a note is taken off, the notes may fit on one line and the box moves up, so a tap aimed at where the box was misses it; keys sent to a sheet with no box in use then pressed its close key.
+Not explained: twice the notes sheet closed, unsaved, when the test tool sent keystrokes straight after a note had been taken off. Typing into the box by the same tool, with nothing taken off first, worked every time, and so did taking a note off and pressing Save. It may be the tool's keys reaching the sheet with no box in use; it was not shown. To be tried by hand: take a note off, then type another.
