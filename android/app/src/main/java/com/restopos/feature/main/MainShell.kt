@@ -625,7 +625,8 @@ fun MainShell(
                 // yet (red); once the list has been opened it is how many
                 // still wait for an answer (the accent), so that one looked at
                 // and left is not forgotten.
-                if (ordering || guestCount.waiting > 0) {
+                val phoneKey = ordering || guestCount.waiting > 0
+                if (phoneKey) {
                     Box {
                         Box(Modifier.size(40.dp).press { guestSheet = true }.clip(RoundedCornerShape(12.dp)).background(V.Panel), contentAlignment = Alignment.Center) {
                             VIcon(PHONE, 19.dp, if (guestCount.waiting > 0) V.Text else V.Text2)
@@ -662,12 +663,17 @@ fun MainShell(
                     T(date, 12.sp, 600, V.Text2)
                 }
                 val name = user?.employee?.name ?: "Till"
+                // Where the bar is already tight (a 10-inch) the phone key takes the
+                // room of the name: who is signed in is then their initial alone, so
+                // the bar is no longer than it was and none of its keys is pushed off.
+                // Worked out from the widths, not seen: no 10-inch was at hand.
+                val initialOnly = tight && phoneKey
                 Row(
-                    Modifier.height(48.dp).press { drawer = true }.clip(RoundedCornerShape(24.dp)).background(V.Panel).padding(start = 6.dp, end = 16.dp),
+                    Modifier.height(48.dp).press { drawer = true }.clip(RoundedCornerShape(24.dp)).background(V.Panel).padding(start = 6.dp, end = if (initialOnly) 6.dp else 16.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Box(Modifier.size(36.dp).clip(CircleShape).background(V.Blue), contentAlignment = Alignment.Center) { T(name.take(1).uppercase(), 15.sp, 800, Color.White) }
-                    T(name.substringBefore(' '), 15.sp, 700, modifier = Modifier.widthIn(max = 96.dp))
+                    if (!initialOnly) T(name.substringBefore(' '), 15.sp, 700, modifier = Modifier.widthIn(max = 96.dp))
                 }
             }
             SyncNotices(needsSignIn, pending, rejected, onSignIn, onRejected, clockAhead, updateRequired)
