@@ -14,12 +14,32 @@ name: db-tests
 # same monthly hours production runs on, and this branch is pushed to many
 # times a day. Never on pull requests: this repository is public, and a pull
 # request from anyone must not be handed a key to the database.
+#
+# What a run costs: a little over an hour of a database at the smallest size
+# (0.25 CU), so about 0.27 of the month's 100 compute hours. Measured on
+# 2026-10-13: the 52 suites that finished took 44 minutes, 51 seconds each,
+# with 19 more to go. GitHub's own minutes cost nothing while the repository
+# is public.
+#
+# The suites run one at a time and must stay so on one copy. Most of them end
+# with cleanupTenant, which locks every table that takes no change (the
+# receipts' and the deliveries') for as long as it deletes; a suite of
+# another client writing a receipt meanwhile waits behind it, or is the one
+# a deadlock stops. And remove-test-clients counts every client in the
+# database before and after ("one client fewer, no more"), which no other
+# suite may be making or removing meanwhile. A copy for each group of suites
+# is no way out: every copy is awake for its own share of the hour, and the
+# plan allows ten branches, most of them taken (nine that day).
 on:
   push:
   workflow_dispatch:
 
+# A run started by hand and the runs of pushes are in groups of their own: a
+# push joins its group even when its job is then skipped, and in one group
+# with it a push to this branch would cancel the hour-long run started by
+# hand.
 concurrency:
-  group: db-tests-${{ github.ref }}
+  group: db-tests-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -29,7 +49,11 @@ jobs:
   db:
     if: ${{ github.event_name == 'workflow_dispatch' || vars.DB_TESTS_ON_PUSH == 'yes' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The suites need 60 to 70 minutes (see above); at 45 the run of
+    # 2026-10-13 was stopped with 19 of the 71 to go. The rest is room for
+    # the suites to come, about 50 seconds each. A suite that hangs is stopped
+    # by its own limit, in the step that runs them.
+    timeout-minutes: 90
     env:
       NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
       NEON_PROJECT_ID: snowy-fire-89764432
@@ -89,21 +113,27 @@ jobs:
       # Every suite that needs only the database, one at a time. Left out:
       # the ones that make real accounts on the sign-in service (api6,
       # signup-lock, platform-auth) and the ones that call a deployed till API
-      # (api-shop-gate, api-till-activity, api-till-key, api-guest-pass): a throwaway branch
-      # has neither. truncate runs last: it empties every table of the branch.
+      # (api-shop-gate, api-till-activity, api-till-key, api-guest-pass,
+      # api-tablet-code): a throwaway branch has neither. truncate runs last:
+      # it empties every table of the branch.
+      #
+      # The longest suite takes a little over three minutes here. One still
+      # running after ten is stopped and counted as failed (its output ends
+      # with timeout's own line saying so), so that a suite that hangs costs
+      # ten minutes of the database, not the rest of the job's limit.
       - name: suites
         if: steps.key.outputs.have == 'yes'
         run: |
-          skip=" guard truncate api6 signup-lock platform-auth api-shop-gate api-till-activity api-till-key api-guest-pass "
+          skip=" guard truncate api6 signup-lock platform-auth api-shop-gate api-till-activity api-till-key api-guest-pass api-tablet-code "
           failed=""
           for f in db/tests/*.test.cjs; do
             s=$(basename "$f" .test.cjs)
             case "$skip" in *" $s "*) continue;; esac
             echo "::group::$s"
-            if node "$f"; then echo "::endgroup::"; else echo "::endgroup::"; echo "::error::$s failed"; failed="$failed $s"; fi
+            if timeout -v -k 10s 10m node "$f"; then echo "::endgroup::"; else echo "::endgroup::"; echo "::error::$s failed"; failed="$failed $s"; fi
           done
           echo "::group::truncate"
-          node db/tests/truncate.test.cjs || failed="$failed truncate"
+          timeout -v -k 10s 10m node db/tests/truncate.test.cjs || failed="$failed truncate"
           echo "::endgroup::"
           if [ -n "$failed" ]; then echo "::error::failed:$failed"; exit 1; fi
       - name: delete throwaway branch
