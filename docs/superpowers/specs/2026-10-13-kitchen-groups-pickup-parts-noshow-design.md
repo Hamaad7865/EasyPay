@@ -50,7 +50,7 @@ Nothing changes on the server: the time is already kept and synced there. The ta
 "Split equally" already took a bill in shares, each by its own payment type, and recorded them as one receipt. Its shares were always equal.
 
 - A fourth choice on the payment screen, **By amount**, beside Full bill, Equally and Split check.
-- In it, a row says what this payment is for, and a key opens a number pad to type it, in whole rupees. Left alone, it is everything that remains.
+- In it, a row says what this payment is for, and a key opens a number pad to type it. Choosing By amount opens the pad for the first part. Left alone, a part is everything that remains.
 - Take 100 by cash: the screen says 75 remaining; pick Juice and charge: done.
 - A part paid in cash can still be counted in from a bigger note, with its change.
 - As many parts as needed. One receipt, with each payment on it; the day closing counts each under its own payment type, as it already does for shares.

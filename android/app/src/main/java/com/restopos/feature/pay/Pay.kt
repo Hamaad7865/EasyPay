@@ -93,11 +93,12 @@ import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 
-// What is written down of a bill being split equally, between two guests.
+// What is written down of a bill being paid in shares, between two of them.
+// mode: how it was being paid, equal shares or parts of any amount (amount).
 @Serializable
 data class KeptShare(val type: String, val paymentTypeId: String, val amount: Long, val tendered: Long? = null, val change: Long = 0, val reference: String? = null)
 @Serializable
-data class KeptSplit(val ticket: String, val n: Int, val shares: List<KeptShare>)
+data class KeptSplit(val ticket: String, val n: Int, val shares: List<KeptShare>, val mode: String = "equal")
 
 data class PayLine(val info: LineInfo, val picked: Boolean)
 data class PaidRow(val label: String, val amount: Long)
@@ -115,7 +116,8 @@ data class PayUi(
     val gone: Boolean = false, // nothing to pay here: the order was paid or cancelled elsewhere
     val title: String = "",
     val kind: String = "counter",
-    val split: String = "full", // full | equal | items (one check of a split check)
+    val split: String = "full", // full | equal | amount (parts of any amount) | items (one check of a split check)
+    val piece: Long = 0, // by amount: the part typed for this payment; 0 is all that remains
     val check: Int? = null, // the check of a split check being paid
     val checkPaid: Boolean = false, // that check is paid and others remain: back to the checks
     val n: Int = 2, // how many guests share the bill equally
@@ -146,11 +148,13 @@ data class PayUi(
     val change: Long get() = if (cash && tendered > amount) tendered - amount else 0
 }
 
-// Payment. A bill is paid three ways. In full: one payment for everything
+// Payment. A bill is paid four ways. In full: one payment for everything
 // that is left. Split equally: the amount due is taken in equal shares, each
 // with its own payment type; the shares are kept here until they add up, and
 // then go out as ONE receipt with all its payments (a receipt always settles
-// its lines in full), with a printed copy for each guest. Split check: the
+// its lines in full), with a printed copy for each guest. By amount: the
+// same, in parts of whatever amount the cashier types (100 by cash, then the
+// 75 that remain by Juice), and one printed receipt. Split check: the
 // order is divided into checks on its own screen, and each check is paid here
 // on a receipt of its own while the rest stays on the order.
 @HiltViewModel
@@ -193,7 +197,8 @@ class PayViewModel @Inject constructor(
         _ui.value = PayUi(check = check)
         val kept = if (check == null) kept() else null
         if (kept != null) shares = kept.shares.map { Share(it.type, PayInput(it.paymentTypeId, it.amount, it.tendered, it.change, it.reference)) }
-        load(if (check != null) "items" else if (kept != null) "equal" else "full")
+        val mode = if (kept?.mode == "amount") "amount" else "equal"
+        load(if (check != null) "items" else if (kept != null) mode else "full")
         if (kept != null) {
             val s = _ui.value
             if (s.gone || shares.sumOf { it.input.amount } >= s.pending + s.remaining) {
@@ -203,7 +208,7 @@ class PayViewModel @Inject constructor(
                 show(s.copy(split = "full"))
                 Toaster.say("${Money.format(kept.shares.sumOf { it.amount })} was taken on this bill before the till stopped. The bill has changed since: check it with the guests.")
             } else {
-                show(s.copy(split = "equal", n = maxOf(kept.n, shares.size + 1)))
+                show(s.copy(split = mode, n = maxOf(kept.n, shares.size + 1)))
                 Toaster.say("${Money.format(s.pending)} already taken on this bill in ${shares.size} ${if (shares.size == 1) "payment" else "payments"} · ${Money.format(_ui.value.remaining)} remaining")
             }
         }
@@ -226,10 +231,10 @@ class PayViewModel @Inject constructor(
     }
 
     // Writes down the shares taken so far on this order, or forgets them when there are none.
-    private fun keep(ticketId: String?, n: Int) = viewModelScope.launch {
+    private fun keep(ticketId: String?, n: Int, mode: String = "equal") = viewModelScope.launch {
         val id = ticketId ?: return@launch
         val now = shares.map { KeptShare(it.type, it.input.paymentTypeId, it.input.amount, it.input.tendered, it.input.change, it.input.reference) }
-        saveKept(if (now.isEmpty()) allKept() - id else allKept() + (id to KeptSplit(id, n, now)))
+        saveKept(if (now.isEmpty()) allKept() - id else allKept() + (id to KeptSplit(id, n, now, mode)))
     }
 
     private fun totalsFor(ids: Collection<String>): Calc.Totals {
@@ -291,25 +296,29 @@ class PayViewModel @Inject constructor(
         val all = totalsFor(unpaid)
         val taken = shares.sumOf { it.input.amount }
         val remaining = (all.total - taken).coerceAtLeast(0)
-        val amount = when (s.split) {
-            "equal" -> Money.share(remaining, (s.n - shares.size).coerceAtLeast(1))
-            "items" -> totalsFor(s.lines.filter { it.picked && !it.info.line.paid }.map { it.info.line.id }).total
-            else -> remaining
-        }
+        val picked = if (s.split == "items") totalsFor(s.lines.filter { it.picked && !it.info.line.paid }.map { it.info.line.id }).total else 0
+        val amount = PayParts.amount(s.split, remaining, s.n - shares.size, picked, s.piece)
         val exchange = s.exchangeOf != null
         _ui.value = s.copy(
             total = earlierTotal + all.total, remaining = remaining, tax = all.tax,
             amount = if (exchange) (remaining - s.credit).coerceAtLeast(0) else amount,
             back = if (exchange) (s.credit - remaining).coerceAtLeast(0) else 0,
             paid = earlier + shares.map { PaidRow(it.type, it.input.amount) },
-            pending = taken, part = (shares.size + 1).coerceAtMost(s.n),
+            pending = taken, part = (shares.size + 1).coerceAtMost(s.n), piece = PayParts.piece(s.piece, remaining),
         )
     }
 
     fun split(mode: String) {
         val s = _ui.value
         if (s.check != null || s.exchangeOf != null) return
-        show(s.copy(split = mode, tend = ""))
+        show(s.copy(split = mode, tend = "", piece = 0))
+    }
+
+    // By amount: the part typed for this payment. Nothing, or as much as
+    // remains, is all that remains.
+    fun piece(cents: Long) {
+        val s = _ui.value
+        if (s.split == "amount") show(s.copy(piece = cents, tend = ""))
     }
 
     // Split check is its own screen; it cannot be opened with shares in hand.
@@ -360,9 +369,9 @@ class PayViewModel @Inject constructor(
             // more to come: keep the share (written down, so a tablet that
             // stops here still knows of it), ask for the next
             shares = all
-            keep(ticketId, s.n)
+            keep(ticketId, s.n, if (s.split == "amount") "amount" else "equal")
             Toaster.say("${Money.format(amount)} paid · ${Money.format(s.remaining - amount)} remaining" + if (input.change > 0) " · change ${Money.format(input.change)}" else "")
-            show(s.copy(tend = "", reference = ""))
+            show(s.copy(tend = "", reference = "", piece = 0))
             return
         }
         record(s, covered.map { it.info.line.id }, all)
@@ -508,6 +517,7 @@ private fun how(m: PaymentTypeEntity, amount: Long): String = when (m.kind) {
 fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinish: (kind: String) -> Unit) {
     val ui by vm.ui.collectAsState()
     var leaving by remember { mutableStateOf(false) }
+    var typing by remember { mutableStateOf(false) } // by amount: the pad the part is typed on
     LaunchedEffect(Unit) { vm.open() }
     DisposableEffect(Unit) { onDispose { vm.reset() } }
     // one check of a split check is paid and others are not: back to the checks
@@ -532,11 +542,25 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                         Seg(
                             listOf(
                                 SegOption("Full bill", ui.split == "full") { vm.split("full") },
-                                SegOption("Split equally", ui.split == "equal") { vm.split("equal") },
+                                SegOption("Equally", ui.split == "equal") { vm.split("equal") },
+                                // parts of any amount: the pad opens for the first one
+                                SegOption("By amount", ui.split == "amount") { vm.split("amount"); typing = true },
                                 SegOption("Split check", false) { if (vm.maySplit()) onSplit() },
                             ),
-                            Modifier.fillMaxWidth(), V.Well, 44.dp, 12.dp, fill = true, size = 14.sp,
+                            Modifier.fillMaxWidth(), V.Well, 44.dp, 12.dp, fill = true, size = 13.sp,
                         )
+                    }
+                    if (ui.split == "amount") {
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(V.Well).clickable { typing = true }.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                T("${Money.format(ui.amount)} now", 15.sp, 800)
+                                T(if (ui.amount < ui.remaining) "${Money.format(ui.remaining - ui.amount)} after it, another way" else "All that remains", 13.sp, 700, V.BlueText)
+                            }
+                            VBtn("Amount", height = 44.dp, size = 14.sp, pad = 14.dp) { typing = true }
+                        }
                     }
                     if (ui.split == "equal") {
                         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(V.Well).padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -705,14 +729,52 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
         ui.done?.let { d -> Done(d, vm) { onFinish(d.kind) } }
     }
 
+    if (typing && ui.split == "amount") PieceSheet(ui.remaining, onDismiss = { typing = false }) { typing = false; vm.piece(it) }
+
     if (leaving) {
         Sheet(onDismiss = { leaving = false }, width = 520.dp) {
-            SheetHead("${Money.format(ui.pending)} is already taken", "Leaving now means giving it back: a bill split equally is only recorded once every share is in.") { leaving = false }
+            SheetHead("${Money.format(ui.pending)} is already taken", "Leaving now means giving it back: a bill paid in parts is only recorded once all of it is in.") { leaving = false }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 VBtn("Stay and finish", Modifier.weight(1f), V.Blue, Color.White, 60.dp, weight = 800) { leaving = false }
                 VBtn("Give it back and leave", Modifier.weight(1f), V.RedWash, V.RedText, 60.dp) { leaving = false; vm.giveBack(); onBack() }
             }
         }
+    }
+}
+
+// By amount: the part this payment is for, typed on a pad. As much as
+// remains, or more, is all that remains: the last part needs no typing.
+@Composable
+private fun PieceSheet(remaining: Long, onDismiss: () -> Unit, onSet: (Long) -> Unit) {
+    var typed by remember { mutableStateOf("") }
+    val cents = PayParts.cents(typed)
+    val part = PayParts.piece(cents, remaining)
+    Sheet(onDismiss = onDismiss, width = 440.dp, gap = 14.dp) {
+        SheetHead("How much now?", "Of the ${Money.format(remaining)} that remain. The rest is paid after it, another way.", onDismiss)
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(V.Well).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.Bottom) {
+            T("Rs", 15.sp, 700, V.Text2)
+            Gap()
+            T(typed.ifEmpty { "0" }, 30.sp, 800)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf(".", "0", "del")).forEach { row ->
+                Row(Modifier.height(54.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { k ->
+                        Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(12.dp)).background(V.Key2).clickable { typed = PayParts.key(typed, k) }, contentAlignment = Alignment.Center) {
+                            T(if (k == "del") "⌫" else k, 24.sp, 700)
+                        }
+                    }
+                }
+            }
+        }
+        VBtn(
+            when {
+                cents <= 0 -> "Type the amount"
+                part == 0L -> "All ${Money.format(remaining)}"
+                else -> "${Money.format(part)} now · ${Money.format(remaining - part)} after"
+            },
+            Modifier.fillMaxWidth(), if (cents > 0) V.Blue else V.Key, if (cents > 0) Color.White else V.Text2, 58.dp, weight = 800, enabled = cents > 0,
+        ) { onSet(part) }
     }
 }
 
