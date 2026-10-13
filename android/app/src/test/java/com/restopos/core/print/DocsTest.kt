@@ -208,6 +208,25 @@ class DocsTest {
         assertTrue(void.contains("VOID - KITCHEN"))
     }
 
+    // The owner, of an order nobody came for: "If not paid include it in Z report".
+    @Test
+    fun theDayClosingSaysWhatNoShowsCameToAndCountsItNowhereElse() {
+        val z = ZDoc(
+            9, "T1", 1_790_000_000_000, 1_790_000_300_000, "Priya", 6, 250000, 0, 0, 0, 32609,
+            listOf(DocAmount("Cash", 250000, 6)), emptyList(), emptyList(), 0, 0, emptyList(), "S1-T1-000113", "S1-T1-000118",
+            noShows = listOf(DocAmount("A-12 Ravi", 17500), DocAmount("A-15", 17500)),
+        )
+        val detailed = read(Docs.z(z, shop, Paper(48, 3, true), 2, detailed = true)).lines
+        assertTrue(detailed.any { it.startsWith("No-shows, unpaid (2)") && it.endsWith("350.00") })
+        assertTrue(detailed.any { it.trim().startsWith("A-12 Ravi") && it.endsWith("175.00") })
+        // it is not a sale: the total is the sales, as it was
+        assertTrue(detailed.any { it.startsWith("TOTAL") && it.endsWith("Rs 2,500.00") })
+        val short = read(Docs.z(z, shop, Paper(48, 3, true), 2, detailed = false)).lines
+        assertTrue(short.any { it.startsWith("No-shows, unpaid (2)") })
+        assertFalse(short.any { it.contains("A-12 Ravi") })
+        assertFalse(read(Docs.z(z.copy(noShows = emptyList()), shop, Paper(48, 3, true), 2, detailed = true)).lines.any { it.contains("No-shows") })
+    }
+
     // The owner: "in the kitchen receipt it should say, the time the customer will pick up the order".
     @Test
     fun aTakeawaysKitchenTicketSaysWhenItIsPickedUp() {

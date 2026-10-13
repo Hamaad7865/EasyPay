@@ -331,4 +331,15 @@ object Migrations {
             db.execSQL("ALTER TABLE `kds_tickets` ADD COLUMN `pickup` TEXT")
         }
     }
+
+    // 24: a takeaway nobody came for (server 0107): when it was marked a
+    // no-show, what was still to pay, and who marked it. No order has any of
+    // them until one is marked.
+    val V23_V24 = object : Migration(23, 24) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `tickets` ADD COLUMN `no_show_at` INTEGER")
+            db.execSQL("ALTER TABLE `tickets` ADD COLUMN `no_show_total` INTEGER")
+            db.execSQL("ALTER TABLE `tickets` ADD COLUMN `no_show_by` TEXT")
+        }
+    }
 }

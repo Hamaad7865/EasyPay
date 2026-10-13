@@ -106,6 +106,8 @@ data class ShiftDoc(
     val counts: List<DrawerCountDoc> = emptyList(), // the drawer counted during the shift
     // what prices typed for one sale came to against the listed ones (a shop); nothing prints while it is nothing
     val priceChanges: Long = 0,
+    // takeaways nobody came for and that were not paid, each with what it came to: lost, and in no figure here
+    val noShows: List<DocAmount> = emptyList(),
 )
 
 // The drawer counted during a shift: what was in it and what it should have held.
@@ -143,6 +145,8 @@ data class ZDoc(
     // what prices typed for one sale came to against the listed ones (a shop); nothing prints while it is nothing
     val priceChanges: Long = 0,
     val counted: Long? = null,
+    // takeaways nobody came for and that were not paid, each with what it came to: lost, and in no figure here
+    val noShows: List<DocAmount> = emptyList(),
 )
 
 // Who the restaurant is on paper, and the notes around the receipt.
@@ -382,6 +386,7 @@ object Docs {
         p.row("Refunds (${d.refunds})", off(d.refunded, decimals))
         p.row("Discounts given", n(d.discounts))
         if (d.priceChanges != 0L) p.row("Price changes", off(d.priceChanges, decimals))
+        if (d.noShows.isNotEmpty()) p.row("No-shows, unpaid (${d.noShows.size})", n(d.noShows.sumOf { it.amount }))
         p.rule()
         p.bold(true).line("TAKEN BY PAYMENT METHOD").bold(false)
         d.payments.forEach { p.row("${it.name} (${it.count})", n(it.amount)) }
@@ -437,6 +442,12 @@ object Docs {
         p.row("Of which tax", n(d.tax))
         p.row("Discounts given", n(d.discounts))
         if (d.priceChanges != 0L) p.row("Price changes", off(d.priceChanges, decimals))
+        // Takeaways nobody came for and that were not paid: what was lost. It
+        // is in no figure above or below; the detailed closing names each.
+        if (d.noShows.isNotEmpty()) {
+            p.row("No-shows, unpaid (${d.noShows.size})", n(d.noShows.sumOf { it.amount }))
+            if (detailed) d.noShows.forEach { p.row("  ${it.name}", n(it.amount)) }
+        }
         p.rule()
         p.bold(true).line("BY PAYMENT METHOD").bold(false)
         d.payments.forEach { p.row("${it.name} (${it.count})", n(it.amount)) }

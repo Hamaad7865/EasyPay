@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { CalendarCheck } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
@@ -28,6 +29,8 @@ type Close = {
   payments: { name: string | null; amount: number; n: number }[];
   cats: { name: string | null; qty: number; amount: number }[];
   cash: { in: number; out: number; list: { type: string; amount: number; reason: string | null; who: string | null }[] };
+  // takeaways nobody came for and that were not paid (0107): lost, and in no total
+  noshows: { n: number; amount: number; list: { no: string | null; name: string | null; amount: number; who: string | null }[] };
   drawers: Drawer[];
 };
 // a day not closed yet: open now, or (from before) counted and left open
@@ -92,6 +95,12 @@ ${given(shop)},
            where m.tenant_id = dc.tenant_id and m.device_id = dc.device_id and m.deleted_at is null
              and coalesce(m.device_time, m.created_at) > coalesce(dc.from_time, '-infinity'::timestamptz)
              and coalesce(m.device_time, m.created_at) <= dc.closed_at) as cash,
+         (select json_build_object('n', count(*), 'amount', coalesce(sum(t.no_show_total), 0),
+                   'list', coalesce(json_agg(json_build_object('no', t.order_no, 'name', t.name, 'amount', t.no_show_total, 'who', w.name)
+                              order by t.no_show_at), '[]'::json))
+            from tickets t left join employees w on w.tenant_id = t.tenant_id and w.id = t.no_show_by
+           where t.tenant_id = dc.tenant_id and t.no_show_device = dc.device_id and t.deleted_at is null and t.no_show_total > 0
+             and t.no_show_at > coalesce(dc.from_time, '-infinity'::timestamptz) and t.no_show_at <= dc.closed_at) as noshows,
          (select coalesce(json_agg(json_build_object('opened_at', sh.opened_at, 'closed_at', sh.closed_at, 'opened_by', o.name, 'closed_by', cl.name,
                    'float', sh.opening_float, 'expected', sh.expected_cash, 'counted', sh.counted_cash, 'counts', ${COUNTS("sh")})
                    order by sh.opened_at), '[]'::json)
@@ -300,6 +309,16 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
                     <dt>Of which tax</dt><dd>{m(t.tax)}</dd>
                     <dt>Discounts given</dt><dd>{m(t.discounts)}</dd>
                     {Number(t.changed) !== 0 && (<><dt>Prices typed, {Number(t.changed) > 0 ? "under" : "over"} the listed prices</dt><dd>{m(Math.abs(Number(t.changed)))}</dd></>)}
+                    {/* takeaways nobody came for, not paid: what was lost; it is in none of the figures above */}
+                    {z.noshows.n > 0 && (<>
+                      <dt>No-shows, unpaid ({z.noshows.n})</dt><dd>{m(z.noshows.amount)}</dd>
+                      {z.noshows.list.map((x, i) => (
+                        <Fragment key={i}>
+                          <dt className="muted" style={{ paddingLeft: 14 }}>{[x.no, x.name].filter(Boolean).join(" ") || "An order"}{x.who ? `, marked by ${x.who}` : ""}</dt>
+                          <dd className="muted">{m(x.amount)}</dd>
+                        </Fragment>
+                      ))}
+                    </>)}
                   </dl>
                 </div>
                 <div>

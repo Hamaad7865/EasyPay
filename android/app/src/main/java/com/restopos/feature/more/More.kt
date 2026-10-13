@@ -214,6 +214,7 @@ fun MoreSheets(vm: MoreViewModel, show: String?, onDismiss: () -> Unit, onCloseS
                     Figure("Receipts", d.sales.toString())
                     Figure("Sales", Money.format(d.gross))
                     if (d.refunds > 0) Figure("Refunds (${d.refunds})", Money.format(-d.refunded))
+                    if (d.noShows.isNotEmpty()) Figure("No-shows, unpaid (${d.noShows.size})", Money.format(d.noShows.sumOf { it.amount }))
                     d.payments.forEach { Figure("${it.name} (${it.count})", Money.format(it.amount)) }
                     Spacer(Modifier.height(8.dp))
                     Figure("Opening float", Money.format(d.float))
@@ -257,6 +258,7 @@ fun MoreSheets(vm: MoreViewModel, show: String?, onDismiss: () -> Unit, onCloseS
                         Figure("Sales", Money.format(z.gross))
                         Figure("Refunds (${z.refunds})", Money.format(-z.refunded))
                         Figure("Total", Money.format(z.gross - z.refunded), bold = true)
+                        if (z.noShows.isNotEmpty()) Figure("No-shows, unpaid (${z.noShows.size})", Money.format(z.noShows.sumOf { it.amount }))
                         z.payments.forEach { Figure("${it.name} (${it.count})", Money.format(it.amount)) }
                         Figure("Cash in", Money.format(z.cashIn))
                         Figure("Cash out", Money.format(-z.cashOut))

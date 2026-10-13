@@ -372,6 +372,39 @@ class TicketRepository @Inject constructor(
         pushNow(context)
     }
 
+    // A takeaway or delivery nobody came for. Paid: it leaves the board and
+    // the sale stays as it is. Not paid: the order is closed with its items
+    // left on it (they were cooked, and they say what it was) and what was
+    // still to pay is written down, for the day closing to show as lost
+    // (CashOps.period). That takes the permission to void what the kitchen
+    // already has: an unpaid no-show is where cash could go missing. Said
+    // again, or of an order already cancelled, it changes nothing.
+    suspend fun noShow(ticketId: String, unpaid: Long, approver: StaffMember? = null): Result<Unit> = runCatching {
+        val t = db.tickets().ticket(ticketId) ?: return@runCatching
+        if (t.no_show_at != null || t.status == "cancelled") return@runCatching
+        val open = t.status == "open"
+        if (open) staff.allow("sale.void_sent_line", "mark an unpaid order as a no-show", approver)
+        val now = System.currentTimeMillis()
+        val lost = if (open) unpaid.coerceAtLeast(0) else 0
+        val device = session.deviceId()
+        db.withTransaction {
+            db.tickets().upsertTicket(t.copy(
+                status = if (open) "cancelled" else t.status, table_id = if (open) null else t.table_id, stage = t.stage?.let { "done" },
+                no_show_at = now, no_show_total = lost, no_show_by = staff.id(), updated_at = now,
+            ))
+            db.outbox().enqueue(op("ticket.cancel", buildJsonObject {
+                put("ticket_id", ticketId)
+                put("no_show", buildJsonObject {
+                    put("total", lost); put("at", java.time.Instant.ofEpochMilli(now).toString())
+                    device?.let { put("device_id", it) }
+                })
+                if (open) staff.approvedBy("sale.void_sent_line", approver)?.let { put("approved_by", it) }
+            }))
+        }
+        if (session.activeTicket() == ticketId) session.clearActiveTicket()
+        pushNow(context)
+    }
+
     // Moves lines of the order on the register to another seat (null: the
     // table) and/or course. Paid and voided lines stay where they are.
     suspend fun placeLines(lineIds: List<String>, moveSeat: Boolean, seat: Int?, course: Int?): Result<Unit> = runCatching {

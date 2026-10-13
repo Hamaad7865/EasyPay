@@ -233,9 +233,14 @@ interface ServiceDao {
     )
     fun board(store: String): Flow<List<TicketEntity>>
 
-    // handed over and paid: not one that was cancelled, or turned into a counter sale
-    @Query("SELECT COUNT(*) FROM tickets WHERE store_id = :store AND stage = 'done' AND status = 'paid' AND updated_at > :since")
+    // handed over and paid: not one that was cancelled, turned into a counter sale, or never collected
+    @Query("SELECT COUNT(*) FROM tickets WHERE store_id = :store AND stage = 'done' AND status = 'paid' AND no_show_at IS NULL AND updated_at > :since")
     fun boardDone(store: String, since: Long): Flow<Int>
+
+    // Takeaways nobody came for and that were not paid, marked in a period:
+    // the day closing's "No-shows". `from` is not in the period and `to` is.
+    @Query("SELECT * FROM tickets WHERE no_show_at > :from AND no_show_at <= :to AND no_show_total > 0 AND deleted_at IS NULL ORDER BY no_show_at")
+    suspend fun noShows(from: Long, to: Long): List<TicketEntity>
 
     @Query("SELECT * FROM tickets WHERE id IN (:ids)")
     suspend fun ticketsById(ids: List<String>): List<TicketEntity>

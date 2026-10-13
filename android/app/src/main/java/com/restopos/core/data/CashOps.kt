@@ -176,6 +176,8 @@ class CashOps @Inject constructor(
         val sales: Int, val gross: Long, val refunds: Int, val refunded: Long, val discounts: Long, val tax: Long, val priceChanges: Long,
         val payments: List<DocAmount>, val cashTaken: Long, val cashIn: Long, val cashOut: Long, val moves: List<CashSlipDoc>,
         val categories: List<DocAmount>, val taxes: List<DocTax>, val first: String?, val last: String?,
+        // takeaways nobody came for and that were not paid: what each came to. Lost, and in no figure above.
+        val noShows: List<DocAmount>,
     )
 
     private suspend fun period(device: String, from: Long, to: Long): Period {
@@ -215,12 +217,14 @@ class CashOps @Inject constructor(
         // what changed prices on lines came to: a refund gives its share back
         val changes = db.ops().lineChanges(device, from, to)
         fun changed(kind: String) = changes.filter { it.kind == kind }.sumOf { if (it.type == "refund") -it.total else it.total }
+        // Orders are this tablet's own (a pull brings none back), so its no-shows are this till's.
+        val noShows = db.service().noShows(from, to).map { DocAmount(listOfNotNull(it.order_no, it.name).joinToString(" ").ifEmpty { "An order" }, it.no_show_total ?: 0) }
         return Period(
             sales.size, sales.sumOf { it.total }, refunds.size, refunds.sumOf { it.total },
             sales.sumOf { it.discount_total } - refunds.sumOf { it.discount_total } + changed("discount"), sales.sumOf { it.tax_total } - refunds.sumOf { it.tax_total }, changed("override"),
             pay.values.sortedByDescending { it.amount }, cash, moves.filter { it.type == "in" }.sumOf { it.amount },
             moves.filter { it.type == "out" }.sumOf { it.amount }, moves, cats.values.sortedByDescending { it.amount }, taxes.values.toList(),
-            sales.firstOrNull()?.number, sales.lastOrNull()?.number,
+            sales.firstOrNull()?.number, sales.lastOrNull()?.number, noShows,
         )
     }
 
@@ -258,7 +262,7 @@ class CashOps @Inject constructor(
             p.payments, p.cashTaken, p.cashIn, p.cashOut, p.moves, shift.expected_cash ?: expected, shift.counted_cash,
             p.sales, p.gross, p.refunds, p.refunded, p.discounts,
             db.ops().drawerCounts(shift.id).map { DrawerCountDoc(it.device_time, name(it.employee_id), it.counted, it.expected, till) },
-            priceChanges = p.priceChanges,
+            priceChanges = p.priceChanges, noShows = p.noShows,
         )
     }
 
@@ -283,7 +287,7 @@ class CashOps @Inject constructor(
         return ZDoc(
             number ?: ((last?.number ?: 0) + 1), till(), last?.closed_at, closedAt, by,
             p.sales, p.gross, p.refunds, p.refunded, p.discounts, p.tax, p.payments, p.categories, p.taxes,
-            p.cashIn, p.cashOut, p.moves, p.first, p.last, priceChanges = p.priceChanges,
+            p.cashIn, p.cashOut, p.moves, p.first, p.last, priceChanges = p.priceChanges, noShows = p.noShows,
         )
     }
 
@@ -295,7 +299,7 @@ class CashOps @Inject constructor(
         return ZDoc(
             row.number, till(), row.from_time, row.closed_at, name(row.closed_by),
             p.sales, p.gross, p.refunds, p.refunded, p.discounts, p.tax, p.payments, p.categories, p.taxes,
-            p.cashIn, p.cashOut, p.moves, p.first, p.last, priceChanges = p.priceChanges,
+            p.cashIn, p.cashOut, p.moves, p.first, p.last, priceChanges = p.priceChanges, noShows = p.noShows,
         ).withDrawer(shift)
     }
 
@@ -342,6 +346,7 @@ class CashOps @Inject constructor(
             put("sales", z.sales); put("gross", z.gross); put("refunds", z.refunds); put("refunded", z.refunded)
             put("discounts", z.discounts); put("tax", z.tax); put("cash_in", z.cashIn); put("cash_out", z.cashOut)
             z.float?.let { put("float", it) }; z.expected?.let { put("expected", it) }; z.counted?.let { put("counted", it) }
+            if (z.noShows.isNotEmpty()) { put("no_shows", z.noShows.size); put("no_show_total", z.noShows.sumOf { it.amount }) }
         })
         approvedBy?.let { put("approved_by", it) }
     })

@@ -46,6 +46,11 @@ data class TicketEntity(
     val source: String? = null,
     // when the bill was printed for the table ("bill asked" on the floor)
     val bill_at: Long? = null,
+    // a takeaway nobody came for (server 0107): when it was marked, what was
+    // still to pay then (0 on one that was paid), and who marked it
+    val no_show_at: Long? = null,
+    val no_show_total: Long? = null,
+    val no_show_by: String? = null,
 )
 
 @Entity(

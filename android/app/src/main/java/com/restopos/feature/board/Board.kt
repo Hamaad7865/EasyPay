@@ -35,10 +35,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Money
+import com.restopos.core.data.Approvals
+import com.restopos.core.data.NeedsApproval
 import com.restopos.core.data.OrderInfo
 import com.restopos.core.data.OrderOps
 import com.restopos.core.data.Pickup
 import com.restopos.core.data.ServiceRepository
+import com.restopos.core.data.StaffMember
 import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.DiningOptionEntity
 import com.restopos.core.database.EmployeeEntity
@@ -87,6 +90,7 @@ class BoardViewModel @Inject constructor(
     private val service: ServiceRepository,
     private val tickets: TicketRepository,
     private val orderOps: OrderOps,
+    private val approvals: Approvals,
 ) : ViewModel() {
     private val store = flow { emit(session.storeId()) }
     val orders: StateFlow<List<OrderInfo>> = store.flatMapLatest { s -> if (s == null) flowOf(emptyList()) else service.orders(s).map { all -> all.filter { it.ticket.stage != null && it.ticket.stage != "done" } } }
@@ -134,6 +138,20 @@ class BoardViewModel @Inject constructor(
         }
     }
 
+    // Nobody came for it. Paid, it only leaves the board. Not paid, it is
+    // closed and goes on the day closing as lost: that takes the permission
+    // to void what the kitchen has, and a cashier without it is asked for a
+    // manager's PIN.
+    fun noShow(o: OrderInfo, by: StaffMember? = null) {
+        viewModelScope.launch {
+            val unpaid = if (o.open && !o.paid) o.due else 0
+            val out = tickets.noShow(o.id, unpaid, by)
+            val need = out.exceptionOrNull() as? NeedsApproval
+            if (need != null && by == null) approvals.ask(need.permission, need.what) { approver -> noShow(o, approver) }
+            else out.fold({ Toaster.say("${o.label} · no-show" + if (unpaid > 0) " · ${Money.format(unpaid)} not paid" else "") }, { Toaster.say(it.message) })
+        }
+    }
+
     suspend fun riders(): List<EmployeeEntity> = session.storeId()?.let { db.staff().staff(it).first() } ?: emptyList()
     fun rider(o: OrderInfo, name: String) = viewModelScope.launch { tickets.setRider(o.id, name) }
     // the time turned to on the clock: today at that time; false, and said, when it has already passed
@@ -157,6 +175,7 @@ fun BoardScreen(vm: BoardViewModel, onOrder: () -> Unit, onPay: () -> Unit) {
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(15_000) } }
     var details by remember { mutableStateOf<OrderInfo?>(null) }
     var clock by remember { mutableStateOf<OrderInfo?>(null) }
+    var gone by remember { mutableStateOf<OrderInfo?>(null) } // the order being marked a no-show
 
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -207,6 +226,23 @@ fun BoardScreen(vm: BoardViewModel, onOrder: () -> Unit, onPay: () -> Unit) {
                     }
                     if (o.ticket.rider != null) VBtn("No rider", bg = V.RedWash, fg = V.RedText, height = 54.dp) { vm.rider(o, ""); details = null }
                 }
+            }
+            // nobody came for it: asked again before anything is closed
+            if (o.lines.isNotEmpty()) VBtn("No-show", Modifier.fillMaxWidth(), V.RedWash, V.RedText, 52.dp) { gone = o; details = null }
+        }
+    }
+
+    gone?.let { o ->
+        val unpaid = o.open && !o.paid
+        Sheet(onDismiss = { gone = null }, width = 560.dp) {
+            SheetHead(
+                "${o.label} · nobody came?",
+                if (unpaid) "${Money.format(o.due)} was not paid. The order is closed with its items on it, and the day closing shows it under No-shows."
+                else "It is paid: the sale stays as it is, and the order leaves the board.",
+            ) { gone = null }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                VBtn("Keep it on the board", Modifier.weight(1f), height = 60.dp) { gone = null }
+                VBtn("No-show", Modifier.weight(1f), V.RedWash, V.RedText, 60.dp, weight = 800) { gone = null; vm.noShow(o) }
             }
         }
     }
