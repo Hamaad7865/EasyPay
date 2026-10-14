@@ -194,7 +194,8 @@ class DemoReceiver : BroadcastReceiver() {
                     // The made-up business has no server: the set-up's screens and what each form
                     // refuses are seen, and every save stops at "This needs a connection".
                     val setup = intent.getBooleanExtra("setup", false)
-                    seed(context, deps.db(), deps.session(), restaurant, plan, setup)
+                    // --es returns credit (or exchange, refund): a shop's return policy (server 0109), as its settings would carry it
+                    seed(context, deps.db(), deps.session(), restaurant, plan, setup, intent.getStringExtra("returns")?.trim()?.takeIf { it.isNotEmpty() })
                     // --ez ordering true: guests may order from the tables (core/guest). The settings
                     // say so, and the till is given a made-up key of its own to show the ordering
                     // site's relay on this PC, whose stand-in for EasyPay's till service takes any
@@ -241,7 +242,7 @@ class DemoReceiver : BroadcastReceiver() {
         return listOf("pbkdf2-sha256", iterations.toString(), b64.encodeToString(salt), b64.encodeToString(hash)).joinToString("$")
     }
 
-    private suspend fun seed(context: Context, db: TillDatabase, session: SessionStore, restaurant: Boolean, plan: String?, setup: Boolean = false) {
+    private suspend fun seed(context: Context, db: TillDatabase, session: SessionStore, restaurant: Boolean, plan: String?, setup: Boolean = false, returns: String? = null) {
         val shop = Json.parseToJsonElement(context.assets.open("demo-shop.json").bufferedReader().use { it.readText() })
         val tenant = shop.str("tenant")!!
         val store = shop.obj("store")
@@ -256,7 +257,10 @@ class DemoReceiver : BroadcastReceiver() {
             // a restaurant's settings say nothing about the kind of business, as before there were shops
             val settings = shop.obj("settings")
             val kept = if (restaurant) settings.filterKeys { it != "businessType" } else settings
-            val planned = if (plan == null) kept else kept + ("plan" to kotlinx.serialization.json.JsonPrimitive(plan))
+            val planned = kept + listOfNotNull(
+                plan?.let { "plan" to kotlinx.serialization.json.JsonPrimitive(it) },
+                returns?.let { "returns" to kotlinx.serialization.json.JsonPrimitive(it) },
+            )
             db.ops().upsertSettings(SettingsEntity(tenant, JsonObject(if (setup) planned + ("setup" to kotlinx.serialization.json.JsonPrimitive("open")) else planned).toString()))
             catalog.upsertTaxes(listOf(TaxEntity(tax.str("id")!!, tenant, tax.str("name")!!, tax.jsonObject["rate_bp"]!!.jsonPrimitive.intOrNull ?: 0, tax.str("type")!!, true)))
             // the other taxes of the made-up business: none is the usual one, and no item starts on them
@@ -277,8 +281,8 @@ class DemoReceiver : BroadcastReceiver() {
             } else {
                 catalog.upsertDining(listOf(DiningOptionEntity(dining.str("id")!!, tenant, dining.str("name")!!, true, 0, kitchen = "pay", kind = dining.str("kind")!!)))
             }
-            // a shop's Exchange payment type is not a restaurant's
-            catalog.upsertPayments(shop.arr("payments").filter { !restaurant || it.str("kind") != "exchange" }.mapIndexed { i, p -> PaymentTypeEntity(p.str("id")!!, tenant, p.str("name")!!, p.str("kind")!!, sort_order = i, opens_drawer = p.bool("opens_drawer")) })
+            // a shop's Exchange and Credit note payment types are not a restaurant's
+            catalog.upsertPayments(shop.arr("payments").filter { !restaurant || it.str("kind") !in listOf("exchange", "credit_note") }.mapIndexed { i, p -> PaymentTypeEntity(p.str("id")!!, tenant, p.str("name")!!, p.str("kind")!!, sort_order = i, opens_drawer = p.bool("opens_drawer")) })
             db.staff().upsertRoles(shop.arr("roles").map { RoleEntity(it.str("id")!!, tenant, it.str("name")!!, it.arr("permissions").toString()) })
             db.staff().upsertEmployees(shop.arr("staff").mapIndexed { i, e -> EmployeeEntity(e.str("id")!!, tenant, e.str("name")!!, pinHash(e.str("pin")!!, ByteArray(16) { b -> (b * 7 + i + 1).toByte() }), e.str("role")) })
             db.staff().upsertEmployeeStores(shop.arr("staff").map { EmployeeStoreEntity(it.str("id")!!, storeId, tenant) })

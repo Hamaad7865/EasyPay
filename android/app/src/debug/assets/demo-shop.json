@@ -56,6 +56,12 @@
       "name": "Exchange",
       "kind": "exchange",
       "opens_drawer": false
+    },
+    {
+      "id": "d0000000-0000-4000-8000-00000000c0de",
+      "name": "Credit note",
+      "kind": "credit_note",
+      "opens_drawer": false
     }
   ],
   "roles": [
