@@ -27,7 +27,7 @@ type ReceiptRow = {
   at: string;
   cashier: string | null;
   reviews: Review[];
-  payments: { type: string; name: string | null; was: string | null; amount: number }[];
+  payments: { type: string; name: string | null; kind: string | null; ref: string | null; was: string | null; amount: number }[];
 };
 
 type DriftItem = { kind?: string; name?: string; till?: number | null; catalog?: number | null };
@@ -86,6 +86,20 @@ function describe(v: Review): string {
     case "refund-unapproved":
       // the customer had the money by the time it reached the server, so it is kept (migration 0082)
       return "Refunded by someone whose role does not allow refunds, with no approval from someone who may";
+    case "credit-note-refused": {
+      // a sale paid in part with a credit note the server could not honour (migration 0109)
+      const notes = (Array.isArray(d.notes) ? d.notes : []) as { amount?: number; number?: string; why?: string; valid_to?: string }[];
+      return notes
+        .map((n) => `${rs(n.amount)} of it was paid with credit note ${n.number || "(not named)"}, which ${n.why === "not-found" ? "was never issued" : n.why === "void" ? "was cancelled" : n.why === "expired" ? `expired on ${n.valid_to ?? ""}` : "was already used up"}: that part of the sale is not covered`)
+        .join("; ");
+    }
+    case "credit-overspent": {
+      // two tills apart both spent one note; the second to arrive took more than was left (migration 0109)
+      const notes = (Array.isArray(d.notes) ? d.notes : []) as { amount?: number; number?: string; balance?: number; excess?: number }[];
+      return notes
+        .map((n) => `credit note ${n.number} had ${rs(n.balance)} left and this sale took ${rs(n.amount)}: ${rs(n.excess)} is not covered (two tills spent it while apart)`)
+        .join("; ");
+    }
     default:
       return v.reason;
   }
@@ -141,13 +155,14 @@ export default async function ReceiptsPage({ searchParams }: { searchParams: Sea
                             'resolved_at', v.resolved_at, 'resolution', v.resolution) order by v.reason)
                    from receipt_reviews v
                   where v.tenant_id = r.tenant_id and v.receipt_id = r.id and v.deleted_at is null), '[]'::jsonb) as reviews,
-                coalesce((select jsonb_agg(jsonb_build_object('type', q.type, 'name', q.name, 'was', q.was, 'amount', q.amount))
-                   from (select p.payment_type_id as type, pt.name, sum(p.amount) as amount,
+                coalesce((select jsonb_agg(jsonb_build_object('type', q.type, 'name', q.name, 'kind', q.kind, 'ref', q.ref, 'was', q.was, 'amount', q.amount))
+                   from (select p.payment_type_id as type, pt.name, pt.kind, sum(p.amount) as amount,
+                                max(case when pt.kind in ('exchange', 'credit_note') then p.reference end) as ref,
                                 max(case when p.payment_type_id <> p.original_payment_type_id then old.name end) as was
                            from receipt_payments_effective p
                            left join payment_types pt on pt.tenant_id = p.tenant_id and pt.id = p.payment_type_id
                            left join payment_types old on old.tenant_id = p.tenant_id and old.id = p.original_payment_type_id
-                          where p.tenant_id = r.tenant_id and p.receipt_id = r.id group by p.payment_type_id, pt.name) q), '[]'::jsonb) as payments
+                          where p.tenant_id = r.tenant_id and p.receipt_id = r.id group by p.payment_type_id, pt.name, pt.kind) q), '[]'::jsonb) as payments
            from receipts r left join employees e on e.tenant_id = r.tenant_id and e.id = r.employee_id
           where r.deleted_at is null and r.tenant_id = $1
           order by coalesce(r.device_time, r.created_at) desc limit 100`,
@@ -194,9 +209,11 @@ export default async function ReceiptsPage({ searchParams }: { searchParams: Sea
                   {r.payments.length === 0 && <span className="muted">No payment</span>}
                   {r.payments.map((p) => (
                     <div key={p.type} style={{ marginBottom: 4 }}>
-                      {p.name ?? "Unknown"} {r.payments.length > 1 && <span className="muted">{m(p.amount)}</span>}
+                      {/* a credit note names itself; an exchange names the refund the goods came back on (0079, 0109) */}
+                      {p.kind === "credit_note" ? `Credit note ${p.ref ?? ""}`.trim() : p.kind === "exchange" ? (r.type === "refund" ? "To the new sale" : `Returned goods${p.ref ? ", refund " + p.ref : ""}`) : (p.name ?? "Unknown")}
+                      {" "}{r.payments.length > 1 && <span className="muted">{m(p.amount)}</span>}
                       {p.was && <span className="sub">corrected from {p.was}</span>}
-                      {d.may && (
+                      {d.may && p.kind !== "exchange" && p.kind !== "credit_note" && (
                         <details>
                           <summary className="muted" style={{ cursor: "pointer", fontSize: 12.5 }}>Change</summary>
                           <form action={correctPayment} className="inline" style={{ marginTop: 6 }}>

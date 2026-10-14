@@ -248,8 +248,9 @@ const id = () => crypto.randomUUID();
       await shop.sale([{ item_id: shirt }, { item_id: scarf }], 23000, { payments: [{ payment_type_id: exch, amount: 11500, reference: number }, { payment_type_id: shop.cash, amount: 11500 }] });
       p = await see(shop, '/backoffice/reports/sales', range);
       check('X1 after an exchange, what was collected is up by the difference alone', !p.error && before.startsWith('Total collected: Rs 522.00 |') && stats(p.html).join(' | ').startsWith('Total collected: Rs 637.00 | Sales before refunds: Rs 852.00 | Refunds: Rs 215.00'), stats(p.html).join(' | '));
-      const pay = rowsOf(p.html).filter((r) => /^(Cash|Exchange) \|/.test(r));
-      check('X1 by payment method, cash holds what changed hands and the exchange holds nothing', pay.length === 2 && pay[0].startsWith('Cash | 4 | Rs 637.00') && pay[1].startsWith('Exchange | 2 | Rs 0.00'), pay.join(' // '));
+      const pay = rowsOf(p.html).filter((r) => /^(Cash|Exchange|Credit note) \|/.test(r));
+      // the exchange type is no tender: since 0109 it is not among the methods at all
+      check('X1 by payment method, cash holds what changed hands and the exchange is not listed', pay.length === 1 && pay[0].startsWith('Cash | 4 | Rs 637.00'), pay.join(' // '));
       p = await see(shop, '/backoffice/reports/orders', range);
       check('X2 Order details says what paid for the sale, naming the refund, and where the refund went',
         !p.error && p.says.includes(`Paid by Exchange · ref ${number} Rs 115.00`) && p.says.includes('Paid back by Exchange Rs 115.00') && !p.says.includes('Needs a check'), p.error || (p.says.match(/Paid[^R]*Exchange[^R]*Rs [\d.,]+/g) || []).join(' / '));
@@ -261,6 +262,62 @@ const id = () => crypto.randomUUID();
       await shop.sale([{ item_id: mug }], 11500, { payments: [{ payment_type_id: exch, amount: 11500, reference: 'SP1-R-NOWHERE' }] });
       p = await see(shop, '/backoffice/receipts', {});
       check('X4 a sale settled against a refund that is not there is on the Receipts page, with the reason', !p.error && p.says.includes('Rs 115 of it was settled as an exchange against refund SP1-R-NOWHERE, which is not there for that amount'), p.error || (p.says.match(/settled as an exchange[^.]*/) || [p.says.slice(0, 300)])[0]);
+    }
+
+    // ---- the return policy and credit notes (migration 0109) ----
+    {
+      const exch = (await one(`select id from payment_types where tenant_id = $1 and kind = 'exchange' and deleted_at is null`, [shop.tid])).id;
+      const noteType = (await one(`select id from payment_types where tenant_id = $1 and kind = 'credit_note' and deleted_at is null`, [shop.tid])).id;
+      const priya = (await one(`select id from customers where tenant_id = $1 and name = 'Priya'`, [shop.tid])).id;
+      // the shop keeps an exchange's rest on a credit note
+      await c.query(`update pos_settings set data = data || '{"returns":"credit","noteMonths":6}'::jsonb where tenant_id = $1`, [shop.tid]);
+      p = await see(shop, '/backoffice/settings', {});
+      check('Y1 a shop\'s POS settings have the Returns card, set to a credit note', !p.error && p.html.includes('name="returns"') && p.html.includes('value="credit"') && p.html.includes('name="returnDays"') && p.html.includes('name="noteMonths"') && p.says.includes('Return window'), p.error);
+      // a scarf (Rs 115.00) back, a mug taken at Rs 50.00: Rs 50.00 to the new sale, Rs 65.00 on a note for Priya
+      const y = await shop.sale([{ item_id: scarf }], 11500);
+      const rl = await one(`select id from receipt_lines where receipt_id = $1 and ticket_line_id = $2`, [y.rc, y.ids[0]]);
+      const noteNo = 'SP1-T1-CN000001', noteId = id();
+      await shop.push([op('refund.create', { id: id(), refund_of: y.rc, store_id: shop.store, device_id: shop.dev, number: 'SP1-T1-R000001', device_seq: 901, device_time: shop.at(20),
+        reason: 'exchange', lines: [{ receipt_line_id: rl.id, qty: 1000 }],
+        payments: [{ payment_type_id: exch, amount: 5000 }, { payment_type_id: noteType, amount: 6500, reference: noteNo }],
+        credit_note: { id: noteId, number: noteNo, amount: 6500, valid_to: '2027-04-14', customer_id: priya } })]);
+      await shop.sale([{ item_id: mug, unit_price: 5000, list_price: 11500, price_kind: 'discount', price_label: 'Rs 65.00 off', approved_by: shop.owner }], 5000,
+        { payments: [{ payment_type_id: exch, amount: 5000, reference: 'SP1-T1-R000001' }] });
+      // Rs 40.00 of the note spent on a hat, cash for the rest
+      await shop.sale([{ item_id: hat }], 11500, { payments: [{ payment_type_id: noteType, amount: 4000, reference: noteNo }, { payment_type_id: shop.cash, amount: 7500 }] });
+      p = await see(shop, '/backoffice/credit-notes', {});
+      const noteRow = rowsOf(p.html).find((r) => r.includes(noteNo));
+      check('Y2 Credit notes lists the open note: its amount, what is left, the customer, the sale it was spent on', !p.error && !!noteRow && noteRow.includes('| Rs 65.00 | Rs 25.00 |') && noteRow.includes('Priya') && noteRow.includes('1 sale') && noteRow.includes('Valid to 2027-04-14') && p.says.includes('Rs 25.00 on 1 open note'), p.error || noteRow || p.says.slice(0, 300));
+      p = await see(shop, '/backoffice/receipts', {});
+      check('Y3 Receipts names the note on the sale that spent it and on the refund that issued it', !p.error && (p.says.match(new RegExp('Credit note ' + noteNo, 'g')) || []).length >= 2 && !p.says.includes('is not covered'), p.error || (p.says.match(/Credit note[^|]{0,60}/g) || []).join(' / '));
+      p = await see(shop, '/backoffice/reports/day-close', range);
+      check('Y4 Day closing says what was issued and redeemed, and lists neither built-in kind as a method', !p.error && p.says.includes('Credit notes issued Rs 65.00') && p.says.includes('Credit notes redeemed Rs 40.00') && !/Exchange \(\d+\)/.test(p.says) && !/Credit note \(\d+\)/.test(p.says), p.error || (p.says.match(/Credit notes [^R]*Rs [\d.,]+/g) || []).join(' / '));
+      p = await see(shop, '/backoffice/reports/sales', range);
+      check('Y4 so does Sales summary', !p.error && p.says.includes('Credit notes: Rs 65.00 issued on exchanges, Rs 40.00 redeemed on sales'), p.error || (p.says.match(/Credit notes:[^.]*/) || [])[0]);
+      // two tills apart: a second sale takes Rs 50.00 off a note with Rs 25.00 left
+      await shop.sale([{ item_id: mug, unit_price: 5000, list_price: 11500, price_kind: 'discount', price_label: 'Rs 65.00 off', approved_by: shop.owner }], 5000,
+        { payments: [{ payment_type_id: noteType, amount: 5000, reference: noteNo }] });
+      p = await see(shop, '/backoffice/receipts', {});
+      check('Y5 a sale that overspent a note is flagged, and the page says by how much', !p.error && p.says.includes(`credit note ${noteNo} had Rs 25 left and this sale took Rs 50: Rs 25 is not covered`), p.error || (p.says.match(/credit note [^.]*not covered[^.]*/) || [p.says.slice(0, 200)])[0]);
+      p = await see(shop, '/backoffice/credit-notes', { show: 'closed' });
+      const usedRow = rowsOf(p.html).find((r) => r.includes(noteNo));
+      check('Y5 the note is used up and among the closed ones', !p.error && !!usedRow && usedRow.includes('| Rs 0.00 |') && usedRow.includes('Used up'), p.error || usedRow);
+      // a second note, cancelled by the owner with a reason
+      const y2 = await shop.sale([{ item_id: scarf }], 11500);
+      const rl2 = await one(`select id from receipt_lines where receipt_id = $1 and ticket_line_id = $2`, [y2.rc, y2.ids[0]]);
+      const note2 = id();
+      await shop.push([op('refund.create', { id: id(), refund_of: y2.rc, store_id: shop.store, device_id: shop.dev, number: 'SP1-T1-R000002', device_seq: 902, device_time: shop.at(15),
+        reason: 'exchange', lines: [{ receipt_line_id: rl2.id, qty: 1000 }],
+        payments: [{ payment_type_id: exch, amount: 5000 }, { payment_type_id: noteType, amount: 6500, reference: 'SP1-T1-CN000002' }],
+        credit_note: { id: note2, number: 'SP1-T1-CN000002', amount: 6500 } })]);
+      await shop.sale([{ item_id: mug, unit_price: 5000, list_price: 11500, price_kind: 'discount', price_label: 'Rs 65.00 off', approved_by: shop.owner }], 5000,
+        { payments: [{ payment_type_id: exch, amount: 5000, reference: 'SP1-T1-R000002' }] });
+      await c.query(`select credit_note_void($1, $2, $3, 'slip lost, a new one written')`, [shop.tid, shop.owner, note2]);
+      p = await see(shop, '/backoffice/credit-notes', { show: 'closed' });
+      const voidRow = rowsOf(p.html).find((r) => r.includes('SP1-T1-CN000002'));
+      check('Y6 a cancelled note says so, with its reason', !p.error && !!voidRow && voidRow.includes('Cancelled: slip lost, a new one written') && voidRow.includes('Does not expire') === false, p.error || voidRow);
+      p = await see(shop, '/backoffice/credit-notes', { q: 'Priya' });
+      check('Y7 the list is searched by customer', !p.error && p.says.includes('No open credit notes') === true || (rowsOf(p.html).every((r) => !r.includes('CN000002'))), p.error);
     }
 
     // -------------------------------------------------------- a restaurant
@@ -292,6 +349,9 @@ const id = () => crypto.randomUUID();
     }
     p = await see(rest, '/backoffice/settings', { tab: 'barcodes' });
     check('R7 a restaurant\'s POS settings have no Barcodes tab, and its address shows General', !p.error && !p.says.includes('Your own barcodes') && !p.html.includes('tab=barcodes') && p.says.includes('Decimals'), p.error);
+    check('R7 nor a Returns card', !p.html.includes('name="returns"'));
+    p = await see(rest, '/backoffice/credit-notes', {});
+    check('R8 a restaurant has no credit-notes', p.error === 'not found', p.error || 'it opened');
     // what one business's owner is shown is its own
     p = await see(rest, '/backoffice/reports/orders', rrange);
     check('T1 a restaurant\'s owner sees nothing of the shop', !p.says.includes('Belt') && !p.says.includes('SP1-'));

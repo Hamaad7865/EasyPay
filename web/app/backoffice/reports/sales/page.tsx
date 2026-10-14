@@ -42,12 +42,23 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
                 coalesce(sum(total) filter (where type = 'refund'), 0) as refunds, sum(signed_total) as total
            from r group by day order by day`,
       ),
+      // a shop's two built-in kinds hold no money: what an exchange settled with
+      // returned goods (0079) and what a credit note covered (0109) are not tenders
       payments: await q<Split>(
         `select pt.name, count(*)::int as n, sum(r.sign * p.amount) as amount
            from r join receipt_payments_effective p on p.tenant_id = $1 and p.receipt_id = r.id
            left join payment_types pt on pt.tenant_id = $1 and pt.id = p.payment_type_id
+          where coalesce(pt.kind, '') not in ('exchange', 'credit_note')
           group by pt.name order by sum(r.sign * p.amount) desc`,
       ),
+      // credit notes: what refunds put on them and what sales took off them, in these days
+      notes: (
+        await q<{ issued: string; redeemed: string }>(
+          `select coalesce(sum(p.amount) filter (where r.type = 'refund'), 0) as issued, coalesce(sum(p.amount) filter (where r.type = 'sale'), 0) as redeemed
+             from r join receipt_payments_effective p on p.tenant_id = $1 and p.receipt_id = r.id
+             join payment_types pt on pt.tenant_id = $1 and pt.id = p.payment_type_id and pt.kind = 'credit_note'`,
+        )
+      )[0],
       dining: await q<Split>(
         `select o.name, count(*)::int as n, sum(r.signed_total) as amount from r
            left join dining_options o on o.tenant_id = $1 and o.id = r.dining_option_id group by o.name order by sum(r.signed_total) desc`,
@@ -121,10 +132,15 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
             </table>
           </Card>
           {shop ? (
-            <div className="grid-2">
-              {split("By payment method", d.payments, "Unknown")}
-              {split("By employee", d.staff, "Not recorded")}
-            </div>
+            <>
+              <div className="grid-2">
+                {split("By payment method", d.payments, "Unknown")}
+                {split("By employee", d.staff, "Not recorded")}
+              </div>
+              {(Number(d.notes.issued) !== 0 || Number(d.notes.redeemed) !== 0) && (
+                <p className="muted">Credit notes: {m(d.notes.issued)} issued on exchanges, {m(d.notes.redeemed)} redeemed on sales. Neither is money taken, so neither is among the payment methods.</p>
+              )}
+            </>
           ) : (
             <>
               <div className="grid-2">

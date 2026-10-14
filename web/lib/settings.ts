@@ -25,6 +25,13 @@ export type PosSettings = {
   // guests order from the code on their table's card (lib/guest.ts). A page of
   // the premium tier: the till service gives the same answer (guest_pass, 0093)
   tableOrdering: boolean;
+  // A shop's return policy (migration 0109): exchange (no money back), credit
+  // (an exchange's rest goes on a credit note) or refund. Days inside which
+  // whoever is at the till returns alone (0: the right to refund is always
+  // needed), and months a credit note is valid (0: never expires).
+  returns: "exchange" | "credit" | "refund";
+  returnDays: number;
+  noteMonths: number;
   receipt: { header: string; footer: string; logo: string | null; showLogo: boolean };
   company: { name: string; brn: string; vat: string; address: string; phone: string };
 };
@@ -42,6 +49,9 @@ export const DEFAULT_SETTINGS: PosSettings = {
   onePrinter: false,
   drawerByNotes: false,
   tableOrdering: false,
+  returns: "exchange",
+  returnDays: 7,
+  noteMonths: 6,
   receipt: { header: "", footer: "Thank you. See you again soon.", logo: null, showLogo: true },
   company: { name: "", brn: "", vat: "", address: "", phone: "" },
 };
@@ -71,6 +81,9 @@ export function withDefaults(raw: unknown): PosSettings {
     onePrinter: d.onePrinter === true,
     drawerByNotes: d.drawerByNotes === true,
     tableOrdering: d.tableOrdering === true,
+    returns: d.returns === "credit" || d.returns === "refund" ? d.returns : "exchange",
+    returnDays: typeof d.returnDays === "number" && d.returnDays >= 0 && d.returnDays <= 365 ? Math.round(d.returnDays) : 7,
+    noteMonths: typeof d.noteMonths === "number" && d.noteMonths >= 0 && d.noteMonths <= 36 ? Math.round(d.noteMonths) : 6,
     receipt: {
       header: str(r.header, DEFAULT_SETTINGS.receipt.header),
       footer: str(r.footer, DEFAULT_SETTINGS.receipt.footer),

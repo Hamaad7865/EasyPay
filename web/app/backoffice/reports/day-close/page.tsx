@@ -27,6 +27,7 @@ type Close = {
   id: string; number: number; from_time: string | null; closed_at: string; closed_by: string | null; till: string | null;
   totals: { sales: number; refunds: number; gross: number; refunded: number; discounts: number; changed: number; tax: number };
   payments: { name: string | null; amount: number; n: number }[];
+  notes: { issued: number; redeemed: number };
   cats: { name: string | null; qty: number; amount: number }[];
   cash: { in: number; out: number; list: { type: string; amount: number; reason: string | null; who: string | null }[] };
   // takeaways nobody came for and that were not paid (0107): lost, and in no total
@@ -38,6 +39,7 @@ type Open = {
   id: string; opened_at: string; closed_at: string | null; opening_float: string; expected_cash: string | null; counted_cash: string | null;
   opened_by: string | null; closed_by: string | null; till: string | null;
   payments: { name: string | null; kind: string | null; amount: number; n: number }[];
+  notes: { issued: number; redeemed: number };
   sales: { sales: number; refunds: number; gross: number; refunded: number; discounts: number; changed: number };
   cash: { in: number; out: number; drawer: number; list: { type: string; amount: number; reason: string | null; at: string; who: string | null }[] };
   counts: Count[];
@@ -62,6 +64,15 @@ const INSIDE = `sh.tenant_id = dc.tenant_id and sh.device_id = dc.device_id and 
 // shop) off single lines. What prices typed for one sale came to under the
 // listed ones is said apart, as the till's report does.
 const SIGN = `(case when r.type = 'refund' then -1 else 1 end)`;
+// Credit notes (0109): what refunds put on them and what sales took off them
+// in the period. Neither is money taken, so neither is among the methods;
+// the two built-in kinds (exchange, credit_note) are left out of them.
+const NOTES = (where: string) => `
+         (select json_build_object('issued', coalesce(sum(p.amount) filter (where r.type = 'refund'), 0),
+                   'redeemed', coalesce(sum(p.amount) filter (where r.type = 'sale'), 0))
+            from receipts r join receipt_payments_effective p on p.tenant_id = r.tenant_id and p.receipt_id = r.id
+            join payment_types pt on pt.tenant_id = r.tenant_id and pt.id = p.payment_type_id and pt.kind = 'credit_note'
+           where ${where})`;
 const given = (shop: boolean) => `
                    'discounts', coalesce(sum(${SIGN} * (r.discount_total + ${lineOffSql(shop, "r", "discount", "r.tenant_id")})), 0),
                    'changed', coalesce(sum(${SIGN} * ${lineOffSql(shop, "r", "override", "r.tenant_id")}), 0)`;
@@ -77,7 +88,8 @@ ${given(shop)},
             from (select pt.name, sum(case when r.type = 'refund' then -p.amount else p.amount end) as amount, count(*) as n
                     from receipts r join receipt_payments_effective p on p.tenant_id = r.tenant_id and p.receipt_id = r.id
                     left join payment_types pt on pt.tenant_id = r.tenant_id and pt.id = p.payment_type_id
-                   where ${W} group by pt.name) q) as payments,
+                   where ${W} and coalesce(pt.kind, '') not in ('exchange', 'credit_note') group by pt.name) q) as payments,
+         ${NOTES(W)} as notes,
          (select coalesce(json_agg(json_build_object('name', q.name, 'qty', q.qty, 'amount', q.amount) order by q.amount desc), '[]'::json)
             from (select c.name, sum(case when r.type = 'refund' then -rl.qty else rl.qty end) as qty,
                          sum((case when r.type = 'refund' then -1 else 1 end) * (line_amount(rl.unit_price, rl.qty)
@@ -127,7 +139,8 @@ const openSql = (shop: boolean) => `
             from (select pt.name, pt.kind, sum(case when r.type = 'refund' then -p.amount else p.amount end) as amount, count(*) as n
                     from receipts r join receipt_payments_effective p on p.tenant_id = r.tenant_id and p.receipt_id = r.id
                     left join payment_types pt on pt.tenant_id = r.tenant_id and pt.id = p.payment_type_id
-                   where ${WINDOW} group by pt.name, pt.kind) q) as payments,
+                   where ${WINDOW} and coalesce(pt.kind, '') not in ('exchange', 'credit_note') group by pt.name, pt.kind) q) as payments,
+         ${NOTES(WINDOW)} as notes,
          (select json_build_object('sales', count(*) filter (where r.type = 'sale'), 'refunds', count(*) filter (where r.type = 'refund'),
                    'gross', coalesce(sum(r.total) filter (where r.type = 'sale'), 0),
                    'refunded', coalesce(sum(r.total) filter (where r.type = 'refund'), 0),
@@ -242,6 +255,7 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
                     {sh.payments.map((p, i) => (<div key={i} style={{ display: "contents" }}><dt>{p.name ?? "Unknown"} ({p.n})</dt><dd>{m(p.amount)}</dd></div>))}
                     {sh.payments.length === 0 && <dt className="muted">Nothing taken</dt>}
                     <dt className="total">Total</dt><dd className="total">{m(sh.payments.reduce((a, p) => a + Number(p.amount), 0))}</dd>
+                    {(Number(sh.notes.issued) !== 0 || Number(sh.notes.redeemed) !== 0) && (<><dt>Credit notes issued</dt><dd>{m(sh.notes.issued)}</dd><dt>Credit notes redeemed</dt><dd>{m(sh.notes.redeemed)}</dd></>)}
                   </dl>
                 </div>
                 <div>
@@ -326,6 +340,7 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
                   <dl className="kv">
                     {z.payments.map((p, i) => (<div key={i} style={{ display: "contents" }}><dt>{p.name ?? "Unknown"} ({p.n})</dt><dd>{m(p.amount)}</dd></div>))}
                     {z.payments.length === 0 && <dt className="muted">Nothing taken</dt>}
+                    {(Number(z.notes.issued) !== 0 || Number(z.notes.redeemed) !== 0) && (<><dt>Credit notes issued</dt><dd>{m(z.notes.issued)}</dd><dt>Credit notes redeemed</dt><dd>{m(z.notes.redeemed)}</dd></>)}
                   </dl>
                 </div>
                 <div>

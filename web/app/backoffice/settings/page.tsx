@@ -40,7 +40,12 @@ async function saveGeneral(f: FormData) {
       lockMinutes: int(f, "lockMinutes", 0, 120, 0),
       // a shop's form has no Service card: what those settings held is left as it is
       ...(ctx.mode === "retail"
-        ? {}
+        ? {
+            // the return policy (0109)
+            returns: (["exchange", "credit", "refund"] as const).find((v) => v === f.get("returns")) ?? "exchange",
+            returnDays: int(f, "returnDays", 0, 365, 7),
+            noteMonths: int(f, "noteMonths", 0, 36, 6),
+          }
         : {
             servicePct: int(f, "servicePct", 0, 30, 0),
             prepMinutes: int(f, "prepMinutes", 1, 180, 15),
@@ -314,6 +319,55 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
               </div>
             </div>
           </Card>
+          {shop && (
+            <Card title="Returns">
+              <div className="setting">
+                <div>
+                  <strong>When goods come back</strong>
+                  <small>
+                    What the till does with a receipt. Exchange only: the customer takes something else and pays any difference; the new sale must come
+                    to at least what comes back. With a credit note: the same, and what is left over stays with the customer on a printed credit note,
+                    spent on a later purchase. Exchange or refund: money can go back the way it was paid.
+                  </small>
+                </div>
+                <div className="seg" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                  <label>
+                    <input type="radio" name="returns" value="exchange" defaultChecked={s.returns === "exchange"} />
+                    Exchange only
+                  </label>
+                  <label>
+                    <input type="radio" name="returns" value="credit" defaultChecked={s.returns === "credit"} />
+                    Exchange; the rest on a credit note
+                  </label>
+                  <label>
+                    <input type="radio" name="returns" value="refund" defaultChecked={s.returns === "refund"} />
+                    Exchange or refund
+                  </label>
+                </div>
+              </div>
+              <div className="setting">
+                <div>
+                  <strong>Return window</strong>
+                  <small>
+                    Days after the sale inside which whoever is at the till may take goods back alone. After it, someone allowed to refund enters
+                    their PIN. 0: always.
+                  </small>
+                </div>
+                <label className="check" style={{ margin: 0 }}>
+                  <input type="number" name="returnDays" min={0} max={365} defaultValue={s.returnDays} style={{ width: 80 }} /> days
+                </label>
+              </div>
+              <div className="setting">
+                <div>
+                  <strong>A credit note is valid for</strong>
+                  <small>Months from the day it is printed. A note past its date is refused at the till. 0: a note never expires.</small>
+                </div>
+                <label className="check" style={{ margin: 0 }}>
+                  <input type="number" name="noteMonths" min={0} max={36} defaultValue={s.noteMonths} style={{ width: 80 }} /> months
+                </label>
+              </div>
+            </Card>
+          )}
           {!shop && (
           <Card title="Service">
             <div className="setting">
