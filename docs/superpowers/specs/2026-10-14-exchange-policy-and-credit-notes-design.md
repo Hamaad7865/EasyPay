@@ -240,3 +240,43 @@ one; nothing attaches the customer to the sale by itself.
   exchange itself, before any note exists).
 - Kids Corner's on-account credit (a tab for a named customer): the next piece, with deposits.
 - A guest's phone or the public site: nothing.
+
+## 12. What was built, and what was run (2026-10-14, the same day)
+
+Built as the plan `docs/superpowers/plans/2026-10-14-exchange-policy-and-credit-notes.md` says: migration 0109 (applied on
+dev), the till (database 26), the back office. Suites on dev, one at a time: `credit-notes` (new, 37 checks),
+`retail-till`, `shop-pages` (section Y added); 580 unit tests; the back office type-checks.
+
+**Two things the plan settled otherwise than section 4 says, and why.**
+- *The window.* Section 4 had a cashier with the right to refund acting alone inside the window and a manager past
+  it, which is what every refund already asked. As built, the window means something: inside it whoever is at the
+  till returns alone, with no right needed; past it (and always, with a window of 0) the right to refund is needed,
+  held or approved, exactly as before this. The server enforces the same (a vouched till's unapproved refund past
+  the window is stored and flagged as 0082 has it; an unvouched login's is refused). There is no `refund-window`
+  code: the refusal is `forbidden`, as it always was.
+- *The note's number* is the refund's with `CN` for `R`: `DM-T1-R000002` issues `DM-T1-CN000002`. One series, one
+  event.
+
+**Run on the test emulator** (`easypay_claude_size`, 5598, with its window; the made-up shop on the offline plan,
+seeded with `--es returns credit`; the stand-in printer at `10.0.2.2` catching every paper): the day opened; a scarf
+(Rs 590) sold for cash; on Receipts the receipt offered **Exchange** and no Refund; the sheet said "Exchange
+Rs 590.00" with no way to give money back; a mug (Rs 320) put on the sale, Sell saying "On a credit note · Rs 270.00"
+and its key "Credit note"; Pay saying "ON A CREDIT NOTE Rs 270.00" with the sentence of section 5 and the key
+"Credit note for Rs 270.00"; pressed: "Exchange complete · On a credit note, printed with the receipt Rs 270.00".
+Three papers came out in order: the refund slip ("Exchange, to the new sale 320.00 · Credit note, kept for the
+customer 270.00 · Ref: DM-T1-CN000002"), the receipt ("Returned goods 320.00 · Ref: DM-T1-R000002"), and the credit
+note (CREDIT NOTE · DM-T1-CN000002 · VALUE Rs 270.00 · Valid to 14 April 2027 · From exchange of DM-T1-000001 · the
+sentence · the number in bars). Then a candle (Rs 450): Pay's "Credit note" key, the number typed, "Use it": "Paid ·
+Credit note DM-T1-CN000002 − Rs 270.00 · Remaining Rs 180.00", the rest by cash; the receipt says "Credit note
+DM-T1-CN000002 270.00 · Cash 180.00". A postcard set then: the same note typed again was refused (the sheet closed,
+nothing on the sale); the tablet's row reads balance 0, used.
+
+**Not seen:** the swap keys on a product with variants (the Linen shirt); the policy `exchange` on the device ("Pick
+something worth at least": unit-tested, the words seen only in code); a note from another tablet (the pull); the
+window's PIN on the device; the back office in a browser (the pages are proven by `shop-pages`); a slip scanned
+(the emulator has no scanner); a till that syncs (the made-up shop works on its own).
+
+**Not built, found while running it:** the offline edition has no place on the tablet to change the three settings
+(the server takes them from a till through `settings.save`, and a connected shop sets them in the back office; a
+tablet that works on its own is `exchange` with 7 days and 6 months until a Settings row is built for it). The
+emulator was shut down afterwards; the postcard sale C-4 was left open on it.
