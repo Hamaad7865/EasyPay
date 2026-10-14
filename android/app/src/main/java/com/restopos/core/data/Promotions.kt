@@ -129,13 +129,18 @@ class Promotions @Inject constructor(
         val firstIn = db.promotions().firstIn().associate { (it.item_id to it.variant_id) to it.at }
         val live = db.promotions().activeNow().associateBy { it.item_id to it.variant_id }
         val now = System.currentTimeMillis()
+        // a line with no stock movement of its own (stock that came with the
+        // set-up, say) is idle since the earliest movement or sale the tablet
+        // knows of at all: the shop's start, as far as this tablet can tell;
+        // and from now, flagged never, when it knows of none
+        val earliest = (firstIn.values + sold.values).minOrNull() ?: now
         return items.flatMap { i ->
             val vs = variants[i.id].orEmpty()
             (if (vs.isEmpty()) listOf<ItemVariantEntity?>(null) else vs).map { v ->
                 val key = i.id to (v?.id ?: "")
                 val p = live[key]
                 val l = PromoLine(i, v, levels[key]?.qty ?: 0, p)
-                l to PromotionRules.Line(i.id, v?.id ?: "", l.qty, firstIn[key] ?: now, sold[key], p != null, p?.applied_at)
+                l to PromotionRules.Line(i.id, v?.id ?: "", l.qty, firstIn[key] ?: earliest, sold[key], p != null, p?.applied_at)
             }
         }
     }
