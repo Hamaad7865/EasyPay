@@ -50,6 +50,9 @@ internal fun printed(r: Report, d: ReportData, cutting: Cutting, byQty: Boolean,
                 if (f.sales > 0) add(ReportLine("Average sale", n(f.net / f.sales)))
                 add(RULE); add(head("By payment method"))
                 f.payments.forEach { add(ReportLine("${it.name} (${it.count})", n(it.amount))) }
+                if (f.notesIssued != 0L || f.notesRedeemed != 0L) {
+                    add(ReportLine("Credit notes issued", n(f.notesIssued))); add(ReportLine("Credit notes redeemed", n(f.notesRedeemed)))
+                }
                 add(RULE); add(head("Cash in and out"))
                 add(ReportLine("Cash in", n(f.cashIn))); add(ReportLine("Cash out", n(-f.cashOut)))
                 val days = Reports.byDay(d.sales, zone)

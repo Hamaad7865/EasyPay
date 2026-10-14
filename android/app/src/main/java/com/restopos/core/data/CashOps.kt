@@ -178,6 +178,8 @@ class CashOps @Inject constructor(
         val categories: List<DocAmount>, val taxes: List<DocTax>, val first: String?, val last: String?,
         // takeaways nobody came for and that were not paid: what each came to. Lost, and in no figure above.
         val noShows: List<DocAmount>,
+        // credit notes (0109): what refunds put on them, and what sales took off them. In no tender above.
+        val notesIssued: Long = 0, val notesRedeemed: Long = 0,
     )
 
     private suspend fun period(device: String, from: Long, to: Long): Period {
@@ -187,12 +189,18 @@ class CashOps @Inject constructor(
         val types = db.ops().allPaymentTypes().associateBy { it.id }
         val pay = LinkedHashMap<String, DocAmount>()
         var cash = 0L
+        // credit notes (0109): neither tender holds money. What refunds put on
+        // notes and what sales took off them are two lines of their own.
+        var notesIssued = 0L; var notesRedeemed = 0L
         db.ops().paidBetween(device, from, to).forEach { r ->
+            val kind = types[r.payment_type_id]?.kind
+            if (kind == "credit_note") { if (r.type == "refund") notesIssued += r.amount else notesRedeemed += r.amount; return@forEach }
+            if (kind == "exchange") return@forEach
             val signed = if (r.type == "refund") -r.amount else r.amount
             val name = types[r.payment_type_id]?.name ?: "Other"
             val cur = pay[name]
             pay[name] = DocAmount(name, (cur?.amount ?: 0) + signed, (cur?.count ?: 0) + 1)
-            if (types[r.payment_type_id]?.kind == "cash") cash += signed
+            if (kind == "cash") cash += signed
         }
         val till = till()
         val moves = db.ops().cashMoves(device, from, to).filter { it.type != "drawer" }
@@ -224,7 +232,7 @@ class CashOps @Inject constructor(
             sales.sumOf { it.discount_total } - refunds.sumOf { it.discount_total } + changed("discount"), sales.sumOf { it.tax_total } - refunds.sumOf { it.tax_total }, changed("override"),
             pay.values.sortedByDescending { it.amount }, cash, moves.filter { it.type == "in" }.sumOf { it.amount },
             moves.filter { it.type == "out" }.sumOf { it.amount }, moves, cats.values.sortedByDescending { it.amount }, taxes.values.toList(),
-            sales.firstOrNull()?.number, sales.lastOrNull()?.number, noShows,
+            sales.firstOrNull()?.number, sales.lastOrNull()?.number, noShows, notesIssued, notesRedeemed,
         )
     }
 
@@ -234,6 +242,7 @@ class CashOps @Inject constructor(
     class Figures(
         val sales: Int, val gross: Long, val refunds: Int, val refunded: Long, val discounts: Long, val tax: Long, val priceChanges: Long,
         val payments: List<DocAmount>, val cashIn: Long, val cashOut: Long, val taxes: List<DocTax>,
+        val notesIssued: Long = 0, val notesRedeemed: Long = 0,
     ) {
         val net: Long get() = gross - refunded
     }
@@ -241,7 +250,7 @@ class CashOps @Inject constructor(
     // from is not in the period and to is, as everywhere here.
     suspend fun figures(from: Long, to: Long): Figures? {
         val p = period(session.deviceId() ?: return null, from, to)
-        return Figures(p.sales, p.gross, p.refunds, p.refunded, p.discounts, p.tax, p.priceChanges, p.payments, p.cashIn, p.cashOut, p.taxes)
+        return Figures(p.sales, p.gross, p.refunds, p.refunded, p.discounts, p.tax, p.priceChanges, p.payments, p.cashIn, p.cashOut, p.taxes, p.notesIssued, p.notesRedeemed)
     }
 
     suspend fun tillName(): String = till()
@@ -262,7 +271,7 @@ class CashOps @Inject constructor(
             p.payments, p.cashTaken, p.cashIn, p.cashOut, p.moves, shift.expected_cash ?: expected, shift.counted_cash,
             p.sales, p.gross, p.refunds, p.refunded, p.discounts,
             db.ops().drawerCounts(shift.id).map { DrawerCountDoc(it.device_time, name(it.employee_id), it.counted, it.expected, till) },
-            priceChanges = p.priceChanges, noShows = p.noShows,
+            priceChanges = p.priceChanges, noShows = p.noShows, notesIssued = p.notesIssued, notesRedeemed = p.notesRedeemed,
         )
     }
 
@@ -287,7 +296,7 @@ class CashOps @Inject constructor(
         return ZDoc(
             number ?: ((last?.number ?: 0) + 1), till(), last?.closed_at, closedAt, by,
             p.sales, p.gross, p.refunds, p.refunded, p.discounts, p.tax, p.payments, p.categories, p.taxes,
-            p.cashIn, p.cashOut, p.moves, p.first, p.last, priceChanges = p.priceChanges, noShows = p.noShows,
+            p.cashIn, p.cashOut, p.moves, p.first, p.last, priceChanges = p.priceChanges, noShows = p.noShows, notesIssued = p.notesIssued, notesRedeemed = p.notesRedeemed,
         )
     }
 
@@ -299,7 +308,7 @@ class CashOps @Inject constructor(
         return ZDoc(
             row.number, till(), row.from_time, row.closed_at, name(row.closed_by),
             p.sales, p.gross, p.refunds, p.refunded, p.discounts, p.tax, p.payments, p.categories, p.taxes,
-            p.cashIn, p.cashOut, p.moves, p.first, p.last, priceChanges = p.priceChanges, noShows = p.noShows,
+            p.cashIn, p.cashOut, p.moves, p.first, p.last, priceChanges = p.priceChanges, noShows = p.noShows, notesIssued = p.notesIssued, notesRedeemed = p.notesRedeemed,
         ).withDrawer(shift)
     }
 

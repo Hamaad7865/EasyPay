@@ -55,10 +55,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Money
+import com.restopos.core.common.Scanner
 import com.restopos.core.common.tableLabel
 import com.restopos.core.data.Calc
+import com.restopos.core.data.CreditNotes
 import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.Exchanges
+import com.restopos.core.data.ReturnRules
 import com.restopos.core.data.LineInfo
 import com.restopos.core.data.OrderOps
 import com.restopos.core.data.PayInput
@@ -107,8 +110,8 @@ data class PaidRow(val label: String, val amount: Long)
 data class PayDone(
     val receiptId: String, val total: Long, val change: Long, val method: String,
     val kind: String, val table: String?, val phone: String?, val email: String?,
-    // an exchange: what the shop gives back when the goods that came back were worth more, and how
-    val exchange: Boolean = false, val back: Long = 0, val backBy: String? = null,
+    // an exchange: what the shop gives back when the goods that came back were worth more, and how; or what stays on a credit note
+    val exchange: Boolean = false, val back: Long = 0, val backBy: String? = null, val note: Long = 0,
 )
 
 data class PayUi(
@@ -139,6 +142,16 @@ data class PayUi(
     val exchangeOf: String? = null,
     val credit: Long = 0,
     val back: Long = 0,
+    // the shop's return policy (0109): with an exchange worth more than the
+    // sale, shortBy is the credit the sale must reach (exchange only) and
+    // noteOut what stays on a credit note (credit); both 0 otherwise
+    val policy: String = "refund",
+    val shortBy: Long = 0,
+    val noteOut: Long = 0,
+    // a shop's credit notes: the type they are spent through (null: none
+    // here, or a restaurant), and whether the number is being asked for
+    val noteType: PaymentTypeEntity? = null,
+    val noteAsk: Boolean = false,
     val busy: Boolean = false,
     val done: PayDone? = null,
 ) {
@@ -165,9 +178,14 @@ class PayViewModel @Inject constructor(
     private val orderOps: OrderOps,
     private val service: ServiceRepository,
     private val exchanges: Exchanges,
+    private val creditNotes: CreditNotes,
 ) : ViewModel() {
     private val _ui = MutableStateFlow(PayUi())
     val ui: StateFlow<PayUi> = _ui
+
+    // a credit note's slip scanned on Sell: Pay opens and uses it
+    private var pendingNote: String? = null
+    fun noteScanned(number: String) { pendingNote = number }
 
     private class Share(val type: String, val input: PayInput)
     private var shares: List<Share> = emptyList()
@@ -212,6 +230,28 @@ class PayViewModel @Inject constructor(
                 Toaster.say("${Money.format(s.pending)} already taken on this bill in ${shares.size} ${if (shares.size == 1) "payment" else "payments"} · ${Money.format(_ui.value.remaining)} remaining")
             }
         }
+        pendingNote?.let { pendingNote = null; useNote(it) }
+    }
+
+    fun askNote(on: Boolean) { _ui.value = _ui.value.copy(noteAsk = on) }
+
+    // A credit note spent on this sale (0109): as much of it as is due, or
+    // all that is left on it, taken as a share; the rest of the sale is paid
+    // any other way. One note on a sale: a second replaces the first.
+    fun useNote(number: String) = viewModelScope.launch {
+        val s = _ui.value
+        val type = s.noteType ?: run { Toaster.say("This till has not been sent the shop's Credit note payment type yet. Let it sync."); return@launch }
+        if (s.exchangeOf != null) { Toaster.say("A credit note cannot pay for an exchange. Finish the exchange, then spend the note on a sale."); return@launch }
+        val n = creditNotes.find(number)
+        creditNotes.refusal(n)?.let { Toaster.say(it); _ui.value = _ui.value.copy(noteAsk = false); return@launch }
+        val others = shares.filter { it.input.paymentTypeId != type.id }
+        val due = s.remaining + shares.filter { it.input.paymentTypeId == type.id }.sumOf { it.input.amount }
+        val amount = ReturnRules.noteCover(n!!.balance, due)
+        if (amount <= 0) { Toaster.say("There is nothing due for the note to cover"); return@launch }
+        shares = others + Share("Credit note ${n.number}", PayInput(type.id, amount, amount, 0, n.number, label = "Credit note ${n.number}"))
+        keep(ticketId, s.n, if (s.split == "amount") "amount" else "equal")
+        show(s.copy(noteAsk = false, tend = "", piece = 0))
+        Toaster.say("Credit note ${n.number}: ${Money.format(amount)} of it used" + (if (n.balance > amount) " · ${Money.format(n.balance - amount)} stays on it" else " · it is used up"))
     }
 
     // What is written down, one entry per order: two bills can be half paid at
@@ -277,12 +317,14 @@ class PayViewModel @Inject constructor(
         // screen and the printed checks show it. Paying another check first
         // does not take it.
         if (cur.check != null && discount?.type == "amount" && cur.check != unpaid.minOfOrNull { it.line.check_no }) discount = null
+        val settings = PosSettings.parse(db.ops().settings())
         val title = (if (table != null) "${tableLabel(table.name)} · ${t.covers ?: 1} ${L.covers}"
-        else listOfNotNull(if (kind == "counter") (if (PosSettings.parse(db.ops().settings()).retail) "Sale" else L.quick) else type?.name, t.order_no, t.name).joinToString(" ")) + (cur.check?.let { " · Check $it" } ?: "")
+        else listOfNotNull(if (kind == "counter") (if (settings.retail) "Sale" else L.quick) else type?.name, t.order_no, t.name).joinToString(" ")) + (cur.check?.let { " · Check $it" } ?: "")
         show(cur.copy(
             loaded = true, gone = unpaid.isEmpty(), title = title, kind = kind,
             split = if (ex != null) "full" else split ?: cur.split, n = if (cur.loaded) cur.n else maxOf(2, t.covers ?: 2),
-            exchangeOf = ex?.number, credit = ex?.credit ?: 0,
+            exchangeOf = ex?.number, credit = ex?.credit ?: 0, policy = settings.returns,
+            noteType = if (settings.retail) db.notes().paymentType() else null,
             // one check of a split check: its lines, and only they
             lines = all.filter { cur.check == null || (it.line.check_no == cur.check && !it.line.paid) }.map { PayLine(it, cur.check != null) },
             methods = methods, method = cur.method?.let { m -> methods.firstOrNull { it.id == m.id } } ?: methods.firstOrNull(),
@@ -298,11 +340,14 @@ class PayViewModel @Inject constructor(
         val remaining = (all.total - taken).coerceAtLeast(0)
         val picked = if (s.split == "items") totalsFor(s.lines.filter { it.picked && !it.info.line.paid }.map { it.info.line.id }).total else 0
         val amount = PayParts.amount(s.split, remaining, s.n - shares.size, picked, s.piece)
-        val exchange = s.exchangeOf != null
+        // an exchange: what the shop's policy does with goods worth more than the sale (0109)
+        val state = if (s.exchangeOf != null) ReturnRules.payState(s.policy, remaining, s.credit) else null
         _ui.value = s.copy(
             total = earlierTotal + all.total, remaining = remaining, tax = all.tax,
-            amount = if (exchange) (remaining - s.credit).coerceAtLeast(0) else amount,
-            back = if (exchange) (s.credit - remaining).coerceAtLeast(0) else 0,
+            amount = when (state) { null -> amount; is ReturnRules.PayState.Pay -> state.amount; else -> 0 },
+            back = (state as? ReturnRules.PayState.Back)?.amount ?: 0,
+            shortBy = (state as? ReturnRules.PayState.Short)?.needed ?: 0,
+            noteOut = (state as? ReturnRules.PayState.Note)?.amount ?: 0,
             paid = earlier + shares.map { PaidRow(it.type, it.input.amount) },
             pending = taken, part = (shares.size + 1).coerceAtMost(s.n), piece = PayParts.piece(s.piece, remaining),
         )
@@ -414,6 +459,7 @@ class PayViewModel @Inject constructor(
     // The payment type picked is for the difference, whichever way it goes.
     private fun exchange(s: PayUi, covered: List<String>) {
         val m = s.method
+        if (s.shortBy > 0) { Toaster.say("Pick something worth at least ${Money.format(s.shortBy)}. This shop does not refund."); return }
         if ((s.amount > 0 || s.back > 0) && m == null) { Toaster.say(if (s.back > 0) "Pick how the difference is given back" else "Pick how it is paid"); return }
         val difference = if (s.amount > 0 && m != null) {
             if (m.kind == "cash") {
@@ -436,7 +482,7 @@ class PayViewModel @Inject constructor(
                         sale.id, sale.total, difference?.change ?: 0,
                         listOfNotNull("returned goods", m?.name?.takeIf { s.amount > 0 }).joinToString(" and "),
                         s.kind, null, t?.phone ?: customer?.phone, customer?.email,
-                        exchange = true, back = s.back, backBy = m?.name?.takeIf { s.back > 0 },
+                        exchange = true, back = s.back, backBy = m?.name?.takeIf { s.back > 0 }, note = s.noteOut,
                     ))
                 },
                 onFailure = { _ui.value = s.copy(busy = false); Toaster.say(it.message) },
@@ -597,9 +643,9 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                     ui.paid.forEach { p -> Row { T("Paid · ${p.label}", 14.sp, 700, V.GreenText); Gap(); T("− ${Money.format(p.amount)}", 14.sp, 700, V.GreenText) } }
                     ui.exchangeOf?.let { Row { T("Returned · $it", 14.sp, 700, V.GreenText); Gap(); T("− ${Money.format(ui.credit)}", 14.sp, 700, V.GreenText) } }
                     Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.Bottom) {
-                        T(if (ui.exchangeOf == null) "Remaining" else if (ui.back > 0) "To give back" else "To pay", 16.sp, 700)
+                        T(when { ui.exchangeOf == null -> "Remaining"; ui.back > 0 -> "To give back"; ui.noteOut > 0 -> "On a credit note"; ui.shortBy > 0 -> "Short of the return"; else -> "To pay" }, 16.sp, 700)
                         Gap()
-                        T(Money.format(if (ui.exchangeOf == null) ui.remaining else if (ui.back > 0) ui.back else ui.amount), 26.sp, 800, spacing = (-0.5).sp)
+                        T(Money.format(when { ui.exchangeOf == null -> ui.remaining; ui.back > 0 -> ui.back; ui.noteOut > 0 -> ui.noteOut; ui.shortBy > 0 -> ui.shortBy - ui.remaining; else -> ui.amount }), 26.sp, 800, spacing = (-0.5).sp)
                     }
                     Row { T(L.t("of which tax", "dont taxes", "ladan tax"), 13.sp, 600, V.Text3); Gap(); T(Money.format(ui.tax), 13.sp, 600, V.Text3) }
                 }
@@ -610,8 +656,8 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
             BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
             val short = PayFit.short(maxHeight.value)
             Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = if (short) 12.dp else 20.dp), verticalArrangement = Arrangement.spacedBy(if (short) 10.dp else 18.dp)) {
-                val what = if (ui.back > 0) "AMOUNT TO GIVE BACK" else "AMOUNT TO CHARGE"
-                val figure = Money.format(if (ui.back > 0) ui.back else ui.amount)
+                val what = when { ui.back > 0 -> "AMOUNT TO GIVE BACK"; ui.noteOut > 0 -> "ON A CREDIT NOTE"; ui.shortBy > 0 -> "THE SALE MUST REACH"; else -> "AMOUNT TO CHARGE" }
+                val figure = Money.format(when { ui.back > 0 -> ui.back; ui.noteOut > 0 -> ui.noteOut; ui.shortBy > 0 -> ui.shortBy; else -> ui.amount })
                 if (short) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         T(what, 13.sp, 700, V.Text2, spacing = 1.sp)
@@ -639,6 +685,17 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                                 }
                             }
                             repeat(5 - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                    // a shop's credit note, by its number: a share of the bill, the rest paid any other way (0109)
+                    if (ui.noteType != null && ui.exchangeOf == null && ui.check == null) {
+                        Row(
+                            Modifier.fillMaxWidth().height(if (short) 50.dp else 56.dp).clip(RoundedCornerShape(12.dp)).background(V.BlueWash).clickable { vm.askNote(true) }.padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            VIcon(VI.Receipt, 20.dp, V.BlueSoft)
+                            T("Credit note", 16.sp, 800, V.BlueSoft)
+                            T("Scan the slip, or type its number", 13.sp, 600, V.Text2)
                         }
                     }
                 }
@@ -704,6 +761,8 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                     ) {
                         VIcon(if (ui.method?.kind == "card") VI.Cash else VI.Qr, 44.dp, V.Cyan, 1.6f)
                         val say = when {
+                            settled && ui.shortBy > 0 -> "The goods that come back are worth ${Money.format(ui.shortBy)} and this shop does not refund. Go back and add to the sale until it comes to at least that."
+                            settled && ui.noteOut > 0 -> "The goods that come back are worth ${Money.format(ui.noteOut)} more than this sale. That stays with the customer on a credit note, printed after the receipt: press Credit note to record the exchange."
                             settled && ui.back > 0 -> "The goods that come back are worth ${Money.format(ui.back)} more than this sale. Give that back by ${ui.method?.name ?: "the payment type you pick"}, then press Give back to record the exchange."
                             settled -> "The goods that come back cover this sale exactly. Nothing changes hands: press Exchange to record it."
                             else -> ui.method?.let { how(it, ui.amount) }
@@ -712,11 +771,14 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                         if (!settled) Field(ui.reference, vm::reference, "Reference or last 4 digits (optional)", Modifier.width(360.dp))
                     }
                 }
-                val ok = !ui.busy && !ui.short && (ui.amount > 0 || (ui.split != "items" && ui.remaining == 0L && ui.lines.any { !it.info.line.paid }) || (settled && ui.remaining > 0))
+                val ok = !ui.busy && !ui.short && ui.shortBy == 0L && (ui.amount > 0 || (ui.split != "items" && ui.remaining == 0L && ui.lines.any { !it.info.line.paid }) || (settled && ui.remaining > 0))
                 VBtn(
                     when {
+                        settled && ui.shortBy > 0 -> "Pick something worth at least ${Money.format(ui.shortBy)}"
+                        settled && ui.noteOut > 0 -> "Credit note for ${Money.format(ui.noteOut)}"
                         settled && ui.back > 0 -> "Give back ${Money.format(ui.back)}"
                         settled && ui.remaining > 0 -> "Exchange · nothing to pay"
+                        ui.amount == 0L && ui.pending > 0 && ui.remaining == 0L -> "Record · paid by credit note"
                         ui.amount > 0 -> "${L.charge} ${Money.format(ui.amount)}"
                         ui.lines.any { !it.info.line.paid } -> "Close · nothing to pay"
                         else -> "Nothing left to pay"
@@ -730,6 +792,7 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
     }
 
     if (typing && ui.split == "amount") PieceSheet(ui.remaining, onDismiss = { typing = false }) { typing = false; vm.piece(it) }
+    if (ui.noteAsk) NoteSheet(onDismiss = { vm.askNote(false) }) { vm.useNote(it) }
 
     if (leaving) {
         Sheet(onDismiss = { leaving = false }, width = 520.dp) {
@@ -778,6 +841,18 @@ private fun PieceSheet(remaining: Long, onDismiss: () -> Unit, onSet: (Long) -> 
     }
 }
 
+// A credit note's number, scanned from its slip or typed (0109).
+@Composable
+private fun NoteSheet(onDismiss: () -> Unit, onUse: (String) -> Unit) {
+    var typed by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { Scanner.codes.collect { onUse(it) } }
+    Sheet(onDismiss = onDismiss, width = 480.dp, gap = 14.dp) {
+        SheetHead("Credit note", "Scan the slip, or type the number on it. As much of the note as is due is used; the rest of the sale is paid any other way.", onDismiss)
+        Field(typed, { typed = it.uppercase().take(40) }, "CN number, as on the slip", Modifier.fillMaxWidth(), onDone = { if (typed.isNotBlank()) onUse(typed.trim()) })
+        VBtn("Use it", Modifier.fillMaxWidth(), if (typed.isNotBlank()) V.Blue else V.Key, if (typed.isNotBlank()) Color.White else V.Text2, 58.dp, weight = 800, enabled = typed.isNotBlank()) { onUse(typed.trim()) }
+    }
+}
+
 // Paid in full: the change to give, how the guest wants the receipt, and on
 // to the next thing.
 @Composable
@@ -796,10 +871,10 @@ private fun Done(d: PayDone, vm: PayViewModel, onFinish: () -> Unit) {
                 T(if (d.exchange) "Exchange complete" else "Payment complete", 26.sp, 800, spacing = (-0.5).sp)
                 T("${Money.format(d.total)} · ${d.method}", 15.sp, 600, V.Text2)
             }
-            if (d.change > 0 || d.back > 0) {
+            if (d.change > 0 || d.back > 0 || d.note > 0) {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(V.GreenWash).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    T(if (d.back > 0) "Give back" + (d.backBy?.let { " by $it" } ?: "") else "Give change", 14.sp, 700, V.Dim)
-                    T(Money.format(if (d.back > 0) d.back else d.change), 44.sp, 800, V.GreenText, spacing = (-1.5).sp)
+                    T(when { d.note > 0 -> "On a credit note, printed with the receipt"; d.back > 0 -> "Give back" + (d.backBy?.let { " by $it" } ?: ""); else -> "Give change" }, 14.sp, 700, V.Dim)
+                    T(Money.format(when { d.note > 0 -> d.note; d.back > 0 -> d.back; else -> d.change }), 44.sp, 800, V.GreenText, spacing = (-1.5).sp)
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

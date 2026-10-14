@@ -709,6 +709,16 @@ class TicketRepository @Inject constructor(
             db.receipts().insertPayments(payments.map {
                 ReceiptPaymentEntity(Uuid7.next(), tenant, receiptId, it.paymentTypeId, it.amount, it.tendered, it.change, it.reference)
             })
+            // a credit note spent (0109): what this sale took comes off the note
+            // here; the server's figure comes back with the next pull
+            db.notes().paymentType()?.let { noteType ->
+                payments.filter { it.paymentTypeId == noteType.id && it.reference != null }.forEach { p ->
+                    db.notes().byNumber(p.reference!!)?.let { n ->
+                        val left = (n.balance - p.amount).coerceAtLeast(0)
+                        db.notes().setBalance(n.id, left, if (left == 0L) "used" else n.status)
+                    }
+                }
+            }
             db.tickets().markPaid(payLines.map { it.id })
             // what was sold leaves this till's copy of the shelf at once; the server's figure comes back with the next sync
             db.moveStock(store, payLines.map { it to -it.qty })

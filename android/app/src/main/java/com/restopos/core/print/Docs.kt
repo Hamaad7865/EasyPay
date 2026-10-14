@@ -121,6 +121,9 @@ data class ShiftDoc(
     val priceChanges: Long = 0,
     // takeaways nobody came for and that were not paid, each with what it came to: lost, and in no figure here
     val noShows: List<DocAmount> = emptyList(),
+    // credit notes (0109): what refunds put on them and what sales took off them; in no tender above
+    val notesIssued: Long = 0,
+    val notesRedeemed: Long = 0,
 )
 
 // The drawer counted during a shift: what was in it and what it should have held.
@@ -160,6 +163,9 @@ data class ZDoc(
     val counted: Long? = null,
     // takeaways nobody came for and that were not paid, each with what it came to: lost, and in no figure here
     val noShows: List<DocAmount> = emptyList(),
+    // credit notes (0109): what refunds put on them and what sales took off them; in no tender above
+    val notesIssued: Long = 0,
+    val notesRedeemed: Long = 0,
 )
 
 // Who the restaurant is on paper, and the notes around the receipt.
@@ -429,6 +435,7 @@ object Docs {
         p.rule()
         p.bold(true).line("TAKEN BY PAYMENT METHOD").bold(false)
         d.payments.forEach { p.row("${it.name} (${it.count})", n(it.amount)) }
+        if (d.notesIssued != 0L || d.notesRedeemed != 0L) { p.row("Credit notes issued", n(d.notesIssued)); p.row("Credit notes redeemed", n(d.notesRedeemed)) }
         p.rule()
         p.bold(true).line("CASH DRAWER").bold(false)
         p.row("Opening float", n(d.float))
@@ -490,6 +497,7 @@ object Docs {
         p.rule()
         p.bold(true).line("BY PAYMENT METHOD").bold(false)
         d.payments.forEach { p.row("${it.name} (${it.count})", n(it.amount)) }
+        if (d.notesIssued != 0L || d.notesRedeemed != 0L) { p.row("Credit notes issued", n(d.notesIssued)); p.row("Credit notes redeemed", n(d.notesRedeemed)) }
         if (detailed) {
             if (d.categories.isNotEmpty()) {
                 p.rule()

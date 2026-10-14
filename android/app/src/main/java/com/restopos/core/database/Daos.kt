@@ -102,8 +102,10 @@ interface CatalogDao {
     @Query("SELECT * FROM dining_options WHERE deleted_at IS NULL ORDER BY sort_order, name")
     suspend fun diningOptions(): List<DiningOptionEntity>
 
-    // the ways to pay. A shop's "exchange" type is not one: it only settles an exchange (core/data/Exchange.kt)
-    @Query("SELECT * FROM payment_types WHERE deleted_at IS NULL AND is_active AND kind <> 'exchange' ORDER BY sort_order")
+    // the ways to pay. A shop's "exchange" type is not one: it only settles an
+    // exchange (core/data/Exchange.kt); nor is its "credit_note" type, which
+    // Pay offers only by a note's number (core/data/CreditNotes.kt)
+    @Query("SELECT * FROM payment_types WHERE deleted_at IS NULL AND is_active AND kind NOT IN ('exchange', 'credit_note') ORDER BY sort_order")
     fun paymentTypes(): kotlinx.coroutines.flow.Flow<List<PaymentTypeEntity>>
 
     @Query("SELECT * FROM discounts WHERE deleted_at IS NULL ORDER BY name")

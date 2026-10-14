@@ -47,6 +47,7 @@ import com.restopos.core.common.Scanner
 import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.ExchangeDraft
 import com.restopos.core.data.LinePrice
+import com.restopos.core.data.ReturnRules
 import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.DiscountEntity
 import com.restopos.core.database.ItemEntity
@@ -96,9 +97,10 @@ private const val BARS = "M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12"
 // more: the till's cash drawer, behind the More sheet's drawer and cash keys.
 // onReceipts: where a refund or an exchange starts. onReceipt: a receipt's
 // barcode was scanned here; its id goes to the Receipts screen, which opens it.
+// onNote: a credit note's slip was scanned here; its number goes to Pay.
 // onFast: the sale paid in cash, the exact amount, without the payment screen.
 @Composable
-fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit, onFast: () -> Unit, onReceipts: () -> Unit, onReceipt: (String) -> Unit, onStock: () -> Unit) {
+fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit, onFast: () -> Unit, onReceipts: () -> Unit, onReceipt: (String) -> Unit, onStock: () -> Unit, onNote: (String) -> Unit = {}) {
     val ui by vm.ui.collectAsState()
     val picking by vm.picking.collectAsState()
     val asking by vm.asking.collectAsState()
@@ -108,7 +110,7 @@ fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit
     var noting by remember { mutableStateOf<SaleLine?>(null) }
     LaunchedEffect(Unit) { vm.open() }
     // while this screen is open, a scanned barcode rings its product up, and a receipt's opens the receipt
-    LaunchedEffect(Unit) { Scanner.codes.collect { vm.scanned(it, onReceipt) } }
+    LaunchedEffect(Unit) { Scanner.codes.collect { vm.scanned(it, onReceipt, onNote) } }
 
     // On a screen that is not tall (a 10-inch, where the till is drawn larger: core/ui/ScreenFit)
     // the sale gives way, as an order's does: its head, its keys and Pay are a little
@@ -250,10 +252,16 @@ private fun Sale(
                 if (ui.totals.tax != 0L) Small(if (ui.taxOnTop == 0L) "VAT, included" else "VAT", Money.format(ui.totals.tax))
                 if (ui.totals.rounding != 0L) Small("Rounding", Money.format(ui.totals.rounding))
             }
-            // an exchange: what is left once the goods that come back have paid their part
+            // an exchange: what is left once the goods that come back have paid
+            // their part, and what the shop's policy does with goods worth more
+            val state = if (exchange == null || ui.empty) null else ReturnRules.payState(exchange.policy, ui.totals.total, exchange.credit)
             val due = if (exchange == null || ui.empty) ui.totals.total else ui.totals.total - exchange.credit
-            val settled = exchange != null && !ui.empty && due == 0L
-            TotalRow(if (due < 0) "Give back" else L.total, ui.count, Money.format(if (due < 0) -due else due), low)
+            val settled = state == ReturnRules.PayState.Even
+            val short = state is ReturnRules.PayState.Short
+            TotalRow(
+                when (state) { is ReturnRules.PayState.Back -> "Give back"; is ReturnRules.PayState.Note -> "On a credit note"; is ReturnRules.PayState.Short -> "Pick something worth at least"; else -> L.total },
+                ui.count, Money.format(if (state is ReturnRules.PayState.Short) exchange!!.credit else if (due < 0) -due else due), low,
+            )
             val key = if (low) 40.dp else 44.dp
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 VBtn("Park sale", Modifier.weight(1f), height = key, radius = 12.dp, pad = 10.dp, fg = if (ui.empty) V.Off else V.Text) { vm.park() }
@@ -265,7 +273,10 @@ private fun Sale(
             GoRow(low) {
                 // an exchange is settled on the payment screen, which asks how the difference goes
                 if (exchange == null) FastKey(!ui.empty, SellFit.fast(narrow)) { if (vm.mayPay()) onFast() }
-                PayKey(if (due < 0) "Give back" else if (settled) "Exchange" else L.pay, !ui.empty) { if (vm.mayPay()) onPay() }
+                PayKey(
+                    when (state) { is ReturnRules.PayState.Back -> "Give back"; is ReturnRules.PayState.Note -> "Credit note"; is ReturnRules.PayState.Short -> "Short of the return"; else -> if (settled) "Exchange" else L.pay },
+                    !ui.empty && !short,
+                ) { if (vm.mayPay()) onPay() }
             }
         }
     }

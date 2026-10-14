@@ -236,11 +236,17 @@ class RetailViewModel @Inject constructor(
     // A receipt's own barcode is looked for first (its number is nothing like
     // a product's code): the receipt opens, for a refund, an exchange or
     // another copy. onReceipt takes its id to the Receipts screen.
-    fun scanned(code: String, onReceipt: (String) -> Unit = {}) = viewModelScope.launch {
+    fun scanned(code: String, onReceipt: (String) -> Unit = {}, onNote: (String) -> Unit = {}) = viewModelScope.launch {
         query.value = ""
         receiptOf(code)?.let { r ->
             Scanner.say(true, "Receipt · ${r.number}")
             onReceipt(r.id)
+            return@launch
+        }
+        // a credit note's slip (0109): if there is something to pay, Pay opens with it
+        db.notes().byNumber(code.trim().uppercase())?.let { n ->
+            if (_ui.value.empty) { Toaster.say("Credit note ${n.number}, ${Money.format(n.balance)} left on it. Ring up what the customer takes, then scan it again on the payment screen."); Scanner.say(true, "Credit note · ${n.number}") }
+            else { Scanner.say(true, "Credit note · ${n.number}"); if (mayPay()) onNote(n.number) }
             return@launch
         }
         when (val f = sales.find(code)) {

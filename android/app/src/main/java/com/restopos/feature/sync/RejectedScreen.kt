@@ -75,6 +75,7 @@ private fun what(type: String): String = when (type) {
 
 private fun why(code: String?): String = when (code) {
     "forbidden" -> "This login is not allowed to do that."
+    "refund-policy" -> "This shop does not give money back: it exchanges. Check Returns on POS settings in the back office."
     "ticket-closed" -> "The order was already closed."
     "bad-ticket" -> "The order does not exist on the server."
     "unknown-item" -> "The item no longer exists."

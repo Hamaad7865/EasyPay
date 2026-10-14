@@ -47,9 +47,12 @@ import com.restopos.core.data.DocBuilder
 import com.restopos.core.data.Exchanges
 import com.restopos.core.data.NeedsApproval
 import com.restopos.core.data.OrderOps
+import com.restopos.core.data.RetailSales
+import com.restopos.core.data.ReturnRules
 import com.restopos.core.data.StaffMember
 import com.restopos.core.data.StaffSession
 import com.restopos.core.data.TicketRepository
+import com.restopos.core.database.CreditNoteEntity
 import com.restopos.core.database.PaymentTypeEntity
 import com.restopos.core.database.ReceiptEntity
 import com.restopos.core.database.ReceiptPaymentEntity
@@ -86,6 +89,10 @@ data class ReceiptDetail(
     val lines: List<com.restopos.core.data.RefundLine>?,
     // the paper itself, line by line, as it prints today (it says so when the sale was refunded since)
     val look: List<String> = emptyList(),
+    // a shop: the other sizes and colours each line can be swapped for (0109), by order line
+    val swaps: Map<String, List<ReturnRules.Variant>> = emptyMap(),
+    // a refund that kept something for the customer on a credit note
+    val note: CreditNoteEntity? = null,
 ) {
     val canRefund: Boolean get() = receipt.type == "sale" && (lines?.any { it.left > 0 } ?: (refunded == 0L))
 }
@@ -101,6 +108,7 @@ class ReceiptsViewModel @Inject constructor(
     private val staff: StaffSession,
     private val approvals: Approvals,
     private val exchanges: Exchanges,
+    private val sales: RetailSales,
 ) : ViewModel() {
     private val _rows = MutableStateFlow<List<ReceiptEntity>>(emptyList())
     val rows: StateFlow<List<ReceiptEntity>> = _rows
@@ -128,6 +136,11 @@ class ReceiptsViewModel @Inject constructor(
     // a shop: a return asks whether the goods go back on the shelf
     private val _retail = MutableStateFlow(false)
     val retail: StateFlow<Boolean> = _retail
+    // the shop's return policy and window (0109); a restaurant refunds as it always did
+    private val _policy = MutableStateFlow("refund")
+    val policy: StateFlow<String> = _policy
+    private val _days = MutableStateFlow(0)
+    val days: StateFlow<Int> = _days
 
     init {
         viewModelScope.launch {
@@ -146,7 +159,12 @@ class ReceiptsViewModel @Inject constructor(
             _names.value = all.associateBy { it.id }
             _types.value = all.filter { it.is_active && it.kind != "exchange" }.sortedBy { it.sort_order }
         }
-        viewModelScope.launch { db.ops().settingsFlow().collect { _retail.value = com.restopos.core.data.PosSettings.parse(it).retail } }
+        viewModelScope.launch {
+            db.ops().settingsFlow().collect {
+                val s = com.restopos.core.data.PosSettings.parse(it)
+                _retail.value = s.retail; _policy.value = s.returns; _days.value = s.returnDays
+            }
+        }
     }
 
     fun can(permission: String) = staff.can(permission)
@@ -155,14 +173,33 @@ class ReceiptsViewModel @Inject constructor(
         _open.value = r?.let {
             val row = db.ops().receipt(it.id) ?: it
             val doc = docs.decode(row.doc) ?: orders.docOf(row)
+            val lines = if (row.type == "sale") orders.refundable(row.id) else null
             ReceiptDetail(
                 row, doc, db.receipts().payments(row.id),
                 if (row.type == "sale") db.ops().refundedOf(row.id) else 0,
-                if (row.type == "sale") orders.refundable(row.id) else null,
+                lines,
                 runCatching { docs.look(orders.marked(row, doc, reprint = false)) }.getOrDefault(emptyList()),
+                swaps = if (_retail.value && lines != null) orders.swapsFor(lines) else emptyMap(),
+                note = if (row.type == "refund") db.notes().ofRefund(row.id) else null,
             )
         }
     }
+
+    // the credit note a refund issued, printed again
+    fun printNote(n: CreditNoteEntity) = run("Credit note sent to the printer.") { runCatching { orders.printNote(n) } }
+
+    // A returned line swapped for another size or colour with one tap (0109):
+    // the exchange starts as Exchange starts it, and the variant goes on the
+    // sale, which Sell opens on.
+    fun swap(id: String, reason: String, picks: Map<String, Int>?, restock: Boolean, itemId: String, variantId: String) =
+        run("Exchange started. What the customer takes instead is on the sale.") { by ->
+            exchanges.start(id, reason, by, picks, restock).mapCatching { draft ->
+                val item = db.catalog().item(itemId) ?: error("That product is no longer on sale")
+                val variant = db.retail().variant(variantId) ?: error("That size or colour is no longer on sale")
+                sales.add(item, variant).getOrThrow()
+                draft
+            }.onSuccess { _open.value = null; _exchanging.value = true }
+        }
 
     fun showId(id: String) = viewModelScope.launch { db.ops().receipt(id)?.let { show(it) } }
 
@@ -312,6 +349,11 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
     val r = d.receipt
     val retail by vm.retail.collectAsState()
     val names by vm.names.collectAsState()
+    // a shop's return policy (0109): money back only where it refunds; past the window the right to refund
+    val policy by vm.policy.collectAsState()
+    val days by vm.days.collectAsState()
+    val refunds = policy == "refund"
+    val now = remember { System.currentTimeMillis() }
     var refunding by remember { mutableStateOf(false) }
     var correcting by remember { mutableStateOf<String?>(null) } // the payment type being changed
     AlertDialog(
@@ -375,12 +417,25 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                     )
                 }
                 if (r.needs_review) Text("Flagged for a check in the back office.", Modifier.padding(top = 8.dp), color = Pos.Pink, fontSize = 13.sp)
+                // a refund that kept something for the customer on a credit note (0109)
+                d.note?.let { n ->
+                    Text(
+                        "Credit note ${n.number} · ${Money.format(n.amount)}" + (if (n.balance != n.amount) ", ${Money.format(n.balance)} left" else "") +
+                            (when (n.status) { "void" -> ", cancelled"; "used" -> ", used up"; else -> n.valid_to?.let { ", valid to $it" } ?: "" }),
+                        Modifier.padding(top = 8.dp), color = Pos.Text2, fontSize = 13.sp,
+                    )
+                    Text("Print the slip again", Modifier.clickable { vm.printNote(n) }.padding(top = 6.dp, bottom = 6.dp), color = Pos.Link, fontSize = 14.sp)
+                }
+                if (retail && d.canRefund && ReturnRules.pastWindow(r.device_time, now, days)) {
+                    Text(ReturnRules.windowText(r.device_time, now, days), Modifier.padding(top = 8.dp), color = Pos.Warn, fontSize = 13.sp)
+                }
             }
         },
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (d.canRefund) {
-                    OutlinedButton(onClick = { refunding = true }, enabled = !busy) { Text("Refund", color = Pos.Pink) }
+                // a shop that does not refund has only Exchange, and only where an exchange can go on (the Receipts screen)
+                if (d.canRefund && (refunds || (retail && exchange))) {
+                    OutlinedButton(onClick = { refunding = true }, enabled = !busy) { Text(if (refunds) "Refund" else "Exchange", color = Pos.Pink) }
                 }
                 Button(onClick = { vm.reprint(r.id) }, enabled = !busy) { Text("Print again") }
             }
@@ -402,11 +457,11 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
         LaunchedEffect(picks) { if (lines != null) amount = vm.quote(r.id, picks) }
         AlertDialog(
             onDismissRequest = { refunding = false },
-            title = { Text("Refund ${Money.format(amount)}") },
+            title = { Text((if (refunds) "Refund " else "Exchange ") + Money.format(amount)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     if (lines == null) {
-                        Text("The whole receipt is refunded. Pick how the money goes back.", Modifier.padding(bottom = 10.dp), color = Pos.Text2, fontSize = 13.sp)
+                        Text(if (refunds) "The whole receipt is refunded. Pick how the money goes back." else "The whole receipt comes back.", Modifier.padding(bottom = 10.dp), color = Pos.Text2, fontSize = 13.sp)
                     } else {
                         Text("What comes back. Take off what the ${if (retail) "customer" else "guest"} keeps.", Modifier.padding(bottom = 6.dp), color = Pos.Text2, fontSize = 13.sp)
                         lines.forEach { l ->
@@ -420,6 +475,19 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                                 } else {
                                     // sold by weight: all of it or none of it
                                     OutlinedButton(onClick = { picks = picks + (l.id to (if (q > 0) 0 else l.left)) }) { Text(if (q > 0) "Comes back" else "Kept") }
+                                }
+                            }
+                            // the swap keys (0109): another size or colour of the same product, one tap onto the sale
+                            val swaps = d.swaps[l.id].orEmpty()
+                            if (retail && exchange && q > 0 && swaps.isNotEmpty()) {
+                                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("Take instead:", color = Pos.Text3, fontSize = 12.sp)
+                                    swaps.forEach { v ->
+                                        OutlinedButton(
+                                            enabled = !busy,
+                                            onClick = { refunding = false; vm.swap(r.id, reason, picks.filterValues { it > 0 }, restock, l.itemId!!, v.id) },
+                                        ) { Text(v.label, fontSize = 13.sp) }
+                                    }
                                 }
                             }
                         }
@@ -437,11 +505,20 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                             com.restopos.core.ui.Toggle(restock)
                         }
                     }
-                    if (lines != null) Text("Pick how the money goes back.", Modifier.padding(top = 10.dp, bottom = 8.dp), color = Pos.Text2, fontSize = 13.sp)
-                    TypeGrid(types, type) { type = it }
+                    if (refunds) {
+                        if (lines != null) Text("Pick how the money goes back.", Modifier.padding(top = 10.dp, bottom = 8.dp), color = Pos.Text2, fontSize = 13.sp)
+                        TypeGrid(types, type) { type = it }
+                    }
                     OutlinedTextField(reason, { reason = it.take(120) }, Modifier.fillMaxWidth().padding(top = 10.dp), label = { Text("Reason") }, singleLine = true)
                     if (retail && exchange) {
-                        Text("Exchange: what comes back pays for what the customer takes instead. You ring that up next, and only the difference changes hands.", Modifier.padding(top = 10.dp), color = Pos.Text3, fontSize = 12.sp)
+                        Text(
+                            when (policy) {
+                                "credit" -> "Exchange: what comes back pays for what the customer takes instead. You ring that up next; the customer pays any difference, and what is left over stays with them on a credit note."
+                                "exchange" -> "Exchange: what comes back pays for what the customer takes instead. You ring that up next, and the customer pays any difference. This shop does not refund: the new sale must come to at least what comes back."
+                                else -> "Exchange: what comes back pays for what the customer takes instead. You ring that up next, and only the difference changes hands."
+                            },
+                            Modifier.padding(top = 10.dp), color = Pos.Text3, fontSize = 12.sp,
+                        )
                     }
                 }
             },
@@ -453,10 +530,12 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                             onClick = { refunding = false; vm.exchange(r.id, reason, if (lines == null) null else picks.filterValues { it > 0 }, restock) },
                         ) { Text("Exchange") }
                     }
-                    Button(
-                        enabled = !busy && reason.isNotBlank() && type != null && (lines == null || picks.values.any { it > 0 }),
-                        onClick = { refunding = false; vm.refund(r.id, reason, type!!, if (everything) null else picks.filterValues { it > 0 }, restock) },
-                    ) { Text("Refund") }
+                    if (refunds) {
+                        Button(
+                            enabled = !busy && reason.isNotBlank() && type != null && (lines == null || picks.values.any { it > 0 }),
+                            onClick = { refunding = false; vm.refund(r.id, reason, type!!, if (everything) null else picks.filterValues { it > 0 }, restock) },
+                        ) { Text("Refund") }
+                    }
                 }
             },
             dismissButton = { OutlinedButton(onClick = { refunding = false }) { Text("Cancel") } },

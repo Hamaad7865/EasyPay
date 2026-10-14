@@ -25,6 +25,7 @@ data class ExchangeDraft(
     val approver: StaffMember?,
     val credit: Long, // what the goods coming back are worth
     val lines: Int, // how many lines come back
+    val policy: String = "refund", // the shop's returns setting when it was started (ReturnRules.payState)
 )
 
 // An exchange: goods of a receipt come back and the customer takes something
@@ -69,9 +70,13 @@ class Exchanges @Inject constructor(
     // is opened if none is). Nothing is written yet. The right to refund is
     // asked for here, where the cashier is still in front of the receipt.
     suspend fun start(receiptId: String, reason: String, approver: StaffMember?, picks: Map<String, Int>?, restock: Boolean): Result<ExchangeDraft> = runCatching {
-        staff.allow("sale.refund", "refund", approver)
         db.ops().exchangeType() ?: error("This till has not been sent the shop's Exchange payment type yet. Let it sync, or refund and then sell.")
         val orig = db.ops().receipt(receiptId) ?: error("That receipt is not on this tablet")
+        // the return window (0109), as the refund itself asks it: inside it whoever is at the till, past it the right to refund
+        val settings = PosSettings.parse(db.ops().settings())
+        if (!settings.retail || ReturnRules.pastWindow(orig.device_time, System.currentTimeMillis(), settings.returnDays)) {
+            staff.allow("sale.refund", if (settings.retail && settings.returnDays > 0) "return past the ${settings.returnDays}-day window" else "refund", approver)
+        }
         require(orig.type == "sale") { "A refund cannot be exchanged" }
         val credit = worth(receiptId, picks)
         require(credit > 0) { "Pick what comes back" }
@@ -84,6 +89,7 @@ class Exchanges @Inject constructor(
         val draft = ExchangeDraft(
             ticket.id, receiptId, orig.number, picks, restock, reason.trim().ifBlank { "Exchange" }, approver, credit,
             picks?.count { it.value > 0 } ?: db.receipts().lines(receiptId).size,
+            PosSettings.parse(db.ops().settings()).returns,
         )
         _drafts.value = _drafts.value + (ticket.id to draft)
         draft

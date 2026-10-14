@@ -698,6 +698,7 @@ fun MainShell(
                     Screen.Sell -> RetailSellScreen(
                         sell, more, onPay = { shell.go(Screen.Pay) }, onFast = { fast() }, onReceipts = { shell.go(Screen.Receipts) },
                         onReceipt = { id -> receipts.showId(id); shell.go(Screen.Receipts) }, onStock = { shell.go(Screen.StockCheck) },
+                        onNote = { number -> pay.noteScanned(number); shell.go(Screen.Pay) },
                     )
                     Screen.Products -> { val vm: ProductsViewModel = hiltViewModel(); ProductsScreen(vm, onLabel = { item -> labels.tap(item); shell.go(Screen.Labels) }) }
                     Screen.Labels -> LabelsScreen(labels)

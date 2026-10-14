@@ -51,7 +51,7 @@ data class SaveResult(val sent: Int, val errors: List<String>, val nowhere: Stri
 
 // A line of a receipt, for the refund sheet: how many it sold and how many of
 // them have been given back already. Quantities in thousandths.
-data class RefundLine(val id: String, val name: String, val qty: Int, val done: Int) {
+data class RefundLine(val id: String, val name: String, val qty: Int, val done: Int, val itemId: String? = null, val variantId: String? = null) {
     val left: Int get() = qty - done
     // sold by weight or volume: it comes back whole or not at all
     val whole: Boolean get() = qty % 1000 == 0 && done % 1000 == 0
@@ -356,8 +356,19 @@ class OrderOps @Inject constructor(
         val orig = db.ops().receipt(receiptId) ?: return null
         if (shares(orig) == null) return null
         val done = db.ops().refundedQty(receiptId).associate { it.line_id to it.total.toInt() }
-        return db.receipts().lines(receiptId).map { RefundLine(it.ticket_line_id!!, it.name_snapshot, it.qty, done[it.ticket_line_id] ?: 0) }
+        return db.receipts().lines(receiptId).map {
+            val tl = db.tickets().line(it.ticket_line_id!!)
+            RefundLine(it.ticket_line_id, it.name_snapshot, it.qty, done[it.ticket_line_id] ?: 0, tl?.item_id, tl?.variant_id)
+        }
     }
+
+    // The other sizes and colours a returned line can be swapped for (0109):
+    // the product's other live variants, by order line. Empty for a product
+    // without variants.
+    suspend fun swapsFor(lines: List<RefundLine>): Map<String, List<ReturnRules.Variant>> =
+        lines.filter { it.itemId != null && it.variantId != null }.associate { l ->
+            l.id to ReturnRules.swaps(l.variantId, db.retail().variantsOf(l.itemId!!).map { ReturnRules.Variant(it.id, it.name, it.deleted_at != null) })
+        }
 
     // What giving these back comes to: line id to quantity, in thousandths.
     suspend fun refundQuote(receiptId: String, picks: Map<String, Int>): Long {
