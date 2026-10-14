@@ -122,9 +122,21 @@ Nothing to build to sell at the price. Two small things, so the counter sees wha
 - The receipt does not print "was Rs 350" under a promoted line: it shows what was charged, as Kids
   Corner's receipt does.
 
-The offline edition: a shop with no back office has no Promotions page; a price is changed on the tablet
-(Products & stock) and that is that. Promotions are a back-office module, so Standard and Premium cloud
-shops have them and the offline plan does not. (My decision; section 8.)
+**On the tablet too, online and offline** (the owner: "both should be available offline and online").
+Under Products & stock a tab **Promotions** with the same three lists (Slow movers, On promotion, Still not
+selling), the two thresholds, Set promotion (one row per variant with the cost, the current price, the stock
+and the price box, the same three sentences under it), Reduce again and Lift. The right is `items.edit`,
+asked as the tablet asks it for a price change. The rules of section 3 are one module,
+`core/data/Promotions` (apply, reduce, lift, the two detections over the tablet's own tables), with the
+never-loss floor in it; the screen asks it and shows its sentences. A connected tablet sends
+`promotion.apply`, `promotion.reduce` and `promotion.lift` as push operations, which the server answers with
+the same functions (section 4), and takes the result with the pull (`promotions` rows and `promo_was`); a
+tablet that works on its own answers them itself and keeps the rows, as it does a price change. The two
+thresholds are in the tablet's settings (`pos_settings.data`, sent with the settings pull; the offline
+edition keeps them on the tablet). The slow-mover detection on the tablet uses the sales the tablet holds
+(its own receipts and the shop's receipts of the last 30 days it is sent), so on a connected tablet with
+several tills the back office's list is the whole shop's and the tablet's is "as this tablet knows it"; the
+tab says so in one line. The offline edition has one tablet, so there they agree.
 
 ## 7. Testing
 
@@ -140,8 +152,9 @@ shops have them and the offline plan does not. (My decision; section 8.)
 
 ## 8. Decisions this design took, for the owner to confirm or overrule
 
-1. Promotions are a cloud module (Standard and Premium shops); the offline tablet has none. Alternative:
-   the page's logic on the tablet under Products & stock, which is a second place for the same rule.
+1. The tablet's slow-mover list is "as this tablet knows it" (its own sales and the 30 days it is sent),
+   not a question to the server. Alternative: a connected tablet asks the server for the list each time the
+   tab opens, exact but blank with no signal. Both say the same thing on a one-till shop.
 2. `items.edit` is the right, not "owner or manager" by name: EasyPay's roles are what the shop makes them.
 3. A variant with no cost cannot be promoted (Kids Corner never meets the case).
 4. An import that overwrites a promotion's price is allowed and warned about, not refused.
