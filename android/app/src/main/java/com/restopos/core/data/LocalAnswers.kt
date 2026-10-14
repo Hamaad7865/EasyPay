@@ -107,6 +107,8 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             "settings.save" -> settingsSave(p, tenant)
             "variants.save" -> variantsSave(p)
             "variant.remove" -> variantRemove(p)
+            // a promotion (0110) is already on the tablet when it is queued (core/data/Promotions): nothing more to do here
+            "promotion.apply", "promotion.reduce", "promotion.lift" -> Unit
             else -> throw Refused("not-alone")
         }
     }
@@ -1062,6 +1064,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             "addon.save", "addon.remove", "settings.save", "variants.make", "variants.save", "variant.remove",
             "floor.save", "room.rename", "room.remove",
             "po.save", "po.send", "po.cancel", "po.close", "delivery.receive", "count.complete",
+            "promotion.apply", "promotion.reduce", "promotion.lift",
         )
         private val IN_REASONS = setOf("receive", "found")
         private val OUT_REASONS = setOf("damaged", "expired", "lost", "internal", "supplier_return")

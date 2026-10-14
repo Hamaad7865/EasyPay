@@ -360,4 +360,14 @@ object Migrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_credit_notes_refund_id` ON `credit_notes` (`refund_id`)")
         }
     }
+
+    // 26 -> 27: a shop's promotions (server 0110), and the price before one on a product and a variant.
+    val V26_V27 = object : Migration(26, 27) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `items` ADD COLUMN `promo_was` INTEGER")
+            db.execSQL("ALTER TABLE `item_variants` ADD COLUMN `promo_was` INTEGER")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `promotions` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `item_id` TEXT NOT NULL, `variant_id` TEXT NOT NULL, `original_price` INTEGER NOT NULL, `promo_price` INTEGER NOT NULL, `status` TEXT NOT NULL, `note` TEXT, `applied_by` TEXT, `applied_at` INTEGER NOT NULL, `server_seq` INTEGER, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_promotions_item_id` ON `promotions` (`item_id`)")
+        }
+    }
 }

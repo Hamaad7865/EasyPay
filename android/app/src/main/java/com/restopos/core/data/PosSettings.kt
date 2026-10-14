@@ -64,6 +64,11 @@ data class PosSettings(
     val returns: String = "exchange",
     val returnDays: Int = 7,
     val noteMonths: Int = 6,
+    // A shop's promotions (server 0110): days without a sale that make a
+    // product a slow mover, and days a promotion may sit unsold before it
+    // is flagged to be reduced again.
+    val slowMoverDays: Int = 30,
+    val promoStillDays: Int = 14,
 ) {
     fun shop(fallbackName: String): Shop =
         Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer, bars = retail)
@@ -115,6 +120,8 @@ data class PosSettings(
                 returns = if (d.str("businessType") != "retail") "refund" else d.str("returns")?.takeIf { it == "exchange" || it == "credit" || it == "refund" } ?: "exchange",
                 returnDays = runCatching { d["returnDays"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 0..365 } ?: 7,
                 noteMonths = runCatching { d["noteMonths"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 0..36 } ?: 6,
+                slowMoverDays = runCatching { d["slowMoverDays"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..365 } ?: 30,
+                promoStillDays = runCatching { d["promoStillDays"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..365 } ?: 14,
             )
         }
     }

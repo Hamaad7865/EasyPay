@@ -42,6 +42,8 @@ import androidx.room.RoomDatabase
 // leaves another trace here. Nothing of it is the server's.
 // Version 26 adds a shop's credit notes (server 0109): issued with an
 // exchange's refund, spent on a sale by their number.
+// Version 27 adds a shop's promotions (server 0110), and on a product and a
+// variant the price before the promotion it is on.
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -67,8 +69,9 @@ import androidx.room.RoomDatabase
         FloorElementEntity::class,
         ItemPictureEntity::class,
         CreditNoteEntity::class,
+        PromotionEntity::class,
     ],
-    version = 26,
+    version = 27,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
@@ -89,4 +92,5 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun alone(): AloneDao
     abstract fun pictures(): PictureDao
     abstract fun notes(): CreditNoteDao
+    abstract fun promotions(): PromotionDao
 }

@@ -71,6 +71,8 @@ data class ItemEntity(
     val brand: String? = null,
     // what its supplier calls it (server 0094: the till's sheet shows it now)
     val supplier_code: String? = null,
+    // its price before the promotion it is on (server 0110); null when it is on none
+    val promo_was: Long? = null,
 )
 
 @Entity(tableName = "modifier_groups")

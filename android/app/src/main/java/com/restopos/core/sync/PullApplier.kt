@@ -45,6 +45,7 @@ import com.restopos.core.database.ReceiptLineEntity
 import com.restopos.core.database.ReceiptLineModEntity
 import com.restopos.core.database.ReceiptLineTaxEntity
 import com.restopos.core.database.CreditNoteEntity
+import com.restopos.core.database.PromotionEntity
 import com.restopos.core.database.ReceiptPaymentEntity
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.booleanOrNull
@@ -97,7 +98,9 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         open_price = bool(it, "open_price", false),
                         // a shop's stock papers (0092): they always arrived, and were dropped here until now
                         cost = lng(it, "cost"), supplier_id = str(it, "supplier_id"), brand = str(it, "brand")?.trim()?.ifEmpty { null },
-                        supplier_code = str(it, "supplier_code")?.trim()?.ifEmpty { null })
+                        supplier_code = str(it, "supplier_code")?.trim()?.ifEmpty { null },
+                        // its price before the promotion it is on (0110)
+                        promo_was = lng(it, "promo_was"))
                 })
             }
             // A shop's variants, and what this shop holds of each product. A
@@ -118,7 +121,17 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         id(it), str(it, "tenant_id") ?: "", item, str(it, "name") ?: "", lng(it, "price") ?: 0,
                         str(it, "sku")?.trim()?.ifEmpty { null }, str(it, "barcode")?.trim()?.ifEmpty { null },
                         (it.jsonObject["option_values"] as? kotlinx.serialization.json.JsonArray)?.toString() ?: "[]",
-                        str(it, "deleted_at"), lng(it, "server_seq"), cost = lng(it, "cost"),
+                        str(it, "deleted_at"), lng(it, "server_seq"), cost = lng(it, "cost"), promo_was = lng(it, "promo_was"),
+                    )
+                })
+            }
+            // A shop's promotions (server 0110). "No variant" is null there and "" here, as on stock_levels.
+            changes["promotions"]?.let { rows ->
+                db.promotions().upsert(rows.mapNotNull {
+                    PromotionEntity(
+                        id(it), str(it, "tenant_id") ?: "", str(it, "item_id") ?: return@mapNotNull null, str(it, "variant_id") ?: "",
+                        lng(it, "original_price") ?: 0, lng(it, "promo_price") ?: 0, str(it, "status") ?: "active", str(it, "note"),
+                        str(it, "applied_by"), time(it, "applied_at") ?: System.currentTimeMillis(), lng(it, "server_seq"),
                     )
                 })
             }

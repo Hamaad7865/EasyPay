@@ -455,7 +455,11 @@ internal fun Tile(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants: In
                 T(i.name, 15.sp, 700, ink, lines = 2, height = 19.sp)
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                T(if (i.open_price) "Enter price" else Money.format(i.price) + if (weighed) " /kg" else "", 16.sp, 800, ink)
+                Column {
+                    // on promotion (0110): the price in red, what it was struck through above it
+                    i.promo_was?.let { T("was ${Money.format(it)}", 11.sp, 600, V.Text3, strike = true) }
+                    T(if (i.open_price) "Enter price" else Money.format(i.price) + if (weighed) " /kg" else "", 16.sp, 800, if (i.promo_was != null && i.is_available) V.RedText else ink)
+                }
                 Gap()
                 T(note, 12.sp, 700, tone, align = TextAlign.End, lines = 2, height = 15.sp)
             }

@@ -239,7 +239,7 @@ private const val BARS = "M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12"
 
 // Products & stock: look a product up, see what is left of it, change its price.
 @Composable
-fun ProductsScreen(vm: ProductsViewModel, onLabel: (ItemEntity) -> Unit = {}) {
+fun ProductsScreen(vm: ProductsViewModel, onLabel: (ItemEntity) -> Unit = {}, onPromotions: () -> Unit = {}) {
     val cats by vm.cats.collectAsState()
     val cat by vm.cat.collectAsState()
     val q by vm.query.collectAsState()
@@ -260,6 +260,7 @@ fun ProductsScreen(vm: ProductsViewModel, onLabel: (ItemEntity) -> Unit = {}) {
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             ScreenHead("${items.size} ${if (items.size == 1) "product" else "products"}" + if (searching) " found" else "", L.productsStock, Modifier.weight(1f))
             VBtn("Categories", height = 52.dp, radius = 14.dp) { vm.categories.list() }
+            VBtn("Promotions", height = 52.dp, radius = 14.dp, onClick = onPromotions)
             VBtn("New product", bg = V.Blue, fg = androidx.compose.ui.graphics.Color.White, height = 52.dp, radius = 14.dp, weight = 800) { vm.items.new(cat) }
             ScanKey(scan, size = 52.dp) { vm.setScanMode(it) }
             // scan mode: nothing to type into, so nothing brings the keyboard up
@@ -294,7 +295,11 @@ fun ProductsScreen(vm: ProductsViewModel, onLabel: (ItemEntity) -> Unit = {}) {
                             T(listOfNotNull(c?.name, if (n > 0) "$n variants" else null, if (!i.is_available) "not on sale" else null).joinToString(" · "), 12.sp, 500, V.Text3)
                         }
                         T(i.sku ?: "", 14.sp, 500, V.Text2, Modifier.width(150.dp))
-                        T(if (i.open_price) "At the sale" else Money.format(i.price) + if (i.sold_by == "weight") " /kg" else "", 15.sp, 700, modifier = Modifier.width(130.dp))
+                        Column(Modifier.width(130.dp)) {
+                            T(if (i.open_price) "At the sale" else Money.format(i.price) + if (i.sold_by == "weight") " /kg" else "", 15.sp, 700, if (i.promo_was != null) V.RedText else V.Text)
+                            // on promotion (0110): what it was
+                            i.promo_was?.let { T("was ${Money.format(it)}", 12.sp, 600, V.Text3, strike = true) }
+                        }
                         T(
                             if (!counted) "Not stocked" else LinePrice.left(qty, i.sold_by == "weight"), 14.sp, 700,
                             if (!counted) V.Text3 else when (LinePrice.stock(qty)) { LinePrice.Stock.Plenty -> V.Text2; LinePrice.Stock.Few -> V.AmberText; LinePrice.Stock.None -> V.RedText },
