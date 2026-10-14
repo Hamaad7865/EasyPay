@@ -33,6 +33,7 @@ import {
   TabletSmartphone,
   Tags,
   Ticket,
+  TicketPercent,
   TrendingUp,
   Truck,
   UserRoundCheck,
@@ -109,7 +110,8 @@ export const GROUPS: NavGroup[] = [
       { href: "/backoffice/items/import", label: "Import products", only: "retail", icon: FileUp, words: "excel xlsx csv spreadsheet upload supplier file bulk add many catalog" },
       { href: "/backoffice/items/labels", label: "Barcode labels", only: "retail", icon: Barcode, words: "print stickers price tags ean scan label roll a4 sheet" },
       { href: "/backoffice/addons", label: "Add-ons", only: "restaurant", icon: SlidersHorizontal, words: "options modifiers extras" },
-      { href: "/backoffice/discounts", label: "Discounts", icon: BadgePercent, words: "promotions percent off" },
+      { href: "/backoffice/discounts", label: "Discounts", icon: BadgePercent, words: "percent off" },
+      { href: "/backoffice/promotions", label: "Promotions", only: "retail", icon: TicketPercent, words: "slow movers markdown sale price lift reduce clearance" },
     ],
   },
   // ---- Finance and stock ----

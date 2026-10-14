@@ -32,6 +32,11 @@ export type PosSettings = {
   returns: "exchange" | "credit" | "refund";
   returnDays: number;
   noteMonths: number;
+  // A shop's promotions (migration 0110): days without a sale that make a
+  // product a slow mover, and days a promotion may sit unsold before it is
+  // flagged to be reduced again.
+  slowMoverDays: number;
+  promoStillDays: number;
   receipt: { header: string; footer: string; logo: string | null; showLogo: boolean };
   company: { name: string; brn: string; vat: string; address: string; phone: string };
 };
@@ -52,6 +57,8 @@ export const DEFAULT_SETTINGS: PosSettings = {
   returns: "exchange",
   returnDays: 7,
   noteMonths: 6,
+  slowMoverDays: 30,
+  promoStillDays: 14,
   receipt: { header: "", footer: "Thank you. See you again soon.", logo: null, showLogo: true },
   company: { name: "", brn: "", vat: "", address: "", phone: "" },
 };
@@ -84,6 +91,8 @@ export function withDefaults(raw: unknown): PosSettings {
     returns: d.returns === "credit" || d.returns === "refund" ? d.returns : "exchange",
     returnDays: typeof d.returnDays === "number" && d.returnDays >= 0 && d.returnDays <= 365 ? Math.round(d.returnDays) : 7,
     noteMonths: typeof d.noteMonths === "number" && d.noteMonths >= 0 && d.noteMonths <= 36 ? Math.round(d.noteMonths) : 6,
+    slowMoverDays: typeof d.slowMoverDays === "number" && d.slowMoverDays >= 1 && d.slowMoverDays <= 365 ? Math.round(d.slowMoverDays) : 30,
+    promoStillDays: typeof d.promoStillDays === "number" && d.promoStillDays >= 1 && d.promoStillDays <= 365 ? Math.round(d.promoStillDays) : 14,
     receipt: {
       header: str(r.header, DEFAULT_SETTINGS.receipt.header),
       footer: str(r.footer, DEFAULT_SETTINGS.receipt.footer),

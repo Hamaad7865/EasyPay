@@ -20,6 +20,8 @@ const SQL = `
          (select count(*)::int from taxes where tenant_id = $1 and deleted_at is null) as taxes,
          (select count(*)::int from discounts where tenant_id = $1 and deleted_at is null) as discounts,
          (select count(*)::int from suppliers where tenant_id = $1 and deleted_at is null) as suppliers,
+         -- a shop's slow movers (0110), at the shop's own threshold: what there is to act on
+         (select count_slow_movers($1, coalesce((select (data->>'slowMoverDays')::int from pos_settings where tenant_id = $1 and deleted_at is null), 30))) as slow,
          (select count(*)::int from items i left join categories c on c.tenant_id = i.tenant_id and c.id = i.category_id
            where i.tenant_id = $1 and i.deleted_at is null and (i.track_stock or coalesce(c.is_stock, false))) as stock,
          (select count(*)::int from purchase_orders where tenant_id = $1 and deleted_at is null and status in ('sent', 'part')) as orders_open,
@@ -54,6 +56,7 @@ export async function GET() {
   put("/backoffice/taxes", r.taxes, "tax", "taxes");
   put("/backoffice/discounts", r.discounts, "discount", "discounts");
   put("/backoffice/suppliers", r.suppliers, "supplier", "suppliers");
+  if (r.slow > 0) put("/backoffice/promotions", r.slow, "slow mover", "slow movers");
   put("/backoffice/stock", r.stock, "item counted", "items counted");
   // what there is to act on: the orders that are on their way
   if (r.orders_open > 0) put("/backoffice/purchase-orders", r.orders_open, "order on its way", "orders on their way");

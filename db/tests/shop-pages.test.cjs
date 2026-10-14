@@ -320,6 +320,28 @@ const id = () => crypto.randomUUID();
       check('Y7 the list is searched by customer', !p.error && p.says.includes('No open credit notes') === true || (rowsOf(p.html).every((r) => !r.includes('CN000002'))), p.error);
     }
 
+    // ---- promotions (migration 0110) ----
+    {
+      p = await see(shop, '/backoffice/promotions', {});
+      check('Z1 Promotions opens for a shop, with nothing quiet yet (every product is new)', !p.error && p.says.includes('Nothing has gone quiet') && p.says.includes('No promotions are running'), p.error || p.says.slice(0, 200));
+      // the scarf was added forty days ago and sold nothing since: a slow mover
+      await c.query(`update items set created_at = now() - interval '40 days' where id = $1`, [scarf]);
+      await c.query(`delete from stock_movements where tenant_id = $1 and item_id = $2 and reason = 'sale'`, [shop.tid, scarf]);
+      p = await see(shop, '/backoffice/promotions', {});
+      let row = rowsOf(p.html).find((r) => r.startsWith('Scarf'));
+      check('Z2 a product with stock and no sale for forty days is a slow mover, with its idle days and price', !p.error && !!row && /\| 40 days \|/.test(row) && row.includes('Rs 115.00'), p.error || row || p.says.slice(0, 300));
+      await c.query(`select promotion_apply($1, $2, $3, null, 9000, 'clear it')`, [shop.tid, shop.owner, scarf]);
+      p = await see(shop, '/backoffice/promotions', {});
+      row = rowsOf(p.html).find((r) => r.startsWith('Scarf'));
+      check('Z3 on promotion: Was Rs 115.00 struck through, Now Rs 90.00, Rs 25.00 off, and no longer a slow mover', !p.error && !!row && row.includes('| Rs 115.00 | Rs 90.00 | Rs 25.00 |') && !p.says.includes('days idle') && (rowsOf(p.html).filter((r) => r.startsWith('Scarf')).length === 1), p.error || row);
+      const pid = (await one(`select id from promotions where tenant_id = $1 and item_id = $2 and status = 'active'`, [shop.tid, scarf])).id;
+      await c.query(`select promotion_lift($1, $2, $3)`, [shop.tid, shop.owner, pid]);
+      p = await see(shop, '/backoffice/promotions', {});
+      check('Z4 lifted: back among the slow movers at Rs 115.00, no promotion running', !p.error && p.says.includes('No promotions are running') && (rowsOf(p.html).find((r) => r.startsWith('Scarf')) || '').includes('Rs 115.00'), p.error);
+      p = await see(shop, '/backoffice/settings', {});
+      check('Z5 a shop\'s POS settings carry the two thresholds', !p.error && p.html.includes('name="slowMoverDays"') && p.html.includes('name="promoStillDays"'), p.error);
+    }
+
     // -------------------------------------------------------- a restaurant
     const rest = await business('Pages Bistro', 'SP2', 'restaurant');
     const soup = await rest.item('Soup', false), cake = await rest.item('Cake', false);
@@ -352,6 +374,8 @@ const id = () => crypto.randomUUID();
     check('R7 nor a Returns card', !p.html.includes('name="returns"'));
     p = await see(rest, '/backoffice/credit-notes', {});
     check('R8 a restaurant has no credit-notes', p.error === 'not found', p.error || 'it opened');
+    p = await see(rest, '/backoffice/promotions', {});
+    check('R8 nor promotions', p.error === 'not found', p.error || 'it opened');
     // what one business's owner is shown is its own
     p = await see(rest, '/backoffice/reports/orders', rrange);
     check('T1 a restaurant\'s owner sees nothing of the shop', !p.says.includes('Belt') && !p.says.includes('SP1-'));

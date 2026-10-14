@@ -45,6 +45,9 @@ async function saveGeneral(f: FormData) {
             returns: (["exchange", "credit", "refund"] as const).find((v) => v === f.get("returns")) ?? "exchange",
             returnDays: int(f, "returnDays", 0, 365, 7),
             noteMonths: int(f, "noteMonths", 0, 36, 6),
+            // promotions (0110)
+            slowMoverDays: int(f, "slowMoverDays", 1, 365, 30),
+            promoStillDays: int(f, "promoStillDays", 1, 365, 14),
           }
         : {
             servicePct: int(f, "servicePct", 0, 30, 0),
@@ -364,6 +367,28 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                 </div>
                 <label className="check" style={{ margin: 0 }}>
                   <input type="number" name="noteMonths" min={0} max={36} defaultValue={s.noteMonths} style={{ width: 80 }} /> months
+                </label>
+              </div>
+            </Card>
+          )}
+          {shop && (
+            <Card title="Promotions">
+              <div className="setting">
+                <div>
+                  <strong>Flag a product with no sale in the last</strong>
+                  <small>A product with stock that has not sold for this long is a slow mover, listed on Promotions to be marked down. One that never sold counts from the day it was added.</small>
+                </div>
+                <label className="check" style={{ margin: 0 }}>
+                  <input type="number" name="slowMoverDays" min={1} max={365} defaultValue={s.slowMoverDays} style={{ width: 80 }} /> days
+                </label>
+              </div>
+              <div className="setting">
+                <div>
+                  <strong>Flag a promotion still unsold after</strong>
+                  <small>A promotion with no sale for this long since it was applied is listed again under Still not selling, to be reduced further.</small>
+                </div>
+                <label className="check" style={{ margin: 0 }}>
+                  <input type="number" name="promoStillDays" min={1} max={365} defaultValue={s.promoStillDays} style={{ width: 80 }} /> days on promotion
                 </label>
               </div>
             </Card>
