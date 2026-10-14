@@ -3,6 +3,7 @@ package com.restopos.core.data
 import android.content.Context
 import androidx.room.withTransaction
 import com.restopos.core.common.Uuid7
+import com.restopos.core.database.CreditNoteEntity
 import com.restopos.core.database.OutboxEntity
 import com.restopos.core.database.ReceiptEntity
 import com.restopos.core.database.ReceiptLineEntity
@@ -163,8 +164,21 @@ class OrderOps @Inject constructor(
                     docs.print(slip, drawer).onFailure { printing.report(it.message ?: "The refund slip did not print") }
                 }
                 paid(sale, false)
+                // the credit note, after the receipt: the customer leaves with both
+                db.notes().ofRefund(refund.id)?.let { n -> printNote(n, refund) }
             }
         }
+    }
+
+    // The credit note's slip, from the note and the refund that issued it;
+    // also what "Print the slip again" prints.
+    suspend fun printNote(n: CreditNoteEntity, refund: ReceiptEntity? = null) {
+        if (printing.receiptPrinter() == null) return
+        val rf = refund ?: db.ops().receipt(n.refund_id)
+        val orig = rf?.refund_of?.let { db.ops().receipt(it) }
+        val customer = n.customer_id?.let { db.customers().customer(it)?.name }
+        val doc = com.restopos.core.print.CreditNoteDoc(n.number, n.amount, n.valid_to, customer, orig?.number ?: rf?.number ?: "", n.created_at, n.issued_by?.let { db.staff().employee(it)?.name })
+        docs.printNote(doc).onFailure { printing.report(it.message ?: "The credit note did not print") }
     }
 
     // the receipt is printed (a copy for each guest of a bill split equally), and the drawer opens if it should
@@ -365,15 +379,23 @@ class OrderOps @Inject constructor(
     // toExchange: the part that pays for a new sale instead of going back to
     // the customer (an exchange, core/data/Exchange.kt). It leaves through the
     // shop's exchange payment type; only the rest goes back in the type chosen.
+    // note: the part kept for the customer on a credit note (server 0109),
+    // written here with its refund, under the refund's own number.
     // quiet: nothing is printed or sent here; whoever asked does both.
     suspend fun refund(
         receiptId: String, reason: String, paymentTypeId: String, approver: StaffMember? = null, picks: Map<String, Int>? = null, restock: Boolean = true,
-        toExchange: Long = 0, quiet: Boolean = false,
+        toExchange: Long = 0, quiet: Boolean = false, note: NoteSpec? = null,
     ): Result<ReceiptEntity> = runCatching {
         require(reason.isNotBlank()) { "Say why it is refunded" }
-        staff.allow("sale.refund", "refund", approver)
         val orig = db.ops().receipt(receiptId) ?: error("That receipt is not on this tablet")
         require(orig.type == "sale") { "A refund cannot be refunded" }
+        // A shop's return window (0109): inside it whoever is at the till
+        // returns alone; past it, and always with a window of 0, the right to
+        // refund is needed, held or approved. A restaurant: as it always was.
+        val settings = PosSettings.parse(db.ops().settings())
+        if (!settings.retail || ReturnRules.pastWindow(orig.device_time, System.currentTimeMillis(), settings.returnDays)) {
+            staff.allow("sale.refund", if (settings.retail && settings.returnDays > 0) "return past the ${settings.returnDays}-day window" else "refund", approver)
+        }
         val already = db.ops().refundedOf(receiptId)
         val shares = shares(orig)
         val done = db.ops().refundedQty(receiptId).associate { it.line_id to it.total.toInt() }
@@ -397,9 +419,15 @@ class OrderOps @Inject constructor(
         val type = db.ops().paymentType(paymentTypeId) ?: error("Pick how the money goes back")
         require(toExchange in 0..amount) { "More than comes back cannot go to the new sale" }
         val exchange = if (toExchange > 0) db.ops().exchangeType() ?: error("This till has no Exchange payment type") else null
+        val toNote = note?.amount ?: 0L
+        require(toNote >= 0 && toExchange + toNote <= amount) { "More than comes back cannot be kept" }
+        require(toNote == 0L || (toExchange > 0 && settings.returns == "credit")) { "A credit note only comes out of an exchange" }
+        val noteType = if (toNote > 0) db.notes().paymentType() ?: error("This till has not been sent the shop's Credit note payment type yet. Let it sync.") else null
         // what goes back to the customer
-        val rest = amount - toExchange
+        val rest = amount - toExchange - toNote
         require(rest == 0L || type.kind != "exchange") { "Pick how the money goes back" }
+        // money back only where the shop refunds (0109)
+        require(rest == 0L || settings.returns == "refund") { "This shop does not refund. Exchange instead." }
         val tenant = session.tenantId() ?: error("no tenant")
         val store = session.storeId() ?: error("no store")
         val deviceId = session.deviceId() ?: error("no device")
@@ -407,6 +435,7 @@ class OrderOps @Inject constructor(
         val storeRow = db.catalog().store(store) ?: error("no store")
         val seq = device.last_receipt_seq + 1
         val number = "${storeRow.code}-${device.code}-R${seq.toString().padStart(6, '0')}"
+        val noteNumber = ReturnRules.noteNumber(number)
         val id = Uuid7.next()
         val now = System.currentTimeMillis()
         val was = docFor(orig)
@@ -440,6 +469,7 @@ class OrderOps @Inject constructor(
             service = parts?.svc ?: was.service, rounding = parts?.rnd ?: was.rounding, total = amount,
             payments = listOfNotNull(
                 if (toExchange > 0) DocPayment("Exchange, to the new sale", toExchange) else null,
+                if (toNote > 0) DocPayment("Credit note, kept for the customer", toNote, reference = noteNumber) else null,
                 if (rest > 0) DocPayment(type.name, rest) else null,
             ),
             refundOf = orig.number, reason = reason.trim(),
@@ -463,8 +493,13 @@ class OrderOps @Inject constructor(
             }
             db.receipts().insertPayments(listOfNotNull(
                 if (exchange != null) ReceiptPaymentEntity(Uuid7.next(), tenant, id, exchange.id, toExchange) else null,
+                if (noteType != null) ReceiptPaymentEntity(Uuid7.next(), tenant, id, noteType.id, toNote, reference = noteNumber) else null,
                 if (rest > 0) ReceiptPaymentEntity(Uuid7.next(), tenant, id, type.id, rest) else null,
             ))
+            // the credit note, under the refund's number, with the refund that backs it
+            if (note != null && noteType != null) {
+                db.notes().upsert(listOf(CreditNoteEntity(note.id, tenant, store, deviceId, noteNumber, toNote, toNote, id, note.customerId, note.validTo, issued_by = staff.id(), created_at = now)))
+            }
             db.catalog().upsertDevices(listOf(device.copy(last_receipt_seq = seq)))
             db.outbox().enqueue(op("refund.create", buildJsonObject {
                 put("id", id); put("refund_of", orig.id); put("store_id", store); put("device_id", deviceId)
@@ -476,7 +511,13 @@ class OrderOps @Inject constructor(
                 })
                 put("payments", buildJsonArray {
                     if (exchange != null) add(buildJsonObject { put("payment_type_id", exchange.id); put("amount", toExchange) })
+                    if (noteType != null) add(buildJsonObject { put("payment_type_id", noteType.id); put("amount", toNote); put("reference", noteNumber) })
                     if (rest > 0) add(buildJsonObject { put("payment_type_id", type.id); put("amount", rest) })
+                })
+                // the note itself, in the same operation: the server writes it with the refund or refuses both
+                if (note != null && noteType != null) put("credit_note", buildJsonObject {
+                    put("id", note.id); put("number", noteNumber); put("amount", toNote)
+                    note.validTo?.let { put("valid_to", it) }; note.customerId?.let { put("customer_id", it) }
                 })
                 staff.approvedBy("sale.refund", approver)?.let { put("approved_by", it) }
                 if (!restock) put("restock", false)

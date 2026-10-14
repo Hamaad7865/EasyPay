@@ -44,6 +44,7 @@ import com.restopos.core.database.ReceiptEntity
 import com.restopos.core.database.ReceiptLineEntity
 import com.restopos.core.database.ReceiptLineModEntity
 import com.restopos.core.database.ReceiptLineTaxEntity
+import com.restopos.core.database.CreditNoteEntity
 import com.restopos.core.database.ReceiptPaymentEntity
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.booleanOrNull
@@ -400,6 +401,19 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                     val rc = str(it, "receipt_id")?.let { r -> ops.receipt(r) }?.takeIf { r -> r.pulled } ?: return@mapNotNull null
                     val type = str(it, "payment_type_id") ?: return@mapNotNull null
                     ReceiptPaymentEntity(id(it), rc.tenant_id, rc.id, type, lng(it, "amount") ?: 0, lng(it, "tendered"), lng(it, "change") ?: 0, str(it, "reference"))
+                })
+            }
+            // A shop's credit notes (server 0109). The server's balance and
+            // status win: a note this tablet spent is overwritten by the
+            // figure the server worked out once the sale got there, and one
+            // this tablet issued keeps its own row until the server sends it.
+            changes["credit_notes"]?.let { rows ->
+                db.notes().upsert(rows.mapNotNull {
+                    CreditNoteEntity(
+                        id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "device_id") ?: "", str(it, "number") ?: return@mapNotNull null,
+                        lng(it, "amount") ?: 0, lng(it, "balance") ?: 0, str(it, "refund_id") ?: "", str(it, "customer_id"), str(it, "valid_to")?.take(10),
+                        str(it, "status") ?: "open", str(it, "issued_by"), time(it, "created_at") ?: System.currentTimeMillis(), lng(it, "server_seq"), pulled = true,
+                    )
                 })
             }
             // only a pulled line carries the server's id, so these find nothing for a receipt made here

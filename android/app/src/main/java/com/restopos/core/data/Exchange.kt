@@ -2,6 +2,8 @@ package com.restopos.core.data
 
 import android.content.Context
 import androidx.room.withTransaction
+import com.restopos.core.common.Money
+import com.restopos.core.common.Uuid7
 import com.restopos.core.database.ReceiptEntity
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.sync.pushNow
@@ -87,7 +89,9 @@ class Exchanges @Inject constructor(
         draft
     }
 
-    // The new sale is paid, and what comes back is refunded, together.
+    // The new sale is paid, and what comes back is refunded, together. What
+    // happens to goods worth more than the sale is the shop's policy
+    // (ReturnRules.payState): refused, kept on a credit note, or given back.
     //   saleTotal   what the new sale comes to
     //   difference  how the customer pays what it is worth more than the goods coming back (null: it is not)
     //   backTypeId  how the shop gives back what it is worth less (null: it is not)
@@ -100,16 +104,23 @@ class Exchanges @Inject constructor(
         val d = of(ticket.id) ?: error("There is no exchange on this sale")
         val type = db.ops().exchangeType() ?: error("This till has not been sent the shop's Exchange payment type yet. Let it sync, or refund and then sell.")
         require(staff.can("payment.take")) { "You are not allowed to take payment" }
-        require(saleTotal > 0) { "This sale comes to nothing. Cancel the exchange and refund the goods instead." }
+        require(saleTotal > 0) { "This sale comes to nothing. Cancel the exchange and start again from the receipt." }
         // another till may have refunded part of that receipt since
         val credit = worth(d.receiptId, d.picks)
         require(credit == d.credit) { "That receipt has changed since the exchange was started. Cancel it and start again from the receipt." }
         val settled = minOf(credit, saleTotal)
         require((difference?.amount ?: 0L) == saleTotal - settled) { "Payment must equal the amount due" }
-        require(credit == settled || backTypeId != null) { "Pick how the difference is given back" }
+        val settings = PosSettings.parse(db.ops().settings())
+        val state = ReturnRules.payState(settings.returns, saleTotal, credit)
+        val note = when (state) {
+            is ReturnRules.PayState.Short -> error("Pick something worth at least ${Money.format(credit)}. This shop does not refund.")
+            is ReturnRules.PayState.Back -> { require(backTypeId != null) { "Pick how the difference is given back" }; null }
+            is ReturnRules.PayState.Note -> NoteSpec(Uuid7.next(), state.amount, ReturnRules.validTo(System.currentTimeMillis(), settings.noteMonths)?.toString(), ticket.customer_id)
+            else -> null
+        }
         // One transaction for the two: a sale that cannot be written takes its refund back with it.
         val out = db.withTransaction {
-            val refund = orders.refund(d.receiptId, d.reason, backTypeId ?: type.id, d.approver, d.picks, d.restock, toExchange = settled, quiet = true).getOrThrow()
+            val refund = orders.refund(d.receiptId, d.reason, (if (note == null) backTypeId else null) ?: type.id, d.approver, d.picks, d.restock, toExchange = settled, quiet = true, note = note).getOrThrow()
             check(refund.total == credit) { "That receipt has changed since the exchange was started. Cancel it and start again from the receipt." }
             val sale = tickets.pay(
                 listOfNotNull(PayInput(type.id, settled, reference = refund.number, label = "Returned goods"), difference),

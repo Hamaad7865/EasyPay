@@ -40,6 +40,8 @@ import androidx.room.RoomDatabase
 // Version 16 adds the tablet's own log (till_log), for its reports: a product's
 // price changed and a payment type corrected after the sale, neither of which
 // leaves another trace here. Nothing of it is the server's.
+// Version 26 adds a shop's credit notes (server 0109): issued with an
+// exchange's refund, spent on a sale by their number.
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -64,8 +66,9 @@ import androidx.room.RoomDatabase
         TillLogEntity::class,
         FloorElementEntity::class,
         ItemPictureEntity::class,
+        CreditNoteEntity::class,
     ],
-    version = 25,
+    version = 26,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
@@ -85,4 +88,5 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun log(): TillLogDao
     abstract fun alone(): AloneDao
     abstract fun pictures(): PictureDao
+    abstract fun notes(): CreditNoteDao
 }

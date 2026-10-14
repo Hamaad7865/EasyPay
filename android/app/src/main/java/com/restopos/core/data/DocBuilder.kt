@@ -128,6 +128,14 @@ class DocBuilder @Inject constructor(
         printing.send(p, bytes, what, again).getOrThrow()
     }
 
+    // A credit note comes out of the cashier's printer too, after the receipt.
+    suspend fun printNote(d: com.restopos.core.print.CreditNoteDoc): Result<Unit> = runCatching {
+        val p = printing.receiptPrinter() ?: throw PrintError(if (Journey.alone) "No receipt printer is set up. Add one in Settings, under This till, Set-up, Printer." else "No receipt printer is set up. Add one in the back office, under Printers.")
+        val s = printing.settings()
+        val bytes = Docs.creditNote(d, printing.shop(), printing.paper(p), s.decimals, printing.logo(s, p))
+        printing.send(p, bytes, "Credit note ${d.number}", bytes).getOrThrow()
+    }
+
     // Each line goes where Routing says: to the printers ticked on its
     // category, one ticket per printer, or, in a restaurant with one printer
     // for everything, to the receipt printer. A line with no printer has

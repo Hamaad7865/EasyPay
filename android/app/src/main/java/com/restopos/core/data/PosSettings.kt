@@ -56,6 +56,14 @@ data class PosSettings(
     // settings; core/guest). Off unless the settings say so, and the till
     // listens only when the plan carries it and the business is a restaurant.
     val tableOrdering: Boolean = false,
+    // A shop's return policy (server 0109): exchange (no money back), credit
+    // (an exchange's rest goes on a credit note) or refund. Days inside which
+    // whoever is at the till returns alone (0: the right to refund is always
+    // needed), and months a note is valid (0: never expires). A restaurant
+    // refunds as it always did.
+    val returns: String = "exchange",
+    val returnDays: Int = 7,
+    val noteMonths: Int = 6,
 ) {
     fun shop(fallbackName: String): Shop =
         Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer, bars = retail)
@@ -104,6 +112,9 @@ data class PosSettings(
                 alone = isAlone(d.str("plan")),
                 setupOpen = d.str("setup") == "open",
                 tableOrdering = d.bool("tableOrdering") ?: false,
+                returns = if (d.str("businessType") != "retail") "refund" else d.str("returns")?.takeIf { it == "exchange" || it == "credit" || it == "refund" } ?: "exchange",
+                returnDays = runCatching { d["returnDays"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 0..365 } ?: 7,
+                noteMonths = runCatching { d["noteMonths"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 0..36 } ?: 6,
             )
         }
     }

@@ -34,6 +34,19 @@ data class DocTax(val name: String, val rateBp: Int, val amount: Long, val inclu
 @Serializable
 data class DocPayment(val name: String, val amount: Long, val tendered: Long? = null, val change: Long = 0, val reference: String? = null)
 
+// The paper a customer keeps after an exchange worth less than what came
+// back (server 0109): it is the credit note. validTo: yyyy-mm-dd, or null.
+@Serializable
+data class CreditNoteDoc(
+    val number: String,
+    val amount: Long,
+    val validTo: String?,
+    val customer: String?,
+    val fromReceipt: String,
+    val time: Long,
+    val cashier: String?,
+)
+
 @Serializable
 data class ReceiptDoc(
     val kind: String = "receipt", // receipt | bill | refund
@@ -198,6 +211,10 @@ object Docs {
 
     private fun stamp(ms: Long): String = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US).format(Date(ms))
 
+    // "2027-04-14" as "14 April 2027"; a date that is not one is printed as it came
+    private fun stampDate(ymd: String): String =
+        runCatching { java.time.LocalDate.parse(ymd).format(java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.UK)) }.getOrDefault(ymd)
+
     private fun EscPos.head(shop: Shop, logo: Raster?) {
         align(EscPos.Align.Center)
         if (logo != null) raster(logo.widthBytes, logo.height, logo.bits)
@@ -283,6 +300,28 @@ object Docs {
         if (shop.bars && d.kind != "bill" && d.number.isNotBlank()) { p.line(); p.barcode(d.number) }
         p.end(paper)
         return p
+    }
+
+    // The credit note itself: the number large and in bars, so it is scanned
+    // at a till when it is spent.
+    fun creditNote(d: CreditNoteDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster? = null): ByteArray {
+        val p = EscPos(paper.columns)
+        p.head(shop, logo)
+        p.rule()
+        p.align(EscPos.Align.Center).bold(true).big(true).line("CREDIT NOTE").big(false)
+        p.tall(true).line(d.number).tall(false).bold(false).align(EscPos.Align.Left)
+        p.rule()
+        p.bold(true).tall(true).row("VALUE", "Rs " + num(d.amount, decimals)).tall(false).bold(false)
+        p.row("Valid to", d.validTo?.let { stampDate(it) } ?: "Does not expire")
+        d.customer?.takeIf { it.isNotBlank() }?.let { p.row("Customer", it) }
+        p.row("From exchange of", d.fromReceipt)
+        p.row(stamp(d.time), d.cashier ?: "")
+        p.rule()
+        p.wrapped("Spend it on any purchase at this shop, in one go or in parts. Keep this slip: it is the note.")
+        p.line()
+        p.barcode(d.number)
+        p.end(paper)
+        return p.bytes()
     }
 
     // What the kitchen or the bar has to make: big, and with no prices.

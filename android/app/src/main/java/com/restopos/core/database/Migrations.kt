@@ -351,4 +351,13 @@ object Migrations {
             db.execSQL("ALTER TABLE `modifiers` ADD COLUMN `max_qty` INTEGER NOT NULL DEFAULT 1")
         }
     }
+
+    // 25 -> 26: a shop's credit notes (server 0109).
+    val V25_V26 = object : Migration(25, 26) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `credit_notes` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `device_id` TEXT NOT NULL, `number` TEXT NOT NULL, `amount` INTEGER NOT NULL, `balance` INTEGER NOT NULL, `refund_id` TEXT NOT NULL, `customer_id` TEXT, `valid_to` TEXT, `status` TEXT NOT NULL, `issued_by` TEXT, `created_at` INTEGER NOT NULL, `server_seq` INTEGER, `pulled` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_credit_notes_number` ON `credit_notes` (`number`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_credit_notes_refund_id` ON `credit_notes` (`refund_id`)")
+        }
+    }
 }
