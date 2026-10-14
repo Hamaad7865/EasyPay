@@ -169,3 +169,37 @@ tab says so in one line. The offline edition has one tablet, so there they agree
   reminder).
 - A restaurant's promotions (a dish has no cost yet).
 - Labels reprinted for the new price: the label designer prints what the product's price is; nothing new.
+
+## 10. What was built, and what was run (2026-10-14, the same day)
+
+Built as the plan `docs/superpowers/plans/2026-10-14-shop-promotions.md` says: migration 0110 (applied on dev), the till
+(database 27), the back office. Suites on dev: `promotions` (new, 31 checks), `shop-pages` (section Z); 587 unit tests;
+the back office type-checks.
+
+**Where the build settles something otherwise than the sections above, and why.**
+- A promotion is per *line*: a product without variants, or one variant. A product with variants is marked down by the
+  variant (`pick-variant`), since each has its own cost (section 3).
+- The price before the promotion is kept on the line itself (`promo_was` on `items` and `item_variants`), so the tills
+  need no new pull for the struck-through "was" and the back office reads it in one column; the `promotions` row keeps
+  `original_price` as well, for lifting.
+- The back office's page has a price box and Apply on each slow-moving line (one row per variant, as Kids Corner's
+  dialog has), not a dialog per product; Reduce again the same.
+- On the tablet, a line that never sold is idle since its first stock in, and a line with no movement of its own since
+  the earliest movement or sale the tablet knows of at all: the tablet does not know when a product was made. On a
+  connected shop with several tills the back office's list is the shop's; the tab says its own is "as this till knows
+  the sales".
+- Not built: the `catalog_import` warning (section 4), the "selling again" tag, the break-even warning on the tablet
+  (it has the sentence in `PromotionRules.warn`, but not the line's tax rate at hand), the product page's Promotion key
+  and the products list's "was" in the back office (the Promotions page and the tablet's list and tile show it).
+
+**Run on the test emulator** (`easypay_claude_size`, 5598, with its window, the made-up shop on the offline plan, the
+build installed over database 26, which went to 27 with no fault): Products & stock, Promotions. With the shop's
+movements backdated forty days (a debug change to that emulator alone, said in the report), twelve slow movers listed
+with their idle days, stock, price and cost; Set promotion on the denim jacket (Rs 2,950, cost Rs 1,400): Rs 1,200
+typed showed "Below cost (Rs 1,400.00): that would sell at a loss."; Rs 2,500 applied, the jacket left the slow
+movers, the Sell tile read "was Rs 2,950.00 · Rs 2,500.00", the tablet's row said active 295000 to 250000 and the
+queue held `promotion.apply`; On promotion listed it ("was Rs 2,950.00 · now Rs 2,500.00 · Rs 450.00 off"); Lift put
+Rs 2,950 back, cleared `promo_was`, marked the row lifted and queued `promotion.lift`. **Not seen:** Reduce again and
+Still not selling on a device (the server side is in the suite); a connected tablet (the server answering the
+operations and the pull returning the rows: the suite proves the functions, not the tablet's sync); the back office in
+a browser (proven by `shop-pages`).
