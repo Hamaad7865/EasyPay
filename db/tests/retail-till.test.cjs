@@ -34,6 +34,8 @@ const lineId = () => `00000000-0000-4000-8000-${String(++made).padStart(12, '0')
     const tenant = async (name, code) => (await one(`select platform.create_tenant_of_type($1,$2,'Main',$3,'Owner',$4,'standard','retail') as r`, [admin, name, code, id()])).r;
     const made1 = await tenant('Till Test', 'RT1');
     const tid = made1.tenant_id, store = made1.store_id, owner = made1.employee_id;
+    // this shop gives money back (0109): a shop is exchange-only until its settings say otherwise, and this suite refunds
+    await c.query(`update pos_settings set data = data || '{"returns":"refund"}'::jsonb where tenant_id = $1`, [tid]);
     const other = await tenant('Till Other', 'RT2');
     const store2 = (await one(`insert into stores (tenant_id, name, code, created_at) values ($1,'Second','RT3', now() + interval '1 second') returning id`, [tid])).id;
 
@@ -288,7 +290,7 @@ const lineId = () => `00000000-0000-4000-8000-${String(++made).padStart(12, '0')
     }
     // ---- E an exchange: goods come back and pay for part of a new sale (migration 0079) ----
     {
-      const types = (await c.query(`select id, opens_drawer, is_active from payment_types where tenant_id = $1 and kind = 'exchange' and deleted_at is null`, [tid])).rows;
+      const types =(await c.query(`select id, opens_drawer, is_active from payment_types where tenant_id = $1 and kind = 'exchange' and deleted_at is null`, [tid])).rows;
       check('E1 a shop has one Exchange payment type, which opens no drawer', types.length === 1 && types[0].opens_drawer === false && types[0].is_active === true, JSON.stringify(types));
       const exch = types[0].id;
       const card = (await one(`select id from payment_types where tenant_id = $1 and name = 'Card'`, [tid])).id;

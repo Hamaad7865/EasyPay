@@ -37,6 +37,8 @@ const id = () => crypto.randomUUID();
     async function business(name, code, type) {
       const made = await tenant(name, code, type);
       const tid = made.tenant_id, store = made.store_id, owner = made.employee_id;
+      // this shop gives money back (0109): a shop is exchange-only until its settings say otherwise, and this day has a refund in it
+      if (type === 'retail') await c.query(`update pos_settings set data = data || '{"returns":"refund"}'::jsonb where tenant_id = $1`, [tid]);
       const asApp = async (fn) => {
         await c.query('SET LOCAL ROLE app_user');
         await c.query(`select set_config('app.tenant_id', $1, true)`, [tid]);
