@@ -182,7 +182,7 @@ A paper holds at most 60 blocks.
 
 - A new `Papers` (the blocks, their defaults, EasyPay's two designs, the forgiving reader) and the receipt and the kitchen ticket printed by walking the blocks (`Docs.page`, `Docs.kitchen`). The other papers (credit note, cash slips, drawer count, X report, day closing, reports, test) do not change.
 - `PosSettings` reads `papers`; `DocBuilder` hands the paper's design to `Docs`.
-- **With no design, the papers print exactly as now.** Proved two ways before the old code is removed: the 22 tests in `DocsTest` pass unchanged; a test prints a dozen papers (receipt, bill, refund, share, reprint, partly refunded, a shop's with bars, 58 and 80 mm, a takeaway's and a table's kitchen ticket, courses, a void) through the old code and through EasyPay's design and requires the same bytes.
+- **With no design, the papers print exactly as now.** Proved two ways before the old code is removed: the 22 tests in `DocsTest` pass unchanged; a test prints a dozen papers (receipt, bill, refund, share, reprint, partly refunded, a shop's with bars, 58 and 80 mm, a takeaway's and a table's kitchen ticket, courses, a void) through the old code and through EasyPay's design and requires the same paper: the same lines, each with its size, bold and alignment, and the same drawer, logo, bars, feed and cut. (The bytes between lines may differ by a command that changes nothing, such as setting bold that was already set.)
 - `EscPos` keeps, for each line, its text, its size, whether bold, and its alignment (`styled()`); `look()` is as before.
 
 **The data a receipt keeps** (`DocLine`, `core/print/Docs.kt`), two new fields with defaults:
