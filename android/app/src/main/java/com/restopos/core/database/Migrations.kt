@@ -385,4 +385,12 @@ object Migrations {
             changed.forEach { (id, perms) -> db.execSQL("UPDATE `roles` SET `permissions` = ? WHERE `id` = ?", arrayOf<Any>(perms, id)) }
         }
     }
+
+    // 28 -> 29: what an item is made of (server 0112). Nothing has parts yet:
+    // an item given some arrives again with them, since the change moves it.
+    val V28_V29 = object : Migration(28, 29) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `items` ADD COLUMN `parts` TEXT NOT NULL DEFAULT '[]'")
+        }
+    }
 }

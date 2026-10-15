@@ -191,6 +191,8 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             val live = dao.groups().filter { it.deleted_at == null }.map { it.id }.toSet()
             if (groups.any { it !in live }) throw Refused("bad-group")
         }
+        // what it is made of (0112), when the sheet says
+        val parts = if ("parts" in p) partsOf(id, p["parts"]) else null
 
         val was = dao.item(id)
         // a barcode and a SKU are one product's only (the server's guard on the table)
@@ -227,6 +229,32 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         }
         if (reorder) setReorder(store!!, id, point?.toInt(), qty?.toInt())
         if (groups != null) { dao.dropGroupsOf(id); dao.putItemGroups(groups.map { com.restopos.core.database.ItemModGroupCrossRef(id, it) }) }
+        // made of others, it keeps no stock of its own
+        if (parts != null) dao.item(id)?.let { dao.putItem(it.copy(parts = Parts.encode(parts).toString(), track_stock = it.track_stock && parts.isEmpty())) }
+    }
+
+    // ---- item_set_parts (0112) ----
+    // The same part named twice is one part of both quantities. One level
+    // only: a part is made of nothing, and an item that is a part is made of
+    // nothing. A part is another product, one without variants.
+    private suspend fun partsOf(id: String, sent: kotlinx.serialization.json.JsonElement?): List<Parts.Part> {
+        val list = (sent as? JsonArray) ?: bad()
+        if (list.size > 20) bad()
+        val merged = LinkedHashMap<String, Long>()
+        list.forEach { e ->
+            val o = e as? JsonObject ?: bad()
+            val part = o.id("item_id")
+            merged[part] = (merged[part] ?: 0L) + (o.long("qty") ?: bad())
+        }
+        if (merged.values.any { it <= 0 || it > 1_000_000 }) throw Refused("bad-quantity")
+        if (merged.isEmpty()) return emptyList()
+        for (part in merged.keys) {
+            val it = dao.item(part)
+            if (part == id || it == null || it.deleted_at != null || dao.variantsOf(part).isNotEmpty()) throw Refused("bad-part")
+        }
+        if (merged.keys.any { Parts.parse(dao.item(it)?.parts).isNotEmpty() }) throw Refused("part-has-parts")
+        if (dao.itemsWithParts().any { o -> o.id != id && Parts.parse(o.parts).any { it.item == id } }) throw Refused("is-a-part")
+        return merged.map { (k, v) -> Parts.Part(k, v.toInt()) }
     }
 
     // stock_set_reorder: on every line of the product in one shop, its variants or itself when it has none

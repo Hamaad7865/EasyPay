@@ -25,6 +25,11 @@ interface AloneDao {
     @Query("SELECT COUNT(*) FROM item_variants v JOIN items i ON i.id = v.item_id WHERE LOWER(v.sku) = LOWER(:sku) AND v.deleted_at IS NULL AND i.deleted_at IS NULL AND v.id <> :not")
     suspend fun variantsWithSku(sku: String, not: String): Int
     @Query("SELECT COUNT(*) FROM items WHERE category_id = :category AND deleted_at IS NULL") suspend fun itemsIn(category: String): Int
+    // the items made of others (0112)
+    @Query("SELECT * FROM items WHERE deleted_at IS NULL AND parts <> '[]'") suspend fun itemsWithParts(): List<ItemEntity>
+    // what an item may be made of: a live product with no variants, made of nothing itself
+    @Query("SELECT * FROM items i WHERE i.deleted_at IS NULL AND i.parts = '[]' AND NOT EXISTS (SELECT 1 FROM item_variants v WHERE v.item_id = i.id AND v.deleted_at IS NULL) ORDER BY i.name COLLATE NOCASE")
+    suspend fun partChoices(): List<ItemEntity>
 
     // ---- categories ----
     @Query("SELECT * FROM categories WHERE id = :id") suspend fun category(id: String): CategoryEntity?

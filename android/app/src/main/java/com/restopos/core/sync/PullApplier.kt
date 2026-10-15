@@ -100,7 +100,9 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         cost = lng(it, "cost"), supplier_id = str(it, "supplier_id"), brand = str(it, "brand")?.trim()?.ifEmpty { null },
                         supplier_code = str(it, "supplier_code")?.trim()?.ifEmpty { null },
                         // its price before the promotion it is on (0110)
-                        promo_was = lng(it, "promo_was"))
+                        promo_was = lng(it, "promo_was"),
+                        // what one of it is made of (0112)
+                        parts = (it.jsonObject["parts"] as? kotlinx.serialization.json.JsonArray)?.toString() ?: "[]")
                 })
             }
             // A shop's variants, and what this shop holds of each product. A

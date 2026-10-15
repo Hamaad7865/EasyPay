@@ -45,6 +45,8 @@ object OfficePayloads {
             }
             // the add-on groups it carries, when the page showed them
             m.groups?.takeIf { sent(ItemForm.GROUPS) }?.let { g -> putJsonArray("groups") { g.forEach { add(it) } } }
+            // what it is made of (0112), when the page showed it
+            m.parts?.takeIf { sent(ItemForm.PARTS) }?.let { put("parts", Parts.encode(it)) }
         }
         approvedBy?.let { put("approved_by", it) }
     }

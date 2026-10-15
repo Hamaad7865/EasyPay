@@ -44,6 +44,7 @@ import androidx.room.RoomDatabase
 // exchange's refund, spent on a sale by their number.
 // Version 27 adds a shop's promotions (server 0110), and on a product and a
 // variant the price before the promotion it is on.
+// Version 29 adds what an item is made of (server 0112).
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -71,7 +72,7 @@ import androidx.room.RoomDatabase
         CreditNoteEntity::class,
         PromotionEntity::class,
     ],
-    version = 28,
+    version = 29,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {

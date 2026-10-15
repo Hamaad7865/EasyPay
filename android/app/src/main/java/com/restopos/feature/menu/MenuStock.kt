@@ -78,7 +78,9 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import javax.inject.Inject
 
-data class MenuRow(val item: ItemEntity, val category: CategoryEntity?, val index: Int, val station: String, val options: String)
+// parts: for an item made of others (server 0112), those of its parts whose
+// stock is counted, for what they make; null for any other item.
+data class MenuRow(val item: ItemEntity, val category: CategoryEntity?, val index: Int, val station: String, val options: String, val parts: List<com.restopos.core.data.Parts.Part>? = null)
 
 // The menu as the floor needs it during service: what there is, where it is
 // made, whether it can still be sold, what it costs and, for an item whose
@@ -111,7 +113,12 @@ class MenuViewModel @Inject constructor(
             val stationOf = cats.associate { c ->
                 c.id to runCatching { Json.parseToJsonElement(c.printer_ids).jsonArray.mapNotNull { printers[it.jsonPrimitive.content] } }.getOrDefault(emptyList()).joinToString(", ")
             }
-            items.map { i -> MenuRow(i, byId[i.category_id], index[i.category_id] ?: 0, stationOf[i.category_id].orEmpty().ifEmpty { "—" }, options[i.id].orEmpty().ifEmpty { "—" }) }
+            items.map { i ->
+                val parts = com.restopos.core.data.Parts.parse(i.parts).takeIf { it.isNotEmpty() }?.filter { p ->
+                    db.catalog().item(p.item)?.let { it.track_stock || byId[it.category_id]?.is_stock == true } == true
+                }
+                MenuRow(i, byId[i.category_id], index[i.category_id] ?: 0, stationOf[i.category_id].orEmpty().ifEmpty { "—" }, options[i.id].orEmpty().ifEmpty { "—" }, parts)
+            }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // The item whose price is being changed, or none.
@@ -240,10 +247,11 @@ fun MenuStockScreen(vm: MenuViewModel) {
                         // the name is a key: tapping it opens the item, to change or remove it
                         Box(Modifier.weight(1.6f).heightIn(min = 48.dp).clip(RoundedCornerShape(10.dp)).clickable { vm.items.open(r.item) }, contentAlignment = Alignment.CenterStart) {
                             // an item whose stock is counted says what this store holds of it
-                            val counted = !r.item.open_price && (r.item.track_stock || r.category?.is_stock == true)
+                            // made of others, what its scarcest counted part makes
+                            val counted = if (r.parts != null) r.parts.isNotEmpty() else !r.item.open_price && (r.item.track_stock || r.category?.is_stock == true)
                             if (!counted) T(r.item.name, 15.sp, 700, lines = 2)
                             else Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                val qty = left[r.item.id] ?: 0L
+                                val qty = r.parts?.minOf { p -> (left[p.item] ?: 0L).coerceAtLeast(0) / p.qty * 1000 } ?: left[r.item.id] ?: 0L
                                 T(r.item.name, 15.sp, 700)
                                 T(LinePrice.left(qty, r.item.sold_by == "weight"), 12.sp, 700, when (LinePrice.stock(qty)) { LinePrice.Stock.Plenty -> V.Text2; LinePrice.Stock.Few -> V.AmberText; LinePrice.Stock.None -> V.RedText })
                             }

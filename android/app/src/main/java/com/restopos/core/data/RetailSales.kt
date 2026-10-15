@@ -42,12 +42,27 @@ sealed class PriceEdit {
 // thousandths, negative for a sale. Only what is counted in stock has a
 // figure (the product's own switch, or its category's). The server's figure
 // replaces this one at every sync.
+// An item made of others (server 0112: a Mix grill) moves its parts instead,
+// each as many times as it is in one, and never itself; what is moved is
+// added up per product first, as the server does (stock_parts).
 suspend fun TillDatabase.moveStock(store: String, lines: List<Pair<TicketLineEntity, Int>>) {
-    lines.forEach { (l, by) ->
-        val itemId = l.item_id ?: return@forEach
-        val item = catalog().item(itemId) ?: return@forEach
-        if (!item.track_stock && ops().categoryOfItem(itemId)?.is_stock != true) return@forEach
-        val variant = l.variant_id ?: ""
+    suspend fun counted(item: ItemEntity) = item.track_stock || ops().categoryOfItem(item.id)?.is_stock == true
+    val moves = LinkedHashMap<Pair<String, String>, Int>()
+    for ((l, by) in lines) {
+        val itemId = l.item_id ?: continue
+        val item = catalog().item(itemId) ?: continue
+        val parts = Parts.parse(item.parts)
+        if (parts.isEmpty()) {
+            if (counted(item)) moves.merge(itemId to (l.variant_id ?: ""), by, Int::plus)
+            continue
+        }
+        for (p in parts) {
+            val part = catalog().item(p.item) ?: continue
+            if (counted(part)) moves.merge(p.item to "", Parts.share(by, p), Int::plus)
+        }
+    }
+    moves.forEach { (key, by) ->
+        val (itemId, variant) = key
         if (retail().moveLevel(store, itemId, variant, by) == 0) retail().upsertLevels(listOf(StockLevelEntity(store, itemId, variant, by)))
     }
 }

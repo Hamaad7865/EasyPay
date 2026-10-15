@@ -73,6 +73,9 @@ data class ItemEntity(
     val supplier_code: String? = null,
     // its price before the promotion it is on (server 0110); null when it is on none
     val promo_was: Long? = null,
+    // what one of it is made of (server 0112, core/data/Parts): selling it
+    // takes its parts off the stock, and it keeps none of its own
+    val parts: String = "[]",
 )
 
 @Entity(tableName = "modifier_groups")

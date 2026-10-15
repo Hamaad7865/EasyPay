@@ -34,6 +34,8 @@ object ItemForm {
         val reorder: String = "", val orderQty: String = "",
         // the add-on groups it carries (a restaurant's item); null when the page did not show them
         val groups: Set<String>? = null,
+        // what it is made of (0112, a restaurant's item); null when the page did not show it
+        val parts: List<Parts.Part>? = null,
     )
 
     // The same, read. An empty field is "none": the server clears what it held.
@@ -45,6 +47,7 @@ object ItemForm {
         // thousandths, as every quantity is
         val reorder: Int?, val orderQty: Int?,
         val groups: List<String>? = null,
+        val parts: List<Parts.Part>? = null,
         // Which of them are sent (TAX, COST and so on). For a new item, all
         // of them. For one being changed, only what the person changed on
         // the page: what the tablet holds may be older than the server's (the
@@ -60,7 +63,8 @@ object ItemForm {
     const val SUPPLIER_CODE = "supplier_code"
     const val REORDER = "reorder"
     const val GROUPS = "groups"
-    val ALL = setOf(TAX, COST, SKU, BRAND, SUPPLIER, SUPPLIER_CODE, REORDER, GROUPS)
+    const val PARTS = "parts"
+    val ALL = setOf(TAX, COST, SKU, BRAND, SUPPLIER, SUPPLIER_CODE, REORDER, GROUPS, PARTS)
 
     // The tax a sheet opens on: an item's own, and for a new item the usual
     // one. An item that carries no tax is not given one by being opened.
@@ -77,6 +81,7 @@ object ItemForm {
         // the two figures are saved together
         if (t.reorder.trim() != from.reorder.trim() || t.orderQty.trim() != from.orderQty.trim()) add(REORDER)
         if (t.groups != from.groups) add(GROUPS)
+        if (t.parts != from.parts) add(PARTS)
     }
 
     private val QTY = Regex("""(\d{1,7})(?:[.,](\d{1,3}))?""")
@@ -93,13 +98,13 @@ object ItemForm {
     // from: the page as it opened, for an item being changed; null for a new one.
     fun readMore(t: Typed, from: Typed? = null): Result<More> = runCatching {
         val sent = if (from == null) ALL else changed(t, from)
-        if (!t.shop) return@runCatching More(t.taxId, false, false, null, false, null, null, null, null, null, null, t.groups?.sorted(), sent)
+        if (!t.shop) return@runCatching More(t.taxId, false, false, null, false, null, null, null, null, null, null, t.groups?.sorted(), t.parts, sent)
         val cost = if (!t.costShown || t.cost.isBlank()) null else Money.parseRs(t.cost) ?: throw IllegalArgumentException("The cost is not a number")
         require(cost == null || cost <= LinePrice.MOST) { "Rs 1,000,000 is the most a product can cost" }
         More(
             t.taxId, true, t.costShown, cost, t.skuShown, t.sku.trim().take(60).ifEmpty { null },
             t.brand.trim().take(60).ifEmpty { null }, t.supplierId, t.supplierCode.trim().take(60).ifEmpty { null },
-            qty(t.reorder, "The reorder level"), qty(t.orderQty, "The order quantity"), t.groups?.sorted(), sent,
+            qty(t.reorder, "The reorder level"), qty(t.orderQty, "The order quantity"), t.groups?.sorted(), t.parts, sent,
         )
     }
 
@@ -124,6 +129,10 @@ object ItemForm {
             "bad-store" -> "This till's store is no longer there."
             "bad-quantity" -> "A reorder quantity cannot be less than nothing."
             "bad-group" -> "One of those add-on groups is no longer there. Open the sheet again."
+            // what it is made of (0112)
+            "bad-part" -> "A part has to be another $thing, one without variants, that is still there."
+            "part-has-parts" -> "A part cannot be made of others itself. Pick an $thing that is sold as it is."
+            "is-a-part" -> "This $thing is a part of another one, so it cannot be made of others."
             "conflict" -> "That did not work. Close this and try again."
             "forbidden" -> "You are not allowed to change the ${if (shop) "products" else "menu"}. Ask a manager."
             "open-price-not-here" -> "A product with variants, or sold by weight, has prices of its own: its price cannot be typed at the sale."

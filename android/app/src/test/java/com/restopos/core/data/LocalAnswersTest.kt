@@ -58,6 +58,8 @@ class FakeAlone : AloneDao {
     override suspend fun itemsWithSku(sku: String, not: String) = items.values.count { it.sku?.lowercase() == sku.lowercase() && it.deleted_at == null && it.id != not }
     override suspend fun variantsWithSku(sku: String, not: String) = variants.count { it.sku?.lowercase() == sku.lowercase() && liveVariant(it) && it.id != not }
     override suspend fun itemsIn(category: String) = items.values.count { it.category_id == category && it.deleted_at == null }
+    override suspend fun itemsWithParts() = items.values.filter { it.deleted_at == null && it.parts != "[]" }
+    override suspend fun partChoices() = items.values.filter { i -> i.deleted_at == null && i.parts == "[]" && variants.none { it.item_id == i.id && it.deleted_at == null } }.sortedBy { it.name.lowercase() }
     override suspend fun category(id: String) = categories[id]
     override suspend fun putCategory(row: CategoryEntity) { categories[row.id] = row }
     override suspend fun lastCategoryPlace() = categories.values.filter { it.deleted_at == null }.maxOfOrNull { it.sort_order } ?: -1
@@ -175,6 +177,54 @@ class LocalAnswersTest {
         return obj(text)
     }
     private val ids = mapOf("item-1" to id(100), "tax-1" to zero, "category-1" to cat, "supplier-1" to sup, "store-1" to store)
+
+    // ---- item.save with parts (0112), the cases of made-of.test.cjs ----
+    private val chicken = id(110); private val lamb = id(111); private val mix = id(112); private val shirt = id(113)
+    private fun menu() {
+        listOf(chicken to "Chicken BBQ", lamb to "Lamb BBQ", mix to "Mix grill", shirt to "Shirt").forEach { (i, n) ->
+            dao.items[i] = ItemEntity(i, tenant, null, n, 30000, track_stock = true)
+        }
+        dao.variants += com.restopos.core.database.ItemVariantEntity(id(114), tenant, shirt, "Red", price = 50000)
+    }
+    private fun parts(item: String, vararg p: Pair<String, Int>) = ask("item.save",
+        """{"id":"$item","name":"${dao.items[item]!!.name}","price":30000,"parts":[${p.joinToString(",") { """{"item_id":"${it.first}","qty":${it.second}}""" }}]}""")
+
+    @Test fun `a Mix grill is made of a chicken and a lamb, and counts no stock of its own`() {
+        menu()
+        assertEquals("done", parts(mix, chicken to 1000, lamb to 1000))
+        val m = dao.items[mix]!!
+        assertEquals(listOf(Parts.Part(chicken, 1000), Parts.Part(lamb, 1000)), Parts.parse(m.parts))
+        assertEquals(false, m.track_stock)
+    }
+
+    @Test fun `the rules of parts are the server's`() {
+        menu()
+        assertEquals("bad-part", parts(mix, mix to 1000))
+        assertEquals("bad-part", parts(mix, shirt to 1000))
+        assertEquals("bad-part", parts(mix, id(199) to 1000))
+        assertEquals("bad-quantity", parts(mix, chicken to 0))
+        parts(mix, chicken to 1000)
+        assertEquals("part-has-parts", parts(lamb, mix to 1000))
+        assertEquals("is-a-part", parts(chicken, lamb to 1000))
+        // the same part twice is one part of both
+        assertEquals("done", parts(lamb, id(115).also { dao.items[it] = ItemEntity(it, tenant, null, "Bread", 100) } to 250, id(115) to 250))
+        assertEquals(listOf(Parts.Part(id(115), 500)), Parts.parse(dao.items[lamb]!!.parts))
+    }
+
+    @Test fun `a save that sends no parts leaves them, and an empty list takes them off`() {
+        menu()
+        parts(mix, chicken to 1000)
+        assertEquals("done", ask("item.save", """{"id":"$mix","name":"Mix grill","price":60000}"""))
+        assertEquals(1, Parts.parse(dao.items[mix]!!.parts).size)
+        assertEquals("done", parts(mix))
+        assertEquals("[]", dao.items[mix]!!.parts)
+    }
+
+    @Test fun `a share of a part is rounded as the server rounds`() {
+        assertEquals(-1500, Parts.share(-3000, Parts.Part(lamb, 500)))
+        assertEquals(-2, Parts.share(-3, Parts.Part(lamb, 500)))
+        assertEquals(2, Parts.share(3, Parts.Part(lamb, 500)))
+    }
 
     // ---- item.save ----
     @Test fun `a new product with every field, as the server's example`() {

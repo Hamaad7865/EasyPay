@@ -178,10 +178,13 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
     var orderQty by remember(edit, more) { mutableStateOf(ItemForm.shown(more?.orderQty)) }
     // the add-on groups a restaurant's item carries
     var groups by remember(edit, more) { mutableStateOf(more?.groupIds ?: emptySet()) }
+    // what a restaurant's item is made of (0112): a Mix grill of a Chicken BBQ and a Lamb BBQ
+    var parts by remember(edit, more) { mutableStateOf(more?.parts ?: emptyList()) }
+    val madeOf = !shop && parts.isNotEmpty()
     // a product with variants keeps its codes and its costs on them
     val costShown = shop && more?.mayCost == true && !more.variants
     val skuShown = more?.variants != true
-    fun typed() = ItemForm.Typed(taxId, shop, costShown, cost, skuShown, sku, brand, supplier, supplierCode, reorder, orderQty, groups = if (shop) null else groups)
+    fun typed() = ItemForm.Typed(taxId, shop, costShown, cost, skuShown, sku, brand, supplier, supplierCode, reorder, orderQty, groups = if (shop) null else groups, parts = if (shop) null else parts)
     // the page as it opened: of an item being changed, only what differs from this is sent
     val start = remember(edit, more) { more?.let { typed() } }
 
@@ -205,6 +208,8 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
                 listOf(
                     SegOption("Basics", page == 0) { page = 0 },
                     SegOption(if (!shop) "Tax and add-ons" else if (costShown) "Tax, cost and supplier" else "Tax and supplier", page == 1) { page = 1 },
+                    // what selling it takes off the stock
+                    *(if (shop) emptyArray() else arrayOf(SegOption("Made of", page == 3) { page = 3 })),
                     // the picture on its card: the tablet's own, kept at once and apart from Save
                     SegOption("Picture", page == 2) { page = 2 },
                 ),
@@ -246,8 +251,10 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             }
             if (open) T("Tapping it on the till opens the keypad: for a service, or anything charged differently each time.", 13.sp, 500, V.Text2, lines = 2)
 
+            // made of others, it keeps no stock of its own: its parts are counted
+            if (madeOf) T("It is made of ${parts.size} ${if (parts.size == 1) "part" else "parts"}: selling it takes them off the stock, so it has none of its own.", 13.sp, 500, V.Text2, lines = 2)
             // One whose price is typed at the sale is a service: it has no stock to count.
-            if (!open) {
+            else if (!open) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Switch("Count its stock", count || byCategory, Modifier.weight(1f)) {
                         if (byCategory) Toaster.say("Its category counts stock, so this ${thing}'s is counted too." + if (com.restopos.core.data.Journey.alone) "" else " That is set in the back office.") else count = !count
@@ -273,6 +280,8 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             PicturePage(was?.id ?: edit.newId, thing)
         } else if (more == null) {
             T("One moment…", 14.sp, 500, V.Text2)
+        } else if (page == 3) {
+            MadeOfPage(more, parts) { parts = it }
         } else {
             Caps("Tax", V.Text2)
             if (more.taxes.isEmpty()) T("No tax is set up yet. Add one in Settings, under Taxes.", 13.sp, 500, V.Text2, lines = 2)
@@ -369,6 +378,34 @@ private fun Pick(text: String, on: Boolean, onClick: () -> Unit) {
             .press(onClick = onClick).padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) { T(text, 14.sp, 700, if (on) V.OnText else V.Text) }
+}
+
+// The page of what a restaurant's item is made of (server 0112). Each part
+// is another item and how many of it go into one: − and + go a whole one at
+// a time, down to a half. An item that is itself a part is made of nothing.
+@Composable
+private fun MadeOfPage(more: ItemMore, parts: List<com.restopos.core.data.Parts.Part>, set: (List<com.restopos.core.data.Parts.Part>) -> Unit) {
+    if (more.partOf.isNotEmpty()) {
+        T("It is a part of ${more.partOf.joinToString(", ")}, so it cannot be made of others.", 14.sp, 600, V.Text2, lines = 2)
+        return
+    }
+    T("For a dish put together from items whose stock is counted, such as a Mix grill of one Chicken BBQ and one Lamb BBQ. Selling it takes its parts off the stock, and a refund puts them back.", 13.sp, 500, V.Text2, lines = 3)
+    val names = more.partChoices.associate { it.id to it.name }
+    parts.forEachIndexed { i, p ->
+        fun to(qty: Int) = set(parts.mapIndexed { j, x -> if (j == i) x.copy(qty = qty) else x })
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            T(names[p.item] ?: "A removed item", 16.sp, 700, modifier = Modifier.weight(1f))
+            VBtn("−", height = 48.dp, radius = 14.dp, enabled = p.qty > 500) { to(if (p.qty > 1000) p.qty - 1000 else 500) }
+            T(ItemForm.shown(p.qty), 17.sp, 800, modifier = Modifier.width(48.dp))
+            VBtn("+", height = 48.dp, radius = 14.dp, enabled = p.qty < 1_000_000) { to(if (p.qty < 1000) 1000 else p.qty + 1000) }
+            VBtn("Take out", height = 48.dp, radius = 14.dp, fg = V.RedText) { set(parts.filterIndexed { j, _ -> j != i }) }
+        }
+    }
+    val left = more.partChoices.filter { c -> parts.none { it.item == c.id } }
+    if (parts.size < 20 && left.isNotEmpty()) {
+        Caps(if (parts.isEmpty()) "It is made of" else "Add another part", V.Text2)
+        Picks { left.forEach { c -> Pick(c.name, false) { set(parts + com.restopos.core.data.Parts.Part(c.id, 1000)) } } }
+    } else if (parts.isEmpty()) T("There is no other item to make it of yet.", 13.sp, 500, V.Text3)
 }
 
 // The third page: the picture on this product's card. It is chosen from the

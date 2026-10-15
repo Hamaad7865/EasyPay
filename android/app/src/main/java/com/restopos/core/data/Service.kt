@@ -52,6 +52,8 @@ class ItemMore(
     val reorder: Int?, val orderQty: Int?, val mayCost: Boolean, val variants: Boolean,
     // the add-on groups there are, and the ones the item carries
     val groups: List<com.restopos.core.database.ModifierGroupEntity> = emptyList(), val groupIds: Set<String> = emptySet(),
+    // what it is made of (0112), what it may be made of, and the items it is a part of (then it is made of nothing)
+    val parts: List<Parts.Part> = emptyList(), val partChoices: List<com.restopos.core.database.ItemEntity> = emptyList(), val partOf: List<String> = emptyList(),
 )
 
 // An order that is still being served: open on a table or at the counter, or
@@ -234,6 +236,9 @@ class ServiceRepository @Inject constructor(
             taxes, own, db.stock().suppliers().first(), level?.reorder_point, level?.reorder_qty,
             mayCost = staff.can("costs.view"), variants = itemId != null && db.retail().variantsOf(itemId).any { it.deleted_at == null },
             groups = db.catalog().groupsFlow().first(), groupIds = itemId?.let { db.alone().groupsOf(it).toSet() } ?: emptySet(),
+            parts = Parts.parse(itemId?.let { db.catalog().item(it) }?.parts),
+            partChoices = db.alone().partChoices().filter { it.id != itemId },
+            partOf = if (itemId == null) emptyList() else db.alone().itemsWithParts().filter { o -> o.id != itemId && Parts.parse(o.parts).any { it.item == itemId } }.map { it.name },
         )
     }
 
