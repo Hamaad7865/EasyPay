@@ -140,6 +140,14 @@ class BusinessViewModel @Inject constructor(db: TillDatabase, private val servic
         go("Saved. Receipts printed from now on carry it.", {}) { by -> this.service.saveSettings(h, f, p, by) }
     }
 
+    // the minutes before an order for later is due that the tills ring; empty is off
+    fun saveDueReminder(was: PosSettings, typed: String) {
+        val m = typed.trim().ifEmpty { "0" }.toIntOrNull()?.takeIf { it in 0..120 }
+            ?: run { Toaster.say("A reminder is a whole number of minutes, 1 to 120, or empty for off"); return }
+        if (m == was.dueReminder) { Toaster.say("Nothing was changed."); return }
+        go(if (m == 0) "The reminder is off." else "Saved. The till rings $m minutes before an order for later is due.", {}) { by -> service.saveDueReminder(m, by) }
+    }
+
     // another printer (a kitchen's, a bar's): the first one of a store is the receipt printer, the others print what is ticked for them
     fun addPrinter(id: String, name: String, kind: String, address: String, paper: Int, done: () -> Unit) {
         val p = com.restopos.core.data.PrinterForm.read(name, kind, address, paper).getOrElse { Toaster.say(it.message ?: "That is not a printer yet"); return }
@@ -393,6 +401,26 @@ internal fun ReceiptPage(vm: BusinessViewModel = hiltViewModel()) {
     }
     Row { VBtn(if (busy) "Saving…" else "Save", bg = V.Blue, fg = Color.White, height = 52.dp, radius = 14.dp, weight = 800, enabled = !busy) { vm.saveReceipt(st, header, footer, pct) } }
     Note("The business's name, address and numbers on the receipt are under This till, Set-up, Business details.")
+}
+
+// ---- Settings > Notifications: the reminder before an order for later is due ----
+@Composable
+internal fun DueReminderPanel(vm: BusinessViewModel = hiltViewModel()) {
+    val st by vm.settings.collectAsState()
+    val busy by vm.busy.collectAsState()
+    var minutes by remember(st.dueReminder) { mutableStateOf(if (st.dueReminder == 0) "" else st.dueReminder.toString()) }
+
+    Note("The till makes a sound and says which order, this many minutes before a takeaway or delivery taken for later is due. One taken for as soon as possible never rings.")
+    Panel {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) {
+                T("Remind before an order is due", 15.sp, 700)
+                T("Minutes, 1 to 120. Empty is off. The same for every till.", 13.sp, 500, V.Text2)
+            }
+            Field(minutes, { v -> minutes = v.filter { it.isDigit() }.take(3) }, "Off", Modifier.padding(start = 8.dp).fillMaxWidth(0.25f), height = 50.dp, number = true, size = 17.sp)
+        }
+    }
+    Row { VBtn(if (busy) "Saving…" else "Save", bg = V.Blue, fg = Color.White, height = 52.dp, radius = 14.dp, weight = 800, enabled = !busy) { vm.saveDueReminder(st, minutes) } }
 }
 
 // ---- Settings > Discounts ----

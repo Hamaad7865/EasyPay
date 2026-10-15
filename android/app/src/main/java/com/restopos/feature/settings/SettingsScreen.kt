@@ -836,6 +836,7 @@ private fun ScannersPage(vm: SettingsViewModel, shop: Boolean) {
 @Composable
 private fun NoticesPage(vm: SettingsViewModel, standing: List<Standing>) {
     val notices by vm.notices.collectAsState()
+    val retail by vm.retail.collectAsState()
     if (standing.isEmpty() && notices.isEmpty()) {
         Panel { Text("Nothing needs attention.", color = Pos.Text, fontSize = 15.sp) }
     }
@@ -853,6 +854,11 @@ private fun NoticesPage(vm: SettingsViewModel, standing: List<Standing>) {
                 }
             }
         }
+    }
+    // a restaurant's reminder before an order for later is due (DueReminders)
+    if (retail == false) {
+        Heading("Before an order is due")
+        DueReminderPanel()
     }
 }
 

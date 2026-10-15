@@ -109,6 +109,12 @@ object OfficePayloads {
         approvedBy?.let { put("approved_by", it) }
     }
 
+    // The minutes before an order for later is due that the tills ring; 0 is off (server 0111).
+    fun dueReminderSave(minutes: Int, approvedBy: String?): JsonObject = buildJsonObject {
+        put("dueReminderMinutes", minutes)
+        approvedBy?.let { put("approved_by", it) }
+    }
+
     // A product's options and the lines to make, each under the id the tablet made.
     fun variantsMake(itemId: String, make: VariantForm.Make, approvedBy: String?): JsonObject = buildJsonObject {
         put("item_id", itemId)

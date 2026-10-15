@@ -1089,6 +1089,17 @@ class LocalAnswersTest {
         assertEquals(listOf(300, "Open every day, 9 to 9", 10), listOf(after.footer.length, after.header, after.servicePct))
     }
 
+    @Test fun `the minutes before an order for later is due, and nothing else of the settings`() {
+        dao.settings = SettingsEntity(tenant, """{"plan":"offline","servicePct":10}""")
+        assertEquals("done", ask("settings.save", OfficeFixtures.payload("settings-save-due").jsonObject))
+        assertEquals(listOf(10, 10), PosSettings.parse(dao.settings!!.data).let { listOf(it.dueReminder, it.servicePct) })
+        assertEquals("bad-payload", ask("settings.save", """{"dueReminderMinutes":121}"""))
+        assertEquals("bad-payload", ask("settings.save", """{"dueReminderMinutes":"ten"}"""))
+        assertEquals("done", ask("settings.save", """{"dueReminderMinutes":0}"""))
+        assertEquals(0, PosSettings.parse(dao.settings!!.data).dueReminder)
+        assertEquals(OfficeFixtures.payload("settings-save-due"), OfficePayloads.dueReminderSave(10, null))
+    }
+
     @Test fun `what is sent for a group of add-ons, an item's groups and the settings is the example the server was tested with`() {
         val g = AddonForm.read(" Extras ", "", "2", listOf(AddonForm.Typed("choice-1", "Cheese", "25"), AddonForm.Typed("choice-2", "Chilli", ""), AddonForm.Typed("choice-3"))).getOrThrow()
         assertEquals(OfficeFixtures.payload("addon-save"), OfficePayloads.addonSave("group-1", g, null))

@@ -484,6 +484,21 @@ class ServiceRepository @Inject constructor(
         }, OfficePayloads.kitchenNotesSave(notes, staff.approvedBy("settings.device", approver)))
     }
 
+    // The minutes before an order for later is due that the tills ring; 0 is
+    // off (server 0111). The same for every till of the business.
+    suspend fun saveDueReminder(minutes: Int, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("settings.device", "change the reminder before an order is due", approver)
+        ask("settings.save", { code ->
+            when (code) {
+                "bad-payload" -> "A reminder is a whole number of minutes, from 0 to 120."
+                "forbidden" -> "You are not allowed to change the settings. Ask a manager."
+                "unknown-op" -> "The server has to be updated before this can be changed from a till."
+                null -> "The server refused it."
+                else -> "The server refused it ($code)."
+            }
+        }, OfficePayloads.dueReminderSave(minutes, staff.approvedBy("settings.device", approver)))
+    }
+
     // ---- a product's variants (server 0097) ----
     // whether the person signed in may see cost: a sheet shows it, and sends it, only then
     fun mayCost(): Boolean = staff.can("costs.view")

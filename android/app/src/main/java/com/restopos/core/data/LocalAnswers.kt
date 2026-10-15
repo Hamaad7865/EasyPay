@@ -952,7 +952,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         dao.putGroup(was.copy(deleted_at = now(), name = was.name.take(40) + " (removed " + stamp() + ")"))
     }
 
-    // ---- push_settings_save (0096, 0108): the receipt's two notes, the service charge, the kitchen notes ----
+    // ---- push_settings_save (0096, 0108, 0111): the receipt's two notes, the service charge, the kitchen notes, the due reminder ----
     private suspend fun settingsSave(p: JsonObject, tenant: String) {
         var patch = JsonObject(emptyMap())
         p["receipt"]?.let { r ->
@@ -976,6 +976,12 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             val list = (sent as? JsonArray) ?: bad()
             val notes = list.mapNotNull { n -> (n as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.take(40)?.takeIf { it.isNotEmpty() } }.take(12)
             patch = JsonObject(patch + ("kitchenNotes" to JsonArray(notes.map { JsonPrimitive(it) })))
+        }
+        // the minutes before an order for later is due that the tills ring (0111); 0 is off
+        if ("dueReminderMinutes" in p) {
+            val m = p.long("dueReminderMinutes")
+            if (m == null || m !in 0..120) throw Refused("bad-payload")
+            patch = JsonObject(patch + ("dueReminderMinutes" to JsonPrimitive(m.toInt())))
         }
         if (patch.isNotEmpty()) mergeSettings(tenant, patch)
     }
