@@ -105,6 +105,25 @@ class DocsTest {
         assertFalse(p.cut)
     }
 
+    // The owner: "for client receipt the add ons are in vertical. For each add on it should be horizantal".
+    @Test
+    fun aLinesAddOnsAreOneLineOnTheCustomersPaper() {
+        val burger = receipt.copy(lines = listOf(DocLine(1000, "Burger", 25000, listOf("Cheese", "Bacon", "2 x Egg"))))
+        val lines = read(Docs.receipt(burger, shop, Paper(48, 3, true), 2)).lines
+        assertTrue(lines.any { it == "  + Cheese, Bacon, 2 x Egg" })
+        assertEquals(1, lines.count { it.trimStart().startsWith("+") })
+        // too long for 58 mm paper, it goes on under the +
+        val long = burger.copy(lines = listOf(DocLine(1000, "Burger", 25000, listOf("Cheese", "Bacon", "Extra sauce", "Grilled onions", "Jalapenos"))))
+        val narrow = read(Docs.receipt(long, shop, Paper(32, 3, true), 2)).lines
+        val at = narrow.indexOfFirst { it.startsWith("  + Cheese, Bacon") }
+        assertTrue(at >= 0)
+        assertTrue(narrow[at + 1].startsWith("  ") && !narrow[at + 1].trimStart().startsWith("+"))
+        assertTrue(narrow.all { it.length <= 32 })
+        // the kitchen's paper keeps a line for each add-on group
+        val kitchen = read(Docs.kitchen(KitchenDoc("ORDER", "Table 4", 1_790_000_000_000, null, null, null, null, burger.lines.map { it.copy(mods = listOf("Cheese, Bacon", "2 x Egg")) }, "Kitchen"), Paper(32, 2, true))).lines
+        assertEquals(2, kitchen.count { it.trimStart().startsWith("*") })
+    }
+
     @Test
     fun aCashPaymentOpensTheDrawerAndABillSaysItIsNotAReceipt() {
         assertTrue(read(Docs.receipt(receipt, shop, Paper(), 2, openDrawer = true)).drawer)

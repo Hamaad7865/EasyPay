@@ -290,7 +290,7 @@ class OrderOps @Inject constructor(
         out += ""
         d.lines.forEach { l ->
             out += "" + (l.qty + 500) / 1000 + " x " + l.name + "  " + docs.money(l.amount)
-            l.mods.forEach { m -> out += "   + $m" }
+            if (l.mods.isNotEmpty()) out += "   + " + l.mods.joinToString(", ")
         }
         out += ""
         d.discounts.forEach { out += "Discount " + it.name + "  -" + docs.money(it.amount) }

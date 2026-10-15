@@ -270,7 +270,8 @@ object Docs {
             p.row("${qty(l.qty)} ${l.name}", n(l.amount))
             // the price it was listed at, and what was done to it
             if (l.was != null && l.was != l.amount) p.wrapped(listOfNotNull("was ${n(l.was)}", l.priceNote?.takeIf { it.isNotBlank() }).joinToString(", "), indent = "  ")
-            l.mods.forEach { m -> p.wrapped("+ $m", indent = "  ") }
+            // all of a line's add-ons on one line, wrapped under the + when too long (the owner, 2026-10-15)
+            if (l.mods.isNotEmpty()) p.wrapped("+ " + l.mods.joinToString(", "), indent = "  ")
             l.note?.takeIf { it.isNotBlank() }?.let { p.wrapped("* $it", indent = "  ") }
         }
         p.rule()

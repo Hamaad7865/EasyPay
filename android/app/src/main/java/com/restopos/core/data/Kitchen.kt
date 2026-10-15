@@ -36,7 +36,7 @@ internal fun kitchenRemark(t: TicketEntity): String? =
 // A line's add-ons as the kitchen reads them: a line for each add-on group,
 // its choices side by side in the order they were picked ("Mayo, Chili").
 // One whose group is not known (taken off the menu since) has a line of its
-// own. The customer's receipt keeps one add-on a line.
+// own. The customer's receipt has them all on one line (Docs.page).
 internal fun kitchenMods(rows: List<ModRow>, times: String = " x "): List<String> {
     val out = LinkedHashMap<Any, MutableList<String>>()
     rows.forEachIndexed { i, r ->
