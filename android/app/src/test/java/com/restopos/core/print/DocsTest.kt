@@ -124,6 +124,42 @@ class DocsTest {
         assertEquals(2, kitchen.count { it.trimStart().startsWith("*") })
     }
 
+    // The owner: "a customer counter number so when an order is completed, the cashier can call out the customer order number".
+    @Test
+    fun theCustomerNumberIsLargeOnTheReceiptAndTheBill() {
+        val takeaway = receipt.copy(order = "A-05 · Ravi", customerNo = "05")
+        for (cols in listOf(32, 48)) {
+            val lines = read(Docs.receipt(takeaway, shop, Paper(cols, 3, true), 2)).lines
+            assertTrue("a line is wider than $cols", lines.all { it.length <= cols })
+            // under RECEIPT, above the receipt's own number
+            val at = lines.indexOfFirst { it.trim() == "CUSTOMER No. 05" }
+            assertTrue(at > lines.indexOfFirst { it.trim() == "RECEIPT" })
+            assertTrue(at < lines.indexOfFirst { it.startsWith("No.") })
+        }
+        val bill = read(Docs.receipt(takeaway.copy(kind = "bill", number = "", payments = emptyList()), shop, Paper(), 2)).lines
+        assertTrue(bill.any { it.trim() == "CUSTOMER No. 05" })
+        // a receipt kept from before has none
+        assertFalse(read(Docs.receipt(receipt, shop, Paper(), 2)).lines.any { it.contains("CUSTOMER") })
+    }
+
+    @Test
+    fun aKitchenTicketCarriesTheCustomerNumberLarge() {
+        val doc = KitchenDoc("ORDER", "Ravi", 1_790_000_000_000, "Priya", "Takeaway", null, null, receipt.lines, "Kitchen", pickup = "PICK UP 18:30", customerNo = "05")
+        val lines = read(Docs.kitchen(doc, Paper(32, 2, true))).lines
+        assertTrue(lines.all { it.length <= 32 })
+        val no = lines.indexOfFirst { it.trim() == "No. 05" }
+        assertTrue(no > lines.indexOfFirst { it.trim() == "KITCHEN" })
+        // who it is for, under it
+        assertEquals("Ravi", lines[no + 1].trim())
+        // with no name given, the number alone
+        val nameless = read(Docs.kitchen(doc.copy(order = ""), Paper(32, 2, true))).lines
+        assertTrue(nameless[nameless.indexOfFirst { it.trim() == "No. 05" } + 1].trim().startsWith("PICK UP"))
+        // a table's ticket is as it was: the table, large
+        val table = read(Docs.kitchen(doc.copy(order = "Table 4", customerNo = null, pickup = null), Paper(32, 2, true))).lines
+        assertTrue(table.any { it.trim() == "Table 4" })
+        assertFalse(table.any { it.contains("No.") })
+    }
+
     @Test
     fun aCashPaymentOpensTheDrawerAndABillSaysItIsNotAReceipt() {
         assertTrue(read(Docs.receipt(receipt, shop, Paper(), 2, openDrawer = true)).drawer)

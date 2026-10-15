@@ -48,6 +48,10 @@ class DocBuilder @Inject constructor(
         val who = t.name ?: t.customer_id?.let { db.customers().customer(it)?.name }
         return listOfNotNull(t.order_no, who).joinToString(" · ").ifEmpty { "Direct sale" }
     }
+
+    // The customer number the papers print large ("05"), of an order with no
+    // table; a table is served where it sits (CustomerNumber).
+    private fun customerNo(t: TicketEntity): String? = if (t.table_id == null) CustomerNumber.digits(t.order_no) else null
     // what the kitchen and the receipt are told besides the items: the remark,
     // and for a takeaway or delivery who to ring and where it goes
     private fun remark(t: TicketEntity): String? = kitchenRemark(t)
@@ -98,6 +102,7 @@ class DocBuilder @Inject constructor(
         cashier = staff.current.value?.employee?.name, waiter = employee(t.opened_by), covers = t.covers, note = remark(t),
         lines = lines(rows), subtotal = totals.subtotal, discounts = discounts, taxes = taxes(rows, totals.discount),
         rounding = totals.rounding, total = totals.total, payments = payments, service = totals.service,
+        customerNo = if (kind == "refund") null else customerNo(t),
     )
 
     // The bill: what is still to pay on the order, as the receipt will show it.
@@ -152,10 +157,14 @@ class DocBuilder @Inject constructor(
         // for the kitchen a line's add-ons are a line for each add-on group
         val mods = kitchenModsOf(db, rows.map { it.id })
         val pickup = Pickup.says(t.dining_option_id?.let { db.ops().dining(it) }?.kind, t.due_at)
+        // An order with a customer number is headed by it, then who it is for;
+        // a table's by the table, as before.
+        val no = customerNo(t)
+        val heading = if (no != null) (t.name ?: t.customer_id?.let { db.customers().customer(it)?.name }).orEmpty() else order
         for ((pid, ls) in perPrinter) {
             val p = byId[pid] ?: continue
             val asked = lines(ls).mapIndexed { i, d -> d.copy(mods = mods[ls[i].id].orEmpty()) }
-            val doc = KitchenDoc(title, order, System.currentTimeMillis(), waiter, dining(t), t.covers, remark(t), asked, Routing.heading(p, printers, one), pickup)
+            val doc = KitchenDoc(title, heading, System.currentTimeMillis(), waiter, dining(t), t.covers, remark(t), asked, Routing.heading(p, printers, one), pickup, no)
             // a ticket that did not print can be sent again from Settings, Printers
             printing.send(p, Docs.kitchen(doc, printing.paper(p)), "Kitchen ticket, $order").onFailure { errors.add(it.message ?: "${p.name} did not print") }
         }

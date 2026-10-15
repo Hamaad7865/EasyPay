@@ -80,6 +80,10 @@ data class ReceiptDoc(
     val reprint: Boolean = false,
     val refunded: Long = 0,
     val refundedAll: Boolean = false,
+    // The customer number ("05") of an order with no table, printed large so
+    // the customer can be called (CustomerNumber). Kept with the receipt, so a
+    // reprint carries it; a receipt kept from before has none.
+    val customerNo: String? = null,
 )
 
 data class KitchenDoc(
@@ -93,6 +97,7 @@ data class KitchenDoc(
     val lines: List<DocLine>,
     val station: String,
     val pickup: String? = null, // "PICK UP 18:30": when a takeaway is picked up (Pickup.says)
+    val customerNo: String? = null, // "05": printed large in place of the order's name, which then says who it is for
 )
 
 data class CashSlipDoc(val type: String, val amount: Long, val reason: String?, val time: Long, val user: String?, val till: String)
@@ -255,6 +260,8 @@ object Docs {
         p.line(when (d.kind) { "bill" -> "BILL"; "refund" -> "REFUND"; else -> "RECEIPT" })
         if (d.reprint) p.line("COPY")
         if (d.refunded > 0) p.line(if (d.refundedAll) "*** REFUNDED ***" else "*** PARTLY REFUNDED: ${n(d.refunded)} ***")
+        // the number the customer is called by, large
+        d.customerNo?.let { no -> p.big(true); EscPos.wrap("CUSTOMER No. $no", p.columns / 2).forEach { p.line(it) }; p.big(false) }
         p.bold(false).align(EscPos.Align.Left)
         if (d.number.isNotBlank()) p.row("No.", d.number)
         p.row(stamp(d.time), d.order)
@@ -336,9 +343,15 @@ object Docs {
         val p = EscPos(paper.columns)
         p.align(EscPos.Align.Center).bold(true)
         p.line(if (d.title == "ORDER") d.station.uppercase() else "${d.title} - ${d.station.uppercase()}")
-        p.big(true)
-        EscPos.wrap(d.order, paper.columns / 2).forEach { p.line(it) }
-        p.big(false)
+        if (d.customerNo != null) {
+            // the customer's number large, then who it is for
+            p.big(true).line("No. ${d.customerNo}").big(false)
+            if (d.order.isNotBlank()) EscPos.wrap(d.order, paper.columns).forEach { p.line(it) }
+        } else {
+            p.big(true)
+            EscPos.wrap(d.order, paper.columns / 2).forEach { p.line(it) }
+            p.big(false)
+        }
         // when a takeaway is picked up, under who it is for
         d.pickup?.let { p.tall(true).line(it).tall(false) }
         p.bold(false).align(EscPos.Align.Left)
