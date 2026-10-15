@@ -69,6 +69,9 @@ data class PosSettings(
     // is flagged to be reduced again.
     val slowMoverDays: Int = 30,
     val promoStillDays: Int = 14,
+    // Minutes before an order for later is due that the till rings
+    // (DueReminder, server 0111). 0, and a missing key, is off.
+    val dueReminder: Int = 0,
 ) {
     fun shop(fallbackName: String): Shop =
         Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer, bars = retail)
@@ -122,6 +125,7 @@ data class PosSettings(
                 noteMonths = runCatching { d["noteMonths"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 0..36 } ?: 6,
                 slowMoverDays = runCatching { d["slowMoverDays"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..365 } ?: 30,
                 promoStillDays = runCatching { d["promoStillDays"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..365 } ?: 14,
+                dueReminder = runCatching { d["dueReminderMinutes"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..120 } ?: 0,
             )
         }
     }

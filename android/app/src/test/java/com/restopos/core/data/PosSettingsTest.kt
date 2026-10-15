@@ -1,5 +1,6 @@
 package com.restopos.core.data
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -53,5 +54,15 @@ class PosSettingsTest {
         assertFalse(PosSettings.parse("""{"plan":"standard"}""").setupOpen)
         assertFalse(PosSettings.parse(null).setupOpen)
         assertFalse(PosSettings().setupOpen)
+    }
+
+    // Off until the restaurant sets it: no restaurant already live starts ringing when this build reaches it.
+    @Test
+    fun theReminderBeforeAnOrderIsDueIsOffUntilSet() {
+        assertEquals(0, PosSettings.parse("{}").dueReminder)
+        assertEquals(10, PosSettings.parse("""{"dueReminderMinutes":10}""").dueReminder)
+        assertEquals(0, PosSettings.parse("""{"dueReminderMinutes":0}""").dueReminder)
+        assertEquals(0, PosSettings.parse("""{"dueReminderMinutes":500}""").dueReminder)
+        assertEquals(0, PosSettings.parse("""{"dueReminderMinutes":"ten"}""").dueReminder)
     }
 }

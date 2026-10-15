@@ -24,7 +24,7 @@ class ChimeTest {
 
     @Test
     fun itStartsAndEndsQuietly() {
-        for (notes in listOf(Chime.ORDER, Chime.READY)) {
+        for (notes in listOf(Chime.ORDER, Chime.READY, Chime.DUE)) {
             val s = Chime.pcm(notes)
             assertEquals(0, s[0].toInt())
             // the last note has died away, and the stretch after it is silence
@@ -50,5 +50,13 @@ class ChimeTest {
     fun theTwoSoundsAreNotTheSame() {
         assertNotEquals(Chime.ORDER.map { it.hz }, Chime.READY.map { it.hz })
         assertNotEquals(Chime.pcm(Chime.ORDER).size, Chime.pcm(Chime.READY).size)
+    }
+
+    // the reminder before an order is due falls where the other two rise, so it is not taken for them
+    @Test
+    fun theDueSoundFallsWhereTheOthersRise() {
+        assertTrue(Chime.DUE.zipWithNext().all { (a, b) -> b.hz < a.hz })
+        assertTrue(Chime.ORDER.zipWithNext().all { (a, b) -> b.hz > a.hz })
+        assertTrue(Chime.READY.zipWithNext().all { (a, b) -> b.hz > a.hz })
     }
 }

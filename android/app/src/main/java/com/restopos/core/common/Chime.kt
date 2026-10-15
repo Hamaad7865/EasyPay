@@ -27,9 +27,12 @@ object Chime {
     val ORDER = listOf(Note(880.0, 170), Note(1318.5, 320))
     // A takeaway is ready to hand over: three notes, rising, unlike the kitchen's.
     val READY = listOf(Note(784.0, 130), Note(987.8, 130), Note(1568.0, 380))
+    // An order for later is due soon: three notes, falling, unlike the other two.
+    val DUE = listOf(Note(1568.0, 150), Note(1318.5, 150), Note(1046.5, 420))
 
     fun order() = play(ORDER)
     fun ready() = play(READY)
+    fun due() = play(DUE)
 
     // The notes as sound: each starts at once and dies away like a bell, so
     // none begins or ends on a click. A short quiet stretch ends it, so the
