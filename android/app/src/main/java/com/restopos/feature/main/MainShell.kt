@@ -206,6 +206,7 @@ class ShellViewModel @Inject constructor(
     private val guests: com.restopos.core.guest.GuestLink,
     private val guestBook: com.restopos.core.guest.GuestBook,
     private val requests: com.restopos.core.data.TillRequests,
+    private val dueReminders: com.restopos.core.data.DueReminders,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     val screen = MutableStateFlow(Screen.Floor)
@@ -213,6 +214,9 @@ class ShellViewModel @Inject constructor(
     // written down), said once to whoever is at it or next comes to it
     val asked: StateFlow<String?> = requests.said
     fun askedShown() = requests.heard()
+    // the orders for later the till rang for, shown across the top until OK
+    val dueBanners: StateFlow<List<com.restopos.core.data.DueBanner>> = dueReminders.banners
+    fun dueOk(ticketId: String) = dueReminders.dismiss(ticketId)
     // The business is a shop (the back office's settings say so): the till
     // shows the sell screen. Null for the moment it takes to read the
     // settings this tablet holds, so a shop's till never opens on a floor
@@ -250,6 +254,9 @@ class ShellViewModel @Inject constructor(
         // up from the moment the till is, whichever screen is open, and only
         // listening when the settings and an open day say this till should.
         guests.start()
+        // The reminder before an order for later is due (DueReminders): from
+        // the moment the till is up, whichever screen is open.
+        dueReminders.start()
         // The kitchen has finished a takeaway (Bump, on a kitchen screen or on
         // this till's own Kitchen screen): it is marked ready, the till makes
         // a sound (Kitchen), says which one here, whichever screen is open,
@@ -728,6 +735,7 @@ fun MainShell(
             }
         }
         SideMenu(drawer, shell, lit, badges, user, lang, retail, premium, onGo = go, onLock = { drawer = false; onLock() }, onClose = { drawer = false })
+        DueBannerHost(shell, onOpen = { go(Screen.Takeaway) })
         ToastHost()
     }
 

@@ -290,6 +290,8 @@ private val KITCHEN_EPOCH = stringPreferencesKey("kitchen_epoch")
 private val SEQ_DAY = stringPreferencesKey("seq_day")
 // the customer number this till gave last (CustomerNumber); a day closing removes it
 private val SEQ_CUSTOMER = intPreferencesKey("seq_customer")
+// the orders the till rang for before they were due, and their due times (DueReminder.keep)
+private val DUE_RUNG = stringPreferencesKey("due_rung")
 private val SETUP_CLOSED = booleanPreferencesKey("setup_closed")
 private val REGISTERED_AT = longPreferencesKey("registered_at")
 private val Context.sessionPrefs by preferencesDataStore("device")
@@ -483,6 +485,11 @@ class SessionStore(private val context: Context) {
             it.remove(SEQ_CUSTOMER)
         }
     }
+
+    // What the till rang for before it was due (DueReminders), kept so a
+    // restart does not ring again.
+    suspend fun dueRung(): String? = store.data.map { it[DUE_RUNG] }.first()
+    suspend fun setDueRung(text: String) { store.edit { it[DUE_RUNG] = text } }
 
     // Everything the tablet holds for the business it was set up for. What
     // belongs to the tablet itself stays: the scanners added on it, and its
