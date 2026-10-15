@@ -60,6 +60,8 @@ Until now an order with no table had a number from one of three counts kept on t
 
 **A limit, said to the owner:** each till counts on its own. A restaurant with two tills taking orders can have two customers holding 05 at once.
 
+**Another, found while planning:** a day can be closed while paid takeaways still wait on the board (closing refuses only unpaid orders, and closing to make way for a new day carries unpaid ones on). Those keep their numbers, so the board can hold an A-05 from before the closing and a new A-05 after it.
+
 ## 3. A sound before an order is due
 
 **The setting** (the owner's: "not all customer wants 10 mins"):
@@ -75,7 +77,7 @@ An order rings when it was taken for a time further off than its usual time plus
 
 - Taken at 20:00 for 21:00, preparation 15, reminder 10: 60 minutes is more than 25, so it rings at 20:50.
 - Taken at 20:00 for 20:20: 20 is less than 25, so it does not ring; the kitchen starts it now anyway.
-- When it was taken is read from the order's id (a UUID version 7 carries the moment it was made), so no column is added anywhere.
+- When it was taken is read from the order's id (a UUID version 7 carries the moment it was made), so no column is added anywhere. A limit: an order that sat as a counter sale for a while and was then made a takeaway is given its due time when it becomes one, but counts as taken when it was started. If it sat longer than the reminder, an "as soon as possible" takeaway made that way rings. That should be rare.
 - It rings only while the order is new or in the kitchen: not once it is ready, done, handed over, marked a no-show, or removed.
 - Only orders with a due time ring: takeaways and deliveries. Table bookings do not (not asked).
 

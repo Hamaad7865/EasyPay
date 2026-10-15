@@ -1335,12 +1335,14 @@ Expected: `FAIL Z11 ...` (`r.data.saved` is 0, nothing saved); every other check
 
 - [ ] **Step 3: Start the migration from the live definitions**
 
+Write both into the running session's scratchpad folder (its path is in the session's system prompt), never inside the repository:
+
 ```bash
-node db/scripts/dump-function.cjs platform.create_tenant 7 > "$TMPDIR/create_tenant.sql"
-node db/scripts/dump-function.cjs push_settings_save > "$TMPDIR/push_settings_save.sql"
+node db/scripts/dump-function.cjs platform.create_tenant 7 > "<scratchpad>/create_tenant.sql"
+node db/scripts/dump-function.cjs push_settings_save > "<scratchpad>/push_settings_save.sql"
 ```
 
-(`$TMPDIR` is any scratch folder outside the repository.) Check each file holds one `CREATE OR REPLACE FUNCTION`, and that `create_tenant.sql` holds the Manager list `"sale.create","sale.apply_discount", ... "sale.change_price"` as `db/migrations/0089_first_run_setup.sql:339-344` has it.
+(Nothing on the server constrains or parses `tickets.order_no`: checked 2026-10-15 over `db/migrations` and `web/`, so C-01 given twice in a day is accepted.) Check each file holds one `CREATE OR REPLACE FUNCTION`, and that `create_tenant.sql` holds the Manager list `"sale.create","sale.apply_discount", ... "sale.change_price"` as `db/migrations/0089_first_run_setup.sql:339-344` has it.
 
 - [ ] **Step 4: Write the migration**
 
@@ -1703,6 +1705,10 @@ Expected:
 - `all passed`;
 - `tsc` exits 0.
 
+- [ ] **Step 1b: Settle where it runs, before building**
+
+Every check below needs a **restaurant** signed in on a tablet. The test emulator `easypay_claude_test` holds a demo *shop*, and signing in is the owner's to do. Ask the owner which emulator and which dev restaurant to use, and wait for the answer.
+
 - [ ] **Step 2: Build the APK**
 
 Run: `android/gradlew -p android :app:assembleDebug`
@@ -1719,6 +1725,12 @@ Say in chat which emulator will be used, that its window will be open, and what 
 - [ ] **Step 4: Run it**
 
 On the emulator, with the stand-in printer:
+0. **Install over the build that is there, without clearing its data.** The tablet's database is 27 before this build, and the 27 → 28 upgrade runs only on an install over an existing one: a fresh install never runs it, and an upgrade that throws would stop every live tablet from opening. Check three things:
+   - the app opens;
+   - a role there that held `shift.view_report` now holds `payments.view`;
+   - a Cashier role does not.
+
+   To read the roles: `adb exec-out run-as com.restopos.app cat databases/<the database file>` into the scratchpad, then open it with `sqlite3` there.
 1. Open the day. Ring a counter order and a takeaway. Check:
    - the board shows `C-01` and `A-02`;
    - the receipt reads `CUSTOMER No. 01`, and a line with add-ons has them on one line;
@@ -1731,7 +1743,8 @@ On the emulator, with the stand-in printer:
    - take a takeaway for 15 minutes from now on the pick-up clock: it rings and shows its banner about 5 minutes later;
    - an "as soon as possible" takeaway does not ring;
    - OK closes the banner;
-   - restarting the app does not ring it again.
+   - restarting the app does not ring it again;
+   - take another for 15 minutes from now, restart the app, and leave it locked (on the PIN screen, nobody signed in): it still rings. The watcher starts with `ShellViewModel`. If the lock screen comes before that, it does not ring, and the start moves to where `ScreenLink.start()` and `GuestLink.start()` are first called.
 5. As a Cashier (default role), Settings, Payments is locked. As a Manager, it opens.
 
 Put the preparation time and the reminder back as they were afterwards.
