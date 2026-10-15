@@ -41,6 +41,10 @@ function lib(name) {
     check('N2 a list saved empty stays empty', notes({ kitchenNotes: [] }).length === 0 && notes({ kitchenNotes: ['', ' '] }).length === 0,
       JSON.stringify(notes({ kitchenNotes: [] })));
     check('N2 something that is not a list is the usual five', notes({ kitchenNotes: 'Rush' }).join('|') === usual && notes({ kitchenNotes: null }).join('|') === usual);
+    const due = (raw) => s.withDefaults(raw).dueReminderMinutes;
+    check('N3 the reminder before an order is due is off until set, and 1 to 120',
+      due(null) === 0 && due({ dueReminderMinutes: 10 }) === 10 && due({ dueReminderMinutes: 0 }) === 0 && due({ dueReminderMinutes: 500 }) === 0 && due({ dueReminderMinutes: '10' }) === 0,
+      [due(null), due({ dueReminderMinutes: 10 }), due({ dueReminderMinutes: 500 })].join(' '));
   }
 
   // ---- a price typed in a form (no database) ----

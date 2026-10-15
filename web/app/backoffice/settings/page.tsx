@@ -52,6 +52,8 @@ async function saveGeneral(f: FormData) {
         : {
             servicePct: int(f, "servicePct", 0, 30, 0),
             prepMinutes: int(f, "prepMinutes", 1, 180, 15),
+            // empty is off (0111)
+            dueReminderMinutes: int(f, "dueReminderMinutes", 0, 120, 0),
             kitchenSound: on(f, "kitchenSound"),
             // on another plan the form has no such switch: what was saved is left as it is
             ...(TABLE_ORDERING_LIVE && ctx.premium ? { tableOrdering: on(f, "tableOrdering") } : {}),
@@ -411,6 +413,16 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
               </div>
               <label className="check" style={{ margin: 0 }}>
                 <input name="prepMinutes" type="number" min={1} max={180} defaultValue={s.prepMinutes} className="narrow" aria-label="Takeaway minutes" />
+                minutes
+              </label>
+            </div>
+            <div className="setting">
+              <div>
+                <strong>Reminder before an order is due</strong>
+                <small>The till makes a sound and says which order, this many minutes before a takeaway or delivery taken for later is due. One taken for as soon as possible never rings. Empty is off.</small>
+              </div>
+              <label className="check" style={{ margin: 0 }}>
+                <input name="dueReminderMinutes" type="number" min={0} max={120} defaultValue={s.dueReminderMinutes || ""} placeholder="Off" className="narrow" aria-label="Reminder minutes" />
                 minutes
               </label>
             </div>

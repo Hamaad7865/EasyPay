@@ -37,6 +37,8 @@ export type PosSettings = {
   // flagged to be reduced again.
   slowMoverDays: number;
   promoStillDays: number;
+  // minutes before an order for later is due that the tills ring (migration 0111); 0 is off
+  dueReminderMinutes: number;
   receipt: { header: string; footer: string; logo: string | null; showLogo: boolean };
   company: { name: string; brn: string; vat: string; address: string; phone: string };
 };
@@ -59,6 +61,7 @@ export const DEFAULT_SETTINGS: PosSettings = {
   noteMonths: 6,
   slowMoverDays: 30,
   promoStillDays: 14,
+  dueReminderMinutes: 0,
   receipt: { header: "", footer: "Thank you. See you again soon.", logo: null, showLogo: true },
   company: { name: "", brn: "", vat: "", address: "", phone: "" },
 };
@@ -93,6 +96,7 @@ export function withDefaults(raw: unknown): PosSettings {
     noteMonths: typeof d.noteMonths === "number" && d.noteMonths >= 0 && d.noteMonths <= 36 ? Math.round(d.noteMonths) : 6,
     slowMoverDays: typeof d.slowMoverDays === "number" && d.slowMoverDays >= 1 && d.slowMoverDays <= 365 ? Math.round(d.slowMoverDays) : 30,
     promoStillDays: typeof d.promoStillDays === "number" && d.promoStillDays >= 1 && d.promoStillDays <= 365 ? Math.round(d.promoStillDays) : 14,
+    dueReminderMinutes: typeof d.dueReminderMinutes === "number" && d.dueReminderMinutes >= 1 && d.dueReminderMinutes <= 120 ? Math.round(d.dueReminderMinutes) : 0,
     receipt: {
       header: str(r.header, DEFAULT_SETTINGS.receipt.header),
       footer: str(r.footer, DEFAULT_SETTINGS.receipt.footer),
