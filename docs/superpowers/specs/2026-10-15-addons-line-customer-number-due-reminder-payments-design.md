@@ -44,7 +44,7 @@ Until now an order with no table had a number from one of three counts kept on t
 **One count per till** (mine, agreed):
 
 - Every order with no table takes the next number of one count, whatever its kind: the first customer after the register is opened is 01, the tenth is 10, the hundredth 100.
-- The count starts again at 01 when this till's day is closed (the owner's rule: "closing the register resets this number"). Both ways of closing reset it: on the till (`CashOps.closeDay`) and asked from the back office (`closeDayAsked`). Nothing else resets it: not midnight, not a restart, not a sign-out. A till left open for two days counts on.
+- The count starts again at 01 when this till's day is closed (the owner's rule: "closing the register resets this number"). Both ways of closing reset it: on the till (`CashOps.closeDay`) and asked from the back office (`closeDayAsked`). Nothing else resets it: not midnight, not a restart. A till left open for two days counts on. Signing the tablet out clears everything it holds, so a tablet signed in again starts at 01.
 - The number is kept in the order's number as it is today, with the letter for its kind in front and two digits at least: `C-01`, `A-05`, `D-12`, `A-100`. The Takeaway board, the Orders list and the kitchen screens show it as they show it now. **Nothing changes on the server**: `order_no` is already a string it keeps.
 - An order whose kind changes (counter to takeaway) keeps its number; only the letter follows the kind, under the rule it has today (while the kitchen has had nothing and nothing is paid). It no longer takes a number of the new kind.
 - An order at a table takes no number: it is served at its table, as before.
