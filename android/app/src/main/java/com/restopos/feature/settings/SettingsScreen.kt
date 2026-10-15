@@ -1060,8 +1060,8 @@ private fun ReportsPage(vm: SettingsViewModel, more: MoreViewModel, shop: Boolea
 @Composable
 private fun PaymentsPage(vm: SettingsViewModel, onOpen: (String) -> Unit) {
     var shown by remember { mutableStateOf(false) }
-    if (!vm.can("receipts.view_all") && !shown) {
-        Locked("The day's payments are for people allowed to see every receipt.") { vm.guard("receipts.view_all", "see the day's payments") { shown = true } }
+    if (!vm.can("payments.view") && !shown) {
+        Locked("The day's payments are for people allowed to see them. The owner gives that on Roles and permissions.") { vm.guard("payments.view", "see the day's payments") { shown = true } }
         return
     }
     val rows by vm.payments.collectAsState()

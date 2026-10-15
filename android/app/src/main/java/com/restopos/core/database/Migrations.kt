@@ -370,4 +370,19 @@ object Migrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_promotions_item_id` ON `promotions` (`item_id`)")
         }
     }
+
+    // 27 -> 28: "See the day's payments" became a tick of its own (server
+    // 0111). A tablet that works on its own never hears of the server's
+    // migration, so the roles it holds are given it here by the same rule
+    // (Perms.grantPayments); a tablet that syncs has the server's roles back
+    // at its next pull.
+    val V27_V28 = object : Migration(27, 28) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            val changed = ArrayList<Pair<String, String>>()
+            db.query("SELECT `id`, `permissions` FROM `roles`").use { c ->
+                while (c.moveToNext()) com.restopos.core.data.Perms.grantPayments(c.getString(1))?.let { changed += c.getString(0) to it }
+            }
+            changed.forEach { (id, perms) -> db.execSQL("UPDATE `roles` SET `permissions` = ? WHERE `id` = ?", arrayOf<Any>(perms, id)) }
+        }
+    }
 }

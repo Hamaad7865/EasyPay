@@ -71,7 +71,7 @@ import androidx.room.RoomDatabase
         CreditNoteEntity::class,
         PromotionEntity::class,
     ],
-    version = 27,
+    version = 28,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {

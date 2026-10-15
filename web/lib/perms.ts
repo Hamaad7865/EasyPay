@@ -40,7 +40,8 @@ const GROUPS: PermGroup[] = [
   {
     title: "Receipts",
     perms: [
-      ["receipts.view_all", "See all receipts and the day’s payments"],
+      ["receipts.view_all", "See all receipts"],
+      ["payments.view", "See the day’s payments"],
       ["receipts.reprint", "Reprint receipts, bills and kitchen orders"],
     ],
   },

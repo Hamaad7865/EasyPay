@@ -32,7 +32,7 @@ object AppModule {
         Room.databaseBuilder(ctx, TillDatabase::class.java, "till.db")
             // No destructive fallback (spec 15): a version bump without its
             // Migration fails loudly instead of wiping unsynced sales.
-            .addMigrations(Migrations.V1_V2, Migrations.V2_V3, Migrations.V3_V4, Migrations.V4_V5, Migrations.V5_V6, Migrations.V6_V7, Migrations.V7_V8, Migrations.V8_V9, Migrations.V9_V10, Migrations.V10_V11, Migrations.V11_V12, Migrations.V12_V13, Migrations.V13_V14, Migrations.V14_V15, Migrations.V15_V16, Migrations.V16_V17, Migrations.V17_V18, Migrations.V18_V19, Migrations.V19_V20, Migrations.V20_V21, Migrations.V21_V22, Migrations.V22_V23, Migrations.V23_V24, Migrations.V24_V25, Migrations.V25_V26, Migrations.V26_V27)
+            .addMigrations(Migrations.V1_V2, Migrations.V2_V3, Migrations.V3_V4, Migrations.V4_V5, Migrations.V5_V6, Migrations.V6_V7, Migrations.V7_V8, Migrations.V8_V9, Migrations.V9_V10, Migrations.V10_V11, Migrations.V11_V12, Migrations.V12_V13, Migrations.V13_V14, Migrations.V14_V15, Migrations.V15_V16, Migrations.V16_V17, Migrations.V17_V18, Migrations.V18_V19, Migrations.V19_V20, Migrations.V20_V21, Migrations.V21_V22, Migrations.V22_V23, Migrations.V23_V24, Migrations.V24_V25, Migrations.V25_V26, Migrations.V26_V27, Migrations.V27_V28)
             .build()
 
     // What a tablet set up as a kitchen screen keeps (core/kitchen): its own

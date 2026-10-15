@@ -1,5 +1,11 @@
 package com.restopos.core.data
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
+
 // What a role may be given, by kind of business, in the words of what each
 // lets someone do: the list the back office's Roles page offers
 // (web/lib/perms.ts). Both are held against one file,
@@ -12,6 +18,16 @@ object Perms {
 
     // every permission a sheet for that kind of business offers, in its order
     fun offered(shop: Boolean): List<String> = groups(shop).flatMap { g -> g.perms.map { it.first } }
+
+    // "See the day's payments" was part of "See all receipts" until 0111. A
+    // role that sees the day's figures is given it, as the server's migration
+    // gives it (grant_payments_perm); the owner's "*" holds it already. The
+    // role's new list, or null when it is left as it is.
+    fun grantPayments(permissions: String): String? {
+        val list = runCatching { Json.parseToJsonElement(permissions).jsonArray.map { it.jsonPrimitive.content } }.getOrNull() ?: return null
+        if ("*" in list || "payments.view" in list || "shift.view_report" !in list) return null
+        return JsonArray((list + "payments.view").map { JsonPrimitive(it) }).toString()
+    }
 
     private val RESTAURANT = listOf(
         Group("Selling", listOf(
@@ -37,7 +53,8 @@ object Perms {
             "shift.view_report" to "See the day's figures on the till",
         )),
         Group("Receipts", listOf(
-            "receipts.view_all" to "See all receipts and the day’s payments",
+            "receipts.view_all" to "See all receipts",
+            "payments.view" to "See the day’s payments",
             "receipts.reprint" to "Reprint receipts, bills and kitchen orders",
         )),
         Group("Back office", listOf(
@@ -74,7 +91,8 @@ object Perms {
             "shift.view_report" to "See the day's figures on the till",
         )),
         Group("Receipts", listOf(
-            "receipts.view_all" to "See all receipts and the day’s payments",
+            "receipts.view_all" to "See all receipts",
+            "payments.view" to "See the day’s payments",
             "receipts.reprint" to "Reprint receipts, bills and kitchen orders",
         )),
         Group("Back office", listOf(
