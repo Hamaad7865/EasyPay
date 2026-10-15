@@ -41,6 +41,9 @@ export type PosSettings = {
   dueReminderMinutes: number;
   receipt: { header: string; footer: string; logo: string | null; showLogo: boolean };
   company: { name: string; brn: string; vat: string; address: string; phone: string };
+  // The receipt's and the kitchen ticket's designs (Receipt design, lib/papers.ts), as kept:
+  // read with readDesign, saved with savePaper. A paper not there prints EasyPay's.
+  papers: { receipt?: unknown; kitchen?: unknown };
 };
 
 export const DEFAULT_SETTINGS: PosSettings = {
@@ -64,6 +67,7 @@ export const DEFAULT_SETTINGS: PosSettings = {
   dueReminderMinutes: 0,
   receipt: { header: "", footer: "Thank you. See you again soon.", logo: null, showLogo: true },
   company: { name: "", brn: "", vat: "", address: "", phone: "" },
+  papers: {},
 };
 
 type Loose = Record<string, unknown>;
@@ -103,6 +107,7 @@ export function withDefaults(raw: unknown): PosSettings {
       logo: typeof r.logo === "string" && r.logo.startsWith("data:image/") ? r.logo : null,
       showLogo: r.showLogo === false ? false : true,
     },
+    papers: obj(d.papers),
     company: {
       name: str(c.name, ""),
       brn: str(c.brn, ""),
@@ -125,6 +130,23 @@ export async function saveSettings(c: PoolClient, tenantId: string, patch: Parti
     `insert into pos_settings (tenant_id, data) values ($1, $2::jsonb)
        on conflict (tenant_id) do update set data = pos_settings.data || excluded.data`,
     [tenantId, JSON.stringify(patch)],
+  );
+}
+
+// One paper's design into `papers`, the other left as it is; null takes it
+// out, so it prints EasyPay's. A key of its own, apart from `receipt`: the
+// tablets' saves of the receipt's notes and an offline tablet's waiting ones
+// leave it alone (docs/superpowers/specs/2026-10-15-receipt-designer-design.md).
+export async function savePaper(c: PoolClient, tenantId: string, paper: "receipt" | "kitchen", design: object | null): Promise<void> {
+  const now = `coalesce(case when jsonb_typeof(pos_settings.data->'papers') = 'object' then pos_settings.data->'papers' end, '{}'::jsonb)`;
+  if (design === null) {
+    await c.query(`update pos_settings set data = data || jsonb_build_object('papers', ${now} - $2::text) where tenant_id = $1`, [tenantId, paper]);
+    return;
+  }
+  await c.query(
+    `insert into pos_settings (tenant_id, data) values ($1, jsonb_build_object('papers', jsonb_build_object($2::text, $3::jsonb)))
+       on conflict (tenant_id) do update set data = pos_settings.data || jsonb_build_object('papers', ${now} || jsonb_build_object($2::text, $3::jsonb))`,
+    [tenantId, paper, JSON.stringify(design)],
   );
 }
 

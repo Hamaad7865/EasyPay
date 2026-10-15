@@ -114,7 +114,8 @@
   --heat-4: #4f9a56;
   --heat-5: #2c6a31;
   --floor: #fbfaf6;
-  --floor-line: #ece8dc;
+  --floor-line: #ece8dc;
+
   --fd-table: #ffffff;
   --fd-table-line: #33443a;
   --fd-chair: #d9d5c8;
@@ -252,7 +253,8 @@
     --heat-4: #62ab69;
     --heat-5: #9fd4a8;
     --floor: #15181d;
-    --floor-line: #1f232a;
+    --floor-line: #1f232a;
+
     --fd-table: #2a2f38;
     --fd-table-line: #5a6270;
     --fd-chair: #3d434f;
@@ -344,7 +346,8 @@
     --heat-4: #62ab69;
     --heat-5: #9fd4a8;
     --floor: #15181d;
-    --floor-line: #1f232a;
+    --floor-line: #1f232a;
+
     --fd-table: #2a2f38;
     --fd-table-line: #5a6270;
     --fd-chair: #3d434f;
@@ -1384,6 +1387,54 @@ a.till:hover .till-go { border-color: var(--accent); color: var(--accent); }
 .paper img { display: block; max-width: 70%; max-height: 90px; margin: 0 auto 8px; filter: grayscale(1) contrast(1.4); }
 .paper .row { display: flex; justify-content: space-between; gap: 8px; }
 .paper hr { border: 0; border-top: 1px dashed #777; margin: 6px 0; }
+
+/* Receipt design (backoffice/receipt-design): the column of blocks, each
+   opening onto its settings, and beside it the paper as the till prints it
+   (lib/papers.ts). The paper is white whatever the look: it is paper. */
+.pd { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 960px) { .pd { grid-template-columns: minmax(0, 1fr); } }
+.pd-list { list-style: none; margin: 0 0 14px; padding: 0; }
+.pd-block { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 6px 0 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--raised); margin-bottom: 6px; }
+.pd-block.open { border-color: var(--accent); border-bottom-left-radius: 0; border-bottom-right-radius: 0; margin-bottom: 0; }
+.pd-block.drop, .pd-end.drop { box-shadow: 0 -3px 0 var(--accent); }
+.pd-end { height: 14px; }
+.pd-grip { flex: none; display: grid; place-items: center; width: 24px; height: 36px; margin-left: -6px; color: var(--ink3); cursor: grab; touch-action: none; }
+.pd-grip:active { cursor: grabbing; color: var(--accent); }
+.pd-grip svg { fill: currentColor; }
+.bo-main button.pd-name { flex: 1; min-width: 0; justify-content: flex-start; height: 40px; padding: 0; border: 0; background: none; box-shadow: none; color: var(--ink); font: inherit; font-size: 13.5px; font-weight: 600; text-align: left; overflow: hidden; text-overflow: ellipsis; }
+.bo-main button.pd-name:hover { background: none; text-decoration: underline; }
+.bo-main button.pd-name:active:not(:disabled) { transform: none; }
+.pd-name small { margin-left: 8px; color: var(--ink3); font-weight: 400; font-size: 12.5px; }
+.pd-block.off .pd-name { color: var(--ink3); font-weight: 500; }
+.bo-main button.pd-icon, .pd-icon { flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 6px; background: none; box-shadow: none; color: var(--ink2); }
+.bo-main button.pd-icon:hover { background: var(--well); }
+.pd-block.off .pd-icon { color: var(--ink3); }
+span.pd-icon { color: var(--ink3); }
+.pd-settings { margin: 0 0 8px; padding: 12px 14px 12px; border: 1px solid var(--accent); border-top: 1px dashed var(--line); border-radius: 0 0 var(--radius-sm) var(--radius-sm); background: var(--raised); }
+.pd-settings .check { margin-bottom: 8px; }
+.pd-field { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 10px; font-size: 13px; font-weight: 500; color: var(--ink2); }
+.pd-field > span { min-width: 82px; }
+.pd-warn { margin: -2px 0 8px 30px; font-size: 12.5px; color: var(--amber); }
+.pd-vars { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.bo-main button.pd-var { height: 26px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); box-shadow: none; color: var(--ink2); font: 12px ui-monospace, "Courier New", monospace; }
+.bo-main button.pd-var:hover { background: var(--well); border-color: var(--line-strong); }
+.pd-preview { position: sticky; top: 16px; }
+/* the chosen one of a switch, plain in either look: the panel and the switch's well are near one colour in the dark */
+.pd .seg label:has(input:checked) { background: var(--accent-soft); color: var(--accent); }
+.pp {
+  --cols: 48; width: calc(var(--cols) * 1ch + 22px); max-width: 100%; overflow: hidden;
+  background: #fff; color: #111; box-shadow: 0 2px 10px rgba(16, 24, 40, 0.14);
+  font-family: "Courier New", ui-monospace, monospace; font-size: 12px; line-height: 1.35;
+  padding: 14px 11px 22px;
+}
+.pp-line { white-space: pre-wrap; word-break: break-all; min-height: 1.35em; }
+.pp-line.b { font-weight: 700; }
+.pp-line.big { font-size: 24px; }
+.pp-line.tall { height: 2.7em; transform: scaleY(2); transform-origin: top; }
+.pp-bars { height: 32px; width: 72%; margin: 4px auto 3px; background: repeating-linear-gradient(90deg, #111 0 2px, #fff 2px 3px, #111 3px 4px, #fff 4px 7px, #111 7px 10px, #fff 10px 12px); }
+.pp-logo { display: block; max-width: 70%; max-height: 90px; margin: 0 auto 6px; filter: grayscale(1) contrast(1.4); }
+.pp-logo.left { margin-left: 0; }
+.pp-logo.right { margin-right: 0; }
 
 /* Table cards (backoffice/tables/cards): one for each table, to print and cut
    out. A card is paper, so it is white with a black code whatever the look:
