@@ -105,3 +105,24 @@ Back office:
 - [ ] Say before it starts; read the emulator note in memory; check the screen first.
 - [ ] Save a design on dev (the back office, or `pos_settings` written by a script when no sign-in is possible, said so); the till pulls it; a receipt and a kitchen ticket printed through the stand-in printer at 80 and 58 mm match the preview; "Back to EasyPay's design" brings today's paper back.
 - [ ] Record what was seen and not in this plan's end.
+
+---
+
+## What was built, seen and not seen (2026-10-15)
+
+Built in this session at the owner's word, commits `9532b92` to `66995c6` on `restopos`, not pushed. No migration; no server function changed.
+
+**Run:**
+- Till unit tests, all of them (634) after the old printing was removed; then `PapersFixtureTest`, `PaperWalkTest`, `DocsTest` after the Big-row fix.
+- `node web/lib/papers.test.mjs` (29 checks, 21 shared examples); `tsc --noEmit` clean.
+- `savePaper` on dev in a rolled-back transaction, with a tablet's `push_settings_save` of the notes in between: the papers kept, every other key untouched, the row touched for the pull.
+- The real Receipt design page drawn by `db/tests/page.cjs` for a restaurant and a shop made on dev in a rolled-back transaction: tabs, blocks, the preview, a saved design shown, an unreadable one refused with EasyPay's shown.
+- The designer on a stand-in page with made-up settings (no sign-in): Items' settings, rows with prices, hiding BRN with the MRA warning, a Text block with a variable put at the cursor, Move up, dragging by the handle (after HTML drag-and-drop was replaced by pointer events: it ignored synthetic moves and fingers), the kitchen tab, a shop's list; light and dark.
+- On emulator `easypay_claude_size` (5598), with its window, the made-up restaurant (offline plan), an Extras group put in by `sqlite3`, two takeaways paid by cash, read through the stand-in printer: EasyPay's receipt and kitchen ticket with no design; then a design written into the tablet's settings (as Get changes from EasyPay brings it) and both papers again; the receipt on 58 mm and printed again as a COPY. Each paper was compared line by line with what `web/lib/papers.ts` draws for the same receipt (the tablet's `receipts.doc`) and design: the same, 23, 28, 11, 30 and 31 lines. That run found the Big total breaking a word on 58 mm, fixed in `66995c6` and seen printed after.
+
+**Not seen:**
+- The real page in a browser signed in, and a save from it reaching a linked till by a real pull.
+- An offline restaurant taking a design by Get changes from EasyPay (written into its settings directly instead).
+- A real thermal printer: the paper was read as text from the stand-in, so sizes, bold, alignment and the logo were not seen printed.
+- A shop's receipt on a tablet with a design (only in the page and the shared examples).
+- Dragging on a touch screen (the pointer code is the same for a finger; not tried).
