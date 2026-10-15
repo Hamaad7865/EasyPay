@@ -3,6 +3,12 @@ package com.restopos.core.print
 import java.io.ByteArrayOutputStream
 import java.nio.charset.Charset
 
+// One line of a page as it comes out: its words, its size (normal, tall,
+// big), whether bold, and where it is set (left, center, right). A barcode
+// is a line of its own carrying the code in `bars`.
+@kotlinx.serialization.Serializable
+data class Styled(val t: String, val size: String = "normal", val bold: Boolean = false, val align: String = "left", val bars: String? = null)
+
 // The bytes a thermal printer understands (ESC/POS, the language of Epson
 // and of nearly every 58 mm and 80 mm receipt printer). Nothing here knows
 // about Android or about receipts: it lays text out in a fixed number of
@@ -28,19 +34,27 @@ class EscPos(val columns: Int) {
     private val seen = ArrayList<String>()
     private val cur = StringBuilder()
     private var centred = false
+    // The same page with each line's style, as the printer is set when the
+    // line ends: what the back office's preview is held to (PapersFixtureTest).
+    private val marked = ArrayList<Styled>()
+    private var aligned = Align.Left
+    private var bolded = false
+    private var sized = "normal" // the printer has one register for size: big and tall each set it whole
     private fun newline() = apply {
         raw(0x0A)
         val s = cur.toString().trimEnd()
         cur.clear()
         seen.add(if (centred && s.length < columns) " ".repeat((columns - s.length) / 2) + s else s)
+        marked.add(Styled(s, sized, bolded, aligned.word))
     }
     fun look(): List<String> = seen.dropLastWhile { it.isBlank() }
+    fun styled(): List<Styled> = marked.dropLastWhile { it.t.isBlank() && it.bars == null }
 
-    fun align(a: Align) = raw(0x1B, 0x61, a.ordinal).also { centred = a == Align.Center }
-    fun bold(on: Boolean) = raw(0x1B, 0x45, if (on) 1 else 0)
+    fun align(a: Align) = raw(0x1B, 0x61, a.ordinal).also { centred = a == Align.Center; aligned = a }
+    fun bold(on: Boolean) = raw(0x1B, 0x45, if (on) 1 else 0).also { bolded = on }
     // wide and tall: twice the size, half the columns
-    fun big(on: Boolean) = raw(0x1D, 0x21, if (on) 0x11 else 0x00)
-    fun tall(on: Boolean) = raw(0x1D, 0x21, if (on) 0x01 else 0x00)
+    fun big(on: Boolean) = raw(0x1D, 0x21, if (on) 0x11 else 0x00).also { sized = if (on) "big" else "normal" }
+    fun tall(on: Boolean) = raw(0x1D, 0x21, if (on) 0x01 else 0x00).also { sized = if (on) "tall" else "normal" }
 
     fun text(s: String) = apply { out.write(encode(s)); cur.append(s) }
     fun line(s: String = "") = text(s).newline()
@@ -56,12 +70,13 @@ class EscPos(val columns: Int) {
     fun rule(ch: Char = '-') = line(ch.toString().repeat(columns))
 
     // "2 Dholl puri            100.00": the left text wraps, the right text
-    // sits at the end of its first line.
-    fun row(left: String, right: String, width: Int = columns) = apply {
-        val room = (width - right.length - 1).coerceAtLeast(4)
+    // sits at the end of its first line. The left text's own leading spaces
+    // go; an indent is kept in front of each of its lines.
+    fun row(left: String, right: String, width: Int = columns, indent: String = "") = apply {
+        val room = (width - right.length - 1 - indent.length).coerceAtLeast(4)
         val parts = wrap(left, room)
         parts.forEachIndexed { i, p ->
-            if (i == 0) line(p.padEnd(width - right.length) + right) else line(p)
+            if (i == 0) line((indent + p).padEnd(width - right.length) + right) else line(indent + p)
         }
         if (parts.isEmpty()) line(right.padStart(width))
     }
@@ -83,6 +98,7 @@ class EscPos(val columns: Int) {
         out.write(data)
         // the printer moves to the next line itself after the bars
         seen.add(" ".repeat(((columns - BARS.length) / 2).coerceAtLeast(0)) + BARS)
+        marked.add(Styled("", "normal", false, Align.Center.word, bars = code))
         line(code)
         align(Align.Left)
     }
@@ -113,7 +129,11 @@ class EscPos(val columns: Int) {
         return sb.toString().toByteArray(charset)
     }
 
-    enum class Align { Left, Center, Right }
+    enum class Align {
+        Left, Center, Right;
+        // as a design and the shared examples write it
+        val word: String get() = name.lowercase()
+    }
 
     companion object {
         // characters per line in the standard font

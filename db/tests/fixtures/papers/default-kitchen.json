@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "blocks": [
+    {
+      "k": "station"
+    },
+    {
+      "k": "heading"
+    },
+    {
+      "k": "pickup"
+    },
+    {
+      "k": "time_waiter"
+    },
+    {
+      "k": "type_guests"
+    },
+    {
+      "k": "line"
+    },
+    {
+      "k": "items"
+    },
+    {
+      "k": "remark"
+    },
+    {
+      "k": "line"
+    }
+  ]
+}

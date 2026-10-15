@@ -23,7 +23,17 @@ data class DocLine(
     // have come to, and the words for why ("10% off", "Price changed")
     val was: Long? = null,
     val priceNote: String? = null,
+    // Its add-ons with what each adds to the line, and the price of one item
+    // as charged: for a design that shows them (Papers). A receipt kept from
+    // before has neither and prints its add-ons by name (mods), as it did.
+    val addons: List<DocAddon> = emptyList(),
+    val unit: Long? = null,
 )
+
+// An add-on on a receipt's line: how many, and what it adds to the line in all
+// (ticket_line_modifiers.price: for three eggs at Rs 10, Rs 30).
+@Serializable
+data class DocAddon(val name: String, val qty: Int = 1, val price: Long = 0)
 
 @Serializable
 data class DocAmount(val name: String, val amount: Long, val count: Int = 0)
@@ -86,14 +96,15 @@ data class ReceiptDoc(
     val customerNo: String? = null,
 )
 
+@Serializable
 data class KitchenDoc(
     val title: String, // ORDER | VOID | REPRINT
     val order: String,
     val time: Long,
-    val waiter: String?,
-    val dining: String?,
-    val covers: Int?,
-    val note: String?,
+    val waiter: String? = null,
+    val dining: String? = null,
+    val covers: Int? = null,
+    val note: String? = null,
     val lines: List<DocLine>,
     val station: String,
     val pickup: String? = null, // "PICK UP 18:30": when a takeaway is picked up (Pickup.says)
@@ -220,7 +231,7 @@ object Docs {
 
     fun qty(q: Int): String = if (q % 1000 == 0) "${q / 1000}" else "%.3f".format(Locale.US, q / 1000.0).trimEnd('0')
 
-    private fun stamp(ms: Long): String = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US).format(Date(ms))
+    internal fun stamp(ms: Long): String = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US).format(Date(ms))
 
     // "2027-04-14" as "14 April 2027"; a date that is not one is printed as it came
     private fun stampDate(ymd: String): String =
@@ -243,14 +254,26 @@ object Docs {
         if (paper.cut) cut()
     }
 
-    // A receipt, a bill (before payment) or a refund.
-    fun receipt(d: ReceiptDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster? = null, openDrawer: Boolean = false): ByteArray =
-        page(d, shop, paper, decimals, logo, openDrawer).bytes()
+    // A receipt, a bill (before payment) or a refund, laid out by the
+    // business's design (Papers), EasyPay's when it has none.
+    fun receipt(d: ReceiptDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster? = null, openDrawer: Boolean = false, design: Design = Papers.RECEIPT): ByteArray =
+        receiptPage(d, shop, paper, decimals, logo, openDrawer, design).bytes()
 
     // The same paper as lines of text, to show on the till's screen.
-    fun receiptLook(d: ReceiptDoc, shop: Shop, paper: Paper, decimals: Int): List<String> = page(d, shop, paper, decimals, null, false).look()
+    fun receiptLook(d: ReceiptDoc, shop: Shop, paper: Paper, decimals: Int, design: Design = Papers.RECEIPT): List<String> =
+        receiptPage(d, shop, paper, decimals, null, false, design).look()
 
-    private fun page(d: ReceiptDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster?, openDrawer: Boolean): EscPos {
+    // The design's blocks, top to bottom, those hidden left out.
+    internal fun receiptPage(d: ReceiptDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster? = null, openDrawer: Boolean = false, design: Design = Papers.RECEIPT): EscPos {
+        val p = EscPos(paper.columns)
+        if (openDrawer) p.drawer()
+        design.blocks.filter { !it.hide }.forEach { b -> PaperWalk.print(p, b, PaperWalk.receipt(b, d, shop, decimals, logo)) }
+        p.end(paper)
+        return p
+    }
+
+    // Before there was a designer; kept only until SameAsBeforeTest has proved EasyPay's design prints the same.
+    internal fun pageBefore(d: ReceiptDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster?, openDrawer: Boolean): EscPos {
         val p = EscPos(paper.columns)
         val n = { c: Long -> num(c, decimals) }
         if (openDrawer) p.drawer()
@@ -339,7 +362,17 @@ object Docs {
     }
 
     // What the kitchen or the bar has to make: big, and with no prices.
-    fun kitchen(d: KitchenDoc, paper: Paper): ByteArray {
+    fun kitchen(d: KitchenDoc, paper: Paper, design: Design = Papers.KITCHEN): ByteArray = kitchenPage(d, paper, design).bytes()
+
+    internal fun kitchenPage(d: KitchenDoc, paper: Paper, design: Design = Papers.KITCHEN): EscPos {
+        val p = EscPos(paper.columns)
+        design.blocks.filter { !it.hide }.forEach { b -> PaperWalk.print(p, b, PaperWalk.kitchen(b, d)) }
+        p.end(paper)
+        return p
+    }
+
+    // Before there was a designer; kept only until SameAsBeforeTest has proved EasyPay's design prints the same.
+    internal fun kitchenBefore(d: KitchenDoc, paper: Paper): EscPos {
         val p = EscPos(paper.columns)
         p.align(EscPos.Align.Center).bold(true)
         p.line(if (d.title == "ORDER") d.station.uppercase() else "${d.title} - ${d.station.uppercase()}")
@@ -378,7 +411,7 @@ object Docs {
         d.note?.takeIf { it.isNotBlank() }?.let { p.rule(); p.bold(true).wrapped("REMARK: $it").bold(false) }
         p.rule('=')
         p.end(paper)
-        return p.bytes()
+        return p
     }
 
     // The paper that goes in the drawer when cash is put in or taken out.

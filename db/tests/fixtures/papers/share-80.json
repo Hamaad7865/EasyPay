@@ -1,0 +1,146 @@
+{
+    "about": "One guest's copy of a bill split in three",
+    "paper": "receipt",
+    "columns": 48,
+    "decimals": 2,
+    "shop": {
+        "name": "CafeTino",
+        "address": "Royal Road\nCurepipe",
+        "phone": "5 123 4567",
+        "brn": "C12345678",
+        "vat": "VAT27000000",
+        "header": "Open every day, 10:00 to 22:00",
+        "footer": "Thank you. See you again soon.",
+        "bars": false
+    },
+    "design": null,
+    "doc": {
+        "kind": "receipt",
+        "number": "S1-T1-000128",
+        "time": 1790000000000,
+        "order": "A-05 · Ravi",
+        "dining": "Takeaway",
+        "cashier": "Priya",
+        "waiter": "Ravi",
+        "covers": 2,
+        "note": "Ring at the gate",
+        "lines": [
+            {
+                "qty": 2000,
+                "name": "Dholl puri",
+                "amount": 10000,
+                "mods": [
+                    "Achard, Chutney coco"
+                ],
+                "note": "No chili please, the guest is allergic",
+                "addons": [
+                    {
+                        "name": "Achard"
+                    },
+                    {
+                        "name": "Chutney coco"
+                    }
+                ],
+                "unit": 5000
+            },
+            {
+                "qty": 1000,
+                "name": "Briyani poulet with a long name that wraps",
+                "amount": 35000,
+                "was": 40000,
+                "priceNote": "Price changed",
+                "unit": 35000
+            },
+            {
+                "qty": 1000,
+                "name": "Burger",
+                "amount": 30000,
+                "mods": [
+                    "Cheese, Bacon"
+                ],
+                "addons": [
+                    {
+                        "name": "Cheese",
+                        "price": 2000
+                    },
+                    {
+                        "name": "Bacon",
+                        "price": 3000
+                    }
+                ],
+                "unit": 25000
+            }
+        ],
+        "subtotal": 75000,
+        "discounts": [
+            {
+                "name": "Staff",
+                "amount": 5000
+            }
+        ],
+        "taxes": [
+            {
+                "name": "VAT",
+                "rateBp": 1500,
+                "amount": 9130,
+                "included": true
+            }
+        ],
+        "rounding": -2,
+        "total": 74998,
+        "service": 5000,
+        "customer": "Mrs Li",
+        "customerNo": "05",
+        "payments": [
+            {
+                "name": "Cash",
+                "amount": 25000
+            }
+        ],
+        "share": 1,
+        "shares": 3
+    },
+  "expect": [
+    {"t":"CafeTino","size":"big","bold":false,"align":"center"},
+    {"t":"Royal Road","size":"normal","bold":false,"align":"center"},
+    {"t":"Curepipe","size":"normal","bold":false,"align":"center"},
+    {"t":"Tel: 5 123 4567","size":"normal","bold":false,"align":"center"},
+    {"t":"BRN: C12345678","size":"normal","bold":false,"align":"center"},
+    {"t":"VAT: VAT27000000","size":"normal","bold":false,"align":"center"},
+    {"t":"Open every day, 10:00 to 22:00","size":"normal","bold":false,"align":"center"},
+    {"t":"------------------------------------------------","size":"normal","bold":false,"align":"left"},
+    {"t":"RECEIPT","size":"normal","bold":true,"align":"center"},
+    {"t":"CUSTOMER No. 05","size":"big","bold":true,"align":"center"},
+    {"t":"No.                                 S1-T1-000128","size":"normal","bold":false,"align":"left"},
+    {"t":"21/09/2026 18:13                     A-05 · Ravi","size":"normal","bold":false,"align":"left"},
+    {"t":"Order type                              Takeaway","size":"normal","bold":false,"align":"left"},
+    {"t":"Served by                                  Priya","size":"normal","bold":false,"align":"left"},
+    {"t":"Waiter                                      Ravi","size":"normal","bold":false,"align":"left"},
+    {"t":"Guests                                         2","size":"normal","bold":false,"align":"left"},
+    {"t":"Customer                                  Mrs Li","size":"normal","bold":false,"align":"left"},
+    {"t":"------------------------------------------------","size":"normal","bold":false,"align":"left"},
+    {"t":"2 Dholl puri                              100.00","size":"normal","bold":false,"align":"left"},
+    {"t":"  + Achard, Chutney coco","size":"normal","bold":false,"align":"left"},
+    {"t":"  * No chili please, the guest is allergic","size":"normal","bold":false,"align":"left"},
+    {"t":"1 Briyani poulet with a long name that    350.00","size":"normal","bold":false,"align":"left"},
+    {"t":"wraps","size":"normal","bold":false,"align":"left"},
+    {"t":"  was 400.00, Price changed","size":"normal","bold":false,"align":"left"},
+    {"t":"1 Burger                                  300.00","size":"normal","bold":false,"align":"left"},
+    {"t":"  + Cheese, Bacon","size":"normal","bold":false,"align":"left"},
+    {"t":"------------------------------------------------","size":"normal","bold":false,"align":"left"},
+    {"t":"Subtotal                                  750.00","size":"normal","bold":false,"align":"left"},
+    {"t":"Discount: Staff                           -50.00","size":"normal","bold":false,"align":"left"},
+    {"t":"Service charge                             50.00","size":"normal","bold":false,"align":"left"},
+    {"t":"VAT 15% (incl.)                            91.30","size":"normal","bold":false,"align":"left"},
+    {"t":"Rounding                                   -0.02","size":"normal","bold":false,"align":"left"},
+    {"t":"TOTAL                                  Rs 749.98","size":"tall","bold":true,"align":"left"},
+    {"t":"------------------------------------------------","size":"normal","bold":false,"align":"left"},
+    {"t":"SHARE 1 OF 3                           Rs 250.00","size":"normal","bold":true,"align":"left"},
+    {"t":"Tax in this share                          30.43","size":"normal","bold":false,"align":"left"},
+    {"t":"Cash                                      250.00","size":"normal","bold":false,"align":"left"},
+    {"t":"------------------------------------------------","size":"normal","bold":false,"align":"left"},
+    {"t":"Remark: Ring at the gate","size":"normal","bold":false,"align":"left"},
+    {"t":"------------------------------------------------","size":"normal","bold":false,"align":"left"},
+    {"t":"Thank you. See you again soon.","size":"normal","bold":false,"align":"center"}
+  ]
+}

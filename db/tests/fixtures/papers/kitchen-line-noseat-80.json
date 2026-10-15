@@ -1,0 +1,107 @@
+{
+    "about": "Kitchen add-ons all on one line, the seat hidden, a Text with the station",
+    "paper": "kitchen",
+    "columns": 48,
+    "decimals": 2,
+    "shop": {
+        "name": "CafeTino",
+        "address": "Royal Road\nCurepipe",
+        "phone": "5 123 4567",
+        "brn": "C12345678",
+        "vat": "VAT27000000",
+        "header": "Open every day, 10:00 to 22:00",
+        "footer": "Thank you. See you again soon.",
+        "bars": false
+    },
+    "design": {
+        "v": 1,
+        "blocks": [
+            {
+                "k": "station"
+            },
+            {
+                "k": "text",
+                "text": "{station} at {time}",
+                "align": "right"
+            },
+            {
+                "k": "heading"
+            },
+            {
+                "k": "pickup"
+            },
+            {
+                "k": "time_waiter"
+            },
+            {
+                "k": "type_guests"
+            },
+            {
+                "k": "line"
+            },
+            {
+                "k": "items",
+                "addons": "line",
+                "seat": false
+            },
+            {
+                "k": "remark"
+            },
+            {
+                "k": "line"
+            }
+        ]
+    },
+    "doc": {
+        "title": "VOID",
+        "order": "Ravi",
+        "time": 1790000000000,
+        "waiter": "Priya",
+        "dining": "Takeaway",
+        "covers": 2,
+        "note": "Tel 5 123 4567 · Ring at the gate",
+        "lines": [
+            {
+                "qty": 2000,
+                "name": "Dholl puri",
+                "amount": 0,
+                "mods": [
+                    "Achard, Chutney coco"
+                ],
+                "note": "No chili",
+                "seat": 1
+            },
+            {
+                "qty": 1000,
+                "name": "Burger",
+                "amount": 0,
+                "mods": [
+                    "Cheese, Bacon",
+                    "Well done"
+                ],
+                "seat": 2
+            }
+        ],
+        "station": "Bar",
+        "pickup": "PICK UP 18:30",
+        "customerNo": "05"
+    },
+  "expect": [
+    {"t":"VOID - BAR","size":"normal","bold":true,"align":"center"},
+    {"t":"Bar at 18:13","size":"normal","bold":false,"align":"right"},
+    {"t":"No. 05","size":"big","bold":true,"align":"center"},
+    {"t":"Ravi","size":"normal","bold":true,"align":"center"},
+    {"t":"PICK UP 18:30","size":"tall","bold":true,"align":"center"},
+    {"t":"21/09/2026 18:13                           Priya","size":"normal","bold":false,"align":"left"},
+    {"t":"Takeaway - 2 guests","size":"normal","bold":false,"align":"left"},
+    {"t":"================================================","size":"normal","bold":false,"align":"left"},
+    {"t":"2 x Dholl puri","size":"tall","bold":true,"align":"left"},
+    {"t":"   * Achard, Chutney coco","size":"normal","bold":false,"align":"left"},
+    {"t":"   ! No chili","size":"normal","bold":true,"align":"left"},
+    {"t":"1 x Burger","size":"tall","bold":true,"align":"left"},
+    {"t":"   * Cheese, Bacon, Well done","size":"normal","bold":false,"align":"left"},
+    {"t":"------------------------------------------------","size":"normal","bold":false,"align":"left"},
+    {"t":"REMARK: Tel 5 123 4567 · Ring at the gate","size":"normal","bold":true,"align":"left"},
+    {"t":"================================================","size":"normal","bold":false,"align":"left"}
+  ]
+}

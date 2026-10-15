@@ -72,6 +72,10 @@ data class PosSettings(
     // Minutes before an order for later is due that the till rings
     // (DueReminder, server 0111). 0, and a missing key, is off.
     val dueReminder: Int = 0,
+    // How the receipt and the kitchen ticket are laid out, from the back
+    // office's Receipt design: the `papers` key as it came, read when a paper
+    // is printed (core/print/Papers). Null, EasyPay's own.
+    val papers: String? = null,
 ) {
     fun shop(fallbackName: String): Shop =
         Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer, bars = retail)
@@ -126,6 +130,7 @@ data class PosSettings(
                 slowMoverDays = runCatching { d["slowMoverDays"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..365 } ?: 30,
                 promoStillDays = runCatching { d["promoStillDays"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..365 } ?: 14,
                 dueReminder = runCatching { d["dueReminderMinutes"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..120 } ?: 0,
+                papers = obj("papers")?.toString(),
             )
         }
     }

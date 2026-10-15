@@ -1,0 +1,101 @@
+{
+  "v": 1,
+  "blocks": [
+    {
+      "k": "logo"
+    },
+    {
+      "k": "name"
+    },
+    {
+      "k": "address"
+    },
+    {
+      "k": "phone"
+    },
+    {
+      "k": "brn"
+    },
+    {
+      "k": "vat"
+    },
+    {
+      "k": "header"
+    },
+    {
+      "k": "line"
+    },
+    {
+      "k": "title"
+    },
+    {
+      "k": "customer_no"
+    },
+    {
+      "k": "receipt_no"
+    },
+    {
+      "k": "date_order"
+    },
+    {
+      "k": "order_type"
+    },
+    {
+      "k": "served_by"
+    },
+    {
+      "k": "guests"
+    },
+    {
+      "k": "customer"
+    },
+    {
+      "k": "refund_of"
+    },
+    {
+      "k": "line"
+    },
+    {
+      "k": "items"
+    },
+    {
+      "k": "line"
+    },
+    {
+      "k": "subtotal"
+    },
+    {
+      "k": "discounts"
+    },
+    {
+      "k": "service"
+    },
+    {
+      "k": "taxes"
+    },
+    {
+      "k": "rounding"
+    },
+    {
+      "k": "total"
+    },
+    {
+      "k": "share"
+    },
+    {
+      "k": "payments"
+    },
+    {
+      "k": "bill_note"
+    },
+    {
+      "k": "remark"
+    },
+    {
+      "k": "footer"
+    },
+    {
+      "k": "barcode"
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+    "about": "EasyPay's kitchen ticket for a table, in courses",
+    "paper": "kitchen",
+    "columns": 32,
+    "decimals": 2,
+    "shop": {
+        "name": "CafeTino",
+        "address": "Royal Road\nCurepipe",
+        "phone": "5 123 4567",
+        "brn": "C12345678",
+        "vat": "VAT27000000",
+        "header": "Open every day, 10:00 to 22:00",
+        "footer": "Thank you. See you again soon.",
+        "bars": false
+    },
+    "design": null,
+    "doc": {
+        "title": "ORDER",
+        "order": "Table 4",
+        "time": 1790000000000,
+        "waiter": "Priya",
+        "dining": null,
+        "covers": 2,
+        "note": "Tel 5 123 4567 · Ring at the gate",
+        "lines": [
+            {
+                "qty": 2000,
+                "name": "Dholl puri",
+                "amount": 0,
+                "mods": [
+                    "Achard, Chutney coco"
+                ],
+                "note": "No chili",
+                "seat": 1,
+                "course": 1
+            },
+            {
+                "qty": 1000,
+                "name": "Burger",
+                "amount": 0,
+                "mods": [
+                    "Cheese, Bacon",
+                    "Well done"
+                ],
+                "seat": 2,
+                "course": 2
+            }
+        ],
+        "station": "Kitchen",
+        "pickup": null,
+        "customerNo": null
+    },
+  "expect": [
+    {"t":"KITCHEN","size":"normal","bold":true,"align":"center"},
+    {"t":"Table 4","size":"big","bold":true,"align":"center"},
+    {"t":"21/09/2026 18:13           Priya","size":"normal","bold":false,"align":"left"},
+    {"t":"2 guests","size":"normal","bold":false,"align":"left"},
+    {"t":"================================","size":"normal","bold":false,"align":"left"},
+    {"t":"--- Course 1 ---","size":"normal","bold":false,"align":"center"},
+    {"t":"2 x Dholl puri","size":"tall","bold":true,"align":"left"},
+    {"t":"   Seat 1","size":"normal","bold":false,"align":"left"},
+    {"t":"   * Achard, Chutney coco","size":"normal","bold":false,"align":"left"},
+    {"t":"   ! No chili","size":"normal","bold":true,"align":"left"},
+    {"t":"--- Course 2 ---","size":"normal","bold":false,"align":"center"},
+    {"t":"1 x Burger","size":"tall","bold":true,"align":"left"},
+    {"t":"   Seat 2","size":"normal","bold":false,"align":"left"},
+    {"t":"   * Cheese, Bacon","size":"normal","bold":false,"align":"left"},
+    {"t":"   * Well done","size":"normal","bold":false,"align":"left"},
+    {"t":"--------------------------------","size":"normal","bold":false,"align":"left"},
+    {"t":"REMARK: Tel 5 123 4567 · Ring at","size":"normal","bold":true,"align":"left"},
+    {"t":"the gate","size":"normal","bold":true,"align":"left"},
+    {"t":"================================","size":"normal","bold":false,"align":"left"}
+  ]
+}

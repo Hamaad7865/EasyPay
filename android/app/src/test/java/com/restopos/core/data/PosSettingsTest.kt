@@ -65,4 +65,13 @@ class PosSettingsTest {
         assertEquals(0, PosSettings.parse("""{"dueReminderMinutes":500}""").dueReminder)
         assertEquals(0, PosSettings.parse("""{"dueReminderMinutes":"ten"}""").dueReminder)
     }
+
+    // The receipt's and the kitchen ticket's design from the back office, kept as it came for Papers to read.
+    @Test
+    fun theDesignOfThePapersIsKeptAsItCame() {
+        assertEquals(null, PosSettings.parse("{}").papers)
+        assertEquals(null, PosSettings.parse("""{"papers":"no"}""").papers)
+        val s = PosSettings.parse("""{"papers":{"kitchen":{"v":1,"blocks":[{"k":"items","seat":false}]}}}""")
+        assertEquals(false, com.restopos.core.print.Papers.kitchen(s.papers).blocks.single().seat)
+    }
 }

@@ -5,6 +5,7 @@ import com.restopos.core.common.tableLabel
 import com.restopos.core.database.TicketEntity
 import com.restopos.core.database.TicketLineEntity
 import com.restopos.core.database.TillDatabase
+import com.restopos.core.print.DocAddon
 import com.restopos.core.print.DocAmount
 import com.restopos.core.print.DocLine
 import com.restopos.core.print.DocPayment
@@ -12,6 +13,7 @@ import com.restopos.core.print.DocTax
 import com.restopos.core.print.Docs
 import com.restopos.core.print.KitchenDoc
 import com.restopos.core.print.Paper
+import com.restopos.core.print.Papers
 import com.restopos.core.print.PrintError
 import com.restopos.core.print.Printing
 import com.restopos.core.print.ReceiptDoc
@@ -65,6 +67,8 @@ class DocBuilder @Inject constructor(
             db.tickets().modNames(l.id), l.note, l.course,
             l.item_id?.let { db.ops().categoryOfItem(it)?.name }, l.seat,
             was = l.list_price?.let { Calc.lineAmount(it, l.qty) + db.tickets().modSum(l.id) }, priceNote = l.price_label,
+            // for a design that shows each add-on's price and the price of one (Papers)
+            addons = db.tickets().lineMods(l.id).map { DocAddon(it.name_snapshot, it.qty, it.price) }, unit = l.unit_price,
         )
     }
 
@@ -119,7 +123,8 @@ class DocBuilder @Inject constructor(
     // receipt printer's paper, or the usual 80 mm when there is no printer.
     suspend fun look(doc: ReceiptDoc): List<String> {
         val paper = printing.receiptPrinter()?.let { printing.paper(it) } ?: Paper()
-        return Docs.receiptLook(doc, printing.shop(), paper, printing.settings().decimals)
+        val shop = printing.shop()
+        return Docs.receiptLook(doc, shop, paper, printing.settings().decimals, Papers.receipt(printing.settings().papers, shop.bars))
     }
 
     // Receipts, bills and refunds come out of the cashier's printer.
@@ -127,9 +132,12 @@ class DocBuilder @Inject constructor(
         val p = printing.receiptPrinter() ?: throw PrintError(if (Journey.alone) "No receipt printer is set up. Add one in Settings, under This till, Set-up, Printer." else "No receipt printer is set up. Add one in the back office, under Printers.")
         val s = printing.settings()
         val what = when (doc.kind) { "bill" -> "Bill, ${doc.order}"; "refund" -> "Refund ${doc.number}"; else -> "Receipt ${doc.number}" + (doc.share?.let { ", share $it" } ?: "") }
-        val bytes = Docs.receipt(doc, printing.shop(), printing.paper(p), s.decimals, printing.logo(s, p), openDrawer)
+        val shop = printing.shop()
+        // laid out by the business's design from the back office, EasyPay's when it has none
+        val design = Papers.receipt(s.papers, shop.bars)
+        val bytes = Docs.receipt(doc, shop, printing.paper(p), s.decimals, printing.logo(s, p), openDrawer, design)
         // sent again later from the print jobs, it must not open the drawer
-        val again = if (openDrawer) Docs.receipt(doc, printing.shop(), printing.paper(p), s.decimals, printing.logo(s, p), false) else bytes
+        val again = if (openDrawer) Docs.receipt(doc, shop, printing.paper(p), s.decimals, printing.logo(s, p), false, design) else bytes
         printing.send(p, bytes, what, again).getOrThrow()
     }
 
@@ -160,13 +168,14 @@ class DocBuilder @Inject constructor(
         // An order with a customer number is headed by it, then who it is for;
         // a table's by the table, as before.
         val no = customerNo(t)
+        val design = Papers.kitchen(printing.settings().papers)
         val heading = if (no != null) (t.name ?: t.customer_id?.let { db.customers().customer(it)?.name }).orEmpty() else order
         for ((pid, ls) in perPrinter) {
             val p = byId[pid] ?: continue
             val asked = lines(ls).mapIndexed { i, d -> d.copy(mods = mods[ls[i].id].orEmpty()) }
             val doc = KitchenDoc(title, heading, System.currentTimeMillis(), waiter, dining(t), t.covers, remark(t), asked, Routing.heading(p, printers, one), pickup, no)
             // a ticket that did not print can be sent again from Settings, Printers
-            printing.send(p, Docs.kitchen(doc, printing.paper(p)), "Kitchen ticket, $order").onFailure { errors.add(it.message ?: "${p.name} did not print") }
+            printing.send(p, Docs.kitchen(doc, printing.paper(p), design), "Kitchen ticket, $order").onFailure { errors.add(it.message ?: "${p.name} did not print") }
         }
         return KitchenOutcome(rows.map { it.id }, errors, Routing.nowhere(routed, printers, one).map { it.name_snapshot })
     }
