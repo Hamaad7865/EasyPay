@@ -375,7 +375,14 @@ class Page {
         else this.line(o.s, s);
       } else if (o.o === "row") {
         const s = { ...(o.st ?? own), align: "left" as Align };
-        this.row(o.left, o.right, width(s), o.indent ?? "", s);
+        const w = width(s);
+        const indent = o.indent ?? "";
+        // Big, 16 characters on 58 mm: when the words and the figure cannot share
+        // a line, the figure goes under them at the right, not "TOTA" over "L"
+        if (s.size === "big" && indent.length + o.left.trim().length + 1 + o.right.length > w) {
+          this.row(o.left, "", w, indent, s);
+          this.row("", o.right, w, "", s);
+        } else this.row(o.left, o.right, w, indent, s);
       } else if (o.o === "rule") this.line(o.ch.repeat(this.columns), PLAIN);
       else if (o.o === "blank") this.line("", PLAIN);
       else if (o.o === "bars") {

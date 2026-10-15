@@ -46,7 +46,13 @@ internal object PaperWalk {
             is Out.Row -> {
                 val s = (o.st ?: own).copy(align = "left")
                 set(p, s)
-                p.row(o.left, o.right, width(p, s), o.indent)
+                val w = width(p, s)
+                // Big, 16 characters on 58 mm: when the words and the figure cannot share
+                // a line, the figure goes under them at the right, not "TOTA" over "L"
+                if (s.size == "big" && o.indent.length + o.left.trim().length + 1 + o.right.length > w) {
+                    p.row(o.left, "", w, o.indent)
+                    p.row("", o.right, w)
+                } else p.row(o.left, o.right, w, o.indent)
             }
             is Out.Rule -> { set(p, PLAIN); p.rule(o.ch) }
             Out.Blank -> { set(p, PLAIN); p.line() }
