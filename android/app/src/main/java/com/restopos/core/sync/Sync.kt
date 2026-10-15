@@ -288,6 +288,8 @@ private val MODE = stringPreferencesKey("mode")
 private val PAIR_CODE = stringPreferencesKey("pair_code")
 private val KITCHEN_EPOCH = stringPreferencesKey("kitchen_epoch")
 private val SEQ_DAY = stringPreferencesKey("seq_day")
+// the customer number this till gave last (CustomerNumber); a day closing removes it
+private val SEQ_CUSTOMER = intPreferencesKey("seq_customer")
 private val SETUP_CLOSED = booleanPreferencesKey("setup_closed")
 private val REGISTERED_AT = longPreferencesKey("registered_at")
 private val Context.sessionPrefs by preferencesDataStore("device")
@@ -442,8 +444,9 @@ class SessionStore(private val context: Context) {
     val lang: Flow<String> = store.data.map { it[LANG] ?: "en" }
     suspend fun setLang(code: String) { store.edit { it[LANG] = code } }
 
-    // A number that counts up through the day and starts again the next:
-    // "C" for counter orders, "A" takeaways, "D" deliveries, "K" kitchen tickets.
+    // A number that counts up through the day and starts again the next: "K"
+    // for kitchen tickets. (C, A and D counted the orders until the customer
+    // number, nextCustomer.)
     suspend fun nextNumber(series: String): Int {
         val today = java.time.LocalDate.now().toString()
         var out = 1
@@ -457,6 +460,28 @@ class SessionStore(private val context: Context) {
             it[key] = out
         }
         return out
+    }
+
+    // The customer number this till gives next (CustomerNumber): one count
+    // for every order without a table, from 1, started again only by a day
+    // closing (dayClosed), not at midnight. The owner: "closing the register
+    // resets this number".
+    suspend fun nextCustomer(): Int {
+        var out = 1
+        store.edit {
+            out = (it[SEQ_CUSTOMER] ?: 0) + 1
+            it[SEQ_CUSTOMER] = out
+        }
+        return out
+    }
+
+    // This till's day is closed: the bills since the closing, and the
+    // customer numbers, start again.
+    suspend fun dayClosed() {
+        store.edit {
+            it[PERIOD_SEQ] = 0
+            it.remove(SEQ_CUSTOMER)
+        }
     }
 
     // Everything the tablet holds for the business it was set up for. What

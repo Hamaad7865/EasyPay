@@ -394,7 +394,7 @@ class CashOps @Inject constructor(
             clockOut(leaving, tenant, store, device, now)
         }
         clockedOut = leaving.mapNotNull { name(it) }
-        session.setPeriodSeq(0)
+        session.dayClosed()
         pushNow(context)
         z to printZ(z).exceptionOrNull()?.message
     }
@@ -417,7 +417,7 @@ class CashOps @Inject constructor(
             db.ops().upsertDayCloses(listOf(row))
             db.outbox().enqueue(dayCloseOp(row, z, staff.approvedBy("shift.open_close", approver)))
         }
-        session.setPeriodSeq(0)
+        session.dayClosed()
         pushNow(context)
         z to printZ(z).exceptionOrNull()?.message
     }
@@ -489,7 +489,7 @@ class CashOps @Inject constructor(
             db.outbox().enqueue(answer(r, "done"))
             db.ops().markRequestAnswered(r.id)
         }
-        session.setPeriodSeq(0)
+        session.dayClosed()
         pushNow(context)
         printing.scope.launch { printZ(z).onFailure { printing.report(it.message ?: "The closing report did not print") } }
         return z

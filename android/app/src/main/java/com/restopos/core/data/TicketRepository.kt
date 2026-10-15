@@ -92,10 +92,11 @@ class TicketRepository @Inject constructor(
         val type = session.pendingDining()?.let { db.ops().dining(it) }?.takeIf { it.deleted_at == null } ?: if (table != null) dineType() else null
         val dining = type?.id
         val kind = type?.kind ?: if (table != null) "dine" else "counter"
-        // An order with no table is known by a short number that counts up
-        // through the day. A takeaway or delivery also goes on the board: new,
-        // and due when the kitchen has had its time.
-        val no = if (table == null) series(kind).let { "$it-${session.nextNumber(it)}" } else null
+        // An order with no table is known by its customer number
+        // (CustomerNumber): one count on this till, back to 01 once its day is
+        // closed. A takeaway or delivery also goes on the board: new, and due
+        // when the kitchen has had its time.
+        val no = if (table == null) CustomerNumber.label(series(kind), session.nextCustomer()) else null
         val board = kind == "takeaway" || kind == "delivery"
         val due = if (board) System.currentTimeMillis() + PosSettings.parse(db.ops().settings()).prepMinutes * 60_000L * (if (kind == "delivery") 2 else 1) else null
         db.withTransaction {
@@ -213,12 +214,14 @@ class TicketRepository @Inject constructor(
         val board = type.kind == "takeaway" || type.kind == "delivery"
         val sent = db.tickets().lines(t.id).first().any { it.sent_to_kitchen_at != null }
         // The number's letter says what kind of order it is. One whose kind
-        // changes before the kitchen has had anything takes a number of its
-        // new kind (C-7 becomes A-3); once the kitchen knows it by a number,
-        // or part of it is paid, it keeps that number.
+        // changes before the kitchen has had anything takes the letter of its
+        // new kind and keeps its number (C-07 becomes A-07): it is the number
+        // the customer was given. Once the kitchen knows it, or part of it is
+        // paid, it stays as it is.
         val letter = series(type.kind)
-        if (t.table_id == null && t.order_no?.startsWith("$letter-") == false && !sent && db.receipts().paidForTicket(t.id) == 0L) {
-            val no = "$letter-${session.nextNumber(letter)}"
+        val was = t.order_no
+        if (t.table_id == null && was != null && !was.startsWith("$letter-") && !sent && db.receipts().paidForTicket(t.id) == 0L) {
+            val no = CustomerNumber.relabel(was, letter)
             updateMeta({ it.copy(order_no = no) }) { put("order_no", no) }.getOrThrow()
         }
         // An open order that is a takeaway belongs on the board, also one that
