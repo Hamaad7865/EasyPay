@@ -420,6 +420,14 @@ const swap = (v, map) => (Array.isArray(v) ? v.map((x) => swap(x, map))
     const z7 = await rone('settings.save', { kitchenNotes: ['Rush'] }, restoCashier);
     st = await settings(resto);
     check('Z10 a list saved empty stays empty, and a waiter may not change it', r.said === 'applied' && Array.isArray(st.kitchenNotes) && st.kitchenNotes.length === 0 && z7.said === 'rejected:forbidden', r.said + ' ' + z7.said);
+    // the minutes before an order for later is due (0111): 0 to 120, 0 is off
+    r = await rone(...ax('settings-save-due'));
+    const z11 = await rone('settings.save', { dueReminderMinutes: 121 });
+    const z12 = await rone('settings.save', { dueReminderMinutes: 'ten' });
+    st = await settings(resto);
+    check('Z11 the reminder before an order is due saved, 0 to 120; the rest of the settings left',
+      r.said === 'applied' && st.dueReminderMinutes === 10 && st.servicePct === 10 && z11.said === 'rejected:bad-payload' && z12.said === 'rejected:bad-payload',
+      r.said + ' ' + z11.said + ' ' + z12.said);
     r = await rone('settings.save', { servicePct: 0 }, restoCashier);
     check('Z4 a waiter may not', r.said === 'rejected:forbidden' && (await settings(resto)).servicePct === 10, r.said);
     r = await rone('settings.save', { something: 'else' });
