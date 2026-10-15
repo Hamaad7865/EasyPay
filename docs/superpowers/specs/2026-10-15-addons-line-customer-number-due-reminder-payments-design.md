@@ -57,6 +57,7 @@ Until now an order with no table had a number from one of three counts kept on t
 - `ReceiptDoc` gains `customerNo: String? = null`. It is kept with the receipt (`receipts.doc`), so a reprint carries it; a receipt kept from before has none and prints as it did.
 - The kitchen ticket prints **No. 05** large, under the station's name, where the order's name was; the name it was given (Ravi), when there is one, follows in bold, normal size. A table's ticket is as it was. `KitchenDoc` gains `customerNo: String? = null`.
 - An order numbered before this build ("A-7") prints "No. 7".
+- **A restaurant's papers only** (found on the emulator, 2026-10-15): a shop's sales are counter orders too and are counted the same way (C-01 …, back to 01 at a closing), but a shop's receipts print no customer number. It was asked for the restaurant.
 
 **A limit, said to the owner:** each till counts on its own. A restaurant with two tills taking orders can have two customers holding 05 at once.
 

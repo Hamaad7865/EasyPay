@@ -13,6 +13,12 @@ object CustomerNumber {
     fun digits(orderNo: String?): String? =
         orderNo?.substringAfterLast('-', "")?.takeIf { it.isNotEmpty() && it.all(Char::isDigit) }
 
+    // What the papers print large: a restaurant's order with no table. A
+    // shop's sales are counted the same way but its receipts print no number
+    // (asked for the restaurant, 2026-10-15); a table is served where it sits.
+    fun onPaper(orderNo: String?, tableId: String?, retail: Boolean): String? =
+        if (retail || tableId != null) null else digits(orderNo)
+
     // the same number under the letter of another kind: C-05 becomes A-05
     fun relabel(orderNo: String, letter: String): String = digits(orderNo)?.let { "$letter-$it" } ?: orderNo
 }

@@ -22,6 +22,14 @@ class CustomerNumberTest {
         assertNull(CustomerNumber.digits("A-"))
     }
 
+    // Asked for the restaurant: a shop's receipts and a table's papers print none.
+    @Test fun `only a restaurant's order without a table prints it`() {
+        assertEquals("05", CustomerNumber.onPaper("A-05", tableId = null, retail = false))
+        assertNull(CustomerNumber.onPaper("C-05", tableId = null, retail = true))
+        assertNull(CustomerNumber.onPaper("C-05", tableId = "t4", retail = false))
+        assertNull(CustomerNumber.onPaper(null, tableId = null, retail = false))
+    }
+
     @Test fun `an order whose kind changes keeps its number`() {
         assertEquals("A-05", CustomerNumber.relabel("C-05", "A"))
         assertEquals("weird", CustomerNumber.relabel("weird", "A"))

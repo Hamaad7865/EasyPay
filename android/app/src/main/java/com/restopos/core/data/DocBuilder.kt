@@ -49,9 +49,9 @@ class DocBuilder @Inject constructor(
         return listOfNotNull(t.order_no, who).joinToString(" · ").ifEmpty { "Direct sale" }
     }
 
-    // The customer number the papers print large ("05"), of an order with no
-    // table; a table is served where it sits (CustomerNumber).
-    private fun customerNo(t: TicketEntity): String? = if (t.table_id == null) CustomerNumber.digits(t.order_no) else null
+    // The customer number the papers print large ("05"): a restaurant's order
+    // with no table (CustomerNumber.onPaper).
+    private suspend fun customerNo(t: TicketEntity): String? = CustomerNumber.onPaper(t.order_no, t.table_id, printing.settings().retail)
     // what the kitchen and the receipt are told besides the items: the remark,
     // and for a takeaway or delivery who to ring and where it goes
     private fun remark(t: TicketEntity): String? = kitchenRemark(t)
