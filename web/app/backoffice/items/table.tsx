@@ -39,6 +39,8 @@ export type Item = {
   margin_shown: string | null;
   variants: number;
   codes: string;
+  // what one of it is made of (a Mix grill: a Chicken BBQ and a Lamb BBQ), qty in thousandths
+  parts: { id: string; qty: number }[];
 };
 type Action = (f: FormData) => Promise<void>;
 
@@ -299,7 +301,7 @@ export function ItemsTable({
                     </>
                   )}
                   {withStock && (
-                    <td className="num">
+                    <td className="num" title={it.parts.length > 0 ? "How many its parts make" : undefined}>
                       {it.stock === null ? <span className="muted">Not counted</span> : it.stock <= LOW ? <span className="badge amber">{it.stock_shown} left</span> : it.stock_shown}
                     </td>
                   )}
@@ -355,6 +357,7 @@ export function ItemsTable({
       <ItemEditor
         open={panelOpen}
         item={edited}
+        items={items}
         cats={cats}
         taxes={taxes}
         groups={groups}

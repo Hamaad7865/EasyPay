@@ -16,10 +16,12 @@ type Action = (f: FormData) => Promise<void>;
 // came down with the list, so it opens at once; only the history of its price
 // is fetched when it opens. `item` is null for a new one.
 export function ItemEditor({
-  open, item, cats, taxes, groups, category, back, problem, save, onClose,
+  open, item, items, cats, taxes, groups, category, back, problem, save, onClose,
 }: {
   open: boolean;
   item: Item | null;
+  // every item, for what this one may be made of
+  items: Item[];
   cats: { id: string; name: string }[];
   taxes: Tax[];
   groups: AddonGroup[];
@@ -37,6 +39,9 @@ export function ItemEditor({
   // typed at the till each time: the price field has nothing to hold then
   const [atTill, setAtTill] = useState(item?.open_price ?? false);
   useEffect(() => setAtTill(item?.open_price ?? false), [id, item?.open_price]);
+  // what it is made of: an item and how many, as typed (1, or 0.5 for half)
+  const [parts, setParts] = useState<{ id: string; qty: string }[]>([]);
+  useEffect(() => setParts((item?.parts ?? []).map((p) => ({ id: p.id, qty: String(p.qty / 1000) }))), [id, item?.parts]);
   useEffect(() => {
     setPrices(null);
     if (!open || !id) return;
@@ -57,6 +62,10 @@ export function ItemEditor({
   }, null);
 
   const tax = item?.tax_id ?? taxes.find((t) => t.is_default)?.id ?? taxes[0]?.id;
+  // One level only: a part is sold as it is (made of nothing) and has no
+  // variants; an item that is someone's part is made of nothing itself.
+  const partChoices = items.filter((x) => x.id !== id && x.parts.length === 0 && x.variants === 0);
+  const partOf = id ? items.filter((x) => x.parts.some((p) => p.id === id)) : [];
   return (
     <Drawer
       open={open}
@@ -132,13 +141,60 @@ export function ItemEditor({
                 <small>Untick when it is sold out: the till greys it and will not sell it.</small>
               </span>
             </label>
-            <label className="check">
-              <input type="checkbox" name="track_stock" defaultChecked={item?.own_stock ?? false} />
-              <span>
-                Count its stock
-                <small>Every item of a counted category is counted anyway; tick this to count this one alone.</small>
-              </span>
-            </label>
+            {parts.length === 0 && (
+              <label className="check">
+                <input type="checkbox" name="track_stock" defaultChecked={item?.own_stock ?? false} />
+                <span>
+                  Count its stock
+                  <small>Every item of a counted category is counted anyway; tick this to count this one alone.</small>
+                </span>
+              </label>
+            )}
+          </section>
+          <section>
+            <h3>Made of</h3>
+            <p className="muted drawer-lede">
+              For a dish put together from items whose stock you count, such as a Mix grill of one Chicken BBQ and one Lamb BBQ. Selling it takes its parts off the
+              stock, and a refund puts them back. It keeps no stock of its own.
+            </p>
+            {partOf.length > 0 ? (
+              <p className="muted">
+                It is a part of {partOf.map((x) => x.name).join(", ")}, so it cannot be made of others.
+              </p>
+            ) : (
+              <>
+                <input type="hidden" name="parts_sent" value="1" />
+                {parts.map((p, i) => (
+                  <div key={i} className="form-row" style={{ gridTemplateColumns: "minmax(0, 1fr) 96px auto", alignItems: "end" }}>
+                    <label className="field">
+                      {i === 0 && "Item"}
+                      <select name="part_item" aria-label="Item" value={p.id} required onChange={(e) => setParts(parts.map((x, j) => (j === i ? { ...x, id: e.target.value } : x)))}>
+                        <option value="">Pick an item</option>
+                        {/* one picked before that may no longer be picked is still shown, so the row says what it holds */}
+                        {p.id && !partChoices.some((x) => x.id === p.id) && <option value={p.id}>{items.find((x) => x.id === p.id)?.name ?? "A removed item"}</option>}
+                        {partChoices.map((x) => (
+                          <option key={x.id} value={x.id}>
+                            {x.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field">
+                      {i === 0 && "How many"}
+                      <input name="part_qty" aria-label="How many" value={p.qty} inputMode="decimal" required onChange={(e) => setParts(parts.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} />
+                    </label>
+                    <button type="button" className="btn-link danger" style={{ marginBottom: 16, height: 36 }} onClick={() => setParts(parts.filter((_, j) => j !== i))}>
+                      Take out
+                    </button>
+                  </div>
+                ))}
+                {parts.length < 20 && (
+                  <button type="button" className="btn-link" onClick={() => setParts([...parts, { id: "", qty: "1" }])}>
+                    {parts.length === 0 ? "It is made of other items" : "Add another part"}
+                  </button>
+                )}
+              </>
+            )}
           </section>
           <section>
             <h3>Tax</h3>

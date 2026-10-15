@@ -33,7 +33,35 @@ type ItemRow = {
   cost: string | null;
   variants: number;
   variant_codes: string | null;
+  parts: { item_id: string; qty: number }[];
+  // made of others: how many its counted parts make, in thousandths (null when none of them is counted)
+  parts_left: string | null;
 };
+
+// What the database answers a list of parts it will not take (migration 0112).
+const PART_REFUSED: Record<string, string> = {
+  "bad-part": "A part has to be another item, one without variants.",
+  "part-has-parts": "A part cannot be made of others itself. Pick an item that is sold as it is.",
+  "is-a-part": "This item is a part of another one, so it cannot be made of others.",
+  "bad-quantity": "Each part needs a quantity above 0.",
+  "bad-payload": "No more than 20 parts.",
+};
+
+// The "Made of" rows of the panel: an item and how many of it (1, or 0.5 for
+// half), as the database keeps them, in thousandths. Null when a quantity is
+// not a number.
+function partsOf(f: FormData): { item_id: string; qty: number }[] | null {
+  const ids = f.getAll("part_item").map(String);
+  const qtys = f.getAll("part_qty").map(String);
+  const out: { item_id: string; qty: number }[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    if (!UUID.test(ids[i])) continue;
+    const n = Number((qtys[i] ?? "").replace(",", ".").trim() || "1");
+    if (!Number.isFinite(n)) return null;
+    out.push({ item_id: ids[i], qty: Math.round(n * 1000) });
+  }
+  return out;
+}
 
 // Price and availability are what change day to day, so they are edited in
 // the list; everything else is in the item's panel.
@@ -86,6 +114,12 @@ async function saveItem(f: FormData) {
     back,
     async (c, ctx) => {
       if (editing && f.get("remove") === "1") {
+        // a Mix grill would go on selling without taking its chicken off the shelf
+        const user = await c.query(
+          `select name from items where tenant_id = $1 and deleted_at is null and parts @> jsonb_build_array(jsonb_build_object('item_id', $2::text)) order by name limit 1`,
+          [ctx.tenantId, id],
+        );
+        if (user.rowCount) throw new Refused(`It is a part of ${user.rows[0].name}. Take it out of ${user.rows[0].name} first.`);
         await c.query(`update items set deleted_at = now() where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id]);
         return "Item removed. Receipts that sold it keep its name.";
       }
@@ -132,6 +166,15 @@ async function saveItem(f: FormData) {
          on conflict (item_id, group_id) do update set deleted_at = null`,
         [ctx.tenantId, item, groups],
       );
+      // what it is made of (0112), when the panel showed it; the rules are the database's
+      if (f.get("parts_sent") === "1") {
+        const parts = partsOf(f);
+        if (parts === null) throw new Refused("A part's quantity is not a number.");
+        // refused, everything above is undone with it, as for the tax
+        await c.query(`select item_set_parts($1, $2, $3::jsonb)`, [ctx.tenantId, item, JSON.stringify(parts)]).catch((e: Error) => {
+          throw PART_REFUSED[e.message] ? new Refused(PART_REFUSED[e.message]) : e;
+        });
+      }
       return `${name} saved.`;
     },
     reopened,
@@ -171,7 +214,13 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
                 (select string_agg(t.name, ', ') from item_taxes it join taxes t on t.tenant_id = it.tenant_id and t.id = it.tax_id
                   where it.tenant_id = i.tenant_id and it.item_id = i.id and it.deleted_at is null) as tax,
                 (select it.tax_id from item_taxes it where it.tenant_id = i.tenant_id and it.item_id = i.id and it.deleted_at is null limit 1) as tax_id,
-                array(select g.group_id from item_modifier_groups g where g.tenant_id = i.tenant_id and g.item_id = i.id and g.deleted_at is null) as group_ids
+                array(select g.group_id from item_modifier_groups g where g.tenant_id = i.tenant_id and g.item_id = i.id and g.deleted_at is null) as group_ids,
+                i.parts,
+                (select (min(floor(greatest(coalesce(p.stock_qty, 0), 0)::numeric / (e->>'qty')::numeric)) * 1000)::bigint
+                   from jsonb_array_elements(i.parts) e
+                   join items p on p.tenant_id = i.tenant_id and p.id = (e->>'item_id')::uuid
+                   left join categories pc on pc.tenant_id = p.tenant_id and pc.id = p.category_id
+                  where p.track_stock or coalesce(pc.is_stock, false)) as parts_left
            from items i left join categories c on c.id = i.category_id and c.tenant_id = i.tenant_id
           where i.deleted_at is null and i.tenant_id = $1
           order by c.sort_order nulls last, c.name nulls last, i.name`,
@@ -205,8 +254,10 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
     barcode: r.barcode?.trim() || null,
     tax: r.tax,
     addons: r.group_ids?.length ?? 0,
-    stock: r.tracked ? Number(r.stock_qty) : null,
-    stock_shown: fmtQty(Number(r.stock_qty)),
+    // made of others, it has what its scarcest counted part makes
+    stock: r.parts.length > 0 ? (r.parts_left === null ? null : Number(r.parts_left)) : r.tracked ? Number(r.stock_qty) : null,
+    stock_shown: fmtQty(Number(r.parts.length > 0 ? (r.parts_left ?? 0) : r.stock_qty)),
+    parts: r.parts.map((p) => ({ id: p.item_id, qty: p.qty })),
     tax_id: r.tax_id,
     group_ids: r.group_ids ?? [],
     own_stock: r.track_stock,
