@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 class RestoPosApp : Application(), Configuration.Provider {
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var printing: Printing
+    @Inject lateinit var dueReminders: com.restopos.core.data.DueReminders
 
     override fun onCreate() {
         // A backup picked at the first screen is moved into place here, before
@@ -25,6 +26,10 @@ class RestoPosApp : Application(), Configuration.Provider {
         // how many decimals amounts are shown with, before the first screen draws them;
         // and whether this tablet works on its own, which its sentences say (Journey)
         printing.scope.launch { runCatching { com.restopos.core.data.Journey.alone = printing.settings().alone } }
+        // The reminder before an order for later is due rings from the moment
+        // the app is up: after a restart the till waits on its start screen,
+        // with nobody signed in, and must still ring (DueReminders).
+        dueReminders.start()
     }
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder().setWorkerFactory(workerFactory).build()

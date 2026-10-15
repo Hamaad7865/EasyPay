@@ -25,15 +25,17 @@ import com.restopos.core.ui.VBtn
 
 private val Ink = Color(0xFF241800)
 
-// The reminder before an order for later is due (DueReminders): a band across
-// the top of whichever screen is open, one for each order, until OK is
-// pressed or the order is ready. Tapping it opens the Takeaway board.
+// The reminder before an order for later is due (DueReminders): a band under
+// the top bar of whichever screen is open (the bar's keys stay free), one for
+// each order, until OK is pressed or the order is ready. Tapping it opens the
+// Takeaway board.
 @Composable
 internal fun BoxScope.DueBannerHost(shell: ShellViewModel, onOpen: () -> Unit) {
     val banners by shell.dueBanners.collectAsState()
     if (banners.isEmpty()) return
     Column(
-        Modifier.align(Alignment.TopCenter).padding(top = 14.dp, start = 40.dp, end = 40.dp),
+        // the top bar is 64 dp (MainShell)
+        Modifier.align(Alignment.TopCenter).padding(top = 72.dp, start = 40.dp, end = 40.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         banners.forEach { b ->

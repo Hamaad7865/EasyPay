@@ -254,9 +254,6 @@ class ShellViewModel @Inject constructor(
         // up from the moment the till is, whichever screen is open, and only
         // listening when the settings and an open day say this till should.
         guests.start()
-        // The reminder before an order for later is due (DueReminders): from
-        // the moment the till is up, whichever screen is open.
-        dueReminders.start()
         // The kitchen has finished a takeaway (Bump, on a kitchen screen or on
         // this till's own Kitchen screen): it is marked ready, the till makes
         // a sound (Kitchen), says which one here, whichever screen is open,
