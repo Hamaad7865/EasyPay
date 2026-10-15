@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { EASYPAY, compact, readDesign, renderKitchen, renderReceipt, sampleKitchen, sampleReceipt } from "./papers.ts";
+import { EASYPAY, compact, qty, readDesign, renderKitchen, renderReceipt, sampleKitchen, sampleReceipt } from "./papers.ts";
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "db", "tests", "fixtures", "papers");
 let failures = 0;
@@ -75,6 +75,9 @@ check("a design kept is only what differs, and reads back the same", () => {
   const kept = compact("receipt", d);
   assert.deepEqual(kept.blocks[1], { k: "items", addonPrices: true, unitPrice: true });
   assert.deepEqual(readDesign("receipt", kept, false).design, d);
+});
+check("quantities as the till writes them, a part of one and a minus sign kept", () => {
+  assert.deepEqual([2000, 500, 1500, 1250, -500, -2000].map(qty), ["2", "0.5", "1.5", "1.25", "-0.5", "-2"]);
 });
 check("the preview's made-up orders print on both widths", () => {
   const shop = { name: "CafeTino", address: "", phone: "", brn: "", vat: "", header: "", footer: "Thank you", bars: false };

@@ -305,7 +305,8 @@ export function num(cents: number, decimals: number): string {
 // thousandths: "2", "0.5"
 export function qty(q: number): string {
   if (q % 1000 === 0) return String(q / 1000);
-  return `${Math.trunc(q / 1000)}.${String(Math.abs(q % 1000)).padStart(3, "0")}`.replace(/0+$/, "");
+  const a = Math.abs(q);
+  return `${q < 0 ? "-" : ""}${Math.floor(a / 1000)}.${String(a % 1000).padStart(3, "0")}`.replace(/0+$/, "");
 }
 
 const CLOCK = new Intl.DateTimeFormat("en-GB", {
