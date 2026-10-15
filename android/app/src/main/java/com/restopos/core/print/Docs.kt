@@ -272,73 +272,6 @@ object Docs {
         return p
     }
 
-    // Before there was a designer; kept only until SameAsBeforeTest has proved EasyPay's design prints the same.
-    internal fun pageBefore(d: ReceiptDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster?, openDrawer: Boolean): EscPos {
-        val p = EscPos(paper.columns)
-        val n = { c: Long -> num(c, decimals) }
-        if (openDrawer) p.drawer()
-        p.head(shop, logo)
-        p.rule()
-        p.align(EscPos.Align.Center).bold(true)
-        p.line(when (d.kind) { "bill" -> "BILL"; "refund" -> "REFUND"; else -> "RECEIPT" })
-        if (d.reprint) p.line("COPY")
-        if (d.refunded > 0) p.line(if (d.refundedAll) "*** REFUNDED ***" else "*** PARTLY REFUNDED: ${n(d.refunded)} ***")
-        // the number the customer is called by, large
-        d.customerNo?.let { no -> p.big(true); EscPos.wrap("CUSTOMER No. $no", p.columns / 2).forEach { p.line(it) }; p.big(false) }
-        p.bold(false).align(EscPos.Align.Left)
-        if (d.number.isNotBlank()) p.row("No.", d.number)
-        p.row(stamp(d.time), d.order)
-        d.dining?.let { p.row("Order type", it) }
-        (d.cashier ?: d.waiter)?.let { p.row("Served by", it) }
-        if (d.waiter != null && d.cashier != null && d.waiter != d.cashier) p.row("Waiter", d.waiter)
-        d.covers?.let { p.row("Guests", it.toString()) }
-        d.customer?.takeIf { it.isNotBlank() && it != d.order }?.let { p.row("Customer", it) }
-        d.refundOf?.let { p.row("Refund of", it) }
-        d.reason?.takeIf { it.isNotBlank() }?.let { p.wrapped("Reason: $it") }
-        p.rule()
-        d.lines.forEach { l ->
-            p.row("${qty(l.qty)} ${l.name}", n(l.amount))
-            // the price it was listed at, and what was done to it
-            if (l.was != null && l.was != l.amount) p.wrapped(listOfNotNull("was ${n(l.was)}", l.priceNote?.takeIf { it.isNotBlank() }).joinToString(", "), indent = "  ")
-            // all of a line's add-ons on one line, wrapped under the + when too long (the owner, 2026-10-15)
-            if (l.mods.isNotEmpty()) p.wrapped("+ " + l.mods.joinToString(", "), indent = "  ")
-            l.note?.takeIf { it.isNotBlank() }?.let { p.wrapped("* $it", indent = "  ") }
-        }
-        p.rule()
-        if (d.discounts.isNotEmpty() || d.rounding != 0L || d.service != 0L) p.row("Subtotal", n(d.subtotal))
-        d.discounts.forEach { p.row("Discount: ${it.name}", "-" + n(it.amount)) }
-        if (d.service != 0L) p.row("Service charge", n(d.service))
-        d.taxes.forEach { t ->
-            val rate = if (t.rateBp % 100 == 0) "${t.rateBp / 100}" else "%.2f".format(Locale.US, t.rateBp / 100.0)
-            p.row("${t.name} $rate%" + if (t.included) " (incl.)" else "", n(t.amount))
-        }
-        if (d.rounding != 0L) p.row("Rounding", n(d.rounding))
-        p.bold(true).tall(true)
-        p.row(if (d.kind == "refund") "REFUNDED" else "TOTAL", "Rs " + n(d.total))
-        p.tall(false).bold(false)
-        if (d.share != null && d.shares != null) {
-            // one guest's copy: the whole bill above, then what this guest paid and the tax in it
-            val mine = d.payments.sumOf { it.amount }
-            p.rule()
-            p.bold(true).row("SHARE ${d.share} OF ${d.shares}", "Rs " + n(mine)).bold(false)
-            val tax = d.taxes.sumOf { it.amount }
-            if (tax > 0 && d.total > 0) p.row("Tax in this share", n((tax * mine + d.total / 2) / d.total))
-        }
-        d.payments.forEach { pay ->
-            p.row(pay.name, n(pay.amount))
-            pay.reference?.takeIf { it.isNotBlank() }?.let { p.line("  Ref: $it") }
-            if (pay.tendered != null && pay.change > 0) { p.row("  Given", n(pay.tendered)); p.row("  Change", n(pay.change)) }
-        }
-        if (d.kind == "bill") { p.rule(); p.center("This is not a receipt") }
-        d.note?.takeIf { it.isNotBlank() }?.let { p.rule(); p.wrapped("Remark: $it") }
-        if (shop.footer.isNotBlank()) { p.rule(); p.center(shop.footer) }
-        // Its number in bars: scanned at a till, it opens this receipt, for
-        // another copy, a refund or an exchange. A bill has no number yet.
-        if (shop.bars && d.kind != "bill" && d.number.isNotBlank()) { p.line(); p.barcode(d.number) }
-        p.end(paper)
-        return p
-    }
-
     // The credit note itself: the number large and in bars, so it is scanned
     // at a till when it is spent.
     fun creditNote(d: CreditNoteDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster? = null): ByteArray {
@@ -367,49 +300,6 @@ object Docs {
     internal fun kitchenPage(d: KitchenDoc, paper: Paper, design: Design = Papers.KITCHEN): EscPos {
         val p = EscPos(paper.columns)
         design.blocks.filter { !it.hide }.forEach { b -> PaperWalk.print(p, b, PaperWalk.kitchen(b, d)) }
-        p.end(paper)
-        return p
-    }
-
-    // Before there was a designer; kept only until SameAsBeforeTest has proved EasyPay's design prints the same.
-    internal fun kitchenBefore(d: KitchenDoc, paper: Paper): EscPos {
-        val p = EscPos(paper.columns)
-        p.align(EscPos.Align.Center).bold(true)
-        p.line(if (d.title == "ORDER") d.station.uppercase() else "${d.title} - ${d.station.uppercase()}")
-        if (d.customerNo != null) {
-            // the customer's number large, then who it is for
-            p.big(true).line("No. ${d.customerNo}").big(false)
-            if (d.order.isNotBlank()) EscPos.wrap(d.order, paper.columns).forEach { p.line(it) }
-        } else {
-            p.big(true)
-            EscPos.wrap(d.order, paper.columns / 2).forEach { p.line(it) }
-            p.big(false)
-        }
-        // when a takeaway is picked up, under who it is for
-        d.pickup?.let { p.tall(true).line(it).tall(false) }
-        p.bold(false).align(EscPos.Align.Left)
-        p.row(stamp(d.time), d.waiter ?: "")
-        val extra = listOfNotNull(d.dining, d.covers?.let { "$it guests" }).joinToString(" · ")
-        if (extra.isNotBlank()) p.line(extra.replace("·", "-"))
-        p.rule('=')
-        var course: Int? = null
-        // an order that is all course 1 needs no course heading
-        val courses = d.lines.any { (it.course ?: 1) > 1 }
-        d.lines.forEach { l ->
-            if (courses && l.course != null && l.course != course) {
-                course = l.course
-                p.align(EscPos.Align.Center).line("--- Course ${l.course} ---").align(EscPos.Align.Left)
-            }
-            p.bold(true).tall(true)
-            EscPos.wrap("${qty(l.qty)} x ${l.name}", paper.columns).forEach { p.line(it) }
-            p.tall(false).bold(false)
-            l.seat?.let { p.line("   Seat $it") }
-            // a line for each add-on group, its choices side by side (DocBuilder.kitchen)
-            l.mods.forEach { m -> p.wrapped("* $m", indent = "   ") }
-            l.note?.takeIf { it.isNotBlank() }?.let { p.bold(true).wrapped("! $it", indent = "   ").bold(false) }
-        }
-        d.note?.takeIf { it.isNotBlank() }?.let { p.rule(); p.bold(true).wrapped("REMARK: $it").bold(false) }
-        p.rule('=')
         p.end(paper)
         return p
     }

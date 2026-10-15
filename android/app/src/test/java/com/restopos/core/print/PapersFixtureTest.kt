@@ -68,14 +68,6 @@ class PapersFixtureTest {
         for (file in files) {
             val f = json.parseToJsonElement(file.readText()).jsonObject
             val got = printed(f)
-            // TEMPORARY, until the old printing is removed: an example of EasyPay's design is today's paper
-            if (f["design"] == JsonNull) {
-                val shop = shop(f["shop"]!!.jsonObject)
-                val paper = Paper(f["columns"]!!.jsonPrimitive.int, 3, true)
-                val before = if (f.str("paper") == "kitchen") Docs.kitchenBefore(json.decodeFromJsonElement(KitchenDoc.serializer(), f["doc"]!!), paper)
-                else Docs.pageBefore(json.decodeFromJsonElement(ReceiptDoc.serializer(), f["doc"]!!), shop, paper, f["decimals"]!!.jsonPrimitive.int, null, false)
-                assertEquals("${file.name} is today's paper", before.styled(), got)
-            }
             if (write) {
                 val input = JsonObject(f - "expect")
                 val text = pretty.encodeToString(JsonElement.serializer(), input).trimEnd().removeSuffix("}").trimEnd() +
