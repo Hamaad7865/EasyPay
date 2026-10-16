@@ -244,3 +244,71 @@ the shop's stock list.
 - Changing a deposit's lines after it is taken (cancel and take a new one, under the cancel setting).
 - Reminders to the customer by SMS or WhatsApp before the collect-by date.
 - A deposit taken from the back office or the public site.
+
+## 14. What was built, and what was run (2026-10-16 and 17, not committed: the owner gives the word)
+
+Built as the plan `docs/superpowers/plans/2026-10-16-shop-deposits.md` says, with the review's ten fixes:
+migration **0113** (applied on dev), the till (**database 30**), the back office and `/admin`.
+
+**Settled otherwise than this spec says, and why.**
+- The Deposit payment type is made for every shop but **inactive**: a till built before this offers only
+  active types on Pay, so it never shows it; Pay finds it by its kind.
+- "To pay" is what the goods not collected yet come to, less the money still free on the deposit (not the
+  total less what was paid, which is wrong once a collection has been paid partly in cash: seen on the tablet).
+- A credit note from a deposit is numbered `<deposit>-CN`; it has no refund behind it (`credit_notes.refund_id`
+  null, `deposit_id` set). The credit notes page names the deposit.
+- Deposit cash is a row of the drawer's (`cash_movements.deposit_id`): the X/Z and the drawer screens show it as
+  **Deposit cash**, not as a pay-in or pay-out, and it is in the drawer's expected cash.
+- A deposit with money paid over its goods, fully collected, is settled with the cancel setting ("Settle what
+  is left").
+- Clearing a test client now clears its deposits **and its credit notes** (0109 left the notes out, so
+  clearing a client with one failed). The Payment types list of POS settings no longer shows the Credit note
+  type either (it could be switched on there).
+- Built on the owner's word the next morning ("If this is not built yet please build it"): Customers, for a
+  shop, has a Deposits column naming each customer's deposits still open (open, money owed back, or paid over)
+  with what is left to pay and by when, or how late, each a link to it on Deposits, and a filter "Have a
+  deposit". The "to pay" figure is one SQL piece shared with Deposits (`web/lib/deposits.ts`).
+- Not built: taking a deposit from the back office.
+
+**Run.**
+- Server: `deposits` (new, 68 checks), `shop-pages` (section D and R9), `retail-till-replay` (a fifth replay:
+  the deposits run below, 41 operations), `till-office` (Z1b), `setting-up`, `credit-notes`, `retail-till`,
+  `stock-sales`, `made-of`, `push-policy`, `premium-gate`, `pull-pages`, `review-reasons`, `refund-shares`,
+  `promotions`, `business-type`, `stock-engine`, `offline-price`, `item-price`, `pos-operations`,
+  `refund-order-line`, `receipt-deltas`: all pass. The back office type-checks.
+- Till: 649 unit tests (DepositRulesTest new; LocalAnswersTest: the deposit settings answered alone, and who
+  has deposits).
+- On the test emulator (`easypay_claude_size`, 5598, with its window), the made-up shop on the offline plan
+  with deposits switched on (`DEMO_SHOP --es plan offline --es returns credit --ez deposits true`), the
+  stand-in printer catching every paper: database 29 upgraded to 30 with ten receipts kept; a jacket and a
+  mug held for Priya (refused first with no customer), Rs 1,000 cash, slip printed with its barcode; Rs 3,000
+  refused as more than owed, Rs 700 by card; the jacket collected alone (the mug left on it, + refused past
+  what the deposit holds), Pay taking the deposit's Rs 1,700 first and Rs 1,250 cash, receipt naming the
+  deposit, no second stock movement; the rest cancelled with nothing free (the mug back on the shelf, no note);
+  a scarf deposit opened by scanning its slip, cancelled onto credit note `DM-T1-D000002-CN` (slip printed),
+  the note spent on a postcard; the X report and the Z (deposits section, deposit cash, drawer balanced at
+  Rs 13,050); the shop's settings changed on the tablet (give back, cancel by itself, grace 0); a sandals
+  deposit dated in the past, cancelled by itself when the next day was opened and its Rs 500 given back in
+  cash; a card deposit cancelled and given back by card. The tablet's queue was then replayed on dev: every
+  operation taken, the drawer and all 19 stock figures equal to the tablet's.
+- Faults found on the tablet and fixed: "Discount" wrapping on Sell, the deposit's keys below the fold on a
+  10-inch, "To pay" after a collection, "Rs 0.00 on a credit note" when nothing was free, a cancelled slip
+  saying what to pay and when to collect, "2 payments" for a sale paid by one note, the give-back list empty
+  until the payment methods had loaded, "Paid Rs 0.00" once money was given back.
+
+- **A connected tablet's pull**, run on the same emulator: the server's pull page after that replay
+  (`replay-demo-outbox.cjs --page`) given to a cleared tablet set up as the made-up shop (`DEMO_PULL`, the
+  till's own reader): the three deposits with the server's figures, their lines and payments, the credit note
+  with what is left on it, the Deposit type inactive, the deposit cash rows. A deposit with an operation of its
+  own still waiting kept the tablet's figure; once that went up, the server's was taken. The offline shop was
+  put back afterwards from a copy of its files.
+- Also fixed after review: Deposits stays in reach (More, Deposits) while the shop has open, owed or overpaid
+  deposits even when it no longer takes new ones; a deposit is refused while a discount sits on the whole sale
+  (it would be lost: a deposit keeps each line's price); the till refuses to correct a payment from or to the
+  exchange, credit-note or deposit type (it rewrote its own copy before the server refused), and its Receipts
+  no longer offers Change on them; the back office dashboard and the till pages of the back office leave the
+  three kinds out of their payment tallies.
+
+**Not seen:** two tablets syncing a deposit live through the API (the push is proven by the replay, the pull
+by the page above); the back office in a browser (proven by `shop-pages`, which
+renders the real pages); `/admin`'s switch in a browser (the function is proven by the suite); a real printer.
