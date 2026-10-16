@@ -39,8 +39,7 @@ import {
   UserRoundCheck,
   Users,
   UtensilsCrossed,
-  Wallet,
-} from "lucide-react";
+  Wallet, PackageCheck } from "lucide-react";
 import type { Mode } from "@/lib/mode";
 
 // Every page of the back office, once. The side menu draws its sections and
@@ -137,6 +136,7 @@ export const GROUPS: NavGroup[] = [
       { href: "/backoffice/reports/stock", label: "Stock reports", only: "retail", icon: PackageSearch, words: "stock value worth inventory valuation reorder list low to order losses damaged expired lost stolen shrinkage written off not selling slow dead stock" },
       { href: "/backoffice/receipts", label: "Receipts", icon: Receipt, words: "refund reprint payment correction bills paid orders" },
       { href: "/backoffice/credit-notes", label: "Credit notes", only: "retail", icon: Ticket, words: "return exchange slip balance voucher cancel void" },
+      { href: "/backoffice/deposits", label: "Deposits", only: "retail", icon: PackageCheck, words: "layaway lay-by layby reserve hold held put aside part payment collect overdue" },
       { href: "/backoffice/reports/day-close", label: "Day closing", icon: CalendarCheck, words: "reports z report end of day open day close day cash drawer count float shifts x report sales period till counts" },
       { href: "/backoffice/reports/tax", label: "Tax", icon: Percent, words: "reports vat report returns" },
     ],

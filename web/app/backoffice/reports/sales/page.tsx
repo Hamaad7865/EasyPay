@@ -48,7 +48,7 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
         `select pt.name, count(*)::int as n, sum(r.sign * p.amount) as amount
            from r join receipt_payments_effective p on p.tenant_id = $1 and p.receipt_id = r.id
            left join payment_types pt on pt.tenant_id = $1 and pt.id = p.payment_type_id
-          where coalesce(pt.kind, '') not in ('exchange', 'credit_note')
+          where coalesce(pt.kind, '') not in ('exchange', 'credit_note', 'deposit')
           group by pt.name order by sum(r.sign * p.amount) desc`,
       ),
       // credit notes: what refunds put on them and what sales took off them, in these days
@@ -59,6 +59,28 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
              join payment_types pt on pt.tenant_id = $1 and pt.id = p.payment_type_id and pt.kind = 'credit_note'`,
         )
       )[0],
+      // a shop's deposits (0113): money taken on them in these days, and where deposit money went. None of it is a sale.
+      deposits:
+        ctx.mode === "retail"
+          ? ((
+              await c.query(
+                `with r as (${RECEIPTS})
+                 select coalesce((select sum(q.amount) from deposit_payments q join deposits d on d.tenant_id = q.tenant_id and d.id = q.deposit_id
+                                    join stores s on s.tenant_id = d.tenant_id and s.id = d.store_id
+                                   where q.tenant_id = $1 and q.kind = 'in' and (q.device_time at time zone s.timezone)::date between $2::date and $3::date), 0) as taken,
+                        coalesce((select -sum(q.amount) from deposit_payments q join deposits d on d.tenant_id = q.tenant_id and d.id = q.deposit_id
+                                    join stores s on s.tenant_id = d.tenant_id and s.id = d.store_id
+                                   where q.tenant_id = $1 and q.kind = 'back' and (q.device_time at time zone s.timezone)::date between $2::date and $3::date), 0) as back,
+                        coalesce((select sum(r.sign * p.amount) from r join receipt_payments_effective p on p.tenant_id = $1 and p.receipt_id = r.id
+                                    join payment_types pt on pt.tenant_id = $1 and pt.id = p.payment_type_id and pt.kind = 'deposit'), 0) as used,
+                        coalesce((select sum(d.noted) from deposits d join stores s on s.tenant_id = d.tenant_id and s.id = d.store_id
+                                   where d.tenant_id = $1 and (d.cancelled_at at time zone s.timezone)::date between $2::date and $3::date), 0) as noted,
+                        coalesce((select sum(d.kept) from deposits d join stores s on s.tenant_id = d.tenant_id and s.id = d.store_id
+                                   where d.tenant_id = $1 and (d.cancelled_at at time zone s.timezone)::date between $2::date and $3::date), 0) as kept`,
+                a,
+              )
+            ).rows[0] as { taken: string; back: string; used: string; noted: string; kept: string })
+          : null,
       dining: await q<Split>(
         `select o.name, count(*)::int as n, sum(r.signed_total) as amount from r
            left join dining_options o on o.tenant_id = $1 and o.id = r.dining_option_id group by o.name order by sum(r.signed_total) desc`,
@@ -139,6 +161,12 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
               </div>
               {(Number(d.notes.issued) !== 0 || Number(d.notes.redeemed) !== 0) && (
                 <p className="muted">Credit notes: {m(d.notes.issued)} issued on exchanges, {m(d.notes.redeemed)} redeemed on sales. Neither is money taken, so neither is among the payment methods.</p>
+              )}
+              {d.deposits && [d.deposits.taken, d.deposits.back, d.deposits.used, d.deposits.noted, d.deposits.kept].some((v) => Number(v) !== 0) && (
+                <p className="muted">
+                  Deposits: {m(d.deposits.taken)} taken, {m(d.deposits.used)} used on collected goods, {m(d.deposits.back)} given back, {m(d.deposits.noted)} put on credit notes,{" "}
+                  {m(d.deposits.kept)} kept by the shop. A deposit is not a sale: the sale is written when the goods are collected.
+                </p>
               )}
             </>
           ) : (

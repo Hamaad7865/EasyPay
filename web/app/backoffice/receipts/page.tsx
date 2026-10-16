@@ -157,7 +157,7 @@ export default async function ReceiptsPage({ searchParams }: { searchParams: Sea
                   where v.tenant_id = r.tenant_id and v.receipt_id = r.id and v.deleted_at is null), '[]'::jsonb) as reviews,
                 coalesce((select jsonb_agg(jsonb_build_object('type', q.type, 'name', q.name, 'kind', q.kind, 'ref', q.ref, 'was', q.was, 'amount', q.amount))
                    from (select p.payment_type_id as type, pt.name, pt.kind, sum(p.amount) as amount,
-                                max(case when pt.kind in ('exchange', 'credit_note') then p.reference end) as ref,
+                                max(case when pt.kind in ('exchange', 'credit_note', 'deposit') then p.reference end) as ref,
                                 max(case when p.payment_type_id <> p.original_payment_type_id then old.name end) as was
                            from receipt_payments_effective p
                            left join payment_types pt on pt.tenant_id = p.tenant_id and pt.id = p.payment_type_id
@@ -210,10 +210,10 @@ export default async function ReceiptsPage({ searchParams }: { searchParams: Sea
                   {r.payments.map((p) => (
                     <div key={p.type} style={{ marginBottom: 4 }}>
                       {/* a credit note names itself; an exchange names the refund the goods came back on (0079, 0109) */}
-                      {p.kind === "credit_note" ? `Credit note ${p.ref ?? ""}`.trim() : p.kind === "exchange" ? (r.type === "refund" ? "To the new sale" : `Returned goods${p.ref ? ", refund " + p.ref : ""}`) : (p.name ?? "Unknown")}
+                      {p.kind === "credit_note" ? `Credit note ${p.ref ?? ""}`.trim() : p.kind === "deposit" ? `Deposit ${p.ref ?? ""}`.trim() : p.kind === "exchange" ? (r.type === "refund" ? "To the new sale" : `Returned goods${p.ref ? ", refund " + p.ref : ""}`) : (p.name ?? "Unknown")}
                       {" "}{r.payments.length > 1 && <span className="muted">{m(p.amount)}</span>}
                       {p.was && <span className="sub">corrected from {p.was}</span>}
-                      {d.may && p.kind !== "exchange" && p.kind !== "credit_note" && (
+                      {d.may && p.kind !== "exchange" && p.kind !== "credit_note" && p.kind !== "deposit" && (
                         <details>
                           <summary className="muted" style={{ cursor: "pointer", fontSize: 12.5 }}>Change</summary>
                           <form action={correctPayment} className="inline" style={{ marginTop: 6 }}>

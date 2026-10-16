@@ -48,6 +48,17 @@ async function saveGeneral(f: FormData) {
             // promotions (0110)
             slowMoverDays: int(f, "slowMoverDays", 1, 365, 30),
             promoStillDays: int(f, "promoStillDays", 1, 365, 14),
+            // deposits (0113): only a shop that has them has the fields; one that has not keeps what was saved
+            ...(f.has("depositCancel")
+              ? {
+                  deposits: on(f, "depositsOn") ? ("on" as const) : ("off" as const),
+                  depositCancel: (["refund", "credit", "keep"] as const).find((v) => v === f.get("depositCancel")) ?? "credit",
+                  depositDays: int(f, "depositDays", 1, 365, 30),
+                  depositOverdue: f.get("depositOverdue") === "cancel" ? ("cancel" as const) : ("show" as const),
+                  depositGrace: int(f, "depositGrace", 0, 365, 7),
+                  depositCustomer: f.get("depositCustomer") === "optional" ? ("optional" as const) : ("required" as const),
+                }
+              : {}),
           }
         : {
             servicePct: int(f, "servicePct", 0, 30, 0),
@@ -178,10 +189,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
   const tab = one(sp.tab) === "payments" ? "payments" : one(sp.tab) === "orders" && !shop ? "orders" : one(sp.tab) === "barcodes" && shop ? "barcodes" : "general";
   const data = await readTenant(ctx.tenantId, async (c) => ({
     settings: await loadSettings(c, ctx.tenantId),
+    // a shop's deposits are an extra (0113): premium and trial carry them, else /admin switches them on
+    depositsPaid: shop ? ((await c.query(`select has_feature($1, 'deposits') as ok`, [ctx.tenantId])).rows[0].ok as boolean) : false,
     payments: (
       await c.query(
         `select id, name, kind, opens_drawer, is_active, sort_order from payment_types
-          where tenant_id = $1 and deleted_at is null and kind <> 'exchange' order by sort_order, name`,
+          where tenant_id = $1 and deleted_at is null and kind not in ('exchange', 'credit_note', 'deposit') order by sort_order, name`,
         [ctx.tenantId],
       )
     ).rows as { id: string; name: string; kind: string; opens_drawer: boolean; is_active: boolean; sort_order: number }[],
@@ -200,6 +213,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
   }));
   const bc = data.barcodes;
   const s = data.settings;
+  const depositsPaid = data.depositsPaid;
   return (
     <div>
       <PageHead title="POS settings" lede="How the tills behave. A change reaches a till the next time it syncs, which is within a minute when it is online." />
@@ -393,6 +407,97 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                   <input type="number" name="promoStillDays" min={1} max={365} defaultValue={s.promoStillDays} style={{ width: 80 }} /> days on promotion
                 </label>
               </div>
+            </Card>
+          )}
+          {shop && (
+            <Card title="Deposits">
+              {!depositsPaid ? (
+                <p className="muted" style={{ margin: 0 }}>
+                  Deposits are an extra for this shop: goods held for a customer who pays part now and collects later. Ask EasyPay to add them.
+                </p>
+              ) : (
+                <>
+                  <div className="setting">
+                    <div>
+                      <strong>Take deposits</strong>
+                      <small>A Deposit key on the till's Sell screen, beside Pay: the goods leave the shelf at the price of the day while the customer pays part.</small>
+                    </div>
+                    <label className="check" style={{ margin: 0 }}>
+                      <input type="checkbox" name="depositsOn" defaultChecked={s.deposits !== "off"} /> On
+                    </label>
+                  </div>
+                  <div className="setting">
+                    <div>
+                      <strong>When a deposit is cancelled</strong>
+                      <small>What happens to the money paid and not yet used for goods. What was not collected always goes back on the shelf.</small>
+                    </div>
+                    <div className="seg" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                      <label>
+                        <input type="radio" name="depositCancel" value="credit" defaultChecked={s.depositCancel === "credit"} />
+                        A credit note for it
+                      </label>
+                      <label>
+                        <input type="radio" name="depositCancel" value="refund" defaultChecked={s.depositCancel === "refund"} />
+                        Given back
+                      </label>
+                      <label>
+                        <input type="radio" name="depositCancel" value="keep" defaultChecked={s.depositCancel === "keep"} />
+                        Kept by the shop
+                      </label>
+                    </div>
+                  </div>
+                  <div className="setting">
+                    <div>
+                      <strong>Hold goods for</strong>
+                      <small>The collect-by date the till offers. The cashier can change it on each deposit.</small>
+                    </div>
+                    <label className="check" style={{ margin: 0 }}>
+                      <input type="number" name="depositDays" min={1} max={365} defaultValue={s.depositDays} style={{ width: 80 }} /> days
+                    </label>
+                  </div>
+                  <div className="setting">
+                    <div>
+                      <strong>Past the collect-by date</strong>
+                      <small>Marked overdue on the till and on Deposits, or cancelled by itself after the days of grace, as a cancel by a cashier would be.</small>
+                    </div>
+                    <div className="seg" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                      <label>
+                        <input type="radio" name="depositOverdue" value="show" defaultChecked={s.depositOverdue === "show"} />
+                        Mark it overdue
+                      </label>
+                      <label>
+                        <input type="radio" name="depositOverdue" value="cancel" defaultChecked={s.depositOverdue === "cancel"} />
+                        Cancel it by itself
+                      </label>
+                    </div>
+                  </div>
+                  <div className="setting">
+                    <div>
+                      <strong>Days of grace</strong>
+                      <small>After the date, before a deposit is cancelled by itself. 0: the day after.</small>
+                    </div>
+                    <label className="check" style={{ margin: 0 }}>
+                      <input type="number" name="depositGrace" min={0} max={365} defaultValue={s.depositGrace} style={{ width: 80 }} /> days
+                    </label>
+                  </div>
+                  <div className="setting">
+                    <div>
+                      <strong>Customer</strong>
+                      <small>Whether the till asks for the customer's name and phone before a deposit is taken.</small>
+                    </div>
+                    <div className="seg" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                      <label>
+                        <input type="radio" name="depositCustomer" value="required" defaultChecked={s.depositCustomer === "required"} />
+                        Name and phone needed
+                      </label>
+                      <label>
+                        <input type="radio" name="depositCustomer" value="optional" defaultChecked={s.depositCustomer === "optional"} />
+                        Optional
+                      </label>
+                    </div>
+                  </div>
+                </>
+              )}
             </Card>
           )}
           {!shop && (

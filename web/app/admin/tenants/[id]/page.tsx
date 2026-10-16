@@ -69,6 +69,21 @@ async function openBackOffice(formData: FormData) {
   redirect("/backoffice");
 }
 
+// The extras a client pays for beyond its plan (0113): deposits, for now. The
+// tills learn them through the settings they pull, as they learn the plan.
+async function setFeatures(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  const features = formData.get("deposits") === "on" ? ["deposits"] : [];
+  try {
+    await db().query(`select platform.set_tenant_features($1, $2, $3::text[])`, [adminId, tenantId, features]);
+  } catch (e) {
+    back(tenantId, "error", adminMessage(e));
+  }
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  back(tenantId, "notice", features.length ? "Deposits switched on. The tills take it at their next sync; a tablet working alone when it gets changes from EasyPay." : "Deposits switched off. Deposits already taken can still be paid, collected and cancelled.");
+}
+
 async function setBusinessType(formData: FormData) {
   "use server";
   const { adminId, tenantId } = await tenantOf(formData);
@@ -426,7 +441,7 @@ export default async function TenantPage({
   const pool = db();
   const tenant = (
     await pool.query(
-      `select id, name, brn, vat_number, plan, business_type, status, status_reason, status_changed_at, created_at
+      `select id, name, brn, vat_number, plan, business_type, status, status_reason, status_changed_at, created_at, features
          from tenants where id = $1 and deleted_at is null`,
       [id],
     )
@@ -493,7 +508,7 @@ export default async function TenantPage({
       error={sp.error}
       notice={sp.notice}
       actions={{
-        setDetails, setPlan, setBusinessType, setStatus, addStore, setTillActive, addLogin, setPassword, setPin, setActive,
+        setDetails, setPlan, setFeatures, setBusinessType, setStatus, addStore, setTillActive, addLogin, setPassword, setPin, setActive,
         addTablet, moveTablet, endCode, openBackOffice, removeTill, removeCode, goLive, backToSettingUp, clearTest,
       }}
     />

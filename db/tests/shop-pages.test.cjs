@@ -320,6 +320,63 @@ const id = () => crypto.randomUUID();
       check('Y7 the list is searched by customer', !p.error && p.says.includes('No open credit notes') === true || (rowsOf(p.html).every((r) => !r.includes('CN000002'))), p.error);
     }
 
+    // ---- deposits (migration 0113) ----
+    {
+      p = await see(shop, '/backoffice/settings', {});
+      check('D1 without the extra, POS settings say deposits are one, with nothing to set', !p.error && p.says.includes('Deposits are an extra for this shop') && !p.html.includes('name="depositCancel"'), p.error);
+      p = await see(shop, '/backoffice/deposits', {});
+      check('D1 and Deposits opens, saying so', !p.error && p.says.includes('Deposits are an extra for this shop'), p.error || p.says.slice(0, 200));
+      await c.query(`select platform.set_tenant_features($1, $2, array['deposits'])`, [admin, shop.tid]);
+      p = await see(shop, '/backoffice/settings', {});
+      check('D2 switched on, the Deposits card has its six settings', !p.error && ['depositsOn', 'depositCancel', 'depositDays', 'depositOverdue', 'depositGrace', 'depositCustomer'].every((n) => p.html.includes(`name="${n}"`)), p.error);
+      const priya = (await one(`select id from customers where tenant_id = $1 and name = 'Priya'`, [shop.tid])).id;
+      const depType = (await one(`select id from payment_types where tenant_id = $1 and kind = 'deposit' and deleted_at is null`, [shop.tid])).id;
+      p = await see(shop, '/backoffice/settings', { tab: 'payments' });
+      check('D2 the Deposit type is not among the payment options a shop edits, nor the Credit note one', !p.error && !p.html.includes('value="Deposit"') && !p.html.includes('value="Credit note"'), p.error);
+      // Priya puts Rs 50.00 down in cash on a scarf and a hat (Rs 230.00)
+      const did = id(), l1 = id(), l2 = id(), number = 'SP1-T1-D000001';
+      await shop.push([op('deposit.create', { id: did, store_id: shop.store, device_id: shop.dev, number, customer_id: priya, collect_by: '2026-12-31', device_time: shop.at(30),
+        lines: [{ id: l1, item_id: scarf, name: 'Scarf', qty: 1000, unit_price: 11500 }, { id: l2, item_id: hat, name: 'Hat', qty: 1000, unit_price: 11500 }],
+        payment: { id: id(), payment_type_id: shop.cash, amount: 5000 } })]);
+      p = await see(shop, '/backoffice/deposits', {});
+      const dRow = rowsOf(p.html).find((r) => r.includes(number));
+      // a second customer, with no deposit, so the filter has someone to leave out
+      await c.query(`insert into customers (tenant_id, name, phone) values ($1,'Ravi','52509876')`, [shop.tid]);
+      p = await see(shop, '/backoffice/customers', {});
+      const cRow = rowsOf(p.html).find((r) => r.includes('Priya'));
+      check('D3 Customers names her open deposit and what is left to pay', !p.error && !!cRow && cRow.includes(number) && cRow.includes('Rs 180.00 to pay, collect by 2026-12-31'), p.error || cRow);
+      p = await see(shop, '/backoffice/customers', { seen: 'deposit' });
+      check('D3 and finds who has a deposit', !p.error && rowsOf(p.html).some((r) => r.includes('Priya')) && !rowsOf(p.html).some((r) => r.includes('Ravi')), p.error);
+      p = await see(shop, '/backoffice/deposits', {});
+      check('D3 Deposits lists it: the customer, the total, what is paid and left to pay', !p.error && !!dRow && dRow.includes('Priya') && dRow.includes('| Rs 230.00 | Rs 50.00 | Rs 180.00 |') && dRow.includes('Open'), p.error || dRow || p.says.slice(0, 300));
+      // she collects the scarf: the deposit pays Rs 50.00 of it, cash the rest
+      await shop.sale([{ item_id: scarf, deposit_line_id: l1 }], 11500, { payments: [{ payment_type_id: depType, amount: 5000, reference: number }, { payment_type_id: shop.cash, amount: 6500 }] });
+      p = await see(shop, '/backoffice/deposits', { id: did });
+      check('D4 its page shows the goods, one collected, the payment and the receipt that collected it', !p.error && p.says.includes('1 collected') && /Collected on SP1-/.test(p.says) && p.says.includes('Paid, Cash'), p.error || p.says.slice(0, 400));
+      p = await see(shop, '/backoffice/customers', {});
+      const cRow2 = rowsOf(p.html).find((r) => r.includes('Priya'));
+      check('D4 after the scarf is collected (with the Rs 50.00 of the deposit used on it), the hat is what is left to pay', !p.error && !!cRow2 && cRow2.includes('Rs 115.00 to pay'), p.error || cRow2);
+      p = await see(shop, '/backoffice/reports/day-close', range);
+      check('D5 Day closing says the deposit taken, and lists no Deposit among the methods', !p.error && /Deposits taken, Cash \(1\) Rs 50\.00/.test(p.says) && p.says.includes('Deposits used on collection Rs 50.00') && !/Deposit \(\d+\)/.test(p.says), p.error || (p.says.match(/Deposits[^R]*Rs [\d.,]+/g) || []).join(' / '));
+      p = await see(shop, '/backoffice/reports/sales', range);
+      check('D5 so does Sales summary', !p.error && p.says.includes('Deposits: Rs 50.00 taken, Rs 50.00 used on collected goods'), p.error || (p.says.match(/Deposits:[^.]*/) || [])[0]);
+      p = await see(shop, '/backoffice/receipts', {});
+      check('D5 Receipts names the deposit on the sale it paid', !p.error && p.says.includes(number), p.error);
+      // a second deposit, cancelled onto a credit note
+      const d2 = id(), n2 = 'SP1-T1-D000002', note = id();
+      await shop.push([op('deposit.create', { id: d2, store_id: shop.store, device_id: shop.dev, number: n2, customer_id: priya, collect_by: '2026-12-31', device_time: shop.at(25),
+        lines: [{ id: id(), item_id: mug, name: 'Mug', qty: 1000, unit_price: 11500 }], payment: { id: id(), payment_type_id: shop.cash, amount: 3000 } })]);
+      await shop.push([op('deposit.cancel', { deposit_id: d2, device_id: shop.dev, device_time: shop.at(24), reason: 'changed her mind', outcome: 'credit',
+        credit_note: { id: note, number: n2 + '-CN', amount: 3000 } })]);
+      p = await see(shop, '/backoffice/credit-notes', {});
+      const nRow = rowsOf(p.html).find((r) => r.includes(n2 + '-CN'));
+      check('D6 Credit notes lists the note of the cancelled deposit, naming the deposit', !p.error && !!nRow && nRow.includes(n2) && nRow.includes('a cancelled deposit') && nRow.includes('Rs 30.00'), p.error || nRow);
+      p = await see(shop, '/backoffice/deposits', { show: 'all', q: n2 });
+      check('D6 Deposits says it was cancelled, why, and that the money is on the note', !p.error && p.says.includes('changed her mind') && p.says.includes('Rs 30.00 on credit note ' + n2 + '-CN'), p.error || p.says.slice(0, 400));
+      p = await see(shop, '/backoffice/reports/day-close', range);
+      check('D6 Day closing says what went on credit notes', !p.error && p.says.includes('Deposits put on credit notes Rs 30.00'), p.error || (p.says.match(/Deposits[^R]*Rs [\d.,]+/g) || []).join(' / '));
+    }
+
     // ---- promotions (migration 0110) ----
     {
       p = await see(shop, '/backoffice/promotions', {});
@@ -374,6 +431,8 @@ const id = () => crypto.randomUUID();
     check('R7 nor a Returns card', !p.html.includes('name="returns"'));
     p = await see(rest, '/backoffice/credit-notes', {});
     check('R8 a restaurant has no credit-notes', p.error === 'not found', p.error || 'it opened');
+    p = await see(rest, '/backoffice/deposits', {});
+    check('R9 a restaurant has no deposits', p.error === 'not found', p.error || 'it opened');
     p = await see(rest, '/backoffice/promotions', {});
     check('R8 nor promotions', p.error === 'not found', p.error || 'it opened');
     // what one business's owner is shown is its own

@@ -19,6 +19,8 @@ export type Tenant = {
   status_reason: string | null;
   status_changed_at: string | null;
   created_at: string;
+  // extras paid for beyond the plan (0113)
+  features: string[];
 };
 export type Store = { id: string; name: string; code: string };
 export type Till = {
@@ -42,6 +44,7 @@ type Action = (f: FormData) => Promise<void>;
 export type TenantActions = {
   setDetails: Action;
   setPlan: Action;
+  setFeatures: Action;
   setBusinessType: Action;
   setStatus: Action;
   addStore: Action;
@@ -66,6 +69,7 @@ const ACTIONS: Record<string, string> = {
   "tenant.suspended": "Suspended",
   "tenant.active": "Reactivated",
   "tenant.plan": "Plan changed",
+  "tenant.features": "Extras changed",
   "tenant.business_type": "Business type changed",
   "login.add": "Login added",
   "login.disable": "Login switched off",
@@ -92,6 +96,7 @@ const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 function auditNote(a: Audit): string {
   const d = a.detail ?? {};
   if (a.action === "tenant.plan" || a.action === "tenant.business_type") return `${String(d.from)} to ${String(d.to)}`;
+  if (a.action === "tenant.features") return `${(Array.isArray(d.to) ? d.to : []).join(", ") || "none"}`;
   if (a.action === "tenant.suspended") return String(d.reason ?? "");
   if (a.action === "login.add") return `${String(d.name)} as ${String(d.role)}`;
   if (a.action === "store.add") return `${String(d.name)} (${String(d.code)})`;
@@ -469,6 +474,22 @@ export function TenantView({
                 </div>
                 <span className="help">{PLAN_HELP}</span>
               </form>
+              {tenant.business_type === "retail" && (
+                <form action={actions.setFeatures} className="adm-part">
+                  {which}
+                  <strong>Extras</strong>
+                  <label className="check" style={{ margin: 0 }}>
+                    <input type="checkbox" name="deposits" defaultChecked={(tenant.features ?? []).includes("deposits")} /> Deposits
+                  </label>
+                  <span className="help">
+                    Goods held for a customer who pays part now and collects later. Premium and trial carry it already; switch it on here for a client on
+                    another plan who paid for it (the offline edition, a Standard shop).
+                  </span>
+                  <div className="inline">
+                    <Submit className="btn-quiet">Save extras</Submit>
+                  </div>
+                </form>
+              )}
               <form action={actions.setBusinessType} className="adm-part">
                 {which}
                 <strong>Business type</strong>

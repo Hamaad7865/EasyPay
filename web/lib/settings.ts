@@ -39,6 +39,17 @@ export type PosSettings = {
   promoStillDays: number;
   // minutes before an order for later is due that the tills ring (migration 0111); 0 is off
   dueReminderMinutes: number;
+  // A shop's deposits (migration 0113): taken or not; what a cancel does with
+  // the money (refund, credit note, keep); the collect-by date offered, in
+  // days; past it only marked or cancelled after the grace days; whether a
+  // customer's name and phone are needed. Whether the shop has the extra at
+  // all is has_feature on the server, not a setting.
+  deposits: "on" | "off";
+  depositCancel: "refund" | "credit" | "keep";
+  depositDays: number;
+  depositOverdue: "show" | "cancel";
+  depositGrace: number;
+  depositCustomer: "required" | "optional";
   receipt: { header: string; footer: string; logo: string | null; showLogo: boolean };
   company: { name: string; brn: string; vat: string; address: string; phone: string };
   // The receipt's and the kitchen ticket's designs (Receipt design, lib/papers.ts), as kept:
@@ -65,6 +76,12 @@ export const DEFAULT_SETTINGS: PosSettings = {
   slowMoverDays: 30,
   promoStillDays: 14,
   dueReminderMinutes: 0,
+  deposits: "on",
+  depositCancel: "credit",
+  depositDays: 30,
+  depositOverdue: "show",
+  depositGrace: 7,
+  depositCustomer: "required",
   receipt: { header: "", footer: "Thank you. See you again soon.", logo: null, showLogo: true },
   company: { name: "", brn: "", vat: "", address: "", phone: "" },
   papers: {},
@@ -101,6 +118,12 @@ export function withDefaults(raw: unknown): PosSettings {
     slowMoverDays: typeof d.slowMoverDays === "number" && d.slowMoverDays >= 1 && d.slowMoverDays <= 365 ? Math.round(d.slowMoverDays) : 30,
     promoStillDays: typeof d.promoStillDays === "number" && d.promoStillDays >= 1 && d.promoStillDays <= 365 ? Math.round(d.promoStillDays) : 14,
     dueReminderMinutes: typeof d.dueReminderMinutes === "number" && d.dueReminderMinutes >= 1 && d.dueReminderMinutes <= 120 ? Math.round(d.dueReminderMinutes) : 0,
+    deposits: d.deposits === "off" ? "off" : "on",
+    depositCancel: d.depositCancel === "refund" || d.depositCancel === "keep" ? d.depositCancel : "credit",
+    depositDays: typeof d.depositDays === "number" && d.depositDays >= 1 && d.depositDays <= 365 ? Math.round(d.depositDays) : 30,
+    depositOverdue: d.depositOverdue === "cancel" ? "cancel" : "show",
+    depositGrace: typeof d.depositGrace === "number" && d.depositGrace >= 0 && d.depositGrace <= 365 ? Math.round(d.depositGrace) : 7,
+    depositCustomer: d.depositCustomer === "optional" ? "optional" : "required",
     receipt: {
       header: str(r.header, DEFAULT_SETTINGS.receipt.header),
       footer: str(r.footer, DEFAULT_SETTINGS.receipt.footer),

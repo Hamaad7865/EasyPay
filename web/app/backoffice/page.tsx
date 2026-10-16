@@ -223,6 +223,8 @@ async function loadRange(c: PoolClient, tenantId: string, from: string, to: stri
               ${part(`select pt.name, count(*)::int as n, sum(r.sign * p.amount)::bigint as amount
                         from r join receipt_payments_effective p on p.tenant_id = $1 and p.receipt_id = r.id
                         left join payment_types pt on pt.tenant_id = $1 and pt.id = p.payment_type_id
+                       -- the built-in kinds hold no money taken: returned goods, a credit note, a deposit
+                       where coalesce(pt.kind, '') not in ('exchange', 'credit_note', 'deposit')
                        group by pt.name order by 3 desc`)} as payments,
               ${part(`select o.name, count(*)::int as n, sum(r.signed_total)::bigint as amount
                         from r left join dining_options o on o.tenant_id = $1 and o.id = r.dining_option_id

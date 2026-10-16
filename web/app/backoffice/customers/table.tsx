@@ -2,9 +2,14 @@
 
 import { useMemo } from "react";
 import { Back, Chev, fold, NoMatch, Seg, SortTh, type Start, TableSearch, useTable } from "../table-kit";
+import Link from "next/link";
 import { Submit } from "../busy";
 
-export type Customer = { id: string; name: string; phone: string | null; email: string | null; note: string | null; orders: number; spent: number; spent_shown: string };
+export type Customer = {
+  id: string; name: string; phone: string | null; email: string | null; note: string | null; orders: number; spent: number; spent_shown: string;
+  // a shop's deposits still open for them (0113), each in words
+  deposits: { id: string; number: string; words: string; late: boolean }[];
+};
 type Action = (f: FormData) => Promise<void>;
 
 const SEEN = [
@@ -12,11 +17,13 @@ const SEEN = [
   ["ordered", "Have ordered"],
   ["never", "Never ordered"],
 ] as const;
+// a shop also finds who has goods held for them
+const SEEN_SHOP = [...SEEN, ["deposit", "Have a deposit"]] as const;
 
 // The customers as one table: who they are, how to reach them, and what they
 // have ordered. The box finds one by name, phone, email or note as you type;
 // tapping a line opens it to change or remove them.
-export function CustomersTable({ rows, capped, start, save, remove }: { rows: Customer[]; capped: boolean; start: Start; save: Action; remove: Action }) {
+export function CustomersTable({ rows, capped, start, save, remove, shop = false }: { rows: Customer[]; capped: boolean; start: Start; save: Action; remove: Action; shop?: boolean }) {
   const t = useTable("/backoffice/customers", start);
   const seen = t.get("seen");
   const hay = useMemo(() => new Map(rows.map((r) => [r.id, fold([r.name, r.phone ?? "", r.email ?? "", r.note ?? ""].join(" "))])), [rows]);
@@ -26,7 +33,9 @@ export function CustomersTable({ rows, capped, start, save, remove }: { rows: Cu
   const byPhone = typed.length >= 3 && /^[\d\s+()-]+$/.test(t.get("q").trim());
   const shown = t.sorted(
     rows.filter(
-      (r) => (!seen || (seen === "ordered" ? r.orders > 0 : seen === "never" ? r.orders === 0 : true)) && (byPhone ? digits.get(r.id)!.includes(typed) : t.finds(hay.get(r.id)!)),
+      (r) =>
+        (!seen || (seen === "ordered" ? r.orders > 0 : seen === "never" ? r.orders === 0 : seen === "deposit" ? r.deposits.length > 0 : true)) &&
+        (byPhone ? digits.get(r.id)!.includes(typed) : t.finds(hay.get(r.id)!)),
     ),
     {
       name: (a, b) => a.name.localeCompare(b.name),
@@ -48,7 +57,7 @@ export function CustomersTable({ rows, capped, start, save, remove }: { rows: Cu
         <TableSearch t={t} placeholder="Search name, phone, email, note" label="Search customers" />
       </div>
       <div className="table-filters">
-        <Seg t={t} name="seen" label="Show" options={SEEN} />
+        <Seg t={t} name="seen" label="Show" options={shop ? SEEN_SHOP : SEEN} />
       </div>
       <div className="table-scroll">
         <table className="rows-open">
@@ -61,10 +70,11 @@ export function CustomersTable({ rows, capped, start, save, remove }: { rows: Cu
               <th>Note</th>
               <SortTh t={t} k="orders" label="Orders" num />
               <SortTh t={t} k="spent" label="Spent" num />
+              {shop && <th>Deposits</th>}
             </tr>
           </thead>
           <tbody>
-            {shown.length === 0 && <NoMatch t={t} cols={7} what="customer" filters={["seen"]} />}
+            {shown.length === 0 && <NoMatch t={t} cols={shop ? 8 : 7} what="customer" filters={["seen"]} />}
             {shown.map((r) => {
               const on = t.isOpen(r.id);
               return [
@@ -78,10 +88,26 @@ export function CustomersTable({ rows, capped, start, save, remove }: { rows: Cu
                   <td className="clip-note">{r.note ?? <span className="muted">None</span>}</td>
                   <td className="num">{r.orders || <span className="muted">None</span>}</td>
                   <td className="num strong">{r.orders > 0 || r.spent !== 0 ? r.spent_shown : <span className="muted">Nothing</span>}</td>
+                  {shop && (
+                    <td>
+                      {r.deposits.length === 0 ? (
+                        <span className="muted">None</span>
+                      ) : (
+                        r.deposits.map((x) => (
+                          <span key={x.id} style={{ display: "block" }} className={x.late ? "neg" : undefined}>
+                            <Link href={`/backoffice/deposits?id=${x.id}&show=all&q=${encodeURIComponent(x.number)}`} onClick={(e) => e.stopPropagation()}>
+                              {x.number}
+                            </Link>
+                            <span className="sub">{x.words}</span>
+                          </span>
+                        ))
+                      )}
+                    </td>
+                  )}
                 </tr>,
                 on && (
                   <tr key={r.id + "-open"} className="open-body">
-                    <td colSpan={7}>
+                    <td colSpan={shop ? 8 : 7}>
                       <div className="open-panel">
                         <form id={"c" + r.id} action={save} className="bo-toolbar" style={{ margin: 0 }}>
                           <input type="hidden" name="id" value={r.id} />

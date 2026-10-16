@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { anyDeposits, depositsJson, type DepositFigures } from "@/lib/deposits";
 import { CalendarCheck } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
@@ -28,6 +29,7 @@ type Close = {
   totals: { sales: number; refunds: number; gross: number; refunded: number; discounts: number; changed: number; tax: number };
   payments: { name: string | null; amount: number; n: number }[];
   notes: { issued: number; redeemed: number };
+  deposits: DepositFigures;
   cats: { name: string | null; qty: number; amount: number }[];
   cash: { in: number; out: number; list: { type: string; amount: number; reason: string | null; who: string | null }[] };
   // takeaways nobody came for and that were not paid (0107): lost, and in no total
@@ -40,6 +42,7 @@ type Open = {
   opened_by: string | null; closed_by: string | null; till: string | null;
   payments: { name: string | null; kind: string | null; amount: number; n: number }[];
   notes: { issued: number; redeemed: number };
+  deposits: DepositFigures;
   sales: { sales: number; refunds: number; gross: number; refunded: number; discounts: number; changed: number };
   cash: { in: number; out: number; drawer: number; list: { type: string; amount: number; reason: string | null; at: string; who: string | null }[] };
   counts: Count[];
@@ -88,8 +91,9 @@ ${given(shop)},
             from (select pt.name, sum(case when r.type = 'refund' then -p.amount else p.amount end) as amount, count(*) as n
                     from receipts r join receipt_payments_effective p on p.tenant_id = r.tenant_id and p.receipt_id = r.id
                     left join payment_types pt on pt.tenant_id = r.tenant_id and pt.id = p.payment_type_id
-                   where ${W} and coalesce(pt.kind, '') not in ('exchange', 'credit_note') group by pt.name) q) as payments,
+                   where ${W} and coalesce(pt.kind, '') not in ('exchange', 'credit_note', 'deposit') group by pt.name) q) as payments,
          ${NOTES(W)} as notes,
+         ${depositsJson("dc.tenant_id", "dc.device_id", "coalesce(dc.from_time, '-infinity'::timestamptz)", "dc.closed_at", W)} as deposits,
          (select coalesce(json_agg(json_build_object('name', q.name, 'qty', q.qty, 'amount', q.amount) order by q.amount desc), '[]'::json)
             from (select c.name, sum(case when r.type = 'refund' then -rl.qty else rl.qty end) as qty,
                          sum((case when r.type = 'refund' then -1 else 1 end) * (line_amount(rl.unit_price, rl.qty)
@@ -139,8 +143,9 @@ const openSql = (shop: boolean) => `
             from (select pt.name, pt.kind, sum(case when r.type = 'refund' then -p.amount else p.amount end) as amount, count(*) as n
                     from receipts r join receipt_payments_effective p on p.tenant_id = r.tenant_id and p.receipt_id = r.id
                     left join payment_types pt on pt.tenant_id = r.tenant_id and pt.id = p.payment_type_id
-                   where ${WINDOW} and coalesce(pt.kind, '') not in ('exchange', 'credit_note') group by pt.name, pt.kind) q) as payments,
+                   where ${WINDOW} and coalesce(pt.kind, '') not in ('exchange', 'credit_note', 'deposit') group by pt.name, pt.kind) q) as payments,
          ${NOTES(WINDOW)} as notes,
+         ${depositsJson("sh.tenant_id", "sh.device_id", "sh.opened_at - interval '1 millisecond'", "coalesce(sh.closed_at, now())", WINDOW)} as deposits,
          (select json_build_object('sales', count(*) filter (where r.type = 'sale'), 'refunds', count(*) filter (where r.type = 'refund'),
                    'gross', coalesce(sum(r.total) filter (where r.type = 'sale'), 0),
                    'refunded', coalesce(sum(r.total) filter (where r.type = 'refund'), 0),
@@ -256,6 +261,7 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
                     {sh.payments.length === 0 && <dt className="muted">Nothing taken</dt>}
                     <dt className="total">Total</dt><dd className="total">{m(sh.payments.reduce((a, p) => a + Number(p.amount), 0))}</dd>
                     {(Number(sh.notes.issued) !== 0 || Number(sh.notes.redeemed) !== 0) && (<><dt>Credit notes issued</dt><dd>{m(sh.notes.issued)}</dd><dt>Credit notes redeemed</dt><dd>{m(sh.notes.redeemed)}</dd></>)}
+                    {anyDeposits(sh.deposits) && <DepositRows d={sh.deposits} m={m} />}
                   </dl>
                 </div>
                 <div>
@@ -341,6 +347,7 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
                     {z.payments.map((p, i) => (<div key={i} style={{ display: "contents" }}><dt>{p.name ?? "Unknown"} ({p.n})</dt><dd>{m(p.amount)}</dd></div>))}
                     {z.payments.length === 0 && <dt className="muted">Nothing taken</dt>}
                     {(Number(z.notes.issued) !== 0 || Number(z.notes.redeemed) !== 0) && (<><dt>Credit notes issued</dt><dd>{m(z.notes.issued)}</dd><dt>Credit notes redeemed</dt><dd>{m(z.notes.redeemed)}</dd></>)}
+                    {anyDeposits(z.deposits) && <DepositRows d={z.deposits} m={m} />}
                   </dl>
                 </div>
                 <div>
@@ -393,5 +400,23 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
       })}
       {!detailed && d.rows.length > 0 && <p className="muted">The breakdown by category is switched off under POS settings.</p>}
     </div>
+  );
+}
+
+// A shop's deposits in a closing (0113): money taken on them, and where deposit money went.
+function DepositRows({ d, m }: { d: DepositFigures; m: (v: string | number) => string }) {
+  return (
+    <>
+      {d.taken.map((t) => (
+        <span key={"t" + (t.name ?? "")} style={{ display: "contents" }}>
+          <dt>Deposits taken, {t.name ?? "Unknown"} ({t.n})</dt>
+          <dd>{m(t.amount)}</dd>
+        </span>
+      ))}
+      {Number(d.used) !== 0 && (<><dt>Deposits used on collection</dt><dd>{m(d.used)}</dd></>)}
+      {Number(d.back) !== 0 && (<><dt>Deposits given back</dt><dd>{m(-Number(d.back))}</dd></>)}
+      {Number(d.noted) !== 0 && (<><dt>Deposits put on credit notes</dt><dd>{m(d.noted)}</dd></>)}
+      {Number(d.kept) !== 0 && (<><dt>Deposits kept by the shop</dt><dd>{m(d.kept)}</dd></>)}
+    </>
   );
 }

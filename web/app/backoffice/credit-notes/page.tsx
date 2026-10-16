@@ -26,8 +26,9 @@ type Row = {
   created_at: string;
   void_reason: string | null;
   used_at: string | null;
-  refund_no: string;
+  refund_no: string | null;
   receipt_no: string | null;
+  deposit_no: string | null;
   customer: string | null;
   issued_by: string | null;
   spends: string;
@@ -63,15 +64,16 @@ export default async function CreditNotesPage({ searchParams }: { searchParams: 
     rows: (
       await c.query(
         `select n.id, n.number, n.amount, n.balance, n.valid_to::text as valid_to, n.status, n.created_at, n.void_reason, n.used_at,
-                r.number as refund_no, o.number as receipt_no, cu.name as customer, e.name as issued_by,
+                r.number as refund_no, o.number as receipt_no, dp.number as deposit_no, cu.name as customer, e.name as issued_by,
                 (n.status = 'open' and n.valid_to is not null and n.valid_to < current_date) as expired,
                 (select count(*) from receipt_payments rp
                    join receipts s on s.tenant_id = rp.tenant_id and s.id = rp.receipt_id and s.type = 'sale' and s.deleted_at is null
                    join payment_types pt on pt.tenant_id = rp.tenant_id and pt.id = rp.payment_type_id
                   where rp.tenant_id = n.tenant_id and rp.reference = n.number and pt.kind = 'credit_note') as spends
            from credit_notes n
-           join receipts r on r.tenant_id = n.tenant_id and r.id = n.refund_id
+           left join receipts r on r.tenant_id = n.tenant_id and r.id = n.refund_id
            left join receipts o on o.tenant_id = r.tenant_id and o.id = r.refund_of
+           left join deposits dp on dp.tenant_id = n.tenant_id and dp.id = n.deposit_id
            left join customers cu on cu.tenant_id = n.tenant_id and cu.id = n.customer_id
            left join employees e on e.tenant_id = n.tenant_id and e.id = n.issued_by
           where n.tenant_id = $1 and n.deleted_at is null
@@ -130,7 +132,16 @@ export default async function CreditNotesPage({ searchParams }: { searchParams: 
               <tr key={r.id}>
                 <td className="strong">{r.number}</td>
                 <td>{at(r.created_at)}{r.issued_by && <span className="sub">{r.issued_by}</span>}</td>
-                <td>{r.refund_no}{r.receipt_no && <span className="sub">exchange of {r.receipt_no}</span>}</td>
+                <td>
+                  {r.deposit_no ? (
+                    <>
+                      <Link href={`/backoffice/deposits?q=${encodeURIComponent(r.deposit_no)}`}>{r.deposit_no}</Link>
+                      <span className="sub">a cancelled deposit</span>
+                    </>
+                  ) : (
+                    <>{r.refund_no}{r.receipt_no && <span className="sub">exchange of {r.receipt_no}</span>}</>
+                  )}
+                </td>
                 <td>{r.customer ?? <span className="muted">Not named</span>}</td>
                 <td className="num">{m(r.amount)}</td>
                 <td className="num strong">{m(r.balance)}</td>
