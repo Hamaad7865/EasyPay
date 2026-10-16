@@ -28,6 +28,8 @@ const KEPT = [
   // the stock that was entered, and the papers it came in on
   'stock_levels', 'purchase_orders', 'purchase_order_lines', 'deliveries', 'delivery_lines',
   'stock_counts', 'stock_count_lines', 'doc_counters',
+  // a shop's promotions (0110) are prices it decided on, not its trying
+  'promotions',
   // what a till wrote down when it stopped: EasyPay's own, not the client's trying
   'crash_reports',
 ];
@@ -37,8 +39,10 @@ const CLEARED = [
   'receipt_lines', 'receipts', 'ticket_line_taxes', 'ticket_line_modifiers', 'ticket_lines', 'tickets',
   'timeclock_punches', 'shifts', 'sync_ops_applied',
   'till_requests', 'device_activity', 'device_keys', 'pos_devices',
+  // a shop's credit notes (0109) and deposits (0113): made at its tills
+  'credit_notes', 'deposits', 'deposit_lines', 'deposit_payments',
 ];
-// stock_movements: the sales and refunds go, everything else stays.
+// stock_movements: the sales, refunds and deposits go, everything else stays.
 // tablet_codes: the codes tills were set up with go, one nobody used yet stays.
 const IN_PART = ['stock_movements', 'tablet_codes'];
 

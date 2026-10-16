@@ -1,0 +1,4 @@
+{
+  "type": "settings.save",
+  "payload": { "deposits": "on", "depositCancel": "keep", "depositDays": 45, "depositOverdue": "cancel", "depositGrace": 3, "depositCustomer": "optional" }
+}
