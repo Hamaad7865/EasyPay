@@ -111,6 +111,17 @@ object OfficePayloads {
         approvedBy?.let { put("approved_by", it) }
     }
 
+    // A shop's deposits (server 0113): what is null is not sent, and is left as it is.
+    fun depositsSave(on: Boolean?, cancel: String?, days: Int?, overdue: String?, grace: Int?, customer: Boolean?, approvedBy: String?): JsonObject = buildJsonObject {
+        on?.let { put("deposits", if (it) "on" else "off") }
+        cancel?.let { put("depositCancel", it) }
+        days?.let { put("depositDays", it) }
+        overdue?.let { put("depositOverdue", it) }
+        grace?.let { put("depositGrace", it) }
+        customer?.let { put("depositCustomer", if (it) "required" else "optional") }
+        approvedBy?.let { put("approved_by", it) }
+    }
+
     // The minutes before an order for later is due that the tills ring; 0 is off (server 0111).
     fun dueReminderSave(minutes: Int, approvedBy: String?): JsonObject = buildJsonObject {
         put("dueReminderMinutes", minutes)

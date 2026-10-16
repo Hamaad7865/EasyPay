@@ -404,8 +404,9 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                             Modifier.weight(1f), color = Pos.Text2, fontSize = 14.sp,
                         )
                         Text(Money.format(list.sumOf { it.amount }), color = Pos.Text2, fontSize = 14.sp)
-                        // what an exchange settled with returned goods was never money: there is nothing to correct
-                        if (r.type == "sale" && names[type]?.kind != "exchange") {
+                        // what an exchange settled with returned goods, a credit note covered or a deposit paid
+                        // was never money taken here: there is nothing to correct (the server refuses it too)
+                        if (r.type == "sale" && names[type]?.kind !in setOf("exchange", "credit_note", "deposit")) {
                             Text("Change", Modifier.clickable { correcting = type }.padding(start = 12.dp, top = 6.dp, bottom = 6.dp), color = Pos.Link, fontSize = 14.sp)
                         }
                     }

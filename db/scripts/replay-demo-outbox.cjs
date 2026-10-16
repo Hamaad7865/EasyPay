@@ -57,7 +57,9 @@ function check(name, cond, extra) {
     await c.query(`insert into stores (id, tenant_id, name, code) values ($1,$2,$3,$4)`, [store, tid, shop.store.name, shop.store.code]);
     await c.query(`insert into pos_devices (id, tenant_id, store_id, name, code) values ($1,$2,$3,$4,$5)`, [shop.device.id, tid, store, shop.device.name, shop.device.code]);
     const { businessType, ...plain } = shop.settings;
-    await c.query(`insert into pos_settings (tenant_id, data) values ($1,$2::jsonb)`, [tid, JSON.stringify(restaurant ? plain : shop.settings)]);
+    // The tills of these fixtures gave money back on a refund, which a shop does only when its Returns
+    // setting says so since 0109 (a shop is exchange-only until then): the replayed shop is one that refunds.
+    await c.query(`insert into pos_settings (tenant_id, data) values ($1,$2::jsonb)`, [tid, JSON.stringify(restaurant ? plain : { ...shop.settings, returns: 'refund' })]);
     for (const r of shop.roles) await c.query(`insert into roles (id, tenant_id, name, permissions) values ($1,$2,$3,$4::jsonb)`, [r.id, tid, r.name, JSON.stringify(r.permissions)]);
     for (const [i, e] of shop.staff.entries()) await c.query(`insert into employees (id, tenant_id, name, role_id, pin_hash) values ($1,$2,$3,$4,$5)`, [e.id, tid, e.name, e.role, pinHash(e.pin, i)]);
     await c.query(`insert into taxes (id, tenant_id, name, rate_bp, type, is_default) values ($1,$2,$3,$4,$5,true)`, [shop.tax.id, tid, shop.tax.name, shop.tax.rate_bp, shop.tax.type]);
@@ -76,7 +78,10 @@ function check(name, cond, extra) {
       await c.query(`insert into dining_options (id, tenant_id, name, is_default, sort_order, needs_table, kitchen, kind) values ($1,$2,$3,true,0,false,'pay',$4)`, [shop.dining.id, tid, shop.dining.name, shop.dining.kind]);
     }
     // a shop's Exchange payment type is not a restaurant's
-    for (const [i, p] of shop.payments.filter((x) => !restaurant || x.kind !== 'exchange').entries()) await c.query(`insert into payment_types (id, tenant_id, name, kind, opens_drawer, sort_order) values ($1,$2,$3,$4,$5,$6)`, [p.id, tid, p.name, p.kind, p.opens_drawer, i]);
+    // a shop's Deposit type is never active (0113), as on a real shop
+    for (const [i, p] of shop.payments.filter((x) => !restaurant || x.kind !== 'exchange').entries()) await c.query(`insert into payment_types (id, tenant_id, name, kind, opens_drawer, sort_order, is_active) values ($1,$2,$3,$4,$5,$6,$7)`, [p.id, tid, p.name, p.kind, p.opens_drawer, i, p.kind !== 'deposit']);
+    // a till that took deposits is a shop that has them (0113): the extra, as /admin switches it on
+    if (till.outbox.some((o) => o.type.startsWith('deposit.'))) await c.query(`update tenants set features = '{deposits}' where id = $1`, [tid]);
     for (const k of shop.categories) await c.query(`insert into categories (id, tenant_id, name) values ($1,$2,$3)`, [k.id, tid, k.name]);
     for (const it of shop.items) {
       await c.query(

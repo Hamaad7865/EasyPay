@@ -264,6 +264,7 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                     CashMoveEntity(
                         id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "device_id") ?: "", str(it, "shift_id"), str(it, "employee_id"),
                         str(it, "type") ?: "out", lng(it, "amount") ?: 0, str(it, "reason"), at, str(it, "deleted_at"), lng(it, "server_seq"),
+                        deposit_id = str(it, "deposit_id"),
                     )
                 })
             }
@@ -430,6 +431,43 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         str(it, "status") ?: "open", str(it, "issued_by"), time(it, "created_at") ?: System.currentTimeMillis(), lng(it, "server_seq"), pulled = true,
                     )
                 })
+            }
+            // A shop's deposits (server 0113), each with its lines and its
+            // payments inside the row as they stand on the server. The server's
+            // figures win, except for a deposit with something of this tablet's
+            // own still waiting to go up (one of its operations, or a
+            // collection's bill): the server's copy of it is older, and the
+            // next pull after the push brings it whole.
+            changes["deposits"]?.let { rows ->
+                val dd = db.deposits()
+                rows.forEach { e ->
+                    val did = id(e)
+                    val number = str(e, "number") ?: return@forEach
+                    if (dd.waiting(did, number) > 0) return@forEach
+                    dd.upsert(listOf(com.restopos.core.database.DepositEntity(
+                        did, str(e, "tenant_id") ?: "", str(e, "store_id") ?: store, str(e, "device_id") ?: "", number, str(e, "customer_id"),
+                        str(e, "collect_by")?.take(10) ?: "", str(e, "status") ?: "open", lng(e, "total") ?: 0, lng(e, "paid") ?: 0,
+                        lng(e, "given_back") ?: 0, lng(e, "used") ?: 0, lng(e, "kept") ?: 0, lng(e, "owed") ?: 0, lng(e, "noted") ?: 0,
+                        str(e, "cancel_outcome"), str(e, "cancel_reason"), bool(e, "auto_cancelled", false), str(e, "credit_note_id"),
+                        str(e, "created_by"), time(e, "device_time") ?: time(e, "created_at") ?: 0, time(e, "cancelled_at"), lng(e, "server_seq"), pulled = true,
+                    )))
+                    dd.dropLines(did)
+                    dd.upsertLines((e.jsonObject["lines"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { l ->
+                        com.restopos.core.database.DepositLineEntity(
+                            id(l), did, str(l, "item_id") ?: return@mapNotNull null, str(l, "variant_id") ?: "", str(l, "name") ?: "",
+                            (lng(l, "qty") ?: 0).toInt(), (lng(l, "qty_collected") ?: 0).toInt(), lng(l, "unit_price") ?: 0, lng(l, "list_price"),
+                            str(l, "price_kind"), str(l, "price_label"), str(l, "price_by"), (lng(l, "sort") ?: 0).toInt(),
+                        )
+                    })
+                    dd.dropPayments(did)
+                    dd.upsertPayments((e.jsonObject["payments"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { q ->
+                        com.restopos.core.database.DepositPaymentEntity(
+                            id(q), did, str(q, "payment_type_id") ?: return@mapNotNull null, str(q, "kind") ?: "in", lng(q, "amount") ?: 0,
+                            lng(q, "tendered"), lng(q, "change") ?: 0, str(q, "shift_id"), str(q, "device_id"), str(q, "employee_id"),
+                            time(q, "device_time") ?: time(q, "created_at") ?: 0,
+                        )
+                    })
+                }
             }
             // only a pulled line carries the server's id, so these find nothing for a receipt made here
             changes["receipt_line_taxes"]?.let { rows ->

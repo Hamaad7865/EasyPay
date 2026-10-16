@@ -149,6 +149,16 @@ class DocBuilder @Inject constructor(
         printing.send(p, bytes, "Credit note ${d.number}", bytes).getOrThrow()
     }
 
+    // A deposit's slip (0113), out of the cashier's printer; the drawer opens
+    // when cash moved with it.
+    suspend fun printDeposit(d: com.restopos.core.print.DepositDoc, openDrawer: Boolean): Result<Unit> = runCatching {
+        val p = printing.receiptPrinter() ?: throw PrintError(if (Journey.alone) "No receipt printer is set up. Add one in Settings, under This till, Set-up, Printer." else "No receipt printer is set up. Add one in the back office, under Printers.")
+        val s = printing.settings()
+        val bytes = Docs.deposit(d, printing.shop(), printing.paper(p), s.decimals, printing.logo(s, p), openDrawer)
+        val again = if (openDrawer) Docs.deposit(d, printing.shop(), printing.paper(p), s.decimals, printing.logo(s, p), false) else bytes
+        printing.send(p, bytes, "Deposit ${d.number}", again).getOrThrow()
+    }
+
     // Each line goes where Routing says: to the printers ticked on its
     // category, one ticket per printer, or, in a restaurant with one printer
     // for everything, to the receipt printer. A line with no printer has

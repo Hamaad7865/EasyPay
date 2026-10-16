@@ -155,6 +155,8 @@ class RetailSales @Inject constructor(
     suspend fun edit(lineId: String, qty: Int? = null, note: String? = null, price: PriceEdit? = null, approver: StaffMember? = null): Result<Unit> = runCatching {
         val l = db.tickets().line(lineId) ?: error("That line is gone")
         require(!l.paid && l.voided_at == null && l.sent_to_kitchen_at == null) { "That line can no longer be changed" }
+        // a line handed over from a deposit is what the deposit kept: taken away whole, or left on it
+        require(l.deposit_line_id == null || (qty == null || qty <= l.qty) && price == null) { "This comes from a deposit at the price it kept. Take it off the sale to leave it on the deposit." }
         require(qty == null || qty > 0) { "Type how many" }
         var next = l.copy(qty = qty ?: l.qty, note = if (note == null) l.note else note.trim().ifEmpty { null })
         var by: String? = null

@@ -548,6 +548,10 @@ class OrderOps @Inject constructor(
         staff.allow("payment.correct", "correct a payment type", approver)
         val r = db.ops().receipt(receiptId) ?: error("That receipt is not on this tablet")
         val names = db.ops().allPaymentTypes().associateBy { it.id }
+        // what an exchange settled, a credit note covered or a deposit paid was never money taken at the
+        // counter: it is not corrected into cash, nor cash into it (the server refuses it the same way)
+        val fixed = setOf("exchange", "credit_note", "deposit")
+        require(names[from]?.kind !in fixed && names[to]?.kind !in fixed) { "That payment cannot be changed: it was not money taken here" }
         val now = Instant.now().toString()
         db.withTransaction {
             require(db.ops().retypePayments(receiptId, from, to) > 0) { "This receipt has no payment of that type" }

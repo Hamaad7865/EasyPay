@@ -1011,6 +1011,25 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             if (m == null || m !in 0..120) throw Refused("bad-payload")
             patch = JsonObject(patch + ("dueReminderMinutes" to JsonPrimitive(m.toInt())))
         }
+        // a shop's deposits (0113): each key taken when sent, refused out of range
+        fun word(key: String, allowed: Set<String>) {
+            if (key !in p) return
+            val v = p.str(key) ?: throw Refused("bad-payload")
+            if (v !in allowed) throw Refused("bad-payload")
+            patch = JsonObject(patch + (key to JsonPrimitive(v)))
+        }
+        fun days(key: String, range: IntRange) {
+            if (key !in p) return
+            val v = p.long(key)
+            if (v == null || v !in range.first.toLong()..range.last.toLong()) throw Refused("bad-payload")
+            patch = JsonObject(patch + (key to JsonPrimitive(v.toInt())))
+        }
+        word("deposits", setOf("on", "off"))
+        word("depositCancel", setOf("refund", "credit", "keep"))
+        word("depositOverdue", setOf("show", "cancel"))
+        word("depositCustomer", setOf("required", "optional"))
+        days("depositDays", 1..365)
+        days("depositGrace", 0..365)
         if (patch.isNotEmpty()) mergeSettings(tenant, patch)
     }
 

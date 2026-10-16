@@ -1,5 +1,7 @@
 package com.restopos.feature.pay
 
+import com.restopos.core.database.free
+import com.restopos.core.database.left
 import com.restopos.core.data.PosSettings
 import androidx.compose.foundation.layout.widthIn
 import android.content.Context
@@ -330,6 +332,25 @@ class PayViewModel @Inject constructor(
             methods = methods, method = cur.method?.let { m -> methods.firstOrNull { it.id == m.id } } ?: methods.firstOrNull(),
             tend = "", reference = "", busy = false,
         ))
+        if (cur.check == null && ex == null) depositShare(unpaid.map { it.line })
+    }
+
+    // A collection (0113): the deposit its lines come from pays first, by
+    // itself, as much as is free on it and at most what the bill comes to.
+    // It is a share like a credit note's, naming the deposit; the rest of the
+    // bill is paid any other way. Taken once: it is there already after a
+    // part payment.
+    private suspend fun depositShare(lines: List<com.restopos.core.database.TicketLineEntity>) {
+        val lid = lines.firstNotNullOfOrNull { it.deposit_line_id } ?: return
+        val d = db.deposits().line(lid)?.let { db.deposits().deposit(it.deposit_id) } ?: return
+        val type = db.deposits().paymentType() ?: run { Toaster.say("This till has not been sent the shop's Deposit payment type yet. Let it sync."); return }
+        if (shares.any { it.input.paymentTypeId == type.id }) return
+        val s = _ui.value
+        val amount = com.restopos.core.data.DepositRules.cover(d.free, s.remaining)
+        if (amount <= 0) return
+        shares = shares + Share("Deposit ${d.number}", PayInput(type.id, amount, amount, 0, d.number, label = "Deposit ${d.number}"))
+        keep(ticketId, s.n, if (s.split == "amount") "amount" else "equal")
+        show(s.copy(tend = "", piece = 0))
     }
 
     // works out what this payment is for, from how the bill is being split
@@ -387,7 +408,11 @@ class PayViewModel @Inject constructor(
     fun tender(cents: Long) { _ui.value = _ui.value.copy(tend = ((cents + 99) / 100).toString()) }
 
     // The shares taken so far are given back and the bill starts again.
-    fun giveBack() { shares = emptyList(); keep(ticketId, 0); show(_ui.value.copy(tend = "")) }
+    fun giveBack() {
+        shares = emptyList(); keep(ticketId, 0); show(_ui.value.copy(tend = ""))
+        // a collection's deposit is not money taken at the counter: it stays on the bill
+        viewModelScope.launch { tickets.activeTicket()?.let { t -> depositShare(db.tickets().lines(t.id).first().filter { !it.paid && it.voided_at == null }) } }
+    }
 
     fun charge() {
         val s = _ui.value
@@ -439,7 +464,8 @@ class PayViewModel @Inject constructor(
             val s = _ui.value
             if (s.gone) { reset(); Toaster.say("There is nothing to pay on this sale"); return@launch }
             val cash = s.methods.firstOrNull { it.kind == "cash" }
-            if (s.exchangeOf != null || cash == null) { reset(); onScreen(); return@launch }
+            // a collection's deposit pays first, on the screen (0113)
+            if (s.exchangeOf != null || cash == null || shares.isNotEmpty()) { reset(); onScreen(); return@launch }
             val covered = s.lines.filter { !it.info.line.paid }.map { it.info.line.id }
             // a bill that comes to nothing is closed with no payment, as Charge closes it
             val with = if (s.amount > 0) listOf(Share(cash.name, PayInput(cash.id, s.amount, s.amount, 0, null))) else emptyList()
@@ -509,7 +535,7 @@ class PayViewModel @Inject constructor(
                     val customer = t?.customer_id?.let { db.customers().customer(it) }
                     _ui.value = _ui.value.copy(busy = false, done = PayDone(
                         receipt.id, earlierTotal + receipt.total, change,
-                        if (with.size > 1) "${with.size} payments" else with.firstOrNull()?.type ?: "No charge",
+                        with.filter { it.input.amount > 0 }.let { real -> if (real.size > 1) "${real.size} payments" else real.firstOrNull()?.type ?: "No charge" },
                         s.kind, t?.table_id?.let { db.tables().table(it)?.name }, t?.phone ?: customer?.phone, customer?.email,
                     ))
                 } else {

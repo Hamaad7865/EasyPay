@@ -9,7 +9,7 @@ object StockHistory {
     enum class Kind(val label: String) { Sale("Sales"), Delivery("Deliveries"), Count("Counts"), Correction("Corrections") }
 
     fun kind(reason: String): Kind = when (reason) {
-        "sale", "refund" -> Kind.Sale
+        "sale", "refund", "deposit", "deposit_release" -> Kind.Sale
         "receive" -> Kind.Delivery
         "count" -> Kind.Count
         else -> Kind.Correction
@@ -27,6 +27,9 @@ object StockHistory {
         "supplier_return" -> "Returned to supplier"
         "found" -> "Found"
         "opening" -> "Opening stock"
+        // a shop's deposits (0113): held for a customer, and back when not collected
+        "deposit" -> "Held for a deposit"
+        "deposit_release" -> "Back from a deposit"
         else -> "Correction"
     }
 

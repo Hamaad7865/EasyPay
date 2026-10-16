@@ -60,7 +60,7 @@ object LinePrice {
     // own). It is asked for each time, so it is always a line of its own.
     fun sameLine(l: TicketLineEntity, itemId: String, variantId: String?, unit: Long, typed: Boolean = false): Boolean =
         !typed && l.item_id == itemId && l.variant_id == variantId && l.unit_price == unit && l.price_kind == null && l.note.isNullOrBlank() &&
-            !l.paid && l.voided_at == null && l.sent_to_kitchen_at == null
+            !l.paid && l.voided_at == null && l.sent_to_kitchen_at == null && l.deposit_line_id == null
 
     // The price typed on the keypad for an item that has none of its own, in
     // cents, or null when what was typed is not a price: nothing, zero, or

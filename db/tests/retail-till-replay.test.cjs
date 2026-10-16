@@ -17,6 +17,7 @@
 //     manager's PIN, parked while another customer was served, and paid with
 //     change; one started and cancelled. Then the drawer counted and the day
 //     closed.
+//   deposits (migration 0113), on the offline plan: see the list below.
 // The server must take every operation and end up with the till's figures.
 // It keeps the server honest about that build: a change to a push function
 // that would refuse or re-price what build 3 sends fails here.
@@ -33,6 +34,11 @@ for (const [what, file, extra] of [
   // the server refuses a refund that is a cent off) and sold a variant from the pulled catalog
   ['second till', 'demo-till-build3-two-tills.json', ['--no-compare']],
   ['exchanges', 'demo-till-exchange.json', []],
+  // deposits (0113), on the offline plan: three taken (cash, a card top-up), one collected in part with the
+  // deposit paying first, one cancelled with nothing free, one cancelled onto a credit note then spent on a
+  // sale, the settings changed on the tablet, the day closed, and one cancelled by date as the next day opened
+  // and its money given back in cash
+  ['deposits', 'demo-till-deposits.json', []],
 ]) {
   const out = spawnSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'replay-demo-outbox.cjs'), path.join(__dirname, 'fixtures', file), ...extra], { encoding: 'utf8' });
   process.stdout.write(out.stdout.split('\n').filter((l) => /^(PASS|FAIL|REPLAY)/.test(l)).map((l) => (/^REPLAY/.test(l) ? l : l.replace(/^(PASS|FAIL) /, `$1 ${what}: `)).slice(0, 170)).join('\n') + '\n');

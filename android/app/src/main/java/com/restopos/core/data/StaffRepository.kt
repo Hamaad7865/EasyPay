@@ -108,6 +108,7 @@ class StaffRepository @Inject constructor(
     private val session: SessionStore,
     private val staffSession: StaffSession,
     private val cash: CashOps,
+    private val deposits: dagger.Lazy<Deposits>,
     @ApplicationContext private val context: Context,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -187,6 +188,11 @@ class StaffRepository @Inject constructor(
                 put("id", shift.id); put("device_id", device); put("opening_float", float)
                 put("opened_at", Instant.ofEpochMilli(now).toString())
             }))
+        }
+        // a tablet working alone cancels by itself the deposits past their
+        // date and grace, when its shop says so (0113); a connected one never does
+        runCatching { deposits.get().expireAlone() }.getOrNull()?.takeIf { it > 0 }?.let { n ->
+            com.restopos.core.ui.Toaster.say("$n ${if (n == 1) "deposit was" else "deposits were"} past the date and cancelled. Their goods are back on the shelf: see Deposits.")
         }
         pushNow(context)
         shift

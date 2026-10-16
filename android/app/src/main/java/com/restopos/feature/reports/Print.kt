@@ -53,6 +53,15 @@ internal fun printed(r: Report, d: ReportData, cutting: Cutting, byQty: Boolean,
                 if (f.notesIssued != 0L || f.notesRedeemed != 0L) {
                     add(ReportLine("Credit notes issued", n(f.notesIssued))); add(ReportLine("Credit notes redeemed", n(f.notesRedeemed)))
                 }
+                // a shop's deposits (0113): money taken on them, and where it went
+                if (f.deposits.any) {
+                    add(RULE); add(head("Deposits"))
+                    f.deposits.taken.forEach { add(ReportLine("Taken, ${it.name} (${it.count})", n(it.amount))) }
+                    if (f.deposits.used != 0L) add(ReportLine("Used on collection", n(f.deposits.used)))
+                    if (f.deposits.back != 0L) add(ReportLine("Given back", n(-f.deposits.back)))
+                    if (f.deposits.noted != 0L) add(ReportLine("Put on credit notes", n(f.deposits.noted)))
+                    if (f.deposits.kept != 0L) add(ReportLine("Kept by the shop", n(f.deposits.kept)))
+                }
                 add(RULE); add(head("Cash in and out"))
                 add(ReportLine("Cash in", n(f.cashIn))); add(ReportLine("Cash out", n(-f.cashOut)))
                 val days = Reports.byDay(d.sales, zone)

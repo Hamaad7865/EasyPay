@@ -1,5 +1,7 @@
 package com.restopos.core.data
 
+import com.restopos.core.database.free
+import com.restopos.core.database.left
 import android.content.Context
 import androidx.room.withTransaction
 import com.restopos.core.common.Uuid7
@@ -722,9 +724,35 @@ class TicketRepository @Inject constructor(
                     }
                 }
             }
+            // A collection (0113): each line handed over from a deposit takes
+            // what the deposit still holds of it, and that part moves no stock
+            // (it left the shelf the day the deposit was taken). The Deposit
+            // payment comes off what is free on the deposit. The server does
+            // the same when the bill arrives, and its figures come back.
+            val held = HashMap<String, Int>()
+            val touched = LinkedHashSet<String>()
+            payLines.forEach { l ->
+                val dl = l.deposit_line_id?.let { db.deposits().line(it) } ?: return@forEach
+                val d = db.deposits().deposit(dl.deposit_id) ?: return@forEach
+                val h = if (d.status == "open") minOf(l.qty, dl.left) else 0
+                if (h > 0) { db.deposits().collected(dl.id, h); held[l.id] = h }
+                touched += d.id
+            }
+            db.deposits().paymentType()?.let { dt ->
+                payments.filter { it.paymentTypeId == dt.id && it.reference != null }.forEach { p ->
+                    db.deposits().byNumber(p.reference!!)?.let { d ->
+                        db.deposits().upsert(listOf(d.copy(used = d.used + minOf(p.amount, d.free.coerceAtLeast(0)))))
+                        touched += d.id
+                    }
+                }
+            }
+            touched.forEach { did ->
+                val d = db.deposits().deposit(did) ?: return@forEach
+                if (d.status == "open" && db.deposits().lines(did).all { it.left == 0 }) db.deposits().upsert(listOf(d.copy(status = "collected")))
+            }
             db.tickets().markPaid(payLines.map { it.id })
             // what was sold leaves this till's copy of the shelf at once; the server's figure comes back with the next sync
-            db.moveStock(store, payLines.map { it to -it.qty })
+            db.moveStock(store, payLines.mapNotNull { l -> (l.qty - (held[l.id] ?: 0)).takeIf { it > 0 }?.let { l to -it } })
             if (closing) db.tickets().setStatus(t.id, "paid")
             db.catalog().upsertDevices(listOf(device.copy(last_receipt_seq = seq)))
             db.outbox().enqueue(op("receipt.create", buildJsonObject {

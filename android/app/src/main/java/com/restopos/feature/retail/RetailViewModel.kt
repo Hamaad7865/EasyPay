@@ -67,6 +67,11 @@ data class SaleUi(
     val discount: DiscountPick? = null,
     val customer: String? = null,
     val open: String? = null, // the line whose keys are showing
+    // a shop that takes deposits (0113), and the deposit this sale collects from, if any
+    val deposits: Boolean = false,
+    val collecting: com.restopos.core.database.DepositEntity? = null,
+    // deposits still to deal with, so Deposits stays in reach when no new ones are taken
+    val depositsPending: Boolean = false,
 ) {
     val empty: Boolean get() = lines.isEmpty()
     // how many things are on the sale, beside its total
@@ -176,6 +181,10 @@ class RetailViewModel @Inject constructor(
             loaded = true, ticket = t, lines = lines, totals = service.dueOf(infos, 0, discount), lineOff = sales.saved(rows), discount = discount,
             customer = t?.customer_id?.let { db.customers().customer(it)?.name },
             open = _ui.value.open?.takeIf { id -> rows.any { it.id == id } },
+            deposits = com.restopos.core.data.PosSettings.parse(db.ops().settings()).deposits,
+            depositsPending = com.restopos.core.data.PosSettings.parse(db.ops().settings()).retail && db.deposits().pending() > 0,
+            collecting = rows.filter { it.voided_at == null && !it.paid }.firstNotNullOfOrNull { it.deposit_line_id }
+                ?.let { db.deposits().line(it) }?.let { db.deposits().deposit(it.deposit_id) },
         )
     }
 
@@ -236,8 +245,14 @@ class RetailViewModel @Inject constructor(
     // A receipt's own barcode is looked for first (its number is nothing like
     // a product's code): the receipt opens, for a refund, an exchange or
     // another copy. onReceipt takes its id to the Receipts screen.
-    fun scanned(code: String, onReceipt: (String) -> Unit = {}, onNote: (String) -> Unit = {}) = viewModelScope.launch {
+    fun scanned(code: String, onReceipt: (String) -> Unit = {}, onNote: (String) -> Unit = {}, onDeposit: (String) -> Unit = {}) = viewModelScope.launch {
         query.value = ""
+        // a deposit's slip (0113): the Deposits screen opens on it
+        db.deposits().byNumber(code.trim().uppercase())?.let { d ->
+            Scanner.say(true, "Deposit · ${d.number}")
+            onDeposit(d.number)
+            return@launch
+        }
         receiptOf(code)?.let { r ->
             Scanner.say(true, "Receipt · ${r.number}")
             onReceipt(r.id)

@@ -33,6 +33,10 @@ interface CustomerDao {
     )
     fun search(q: String): Flow<List<CustomerEntity>>
 
+    // every customer, for naming the deposits on their list (0113)
+    @Query("SELECT * FROM customers")
+    fun everyone(): Flow<List<CustomerEntity>>
+
     @Query("SELECT * FROM customers WHERE id = :id")
     suspend fun customer(id: String): CustomerEntity?
 

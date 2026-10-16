@@ -148,6 +148,17 @@ class BusinessViewModel @Inject constructor(db: TillDatabase, private val servic
         go(if (m == 0) "The reminder is off." else "Saved. The till rings $m minutes before an order for later is due.", {}) { by -> service.saveDueReminder(m, by) }
     }
 
+    // a shop's deposits (0113): only what changed is sent
+    fun saveDeposits(was: PosSettings, on: Boolean, cancel: String, days: String, overdue: String, grace: String, customer: Boolean) {
+        val d = days.trim().toIntOrNull()?.takeIf { it in 1..365 } ?: run { Toaster.say("Hold goods for 1 to 365 days"); return }
+        val g = grace.trim().ifEmpty { "0" }.toIntOrNull()?.takeIf { it in 0..365 } ?: run { Toaster.say("Grace is 0 to 365 days"); return }
+        val changed = listOf(on != was.depositsOn, cancel != was.depositCancel, d != was.depositDays, overdue != was.depositOverdue, g != was.depositGrace, customer != was.depositCustomer)
+        if (changed.none { it }) { Toaster.say("Nothing was changed."); return }
+        go("Saved. Every till of the shop takes it.", {}) { by ->
+            service.saveDeposits(on.takeIf { changed[0] }, cancel.takeIf { changed[1] }, d.takeIf { changed[2] }, overdue.takeIf { changed[3] }, g.takeIf { changed[4] }, customer.takeIf { changed[5] }, by)
+        }
+    }
+
     // another printer (a kitchen's, a bar's): the first one of a store is the receipt printer, the others print what is ticked for them
     fun addPrinter(id: String, name: String, kind: String, address: String, paper: Int, done: () -> Unit) {
         val p = com.restopos.core.data.PrinterForm.read(name, kind, address, paper).getOrElse { Toaster.say(it.message ?: "That is not a printer yet"); return }
@@ -421,6 +432,60 @@ internal fun DueReminderPanel(vm: BusinessViewModel = hiltViewModel()) {
         }
     }
     Row { VBtn(if (busy) "Saving…" else "Save", bg = V.Blue, fg = Color.White, height = 52.dp, radius = 14.dp, weight = 800, enabled = !busy) { vm.saveDueReminder(st, minutes) } }
+}
+
+// ---- Settings > Deposits (a shop's, 0113) ----
+@Composable
+internal fun DepositSettingsPage(vm: BusinessViewModel = hiltViewModel()) {
+    val st by vm.settings.collectAsState()
+    val busy by vm.busy.collectAsState()
+    var on by remember(st.depositsOn) { mutableStateOf(st.depositsOn) }
+    var cancel by remember(st.depositCancel) { mutableStateOf(st.depositCancel) }
+    var days by remember(st.depositDays) { mutableStateOf(st.depositDays.toString()) }
+    var overdue by remember(st.depositOverdue) { mutableStateOf(st.depositOverdue) }
+    var grace by remember(st.depositGrace) { mutableStateOf(st.depositGrace.toString()) }
+    var customer by remember(st.depositCustomer) { mutableStateOf(st.depositCustomer) }
+
+    if (!st.depositsPaid) {
+        Note("Deposits are an extra for this shop. Ask EasyPay to add them: goods held for a customer who pays part now and collects later.")
+        return
+    }
+    Note("A deposit holds goods off the shelf at the price of the day while the customer pays part, and pays the rest when they collect. It is taken on Sell with the Deposit key.")
+    Panel {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Choice("Take deposits", listOf("on" to "On", "off" to "Off"), if (on) "on" else "off") { on = it == "on" }
+            Choice("When a deposit is cancelled", listOf("credit" to "Credit note", "refund" to "Give money back", "keep" to "Shop keeps it"), cancel) { cancel = it }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f)) {
+                    T("Hold goods for", 15.sp, 700)
+                    T("Days, 1 to 365: the collect-by date offered. The cashier can change it.", 13.sp, 500, V.Text2, lines = 2)
+                }
+                Field(days, { v -> days = v.filter { it.isDigit() }.take(3) }, "30", Modifier.fillMaxWidth(0.25f), height = 50.dp, number = true, size = 17.sp)
+            }
+            Choice("Past the collect-by date", listOf("show" to "Mark it overdue", "cancel" to "Cancel it by itself"), overdue) { overdue = it }
+            if (overdue == "cancel") Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f)) {
+                    T("Days of grace", 15.sp, 700)
+                    T("After the date, before it is cancelled. 0 is the day after.", 13.sp, 500, V.Text2, lines = 2)
+                }
+                Field(grace, { v -> grace = v.filter { it.isDigit() }.take(3) }, "7", Modifier.fillMaxWidth(0.25f), height = 50.dp, number = true, size = 17.sp)
+            }
+            Choice("Customer", listOf("required" to "Name and phone needed", "optional" to "Optional"), if (customer) "required" else "optional") { customer = it == "required" }
+        }
+    }
+    Row { VBtn(if (busy) "Saving..." else "Save", bg = V.Blue, fg = Color.White, height = 52.dp, radius = 14.dp, weight = 800, enabled = !busy) { vm.saveDeposits(st, on, cancel, days, overdue, grace, customer) } }
+}
+
+// One setting with its choices as keys, the one picked lit.
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun Choice(label: String, options: List<Pair<String, String>>, picked: String, onPick: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        T(label, 15.sp, 700)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { (key, words) -> VBtn(words, bg = if (key == picked) V.On else V.Key, fg = if (key == picked) V.OnText else V.Text, height = 46.dp) { onPick(key) } }
+        }
+    }
 }
 
 // ---- Settings > Discounts ----

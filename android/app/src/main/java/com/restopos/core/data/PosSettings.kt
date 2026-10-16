@@ -76,7 +76,24 @@ data class PosSettings(
     // office's Receipt design: the `papers` key as it came, read when a paper
     // is printed (core/print/Papers). Null, EasyPay's own.
     val papers: String? = null,
+    // A shop's deposits (server 0113). Paid for: the plan carries them
+    // (premium, trial) or the platform admin switched them on (features).
+    // A missing plan does NOT count here, unlike premium: a till that has not
+    // been told shows nothing. The shop may turn them off; what happens when
+    // one is cancelled (refund, credit, keep); the collect-by date offered;
+    // past it whether one is only marked or cancelled after the grace days;
+    // whether a customer's name and phone are asked.
+    val depositsPaid: Boolean = false,
+    val depositsOn: Boolean = true,
+    val depositCancel: String = "credit",
+    val depositDays: Int = 30,
+    val depositOverdue: String = "show",
+    val depositGrace: Int = 7,
+    val depositCustomer: Boolean = true,
 ) {
+    // a shop that may take deposits now
+    val deposits: Boolean get() = retail && depositsPaid && depositsOn
+
     fun shop(fallbackName: String): Shop =
         Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer, bars = retail)
 
@@ -131,6 +148,14 @@ data class PosSettings(
                 promoStillDays = runCatching { d["promoStillDays"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..365 } ?: 14,
                 dueReminder = runCatching { d["dueReminderMinutes"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..120 } ?: 0,
                 papers = obj("papers")?.toString(),
+                depositsPaid = d.str("plan")?.trim()?.lowercase().let { it == "premium" || it == "trial" } ||
+                    runCatching { d["features"]?.jsonArray?.any { it.jsonPrimitive.contentOrNull == "deposits" } }.getOrNull() == true,
+                depositsOn = d.str("deposits") != "off",
+                depositCancel = d.str("depositCancel")?.takeIf { it == "refund" || it == "credit" || it == "keep" } ?: "credit",
+                depositDays = runCatching { d["depositDays"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..365 } ?: 30,
+                depositOverdue = d.str("depositOverdue")?.takeIf { it == "show" || it == "cancel" } ?: "show",
+                depositGrace = runCatching { d["depositGrace"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 0..365 } ?: 7,
+                depositCustomer = d.str("depositCustomer") != "optional",
             )
         }
     }

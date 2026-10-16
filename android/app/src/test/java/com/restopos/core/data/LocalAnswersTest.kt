@@ -626,6 +626,7 @@ class LocalAnswersTest {
         val before = obj(dao.settings!!.data)
         ask("company.save", """{"name":"Chez Aisha","address":"Royal Road"}""")
         ask("settings.save", OfficeFixtures.payload("settings-save").jsonObject)
+        ask("settings.save", OfficeFixtures.payload("settings-save-deposits").jsonObject)
         ask("printer.save", """{"id":"${id(410)}","store_id":"$store","name":"Counter","kind":"usb","address":"","paper_mm":80,"one_printer":true}""")
         val after = obj(dao.settings!!.data)
         val written = after.keys.filter { after[it] != before[it] }.toSet()
@@ -1148,6 +1149,30 @@ class LocalAnswersTest {
         assertEquals("done", ask("settings.save", """{"dueReminderMinutes":0}"""))
         assertEquals(0, PosSettings.parse(dao.settings!!.data).dueReminder)
         assertEquals(OfficeFixtures.payload("settings-save-due"), OfficePayloads.dueReminderSave(10, null))
+    }
+
+    @Test fun `a shop's deposit settings, as the server takes them, and nothing else of the settings`() {
+        dao.settings = SettingsEntity(tenant, """{"plan":"offline","businessType":"retail","features":["deposits"],"servicePct":10}""")
+        assertEquals("done", ask("settings.save", OfficeFixtures.payload("settings-save-deposits").jsonObject))
+        val s = PosSettings.parse(dao.settings!!.data)
+        assertEquals(listOf<Any>(true, "keep", 45, "cancel", 3, false, 10, true), listOf(s.depositsOn, s.depositCancel, s.depositDays, s.depositOverdue, s.depositGrace, s.depositCustomer, s.servicePct, s.deposits))
+        assertEquals("bad-payload", ask("settings.save", """{"depositDays":0}"""))
+        assertEquals("bad-payload", ask("settings.save", """{"depositGrace":-1}"""))
+        assertEquals("bad-payload", ask("settings.save", """{"depositCancel":"maybe"}"""))
+        assertEquals("bad-payload", ask("settings.save", """{"deposits":true}"""))
+        assertEquals("done", ask("settings.save", """{"deposits":"off"}"""))
+        assertEquals(false, PosSettings.parse(dao.settings!!.data).deposits)
+        assertEquals(OfficeFixtures.payload("settings-save-deposits"), OfficePayloads.depositsSave(true, "keep", 45, "cancel", 3, false, null))
+    }
+
+    @Test fun `deposits are an extra, only for a shop that has them by its plan or switched on`() {
+        assertEquals(false, PosSettings.parse("""{"businessType":"retail"}""").deposits)
+        assertEquals(false, PosSettings.parse("""{"businessType":"retail","plan":"offline"}""").deposits)
+        assertEquals(true, PosSettings.parse("""{"businessType":"retail","plan":"offline","features":["deposits"]}""").deposits)
+        assertEquals(true, PosSettings.parse("""{"businessType":"retail","plan":"premium"}""").deposits)
+        assertEquals(true, PosSettings.parse("""{"businessType":"retail","plan":"trial"}""").deposits)
+        assertEquals(false, PosSettings.parse("""{"businessType":"restaurant","plan":"premium"}""").deposits)
+        assertEquals(false, PosSettings.parse("""{"businessType":"retail","plan":"premium","deposits":"off"}""").deposits)
     }
 
     @Test fun `what is sent for a group of add-ons, an item's groups and the settings is the example the server was tested with`() {

@@ -45,6 +45,9 @@ import androidx.room.RoomDatabase
 // Version 27 adds a shop's promotions (server 0110), and on a product and a
 // variant the price before the promotion it is on.
 // Version 29 adds what an item is made of (server 0112).
+// Version 30 adds a shop's deposits (server 0113): the deposit, its lines and
+// its payments; on a sale's line the deposit line it hands over; on a drawer
+// row the deposit whose cash it is.
 @Database(
     entities = [
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
@@ -71,8 +74,9 @@ import androidx.room.RoomDatabase
         ItemPictureEntity::class,
         CreditNoteEntity::class,
         PromotionEntity::class,
+        DepositEntity::class, DepositLineEntity::class, DepositPaymentEntity::class,
     ],
-    version = 29,
+    version = 30,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
@@ -94,4 +98,5 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun pictures(): PictureDao
     abstract fun notes(): CreditNoteDao
     abstract fun promotions(): PromotionDao
+    abstract fun deposits(): DepositDao
 }

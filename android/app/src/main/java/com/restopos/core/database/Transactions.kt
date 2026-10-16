@@ -95,6 +95,9 @@ data class TicketLineEntity(
     val price_kind: String? = null,
     val price_label: String? = null,
     val price_by: String? = null,
+    // the deposit line this line hands over (server 0113): sold at the price
+    // the deposit kept, it moves no stock (the deposit took it off the shelf)
+    val deposit_line_id: String? = null,
 )
 
 @Entity(tableName = "ticket_line_modifiers", primaryKeys = ["line_id", "modifier_id"])

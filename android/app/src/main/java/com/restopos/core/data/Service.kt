@@ -489,6 +489,22 @@ class ServiceRepository @Inject constructor(
         }, OfficePayloads.kitchenNotesSave(notes, staff.approvedBy("settings.device", approver)))
     }
 
+    // A shop's deposits (server 0113): whether they are taken, what a cancel
+    // does with the money, the date offered, what happens past it, and
+    // whether a customer is needed. The same for every till of the shop.
+    suspend fun saveDeposits(on: Boolean?, cancel: String?, days: Int?, overdue: String?, grace: Int?, customer: Boolean?, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("settings.device", "change the deposit settings", approver)
+        ask("settings.save", { code ->
+            when (code) {
+                "bad-payload" -> "Days are whole numbers: 1 to 365 to hold goods, 0 to 365 of grace."
+                "forbidden" -> "You are not allowed to change the settings. Ask a manager."
+                "unknown-op" -> "The server has to be updated before this can be changed from a till."
+                null -> "The server refused it."
+                else -> "The server refused it ($code)."
+            }
+        }, OfficePayloads.depositsSave(on, cancel, days, overdue, grace, customer, staff.approvedBy("settings.device", approver)))
+    }
+
     // The minutes before an order for later is due that the tills ring; 0 is
     // off (server 0111). The same for every till of the business.
     suspend fun saveDueReminder(minutes: Int, approver: StaffMember? = null): Result<Unit> = runCatching {

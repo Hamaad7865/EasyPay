@@ -393,4 +393,22 @@ object Migrations {
             db.execSQL("ALTER TABLE `items` ADD COLUMN `parts` TEXT NOT NULL DEFAULT '[]'")
         }
     }
+
+    // 29 -> 30: a shop's deposits (server 0113). Nothing is held yet: the
+    // three tables start empty, and the two columns are empty on every row
+    // there is. The shop's Deposit type arrives with the next pull.
+    val V29_V30 = object : Migration(29, 30) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `deposits` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `device_id` TEXT NOT NULL, `number` TEXT NOT NULL, `customer_id` TEXT, `collect_by` TEXT NOT NULL, `status` TEXT NOT NULL, `total` INTEGER NOT NULL, `paid` INTEGER NOT NULL, `given_back` INTEGER NOT NULL, `used` INTEGER NOT NULL, `kept` INTEGER NOT NULL, `owed` INTEGER NOT NULL, `noted` INTEGER NOT NULL, `cancel_outcome` TEXT, `cancel_reason` TEXT, `auto_cancelled` INTEGER NOT NULL, `credit_note_id` TEXT, `created_by` TEXT, `device_time` INTEGER NOT NULL, `cancelled_at` INTEGER, `server_seq` INTEGER, `pulled` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_deposits_number` ON `deposits` (`number`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_deposits_status` ON `deposits` (`status`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_deposits_customer_id` ON `deposits` (`customer_id`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `deposit_lines` (`id` TEXT NOT NULL, `deposit_id` TEXT NOT NULL, `item_id` TEXT NOT NULL, `variant_id` TEXT NOT NULL, `name` TEXT NOT NULL, `qty` INTEGER NOT NULL, `qty_collected` INTEGER NOT NULL, `unit_price` INTEGER NOT NULL, `list_price` INTEGER, `price_kind` TEXT, `price_label` TEXT, `price_by` TEXT, `sort` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_deposit_lines_deposit_id` ON `deposit_lines` (`deposit_id`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `deposit_payments` (`id` TEXT NOT NULL, `deposit_id` TEXT NOT NULL, `payment_type_id` TEXT NOT NULL, `kind` TEXT NOT NULL, `amount` INTEGER NOT NULL, `tendered` INTEGER, `change` INTEGER NOT NULL, `shift_id` TEXT, `device_id` TEXT, `employee_id` TEXT, `device_time` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_deposit_payments_deposit_id` ON `deposit_payments` (`deposit_id`)")
+            db.execSQL("ALTER TABLE `ticket_lines` ADD COLUMN `deposit_line_id` TEXT")
+            db.execSQL("ALTER TABLE `cash_movements` ADD COLUMN `deposit_id` TEXT")
+        }
+    }
 }

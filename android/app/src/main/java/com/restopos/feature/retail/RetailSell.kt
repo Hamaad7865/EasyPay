@@ -52,6 +52,7 @@ import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.DiscountEntity
 import com.restopos.core.database.ItemEntity
 import com.restopos.core.database.ReceiptEntity
+import com.restopos.core.database.free
 import com.restopos.core.ui.Caps
 import com.restopos.core.ui.FastKey
 import com.restopos.core.ui.Field
@@ -100,17 +101,18 @@ private const val BARS = "M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12"
 // onNote: a credit note's slip was scanned here; its number goes to Pay.
 // onFast: the sale paid in cash, the exact amount, without the payment screen.
 @Composable
-fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit, onFast: () -> Unit, onReceipts: () -> Unit, onReceipt: (String) -> Unit, onStock: () -> Unit, onNote: (String) -> Unit = {}) {
+// onDeposits: the Deposits screen, on the deposit whose slip was scanned if any (0113).
+fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit, onFast: () -> Unit, onReceipts: () -> Unit, onReceipt: (String) -> Unit, onStock: () -> Unit, onNote: (String) -> Unit = {}, onDeposits: (String?) -> Unit = {}) {
     val ui by vm.ui.collectAsState()
     val picking by vm.picking.collectAsState()
     val asking by vm.asking.collectAsState()
     val parked by vm.parked.collectAsState()
     val exchange by vm.exchange.collectAsState()
-    var sheet by remember { mutableStateOf<String?>(null) } // parked | discount | customer | clear | more | note | in | out
+    var sheet by remember { mutableStateOf<String?>(null) } // parked | discount | customer | clear | more | note | in | out | deposit | depositCustomer
     var noting by remember { mutableStateOf<SaleLine?>(null) }
     LaunchedEffect(Unit) { vm.open() }
     // while this screen is open, a scanned barcode rings its product up, and a receipt's opens the receipt
-    LaunchedEffect(Unit) { Scanner.codes.collect { vm.scanned(it, onReceipt, onNote) } }
+    LaunchedEffect(Unit) { Scanner.codes.collect { vm.scanned(it, onReceipt, onNote, onDeposit = { n -> onDeposits(n) }) } }
 
     // On a screen that is not tall (a 10-inch, where the till is drawn larger: core/ui/ScreenFit)
     // the sale gives way, as an order's does: its head, its keys and Pay are a little
@@ -122,7 +124,7 @@ fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit
         Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Products(vm, narrow, Modifier.weight(1f))
             Sale(
-                ui, parked.size, exchange, vm, low, narrow, onParked = { sheet = "parked" }, onCustomer = { sheet = "customer" }, onDiscount = { sheet = "discount" },
+                ui, parked.size, exchange, vm, low, narrow, onParked = { sheet = "parked" }, onCustomer = { sheet = "customer" }, onDiscount = { sheet = "discount" }, onDeposit = { sheet = "deposit" },
                 onClear = { sheet = "clear" }, onMore = { sheet = "more" }, onSaleNote = { sheet = "note" }, onNote = { noting = it }, onPay = onPay, onFast = onFast,
             )
         }
@@ -140,6 +142,7 @@ fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit
             when (pick) {
                 "receipts" -> { sheet = null; onReceipts() }
                 "stock" -> { sheet = null; onStock() }
+                "deposits" -> { sheet = null; onDeposits(null) }
                 "drawer" -> { sheet = null; more.openDrawer() }
                 else -> sheet = pick // note | in | out
             }
@@ -148,6 +151,12 @@ fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit
         "parked" -> ParkedSheet(parked.map { ParkedRow(it.id, it.ticket.order_no ?: "Sale", it.lines.filter { l -> !l.line.paid }.size, it.due, it.openedAt) }, onDismiss = { sheet = null }) { id -> vm.resume(id); sheet = null }
         "discount" -> DiscountSheet(ui, vm) { sheet = null }
         "customer" -> CustomerPicker(ui.ticket?.customer_id, what = "sale", onDismiss = { sheet = null }) { id -> vm.setCustomer(id); sheet = null }
+        // a deposit (0113): the customer is picked from the sheet, which opens again after
+        "depositCustomer" -> CustomerPicker(ui.ticket?.customer_id, what = "deposit", onDismiss = { sheet = "deposit" }) { id -> vm.setCustomer(id); sheet = "deposit" }
+        "deposit" -> {
+            val dv: DepositsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+            TakeDepositSheet(ui.totals.total, ui.ticket?.customer_id, ui.customer, dv, onCustomer = { sheet = "depositCustomer" }, onDismiss = { sheet = null }) { sheet = null; vm.open() }
+        }
         "clear" -> Sheet(onDismiss = { sheet = null }, width = 520.dp) {
             SheetHead("Clear this sale?", "Every line comes off it. Nothing was paid, so nothing is refunded.") { sheet = null }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -164,7 +173,7 @@ fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit
 private fun Sale(
     ui: SaleUi, parked: Int, exchange: ExchangeDraft?, vm: RetailViewModel, low: Boolean, narrow: Boolean,
     onParked: () -> Unit, onCustomer: () -> Unit, onDiscount: () -> Unit, onClear: () -> Unit, onMore: () -> Unit, onSaleNote: () -> Unit,
-    onNote: (SaleLine) -> Unit, onPay: () -> Unit, onFast: () -> Unit,
+    onNote: (SaleLine) -> Unit, onPay: () -> Unit, onFast: () -> Unit, onDeposit: () -> Unit = {},
 ) {
     Column(Modifier.width(SellFit.sale(narrow)).fillMaxHeight().clip(RoundedCornerShape(20.dp)).background(V.Panel)) {
         // the sale and how many things are on it; the sales set aside; More; clearing it
@@ -211,6 +220,19 @@ private fun Sale(
                     T("${ex.lines} ${if (ex.lines == 1) "line comes" else "lines come"} back, worth ${Money.format(ex.credit)}. Nothing is refunded until this sale is paid.", 12.sp, 600, V.Text2, lines = 2)
                 }
                 IconKey(VI.Close, bg = Color.Transparent, tint = V.Text2) { vm.cancelExchange() }
+            }
+        }
+
+        // a collection (0113): these goods were held on a deposit, which pays first
+        ui.collecting?.let { d ->
+            Row(
+                Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp).clip(RoundedCornerShape(14.dp)).background(V.GreenWash).padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    T("Collecting · ${d.number}", 14.sp, 800, V.GreenText)
+                    T("${Money.format(d.free.coerceAtLeast(0))} paid on it goes first at Pay. The prices are the ones the deposit kept.", 12.sp, 600, V.Text2, lines = 2)
+                }
             }
         }
 
@@ -263,12 +285,19 @@ private fun Sale(
                 ui.count, Money.format(if (state is ReturnRules.PayState.Short) exchange!!.credit else if (due < 0) -due else due), low,
             )
             val key = if (low) 40.dp else 44.dp
+            // Deposit (0113): the sale held for the customer, with part paid; not on an exchange or a collection
+            val deposit = ui.deposits && exchange == null && ui.collecting == null
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 VBtn("Park sale", Modifier.weight(1f), height = key, radius = 12.dp, pad = 10.dp, fg = if (ui.empty) V.Off else V.Text) { vm.park() }
                 VBtn(
-                    if (ui.discount != null) "Discount · ${ui.discount.name}" else "Discount on sale", Modifier.weight(1.35f),
-                    height = key, radius = 12.dp, pad = 10.dp, fg = if (ui.empty) V.Off else V.Text, icon = VI.Tag, onClick = onDiscount,
+                    if (ui.discount != null) "Discount · ${ui.discount.name}" else if (deposit) "Discount" else "Discount on sale", Modifier.weight(if (deposit) 1f else 1.35f),
+                    height = key, radius = 12.dp, pad = 10.dp, fg = if (ui.empty) V.Off else V.Text, icon = if (deposit) null else VI.Tag, onClick = onDiscount,
                 )
+                if (deposit) VBtn("Deposit", Modifier.weight(1f), height = key, radius = 12.dp, pad = 10.dp, fg = if (ui.empty) V.Off else V.BlueText, weight = 800) {
+                    // a deposit keeps each line's price: a discount on the whole sale has no line to stay on
+                    if (ui.discount != null) com.restopos.core.ui.Toaster.say("Take the discount off the sale first, or give it on the lines: a deposit keeps each line's price.")
+                    else if (!ui.empty && vm.mayPay()) onDeposit()
+                }
             }
             GoRow(low) {
                 // an exchange is settled on the payment screen, which asks how the difference goes
@@ -332,7 +361,15 @@ private fun Line(l: SaleLine, open: Boolean, vm: RetailViewModel, onNote: (SaleL
                 }
             }
         }
-        if (open) {
+        if (open && line.deposit_line_id != null) {
+            // a line from a deposit is sold at the price the deposit kept: it is taken off, or left
+            Row(Modifier.fillMaxWidth().inSight().padding(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                T("From a deposit, at the price it kept", 13.sp, 600, V.Text2, Modifier.weight(1f))
+                Box(Modifier.height(44.dp).press { vm.remove(line.id) }.clip(RoundedCornerShape(22.dp)).background(V.RedWash).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+                    T("Leave it on the deposit", 14.sp, 700, V.RedText)
+                }
+            }
+        } else if (open) {
             FlowRow(Modifier.fillMaxWidth().inSight().padding(start = 12.dp, end = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val label = line.price_label.takeIf { line.price_kind == "discount" }
                 LineKey("No discount", line.price_kind == null) { vm.noDiscount(l) }
@@ -661,7 +698,9 @@ private fun SaleMore(ui: SaleUi, vm: RetailViewModel, onDismiss: () -> Unit, onP
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             MoreKey(VI.Minus, "Cash out", "Money taken out of the drawer", Modifier.weight(1f)) { onPick("out") }
-            Spacer(Modifier.weight(1f))
+            // a shop's deposits (0113): goods held for customers
+            if (ui.deposits || ui.depositsPending) MoreKey(VI.Receipt, "Deposits", "Goods held for customers: pay, collect, cancel", Modifier.weight(1f)) { onPick("deposits") }
+            else Spacer(Modifier.weight(1f))
         }
     }
 }

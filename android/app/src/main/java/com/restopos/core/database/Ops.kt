@@ -58,6 +58,8 @@ data class CashMoveEntity(
     val device_time: Long = System.currentTimeMillis(),
     val deleted_at: String? = null,
     val server_seq: Long? = null,
+    // a deposit's cash (server 0113): in the drawer, but not a pay-in or pay-out anyone made
+    val deposit_id: String? = null,
 )
 
 @Entity(tableName = "day_closes", indices = [Index("device_id")])
