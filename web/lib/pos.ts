@@ -349,8 +349,8 @@ export const TAKEN = `
     join payment_types pt on pt.tenant_id = r.tenant_id and pt.id = p.payment_type_id
    where r.tenant_id = $1 and r.device_id = $2 and r.deleted_at is null
      and (coalesce(r.device_time, r.created_at) at time zone $4::text)::date = $3::date
-     -- the built-in kinds hold no money taken: returned goods (0079), a credit note (0109), a deposit (0113)
-     and pt.kind not in ('exchange', 'credit_note', 'deposit')
+     -- the built-in kinds hold no money taken: returned goods (0079), a credit note (0109), a deposit (0113), a sale on account (0114)
+     and pt.kind not in ('exchange', 'credit_note', 'deposit', 'account')
    group by pt.name, pt.kind, pt.sort_order
    order by pt.sort_order, pt.name`;
 
@@ -389,7 +389,7 @@ export const CLOSURES = `
                     from receipts r
                     join receipt_payments_effective p on p.tenant_id = r.tenant_id and p.receipt_id = r.id
                     join payment_types pt on pt.tenant_id = r.tenant_id and pt.id = p.payment_type_id
-                     and pt.kind not in ('cash', 'exchange', 'credit_note', 'deposit')
+                     and pt.kind not in ('cash', 'exchange', 'credit_note', 'deposit', 'account')
                    where ${IN_SHIFT("r")}
                    group by pt.name, pt.sort_order
                   having sum(${SIGNED}) <> 0) q), '[]'::jsonb) as non_cash,

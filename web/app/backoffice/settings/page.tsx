@@ -59,6 +59,10 @@ async function saveGeneral(f: FormData) {
                   depositCustomer: f.get("depositCustomer") === "optional" ? ("optional" as const) : ("required" as const),
                 }
               : {}),
+            // customer accounts (0114): the same, for a shop that has them
+            ...(f.has("accountDays")
+              ? { accounts: on(f, "accountsOn") ? ("on" as const) : ("off" as const), accountDays: int(f, "accountDays", 1, 365, 30) }
+              : {}),
           }
         : {
             servicePct: int(f, "servicePct", 0, 30, 0),
@@ -191,10 +195,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     settings: await loadSettings(c, ctx.tenantId),
     // a shop's deposits are an extra (0113): premium and trial carry them, else /admin switches them on
     depositsPaid: shop ? ((await c.query(`select has_feature($1, 'deposits') as ok`, [ctx.tenantId])).rows[0].ok as boolean) : false,
+    // and customer accounts (0114), the same way
+    accountsPaid: shop ? ((await c.query(`select has_feature($1, 'accounts') as ok`, [ctx.tenantId])).rows[0].ok as boolean) : false,
     payments: (
       await c.query(
         `select id, name, kind, opens_drawer, is_active, sort_order from payment_types
-          where tenant_id = $1 and deleted_at is null and kind not in ('exchange', 'credit_note', 'deposit') order by sort_order, name`,
+          where tenant_id = $1 and deleted_at is null and kind not in ('exchange', 'credit_note', 'deposit', 'account') order by sort_order, name`,
         [ctx.tenantId],
       )
     ).rows as { id: string; name: string; kind: string; opens_drawer: boolean; is_active: boolean; sort_order: number }[],
@@ -214,6 +220,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
   const bc = data.barcodes;
   const s = data.settings;
   const depositsPaid = data.depositsPaid;
+  const accountsPaid = data.accountsPaid;
   return (
     <div>
       <PageHead title="POS settings" lede="How the tills behave. A change reaches a till the next time it syncs, which is within a minute when it is online." />
@@ -495,6 +502,36 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                         Optional
                       </label>
                     </div>
+                  </div>
+                </>
+              )}
+            </Card>
+          )}
+          {shop && (
+            <Card title="Customer accounts">
+              {!accountsPaid ? (
+                <p className="muted" style={{ margin: 0 }}>
+                  Customer accounts are an extra for this shop: a named customer takes the goods now and pays later. Ask EasyPay to add them.
+                </p>
+              ) : (
+                <>
+                  <div className="setting">
+                    <div>
+                      <strong>Sell on account</strong>
+                      <small>An On account key on the till's Pay screen, once the sale names a customer. Who may use it is set on the role: Sell on account.</small>
+                    </div>
+                    <label className="check" style={{ margin: 0 }}>
+                      <input type="checkbox" name="accountsOn" defaultChecked={s.accounts !== "off"} /> On
+                    </label>
+                  </div>
+                  <div className="setting">
+                    <div>
+                      <strong>Overdue after</strong>
+                      <small>A bill older than this shows as overdue on Accounts, on the till and on the statement.</small>
+                    </div>
+                    <label className="check" style={{ margin: 0 }}>
+                      <input type="number" name="accountDays" min={1} max={365} defaultValue={s.accountDays} style={{ width: 80 }} /> days
+                    </label>
                   </div>
                 </>
               )}

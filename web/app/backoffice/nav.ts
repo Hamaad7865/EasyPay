@@ -39,7 +39,7 @@ import {
   UserRoundCheck,
   Users,
   UtensilsCrossed,
-  Wallet, PackageCheck } from "lucide-react";
+  Wallet, PackageCheck, BookUser, BookOpenText } from "lucide-react";
 import type { Mode } from "@/lib/mode";
 
 // Every page of the back office, once. The side menu draws its sections and
@@ -132,11 +132,13 @@ export const GROUPS: NavGroup[] = [
     icon: Wallet,
     links: [
       { href: "/backoffice/reports/sales", label: "Sales summary", icon: BarChart3, words: "reports overview revenue gross net totals payments takings" },
+      { href: "/backoffice/reports/journal", label: "Sales journal", icon: BookOpenText, words: "journal de ventes cash basis takings money received period compare taxes vat categories payments methods users accountant" },
       { href: "/backoffice/reports/items", label: "Item sales", icon: ListOrdered, words: "reports products quantity sold categories cost profit margin" },
       { href: "/backoffice/reports/stock", label: "Stock reports", only: "retail", icon: PackageSearch, words: "stock value worth inventory valuation reorder list low to order losses damaged expired lost stolen shrinkage written off not selling slow dead stock" },
       { href: "/backoffice/receipts", label: "Receipts", icon: Receipt, words: "refund reprint payment correction bills paid orders" },
       { href: "/backoffice/credit-notes", label: "Credit notes", only: "retail", icon: Ticket, words: "return exchange slip balance voucher cancel void" },
       { href: "/backoffice/deposits", label: "Deposits", only: "retail", icon: PackageCheck, words: "layaway lay-by layby reserve hold held put aside part payment collect overdue" },
+      { href: "/backoffice/accounts", label: "Accounts", only: "retail", icon: BookUser, words: "customer accounts on account credit owe owed debt debtors receivables reconciliation statement aged balance overdue pay later" },
       { href: "/backoffice/reports/day-close", label: "Day closing", icon: CalendarCheck, words: "reports z report end of day open day close day cash drawer count float shifts x report sales period till counts" },
       { href: "/backoffice/reports/tax", label: "Tax", icon: Percent, words: "reports vat report returns" },
     ],

@@ -83,7 +83,11 @@ export function permGroups(mode: Mode): PermGroup[] {
     "sale.apply_discount": "Give a discount, on a sale or on one line",
     "sale.void_line": "Take a line off a sale",
   };
-  const more: Record<string, [string, string][]> = { "sale.apply_restricted_discount": [["sale.change_price", "Change the price of one line of a sale"]] };
+  // and one to put a sale on a customer's account (0114)
+  const more: Record<string, [string, string][]> = {
+    "sale.apply_restricted_discount": [["sale.change_price", "Change the price of one line of a sale"]],
+    "sale.refund": [["sale.on_account", "Sell on account"]],
+  };
   return [...GROUPS.map((g) => ({ ...g, perms: g.perms.flatMap(([k, label]): [string, string][] => [[k, said[k] ?? label], ...(more[k] ?? [])]) })), STOCK];
 }
 

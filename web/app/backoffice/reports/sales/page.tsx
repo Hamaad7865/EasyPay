@@ -48,7 +48,7 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
         `select pt.name, count(*)::int as n, sum(r.sign * p.amount) as amount
            from r join receipt_payments_effective p on p.tenant_id = $1 and p.receipt_id = r.id
            left join payment_types pt on pt.tenant_id = $1 and pt.id = p.payment_type_id
-          where coalesce(pt.kind, '') not in ('exchange', 'credit_note', 'deposit')
+          where coalesce(pt.kind, '') not in ('exchange', 'credit_note', 'deposit', 'account')
           group by pt.name order by sum(r.sign * p.amount) desc`,
       ),
       // credit notes: what refunds put on them and what sales took off them, in these days
@@ -80,6 +80,23 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
                 a,
               )
             ).rows[0] as { taken: string; back: string; used: string; noted: string; kept: string })
+          : null,
+      // a shop's customer accounts (0114): what of these sales went on accounts and
+      // what returns took off them (no money moved), and money paid on accounts in
+      // these days (money in, never a sale)
+      accounts:
+        ctx.mode === "retail"
+          ? ((
+              await c.query(
+                `with r as (${RECEIPTS})
+                 select coalesce((select sum(r.sign * p.amount) from r join receipt_payments_effective p on p.tenant_id = $1 and p.receipt_id = r.id
+                                    join payment_types pt on pt.tenant_id = $1 and pt.id = p.payment_type_id and pt.kind = 'account'), 0) as on_account,
+                        coalesce((select sum(q.amount) from account_payments q join stores s on s.tenant_id = q.tenant_id and s.id = q.store_id
+                                   where q.tenant_id = $1 and (q.device_time at time zone s.timezone)::date between $2::date and $3::date
+                                     and ($4::uuid is null or q.employee_id = $4::uuid)), 0) as paid_in`,
+                a,
+              )
+            ).rows[0] as { on_account: string; paid_in: string })
           : null,
       dining: await q<Split>(
         `select o.name, count(*)::int as n, sum(r.signed_total) as amount from r
@@ -131,7 +148,11 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
       ) : (
         <>
           <div className="stats">
-            <Stat label="Total collected" value={m(t.total)} note={`${t.sales} receipts on ${t.orders} orders`} />
+            <Stat
+              label="Total collected"
+              value={m(t.total)}
+              note={`${t.sales} receipts on ${t.orders} orders` + (d.accounts && Number(d.accounts.on_account) !== 0 ? `; ${m(d.accounts.on_account)} of it on account, not yet paid` : "")}
+            />
             <Stat label="Sales before refunds" value={m(t.gross)} note={discounts !== 0 ? `after ${m(discounts)} of discounts` : undefined} />
             <Stat label="Refunds" value={m(t.refunded)} note={`${t.refunds} ${t.refunds === 1 ? "refund" : "refunds"}`} />
             <Stat label="Net of tax" value={m(net)} note={`tax ${m(t.tax)}`} />
@@ -166,6 +187,13 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
                 <p className="muted">
                   Deposits: {m(d.deposits.taken)} taken, {m(d.deposits.used)} used on collected goods, {m(d.deposits.back)} given back, {m(d.deposits.noted)} put on credit notes,{" "}
                   {m(d.deposits.kept)} kept by the shop. A deposit is not a sale: the sale is written when the goods are collected.
+                </p>
+              )}
+              {d.accounts && (Number(d.accounts.on_account) !== 0 || Number(d.accounts.paid_in) !== 0) && (
+                <p className="muted">
+                  Customer accounts: {m(d.accounts.on_account)} of these sales went on customers' accounts, less what returns took off them; it is in the
+                  total and in no payment method, since no money came in. {m(d.accounts.paid_in)} was paid on accounts in these days: money taken, not a
+                  sale, so it is in neither the total nor the methods above. See Accounts.
                 </p>
               )}
             </>

@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import { anyDeposits, depositsJson, type DepositFigures } from "@/lib/deposits";
+import { accountsJson, anyAccounts, type AccountFigures } from "@/lib/accounts";
 import { CalendarCheck } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
@@ -30,6 +31,7 @@ type Close = {
   payments: { name: string | null; amount: number; n: number }[];
   notes: { issued: number; redeemed: number };
   deposits: DepositFigures;
+  accounts: AccountFigures;
   cats: { name: string | null; qty: number; amount: number }[];
   cash: { in: number; out: number; list: { type: string; amount: number; reason: string | null; who: string | null }[] };
   // takeaways nobody came for and that were not paid (0107): lost, and in no total
@@ -43,6 +45,7 @@ type Open = {
   payments: { name: string | null; kind: string | null; amount: number; n: number }[];
   notes: { issued: number; redeemed: number };
   deposits: DepositFigures;
+  accounts: AccountFigures;
   sales: { sales: number; refunds: number; gross: number; refunded: number; discounts: number; changed: number };
   cash: { in: number; out: number; drawer: number; list: { type: string; amount: number; reason: string | null; at: string; who: string | null }[] };
   counts: Count[];
@@ -91,9 +94,10 @@ ${given(shop)},
             from (select pt.name, sum(case when r.type = 'refund' then -p.amount else p.amount end) as amount, count(*) as n
                     from receipts r join receipt_payments_effective p on p.tenant_id = r.tenant_id and p.receipt_id = r.id
                     left join payment_types pt on pt.tenant_id = r.tenant_id and pt.id = p.payment_type_id
-                   where ${W} and coalesce(pt.kind, '') not in ('exchange', 'credit_note', 'deposit') group by pt.name) q) as payments,
+                   where ${W} and coalesce(pt.kind, '') not in ('exchange', 'credit_note', 'deposit', 'account') group by pt.name) q) as payments,
          ${NOTES(W)} as notes,
          ${depositsJson("dc.tenant_id", "dc.device_id", "coalesce(dc.from_time, '-infinity'::timestamptz)", "dc.closed_at", W)} as deposits,
+         ${accountsJson("dc.tenant_id", "dc.device_id", "coalesce(dc.from_time, '-infinity'::timestamptz)", "dc.closed_at", W)} as accounts,
          (select coalesce(json_agg(json_build_object('name', q.name, 'qty', q.qty, 'amount', q.amount) order by q.amount desc), '[]'::json)
             from (select c.name, sum(case when r.type = 'refund' then -rl.qty else rl.qty end) as qty,
                          sum((case when r.type = 'refund' then -1 else 1 end) * (line_amount(rl.unit_price, rl.qty)
@@ -143,9 +147,10 @@ const openSql = (shop: boolean) => `
             from (select pt.name, pt.kind, sum(case when r.type = 'refund' then -p.amount else p.amount end) as amount, count(*) as n
                     from receipts r join receipt_payments_effective p on p.tenant_id = r.tenant_id and p.receipt_id = r.id
                     left join payment_types pt on pt.tenant_id = r.tenant_id and pt.id = p.payment_type_id
-                   where ${WINDOW} and coalesce(pt.kind, '') not in ('exchange', 'credit_note', 'deposit') group by pt.name, pt.kind) q) as payments,
+                   where ${WINDOW} and coalesce(pt.kind, '') not in ('exchange', 'credit_note', 'deposit', 'account') group by pt.name, pt.kind) q) as payments,
          ${NOTES(WINDOW)} as notes,
          ${depositsJson("sh.tenant_id", "sh.device_id", "sh.opened_at - interval '1 millisecond'", "coalesce(sh.closed_at, now())", WINDOW)} as deposits,
+         ${accountsJson("sh.tenant_id", "sh.device_id", "sh.opened_at - interval '1 millisecond'", "coalesce(sh.closed_at, now())", WINDOW)} as accounts,
          (select json_build_object('sales', count(*) filter (where r.type = 'sale'), 'refunds', count(*) filter (where r.type = 'refund'),
                    'gross', coalesce(sum(r.total) filter (where r.type = 'sale'), 0),
                    'refunded', coalesce(sum(r.total) filter (where r.type = 'refund'), 0),
@@ -262,6 +267,7 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
                     <dt className="total">Total</dt><dd className="total">{m(sh.payments.reduce((a, p) => a + Number(p.amount), 0))}</dd>
                     {(Number(sh.notes.issued) !== 0 || Number(sh.notes.redeemed) !== 0) && (<><dt>Credit notes issued</dt><dd>{m(sh.notes.issued)}</dd><dt>Credit notes redeemed</dt><dd>{m(sh.notes.redeemed)}</dd></>)}
                     {anyDeposits(sh.deposits) && <DepositRows d={sh.deposits} m={m} />}
+                    {anyAccounts(sh.accounts) && <AccountRows a={sh.accounts} m={m} />}
                   </dl>
                 </div>
                 <div>
@@ -348,6 +354,7 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
                     {z.payments.length === 0 && <dt className="muted">Nothing taken</dt>}
                     {(Number(z.notes.issued) !== 0 || Number(z.notes.redeemed) !== 0) && (<><dt>Credit notes issued</dt><dd>{m(z.notes.issued)}</dd><dt>Credit notes redeemed</dt><dd>{m(z.notes.redeemed)}</dd></>)}
                     {anyDeposits(z.deposits) && <DepositRows d={z.deposits} m={m} />}
+                    {anyAccounts(z.accounts) && <AccountRows a={z.accounts} m={m} />}
                   </dl>
                 </div>
                 <div>
@@ -417,6 +424,24 @@ function DepositRows({ d, m }: { d: DepositFigures; m: (v: string | number) => s
       {Number(d.back) !== 0 && (<><dt>Deposits given back</dt><dd>{m(-Number(d.back))}</dd></>)}
       {Number(d.noted) !== 0 && (<><dt>Deposits put on credit notes</dt><dd>{m(d.noted)}</dd></>)}
       {Number(d.kept) !== 0 && (<><dt>Deposits kept by the shop</dt><dd>{m(d.kept)}</dd></>)}
+    </>
+  );
+}
+
+// A shop's customer accounts in a closing (0114): what was sold on account and
+// taken off accounts by returns (no money moved, so in no method above), and
+// the money taken on accounts by method (money in, never a sale).
+function AccountRows({ a, m }: { a: AccountFigures; m: (v: string | number) => string }) {
+  return (
+    <>
+      {Number(a.sold) !== 0 && (<><dt>Sold on account</dt><dd>{m(a.sold)}</dd></>)}
+      {Number(a.returned) !== 0 && (<><dt>Returned off accounts</dt><dd>{m(-Number(a.returned))}</dd></>)}
+      {a.taken.map((t) => (
+        <span key={"a" + (t.name ?? "")} style={{ display: "contents" }}>
+          <dt>Paid on accounts, {t.name ?? "Unknown"} ({t.n})</dt>
+          <dd>{m(t.amount)}</dd>
+        </span>
+      ))}
     </>
   );
 }

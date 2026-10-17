@@ -481,9 +481,13 @@ export function TenantView({
                   <label className="check" style={{ margin: 0 }}>
                     <input type="checkbox" name="deposits" defaultChecked={(tenant.features ?? []).includes("deposits")} /> Deposits
                   </label>
+                  <label className="check" style={{ margin: 0 }}>
+                    <input type="checkbox" name="accounts" defaultChecked={(tenant.features ?? []).includes("accounts")} /> Customer accounts
+                  </label>
                   <span className="help">
-                    Goods held for a customer who pays part now and collects later. Premium and trial carry it already; switch it on here for a client on
-                    another plan who paid for it (the offline edition, a Standard shop).
+                    Deposits: goods held for a customer who pays part now and collects later. Customer accounts: a named customer takes goods now and pays
+                    later, with statements. Premium and trial carry both already; switch one on here for a client on another plan who paid for it (the
+                    offline edition, a Standard shop).
                   </span>
                   <div className="inline">
                     <Submit className="btn-quiet">Save extras</Submit>

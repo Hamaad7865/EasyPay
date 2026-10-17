@@ -50,6 +50,11 @@ export type PosSettings = {
   depositOverdue: "show" | "cancel";
   depositGrace: number;
   depositCustomer: "required" | "optional";
+  // A shop's customer accounts (migration 0114): selling on account on or
+  // off, and after how many days a bill is overdue. Whether the shop has the
+  // extra at all is has_feature on the server, not a setting.
+  accounts: "on" | "off";
+  accountDays: number;
   receipt: { header: string; footer: string; logo: string | null; showLogo: boolean };
   company: { name: string; brn: string; vat: string; address: string; phone: string };
   // The receipt's and the kitchen ticket's designs (Receipt design, lib/papers.ts), as kept:
@@ -82,6 +87,8 @@ export const DEFAULT_SETTINGS: PosSettings = {
   depositOverdue: "show",
   depositGrace: 7,
   depositCustomer: "required",
+  accounts: "on",
+  accountDays: 30,
   receipt: { header: "", footer: "Thank you. See you again soon.", logo: null, showLogo: true },
   company: { name: "", brn: "", vat: "", address: "", phone: "" },
   papers: {},
@@ -124,6 +131,8 @@ export function withDefaults(raw: unknown): PosSettings {
     depositOverdue: d.depositOverdue === "cancel" ? "cancel" : "show",
     depositGrace: typeof d.depositGrace === "number" && d.depositGrace >= 0 && d.depositGrace <= 365 ? Math.round(d.depositGrace) : 7,
     depositCustomer: d.depositCustomer === "optional" ? "optional" : "required",
+    accounts: d.accounts === "off" ? "off" : "on",
+    accountDays: typeof d.accountDays === "number" && d.accountDays >= 1 && d.accountDays <= 365 ? Math.round(d.accountDays) : 30,
     receipt: {
       header: str(r.header, DEFAULT_SETTINGS.receipt.header),
       footer: str(r.footer, DEFAULT_SETTINGS.receipt.footer),

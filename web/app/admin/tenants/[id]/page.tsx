@@ -74,14 +74,19 @@ async function openBackOffice(formData: FormData) {
 async function setFeatures(formData: FormData) {
   "use server";
   const { adminId, tenantId } = await tenantOf(formData);
-  const features = formData.get("deposits") === "on" ? ["deposits"] : [];
+  const features = ["deposits", "accounts"].filter((f) => formData.get(f) === "on");
   try {
     await db().query(`select platform.set_tenant_features($1, $2, $3::text[])`, [adminId, tenantId, features]);
   } catch (e) {
     back(tenantId, "error", adminMessage(e));
   }
   revalidatePath(`/admin/tenants/${tenantId}`);
-  back(tenantId, "notice", features.length ? "Deposits switched on. The tills take it at their next sync; a tablet working alone when it gets changes from EasyPay." : "Deposits switched off. Deposits already taken can still be paid, collected and cancelled.");
+  back(
+    tenantId,
+    "notice",
+    (features.length ? `Extras now: ${features.map((f) => (f === "accounts" ? "customer accounts" : f)).join(", ")}. The tills take it at their next sync; a tablet working alone when it gets changes from EasyPay.` : "No extras now.") +
+      " Deposits already taken and bills already on account can still be dealt with at a till.",
+  );
 }
 
 async function setBusinessType(formData: FormData) {

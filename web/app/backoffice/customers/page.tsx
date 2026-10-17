@@ -49,6 +49,8 @@ type Row = {
   id: string; name: string; phone: string | null; email: string | null; note: string | null; orders: number; spent: string;
   // a shop's deposits still open for this customer (0113)
   deposits: { id: string; number: string; status: string; collect_by: string; to_pay: string; owed: string; free: string; over: number }[];
+  // what a shop's customer owes on account (0114), less what was paid over
+  owes: string;
 };
 // Every customer comes down once and the table finds among them as you type.
 // A list longer than this is cut, and the table says so.
@@ -73,7 +75,12 @@ export default async function CustomersPage({ searchParams }: { searchParams: Se
                                  'over', greatest(0, deposit_today(x.tenant_id, x.store_id) - x.collect_by)) order by x.collect_by), '[]'::jsonb)
                          from deposits x where x.tenant_id = cu.tenant_id and x.customer_id = cu.id and x.deleted_at is null and ${stillOpen("x")})`
                     : `'[]'::jsonb`
-                } as deposits
+                } as deposits,
+                ${
+                  ctx.mode === "retail"
+                    ? `(select coalesce(sum(account_owed(b)), 0) from account_bills b where b.tenant_id = cu.tenant_id and b.customer_id = cu.id and b.deleted_at is null)`
+                    : `0`
+                } as owes
            from customers cu
           where cu.tenant_id = $1 and cu.deleted_at is null
           order by lower(cu.name) limit ${MOST + 1}`,
@@ -102,6 +109,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: Se
             : `collected, ${money(Number(x.free), d.s.decimals)} paid over`,
       late: x.status === "open" && x.over > 0,
     })),
+    owes: Number(r.owes),
+    owes_shown: money(Math.abs(Number(r.owes)), d.s.decimals),
   }));
   const start = startOf(sp, "q", "seen", "sort", "open");
   return (

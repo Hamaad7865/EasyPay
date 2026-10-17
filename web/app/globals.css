@@ -1858,3 +1858,23 @@ button[aria-busy="true"]::after {
 .sheet-hint { font-size: 12.5px; }
 .sheet-foot { border-bottom: 1px solid var(--line); }
 @media (max-width: 900px) { .sheet-status { width: 220px; } .sheet-hint { display: none; } }
+
+/* ---- a customer's statement of account (0114): paper, so white with black ink whatever the look ---- */
+.statement { max-width: 794px; margin: 0 auto; padding: 40px 44px; background: #fff; color: #111; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; line-height: 1.45; }
+.statement .st-head { display: flex; justify-content: space-between; gap: 24px; padding-bottom: 14px; border-bottom: 2px solid #111; }
+.statement .st-shop { font-size: 20px; font-weight: 800; }
+.statement .st-title { text-align: right; font-weight: 800; letter-spacing: 0.04em; font-size: 16px; }
+.statement .st-title small, .statement .st-to small { display: block; font-weight: 400; letter-spacing: 0; color: #555; font-size: 12px; }
+.statement .st-to { margin-top: 16px; padding: 10px 12px; background: #f1f3f5; border: 1px solid #d7dee5; border-radius: 6px; }
+.statement .st-who { font-size: 15px; font-weight: 700; }
+.statement h3 { margin: 18px 0 6px; font-size: 13px; color: #111; }
+.statement table { width: 100%; border-collapse: collapse; background: #fff; color: #111; box-shadow: none; border: 1px solid #d7dee5; }
+.statement th { background: #f1f3f5; color: #555; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+.statement th, .statement td { padding: 7px 10px; border-bottom: 1px solid #d7dee5; text-align: left; }
+.statement .num { text-align: right; font-variant-numeric: tabular-nums; }
+.statement tfoot td { font-weight: 800; border-bottom: 0; }
+.statement .st-foot { margin-top: 22px; font-size: 11.5px; color: #555; }
+@media print {
+  .statement { max-width: none; border: 0; border-radius: 0; padding: 0; }
+  @page { size: A4; margin: 14mm; }
+}

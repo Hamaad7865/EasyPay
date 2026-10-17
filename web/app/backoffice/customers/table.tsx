@@ -9,6 +9,8 @@ export type Customer = {
   id: string; name: string; phone: string | null; email: string | null; note: string | null; orders: number; spent: number; spent_shown: string;
   // a shop's deposits still open for them (0113), each in words
   deposits: { id: string; number: string; words: string; late: boolean }[];
+  // what they owe on account (0114); below nothing the shop owes them
+  owes: number; owes_shown: string;
 };
 type Action = (f: FormData) => Promise<void>;
 
@@ -18,7 +20,7 @@ const SEEN = [
   ["never", "Never ordered"],
 ] as const;
 // a shop also finds who has goods held for them
-const SEEN_SHOP = [...SEEN, ["deposit", "Have a deposit"]] as const;
+const SEEN_SHOP = [...SEEN, ["deposit", "Have a deposit"], ["owes", "Owe money"]] as const;
 
 // The customers as one table: who they are, how to reach them, and what they
 // have ordered. The box finds one by name, phone, email or note as you type;
@@ -34,13 +36,14 @@ export function CustomersTable({ rows, capped, start, save, remove, shop = false
   const shown = t.sorted(
     rows.filter(
       (r) =>
-        (!seen || (seen === "ordered" ? r.orders > 0 : seen === "never" ? r.orders === 0 : seen === "deposit" ? r.deposits.length > 0 : true)) &&
+        (!seen || (seen === "ordered" ? r.orders > 0 : seen === "never" ? r.orders === 0 : seen === "deposit" ? r.deposits.length > 0 : seen === "owes" ? r.owes > 0 : true)) &&
         (byPhone ? digits.get(r.id)!.includes(typed) : t.finds(hay.get(r.id)!)),
     ),
     {
       name: (a, b) => a.name.localeCompare(b.name),
       orders: (a, b) => a.orders - b.orders || a.name.localeCompare(b.name),
       spent: (a, b) => a.spent - b.spent || a.name.localeCompare(b.name),
+      owes: (a, b) => a.owes - b.owes || a.name.localeCompare(b.name),
     },
   );
 
@@ -71,10 +74,11 @@ export function CustomersTable({ rows, capped, start, save, remove, shop = false
               <SortTh t={t} k="orders" label="Orders" num />
               <SortTh t={t} k="spent" label="Spent" num />
               {shop && <th>Deposits</th>}
+              {shop && <SortTh t={t} k="owes" label="Owes" num />}
             </tr>
           </thead>
           <tbody>
-            {shown.length === 0 && <NoMatch t={t} cols={shop ? 8 : 7} what="customer" filters={["seen"]} />}
+            {shown.length === 0 && <NoMatch t={t} cols={shop ? 9 : 7} what="customer" filters={["seen"]} />}
             {shown.map((r) => {
               const on = t.isOpen(r.id);
               return [
@@ -104,10 +108,21 @@ export function CustomersTable({ rows, capped, start, save, remove, shop = false
                       )}
                     </td>
                   )}
+                  {shop && (
+                    <td className="num">
+                      {r.owes !== 0 ? (
+                        <Link href={`/backoffice/accounts/${r.id}`} onClick={(e) => e.stopPropagation()} className={r.owes < 0 ? "neg" : "strong"}>
+                          {r.owes < 0 ? `${r.owes_shown} paid over` : r.owes_shown}
+                        </Link>
+                      ) : (
+                        <span className="muted">Nothing</span>
+                      )}
+                    </td>
+                  )}
                 </tr>,
                 on && (
                   <tr key={r.id + "-open"} className="open-body">
-                    <td colSpan={shop ? 8 : 7}>
+                    <td colSpan={shop ? 9 : 7}>
                       <div className="open-panel">
                         <form id={"c" + r.id} action={save} className="bo-toolbar" style={{ margin: 0 }}>
                           <input type="hidden" name="id" value={r.id} />

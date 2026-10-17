@@ -377,6 +377,107 @@ const id = () => crypto.randomUUID();
       check('D6 Day closing says what went on credit notes', !p.error && p.says.includes('Deposits put on credit notes Rs 30.00'), p.error || (p.says.match(/Deposits[^R]*Rs [\d.,]+/g) || []).join(' / '));
     }
 
+    // ---- customer accounts (migration 0114) ----
+    {
+      p = await see(shop, '/backoffice/settings', {});
+      check('A1 without the extra, POS settings say customer accounts are one, with nothing to set', !p.error && p.says.includes('Customer accounts are an extra for this shop') && !p.html.includes('name="accountDays"'), p.error);
+      p = await see(shop, '/backoffice/accounts', {});
+      check('A1 and Accounts opens, saying so', !p.error && p.says.includes('Customer accounts are an extra for this shop'), p.error || p.says.slice(0, 200));
+      await c.query(`select platform.set_tenant_features($1, $2, array['deposits','accounts'])`, [admin, shop.tid]);
+      p = await see(shop, '/backoffice/settings', {});
+      check('A2 switched on, the Customer accounts card has its two settings', !p.error && p.html.includes('name="accountsOn"') && p.html.includes('name="accountDays"'), p.error);
+      p = await see(shop, '/backoffice/settings', { tab: 'payments' });
+      check('A2 the On account type is not among the payment options a shop edits', !p.error && !p.html.includes('value="On account"'), p.error);
+      const acct = (await one(`select id from payment_types where tenant_id = $1 and kind = 'account' and deleted_at is null`, [shop.tid])).id;
+      const priya = (await one(`select id from customers where tenant_id = $1 and name = 'Priya'`, [shop.tid])).id;
+      const ravi = (await one(`select id from customers where tenant_id = $1 and name = 'Ravi'`, [shop.tid])).id;
+      await c.query(`insert into customers (tenant_id, name, phone) values ($1,'Nadia','52505555')`, [shop.tid]);
+      // a sale on account, as the till sends it: the order names the customer
+      let aseq = 800;
+      const onAccount = async (who, lines, payments, minsAgo) => {
+        const tk = id(), rc = id(), ids = lines.map(() => id());
+        aseq++;
+        await shop.push([
+          op('ticket.create', { id: tk, store_id: shop.store }),
+          op('ticket.update_meta', { ticket_id: tk, customer_id: who }),
+          ...lines.map((l, i) => op('ticket.add_line', { id: ids[i], ticket_id: tk, qty: 1000, ...l })),
+          op('receipt.create', { id: rc, ticket_id: tk, store_id: shop.store, device_id: shop.dev, number: 'SP1-T1-' + aseq, device_seq: aseq, device_time: shop.at(minsAgo), payments }),
+        ]);
+        return { rc, ids, number: 'SP1-T1-' + aseq };
+      };
+      // Priya takes a hat on account (Rs 115.00); Ravi a shirt and a belt, Rs 30.00 in cash and Rs 200.00 on account
+      const pa = await onAccount(priya, [{ item_id: hat }], [{ payment_type_id: acct, amount: 11500 }], 22);
+      const ra = await onAccount(ravi, [{ item_id: shirt }, { item_id: belt }], [{ payment_type_id: shop.cash, amount: 3000 }, { payment_type_id: acct, amount: 20000 }], 21);
+      // Priya pays Rs 50.00 of it in cash at the till
+      await shop.push([op('account.pay', { id: id(), number: 'SP1-T1-A000001', customer_id: priya, store_id: shop.store, device_id: shop.dev, device_time: shop.at(20),
+        payment: { payment_type_id: shop.cash, amount: 5000 }, lines: [{ bill_id: pa.rc, amount: 5000 }] })]);
+      p = await see(shop, '/backoffice/customers', {});
+      const pRow = rowsOf(p.html).find((r) => r.includes('| Priya |'));
+      const rRow = rowsOf(p.html).find((r) => r.includes('| Ravi |'));
+      check('A3 Customers says what each owes on account', !p.error && !!pRow && pRow.endsWith('| Rs 65.00') && !!rRow && rRow.endsWith('| Rs 200.00'), p.error || pRow + ' / ' + rRow);
+      p = await see(shop, '/backoffice/customers', { seen: 'owes' });
+      check('A3 and finds who owes money', !p.error && rowsOf(p.html).some((r) => r.includes('| Priya |')) && rowsOf(p.html).some((r) => r.includes('| Ravi |')) && !rowsOf(p.html).some((r) => r.includes('| Nadia |')), p.error);
+      p = await see(shop, '/backoffice/accounts', {});
+      check('A4 Accounts: Rs 265.00 owed by two customers, nothing overdue', !p.error && stats(p.html).join(' | ') === 'Total owed: Rs 265.00 | Customers owing: 2 | Unpaid past 30 days: Rs 0.00', p.error || stats(p.html).join(' | '));
+      const aRows = rowsOf(p.html);
+      check('A4 one line each, the most owed first, with the oldest bill and the balance', !p.error && aRows[1]?.startsWith('Ravi') && aRows[1]?.includes('| 1 |') && aRows[1]?.includes('| Rs 200.00 |') && aRows[2]?.startsWith('Priya') && aRows[2]?.includes('| Rs 65.00 |') && aRows[2]?.includes('0 days'),
+        p.error || aRows.slice(0, 4).join(' // '));
+      const acc = (who) => see(shop, '/backoffice/accounts/' + who, {}, { params: { customer: who }, file: 'backoffice/accounts/[customer]' });
+      p = await acc(priya);
+      const billRow = rowsOf(p.html).find((r) => r.startsWith(pa.number));
+      check('A5 her account: the bill, Rs 50.00 paid on it, Rs 65.00 still owed, and the payment under it', !p.error && !!billRow && billRow.includes('| Rs 115.00 | Rs 50.00 |  | Rs 65.00') && p.says.includes('Paid, Cash · SP1-T1-A000001'), p.error || billRow || p.says.slice(0, 300));
+      const led = rowsOf(p.html).filter((r) => r.includes('Sale on account') || r.includes('SP1-T1-A000001 Cash'));
+      check('A5 the account\'s lines: the sale (debit), the payment (credit), the balance after each', !p.error && led.length === 2 && led[0].endsWith('| Rs 115.00 |  | Rs 115.00') && led[1].endsWith('|  | Rs 50.00 | Rs 65.00'), p.error || led.join(' // '));
+      check('A5 the lines and the bills agree', !p.says.includes("The account's lines come to"));
+      p = await see(shop, '/backoffice/accounts/' + priya + '/statement', {}, { params: { customer: priya }, file: 'backoffice/accounts/[customer]/statement' });
+      check('A6 her statement: the shop, STATEMENT OF ACCOUNT, her, the bill and Rs 65.00 owed', !p.error && p.says.includes('Pages Shop') && p.says.includes('STATEMENT OF ACCOUNT') && p.says.includes('Priya')
+        && rowsOf(p.html).some((r) => r.includes(pa.number) && r.endsWith('| Rs 115.00 | Rs 50.00 | Rs 65.00')) && rowsOf(p.html).some((r) => r === 'Balance owed | Rs 65.00'), p.error || p.says.slice(0, 400));
+      // Ravi's bill is from 45 days ago
+      await c.query(`update account_bills set day = day - 45 where id = $1`, [ra.rc]);
+      p = await see(shop, '/backoffice/accounts', {});
+      check('A7 forty-five days old, his Rs 200.00 is unpaid past 30 days', !p.error && stats(p.html).join(' | ').endsWith('Unpaid past 30 days: Rs 200.00'), p.error || stats(p.html).join(' | '));
+      p = await see(shop, '/backoffice/accounts', { tab: 'exceptions' });
+      check('A7 and Exceptions lists him as overdue', !p.error && rowsOf(p.html).some((r) => r.startsWith('Ravi') && r.includes('| 1 |') && r.endsWith('| Rs 200.00')), p.error || rowsOf(p.html).join(' // '));
+      p = await acc(ravi);
+      const agedRow = rowsOf(p.html).find((r) => r.startsWith('Rs 200.00 |'));
+      check('A7 his account ages it: Rs 200.00 under 31–60 days', !p.error && agedRow === 'Rs 200.00 |  | Rs 200.00 |  | ', p.error || agedRow);
+      await c.query(`update account_bills set day = day + 45 where id = $1`, [ra.rc]);
+      p = await see(shop, '/backoffice/reports/day-close', range);
+      check('A8 Day closing says what was sold on account and paid on accounts, and lists no On account among the methods', !p.error && p.says.includes('Sold on account Rs 315.00') && p.says.includes('Paid on accounts, Cash (1) Rs 50.00') && !/On account \(\d+\)/.test(p.says),
+        p.error || (p.says.match(/(Sold on account|Paid on accounts)[^R]*Rs [\d.,]+/g) || []).join(' / '));
+      p = await see(shop, '/backoffice/reports/sales', range);
+      check('A9 Sales summary says how much of the sales went on accounts, and what was paid on them', !p.error && p.says.includes('Rs 315.00 of these sales went on customers\' accounts') && p.says.includes('Rs 50.00 was paid on accounts in these days')
+        && /Total collected Rs [\d.,]+ [^|]*Rs 315\.00 of it on account, not yet paid/.test(p.says), p.error || (p.says.match(/Customer accounts:[^.]*/) || [])[0]);
+      check('A9 and no On account among its payment methods', !rowsOf(p.html).some((r) => r.startsWith('On account |')));
+      p = await see(shop, '/backoffice', range);
+      const mix = (p.says.split('Payment methods How the money came in')[1] || '').split('Who took the payments')[0];
+      check('A9 nor among the dashboard\'s payment methods (the receipts it lists may say how each was paid)', !p.error && mix.length > 0 && !mix.includes('On account'), p.error || mix.slice(0, 300));
+      p = await see(shop, '/backoffice/receipts', {});
+      check('A10 Receipts says a sale was put on account', !p.error && p.says.includes('On account'), p.error);
+      // Priya brings the hat back: Rs 65.00 comes off what she owes, Rs 50.00 (what she paid) back in cash
+      await c.query(`update pos_settings set data = data || '{"returns":"refund"}'::jsonb where tenant_id = $1`, [shop.tid]);
+      const rl = await one(`select id from receipt_lines where receipt_id = $1`, [pa.rc]);
+      const rf = id();
+      await shop.push([op('refund.create', { id: rf, refund_of: pa.rc, store_id: shop.store, device_id: shop.dev, number: 'SP1-T1-R000801', device_seq: 950, device_time: shop.at(18),
+        reason: 'wrong size', lines: [{ receipt_line_id: rl.id, qty: 1000 }], payments: [{ payment_type_id: acct, amount: 6500 }, { payment_type_id: shop.cash, amount: 5000 }] })]);
+      check('A11 the return took Rs 65.00 off her bill, and nothing to check', Number((await one(`select account_owed(b) as o from account_bills b where id = $1`, [pa.rc])).o) === 0
+        && (await c.query(`select 1 from receipt_reviews where receipt_id = $1`, [rf])).rowCount === 0);
+      p = await acc(priya);
+      const led2 = rowsOf(p.html).filter((r) => r.includes('Goods returned from'));
+      check('A11 her account: the return a credit, the balance nothing', !p.error && p.says.includes('Nothing is owed') && led2.length === 1 && led2[0].endsWith('|  | Rs 65.00 | Rs 0.00'), p.error || led2.join(' // '));
+      p = await see(shop, '/backoffice/accounts', {});
+      check('A11 and she is no longer on Accounts', !p.error && !rowsOf(p.html).some((r) => r.startsWith('Priya')), p.error);
+      // Ravi pays Rs 250.00 on his Rs 200.00 bill (two tills took it): paid over
+      await shop.push([op('account.pay', { id: id(), number: 'SP1-T1-A000002', customer_id: ravi, store_id: shop.store, device_id: shop.dev, device_time: shop.at(17),
+        payment: { payment_type_id: shop.cash, amount: 25000 }, lines: [{ bill_id: ra.rc, amount: 25000 }] })]);
+      p = await see(shop, '/backoffice/accounts', { tab: 'exceptions' });
+      check('A12 Exceptions: his bill is paid over by Rs 50.00, and the payment is to check', !p.error && rowsOf(p.html).some((r) => r.startsWith(ra.number) && r.endsWith('| Rs 50.00')) && p.says.includes('Paid more than it owed'), p.error || rowsOf(p.html).join(' // '));
+      p = await see(shop, '/backoffice/customers', {});
+      check('A12 Customers says Rs 50.00 paid over', !p.error && (rowsOf(p.html).find((r) => r.includes('| Ravi |')) || '').endsWith('| Rs 50.00 paid over'), p.error);
+      p = await see(shop, '/backoffice/accounts/' + ravi + '/statement', {}, { params: { customer: ravi }, file: 'backoffice/accounts/[customer]/statement' });
+      check('A12 his statement shows it in brackets, and says why', !p.error && rowsOf(p.html).some((r) => r.endsWith('| (Rs 50.00)')) && p.says.includes('a figure in brackets was paid over'), p.error || p.says.slice(0, 400));
+    }
+
     // ---- promotions (migration 0110) ----
     {
       p = await see(shop, '/backoffice/promotions', {});
@@ -435,6 +536,8 @@ const id = () => crypto.randomUUID();
     check('R9 a restaurant has no deposits', p.error === 'not found', p.error || 'it opened');
     p = await see(rest, '/backoffice/promotions', {});
     check('R8 nor promotions', p.error === 'not found', p.error || 'it opened');
+    p = await see(rest, '/backoffice/accounts', {});
+    check('R9 nor customer accounts', p.error === 'not found', p.error || 'it opened');
     // what one business's owner is shown is its own
     p = await see(rest, '/backoffice/reports/orders', rrange);
     check('T1 a restaurant\'s owner sees nothing of the shop', !p.says.includes('Belt') && !p.says.includes('SP1-'));
