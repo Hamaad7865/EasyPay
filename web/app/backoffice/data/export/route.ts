@@ -11,6 +11,8 @@ const TABLES = [
   "receipt_line_taxes", "receipt_payments", "receipt_discounts", "payment_corrections", "shifts",
   "timeclock_punches", "cash_movements", "drawer_counts", "day_closes", "approvals", "bookings", "stock_movements", "stock_levels",
   "purchase_orders", "purchase_order_lines", "deliveries", "delivery_lines", "stock_counts", "stock_count_lines",
+  // who the customers are, and what is owed either way: credit notes (0109), deposits (0113), bills on account (0114)
+  "customers", "credit_notes", "deposits", "deposit_lines", "deposit_payments", "account_bills", "account_payments", "account_payment_lines",
 ];
 
 export async function GET() {

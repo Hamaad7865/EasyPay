@@ -121,8 +121,9 @@ data class PayDone(
 
 // On account (0114), offered on Pay: the shop sells on account, the sale names
 // a customer, and the person paying may. who: the customer's name; null with
-// no customer on the sale (the key then says to pick one).
-data class AccountOffer(val typeId: String, val who: String?, val owes: Long, val allowed: Boolean)
+// no customer on the sale (the key then says to pick one). typeId: null when
+// the shop has the extra but this till has not been sent its On account type.
+data class AccountOffer(val typeId: String?, val who: String?, val owes: Long, val allowed: Boolean)
 
 data class PayUi(
     val loaded: Boolean = false,
@@ -338,9 +339,9 @@ class PayViewModel @Inject constructor(
             split = if (ex != null) "full" else split ?: cur.split, n = if (cur.loaded) cur.n else maxOf(2, t.covers ?: 2),
             exchangeOf = ex?.number, credit = ex?.credit ?: 0, policy = settings.returns,
             noteType = if (settings.retail) db.notes().paymentType() else null,
-            account = if (settings.accounts) db.accounts().paymentType()?.let { at ->
+            account = if (settings.accounts) {
                 val c = t.customer_id?.let { db.customers().customer(it) }
-                AccountOffer(at.id, c?.name, c?.let { db.accounts().balance(it.id) } ?: 0, staff.can("sale.on_account"))
+                AccountOffer(db.accounts().paymentType()?.id, c?.name, c?.let { db.accounts().balance(it.id) } ?: 0, staff.can("sale.on_account"))
             } else null,
             // one check of a split check: its lines, and only they
             lines = all.filter { cur.check == null || (it.line.check_no == cur.check && !it.line.paid) }.map { PayLine(it, cur.check != null) },
@@ -375,13 +376,14 @@ class PayViewModel @Inject constructor(
         val s = _ui.value
         val a = s.account ?: return
         if (s.busy || s.done != null || s.exchangeOf != null || s.check != null) return
+        val typeId = a.typeId ?: run { Toaster.say("This till has not been sent the shop's On account payment type yet. Let it sync (a tablet working alone: Settings, Support, Get changes from EasyPay)."); return }
         if (a.who == null) { Toaster.say("Pick the customer first: a sale on account goes on someone's account"); return }
         if (!a.allowed) { Toaster.say("You are not allowed to sell on account"); return }
-        if (shares.any { it.input.paymentTypeId == a.typeId }) { Toaster.say("Part of this sale is on account already"); return }
+        if (shares.any { it.input.paymentTypeId == typeId }) { Toaster.say("Part of this sale is on account already"); return }
         val amount = s.amount
         if (amount <= 0) { Toaster.say("There is nothing to put on account"); return }
         val unpaid = s.lines.filter { !it.info.line.paid }
-        val all = shares + Share("On account", PayInput(a.typeId, amount, null, 0, null, label = "On account"))
+        val all = shares + Share("On account", PayInput(typeId, amount, null, 0, null, label = "On account"))
         if (amount < s.remaining) {
             shares = all
             keep(ticketId, s.n, if (s.split == "amount") "amount" else "equal")
@@ -775,6 +777,7 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                             T("On account", 16.sp, 800, V.BlueSoft)
                             T(
                                 when {
+                                    a.typeId == null -> "Not on this till yet: let it sync"
                                     a.who == null -> "Pick the customer on the sale first"
                                     !a.allowed -> "Needs someone allowed to sell on account"
                                     else -> "${Money.format(ui.amount)} on ${a.who}'s account" + if (a.owes > 0) " · owes ${Money.format(a.owes)} now" else ""

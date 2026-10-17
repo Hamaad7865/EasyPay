@@ -2144,3 +2144,21 @@ AS $function$
     or exists (select 1 from account_payments where tenant_id = p_tenant and device_id = p_device));
 $function$
 ;
+
+-- A customer deleted outright (only db/scripts/delete-client.cjs does: the
+-- back office and the tills remove a customer by marking it) leaves the rows
+-- that named them with nobody: only customer_id is set null, never tenant_id,
+-- which is NOT NULL. Before this a set null over the pair failed, so removing
+-- a client with deposits or credit notes stopped there.
+alter table credit_notes drop constraint if exists credit_notes_tenant_id_customer_id_fkey;
+alter table credit_notes add constraint credit_notes_tenant_id_customer_id_fkey
+  foreign key (tenant_id, customer_id) references customers (tenant_id, id) on delete set null (customer_id);
+alter table deposits drop constraint if exists deposits_tenant_id_customer_id_fkey;
+alter table deposits add constraint deposits_tenant_id_customer_id_fkey
+  foreign key (tenant_id, customer_id) references customers (tenant_id, id) on delete set null (customer_id);
+alter table account_bills drop constraint if exists account_bills_tenant_id_customer_id_fkey;
+alter table account_bills add constraint account_bills_tenant_id_customer_id_fkey
+  foreign key (tenant_id, customer_id) references customers (tenant_id, id) on delete set null (customer_id);
+alter table account_payments drop constraint if exists account_payments_tenant_id_customer_id_fkey;
+alter table account_payments add constraint account_payments_tenant_id_customer_id_fkey
+  foreign key (tenant_id, customer_id) references customers (tenant_id, id) on delete set null (customer_id);

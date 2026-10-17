@@ -278,6 +278,18 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
       await c.query('ROLLBACK TO SAVEPOINT clear');
       check('T10 Clear test activity clears bills, payments and their lines', said === null && left.b === 0 && left.p === 0 && left.l === 0, said || JSON.stringify(left));
     }
+    // ---- T11 a customer deleted outright (a client removed for good) leaves their bills with nobody ----
+    {
+      await c.query('SAVEPOINT del');
+      let said = null, left = null;
+      try {
+        await c.query(`delete from customers where id = $1`, [ravi]);
+        left = await one(`select (select count(*) from account_bills where tenant_id = $1 and customer_id is null and id = $2)::int as b,
+          (select count(*) from account_payments where tenant_id = $1 and customer_id is null)::int as p`, [tid, S3.rc]);
+      } catch (e) { said = e.message; }
+      await c.query('ROLLBACK TO SAVEPOINT del');
+      check('T11 deleting a customer outright keeps their bills and payments, naming nobody', said === null && left.b === 1 && left.p >= 2, said || JSON.stringify(left));
+    }
   } catch (e) {
     failures++;
     console.log('FAIL threw: ' + e.message + '\n' + e.stack);
