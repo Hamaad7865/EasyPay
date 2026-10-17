@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Plus, UtensilsCrossed } from "lucide-react";
+import { Download, Plus, ShoppingBag, UtensilsCrossed } from "lucide-react";
 import { Chev, downloadCsv, fold, NoMatch, Seg, SortTh, type Start, TableSearch, useTable } from "../table-kit";
 import { type AddonGroup, ItemEditor, type Tax } from "./editor";
 import { Submit } from "../busy";
@@ -347,7 +347,7 @@ export function ItemsTable({
       </div>
       {items.length === 0 && (
         <div className="empty" style={{ border: 0, margin: 0 }}>
-          <UtensilsCrossed aria-hidden="true" strokeWidth={1.6} />
+          {shop ? <ShoppingBag aria-hidden="true" strokeWidth={1.6} /> : <UtensilsCrossed aria-hidden="true" strokeWidth={1.6} />}
           <strong>No items here yet</strong>
           <button type="button" className="btn-link" onClick={() => open("new")}>
             Add the first one

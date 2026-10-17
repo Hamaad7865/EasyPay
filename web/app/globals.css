@@ -611,7 +611,8 @@ body {
 .bo-group-list::before { content: ""; position: absolute; left: 19px; top: 3px; bottom: 6px; border-left: 1px solid var(--menu-line-2); pointer-events: none; }
 .bo-group.open .bo-group-list { padding-bottom: 4px; }
 .bo-group-list a { position: relative; padding: 7px 10px 7px 40px; font-size: 13.5px; font-weight: 400; color: var(--ink2); }
-.bo-group-list a:hover { color: var(--ink); }
+/* not the open page: its pill is paper, and the menu's light lettering would vanish on it */
+.bo-group-list a:not(.on):hover { color: var(--ink); }
 .bo-group-list a.on { font-weight: 600; }
 /* The number beside a page: how many rows its list holds. It arrives a moment
    after the page and pops into place; one in red is something to see to. */

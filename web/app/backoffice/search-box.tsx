@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Contact, CornerDownLeft, LayoutGrid, type LucideIcon, Search, Tags, Users, UtensilsCrossed } from "lucide-react";
+import { Contact, CornerDownLeft, LayoutGrid, type LucideIcon, Search, ShoppingBag, Tags, Users, UtensilsCrossed } from "lucide-react";
 import { pagesOf } from "./nav";
 import type { Mode } from "@/lib/mode";
 import type { HitGroup } from "./search/hits";
@@ -121,10 +121,10 @@ export function SearchBox({ mode, premium }: { mode: Mode; premium: boolean }) {
     const out: Section[] = [];
     if (pages.length) out.push({ label: term ? "Pages" : "Go to", rows: pages });
     for (const g of found) {
-      out.push({ label: g.label, rows: g.hits.map((h, i) => ({ key: `${g.kind}-${i}-${h.href}`, title: h.title, sub: h.sub, href: h.href, icon: KIND_ICON[g.kind] })) });
+      out.push({ label: g.label, rows: g.hits.map((h, i) => ({ key: `${g.kind}-${i}-${h.href}`, title: h.title, sub: h.sub, href: h.href, icon: g.kind === "items" && mode === "retail" ? ShoppingBag : KIND_ICON[g.kind] })) });
     }
     return out;
-  }, [term, found, all]);
+  }, [term, found, all, mode]);
   const flat = sections.flatMap((s) => s.rows);
   const on = Math.min(at, Math.max(flat.length - 1, 0));
 

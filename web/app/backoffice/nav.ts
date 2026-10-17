@@ -29,6 +29,7 @@ import {
   Settings,
   Settings2,
   ShieldCheck,
+  ShoppingBag,
   SlidersHorizontal,
   TabletSmartphone,
   Tags,
@@ -47,7 +48,7 @@ import type { Mode } from "@/lib/mode";
 // drift apart. Only what exists: a page is added here when it is built. `words`
 // are other things someone might type when looking for the page.
 // `only`: the one kind of business that has this page (none: both have it).
-// `retail`: what a shop calls it, when that differs.
+// `retail`: what a shop calls it, when that differs; `retailIcon`, its icon for a shop.
 // `premium`: a page of the premium tier, which another plan does not have.
 //
 // The menu is in three sections under the day's page: Counter (what happens
@@ -56,9 +57,9 @@ import type { Mode } from "@/lib/mode";
 // section a line is either a page or a group that opens onto its pages. A
 // group marked `flat` is one page and is drawn as that page's own line; so is
 // a group left with one page for this business and plan.
-export type NavLink = { href: string; label: string; icon: LucideIcon; words?: string; only?: Mode; retail?: string; premium?: true };
+export type NavLink = { href: string; label: string; icon: LucideIcon; words?: string; only?: Mode; retail?: string; retailIcon?: LucideIcon; premium?: true };
 export type SectionId = "counter" | "money" | "admin";
-export type NavGroup = { id: string; section: SectionId; title: string; icon: LucideIcon; links: NavLink[]; retail?: string; flat?: true };
+export type NavGroup = { id: string; section: SectionId; title: string; icon: LucideIcon; links: NavLink[]; retail?: string; retailIcon?: LucideIcon; flat?: true };
 export type NavSection = { id: SectionId; title: string; groups: NavGroup[] };
 // The number beside a page in the menu, and what it counts, said in full (counts/route.ts).
 export type NavCount = { n: number; say: string; tone?: "red" };
@@ -103,9 +104,10 @@ export const GROUPS: NavGroup[] = [
     title: "Menu",
     retail: "Catalog",
     icon: UtensilsCrossed,
+    retailIcon: ShoppingBag,
     links: [
       { href: "/backoffice/categories", label: "Categories", icon: Tags, words: "groups colours kitchen bar printer" },
-      { href: "/backoffice/items", label: "Items", retail: "Products", icon: UtensilsCrossed, words: "products dishes prices barcode" },
+      { href: "/backoffice/items", label: "Items", retail: "Products", icon: UtensilsCrossed, retailIcon: ShoppingBag, words: "products dishes prices barcode" },
       { href: "/backoffice/items/import", label: "Import products", only: "retail", icon: FileUp, words: "excel xlsx csv spreadsheet upload supplier file bulk add many catalog" },
       { href: "/backoffice/items/labels", label: "Barcode labels", only: "retail", icon: Barcode, words: "print stickers price tags ean scan label roll a4 sheet" },
       { href: "/backoffice/addons", label: "Add-ons", only: "restaurant", icon: SlidersHorizontal, words: "options modifiers extras" },
@@ -235,13 +237,13 @@ export function groupsFor(mode: Mode, premium: boolean): NavGroup[] {
   return GROUPS.map((g) => {
     const links = g.links
       .filter((l) => (!l.only || l.only === mode) && (!l.premium || premium))
-      .map((l) => (mode === "retail" && l.retail ? { ...l, label: l.retail } : l));
+      .map((l) => (mode === "retail" ? { ...l, label: l.retail ?? l.label, icon: l.retailIcon ?? l.icon } : l));
     const flat = g.flat || links.length === 1 ? (true as const) : undefined;
     return {
       ...g,
       flat,
       title: flat && links[0] ? links[0].label : mode === "retail" && g.retail ? g.retail : g.title,
-      icon: flat && !g.flat && links[0] ? links[0].icon : g.icon,
+      icon: flat && !g.flat && links[0] ? links[0].icon : mode === "retail" && g.retailIcon ? g.retailIcon : g.icon,
       links,
     };
   }).filter((g) => g.links.length > 0);

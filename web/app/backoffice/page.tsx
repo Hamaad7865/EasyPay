@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { PoolClient } from "pg";
-import { ArrowRight, ArrowUpRight, Boxes, CalendarClock, Check, ClipboardList, type LucideIcon, Percent, Plus, ReceiptText, Sparkles, Timer, UtensilsCrossed } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Boxes, CalendarClock, Check, ClipboardList, type LucideIcon, Percent, Plus, ReceiptText, ShoppingBag, Sparkles, Timer, UtensilsCrossed } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { isDay } from "@/lib/day";
@@ -433,7 +433,7 @@ export default async function BackofficeHome({
     });
   if (now.sold_out > 0)
     needs.push({
-      tone: "plain", icon: UtensilsCrossed, chip: "Off sale", go: "Open the list", href: "/backoffice/items?status=out",
+      tone: "plain", icon: ctx.mode === "retail" ? ShoppingBag : UtensilsCrossed, chip: "Off sale", go: "Open the list", href: "/backoffice/items?status=out",
       title: `${plural(now.sold_out, "item is", "items are")} sold out`,
       text: `${some(now.sold_out_names, now.sold_out)}. The tills grey them and will not sell them.`,
     });
