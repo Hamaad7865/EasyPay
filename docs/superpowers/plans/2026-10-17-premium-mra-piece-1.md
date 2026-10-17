@@ -106,3 +106,12 @@ create trigger trg_payment_corrections_mra before insert on payment_corrections
 ### Task 6: Finish
 
 - [ ] Run every suite touched and the web unit tests; tsc; review the diff; commit; record what was run at the end of this plan.
+
+## What was built and run (2026-10-17)
+
+- `55591fe` database: migration 0116 applied on dev. `mra-setup` 35 checks pass; `delete-client` (with D2b, a client that went live with the MRA refused), `premium-gate`, `setting-up`, `backoffice-plan`, `pos-operations`, `platform`, `admin-inside`, `backoffice-access` pass.
+- `0b71f15` back office: Company details, Taxes, Categories for an MRA client; `web/lib/mra.ts` with its test. tsc clean; the statements of the three pages and `lib/tenant.ts` prepare on dev (25). Not seen signed in.
+- `b03128b` `/admin`: Premium MRA in the plan list, the MRA e-invoicing part. tsc clean; 45 statements prepare; the page drawn with sample rows on a temporary page (deleted): plan list, part, confirm, history; no console or server error. Not seen signed in.
+- 175 back office unit tests pass.
+- Not built here, as planned: training and live, the till, the receipt push rule, the MRA connection. A payment correction refused on a live MRA client reaches the till as a generic rejection (`rejected:error`); piece 3 gives it words on the till.
+- Production needs migration 0116 (a `live-*` tag), with 0115 before it.
