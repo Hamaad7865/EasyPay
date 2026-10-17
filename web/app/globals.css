@@ -881,7 +881,13 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--radius-sm); background: var(--well); }
 .seg label { display: flex; align-items: center; padding: 0 12px; height: 30px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--ink2); cursor: pointer; }
 .seg input { position: absolute; opacity: 0; pointer-events: none; }
-.seg label:has(input:checked) { background: var(--raised); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.14); }
+/* the same switch made of links, one per address (the sales journal's days, Open and All); on a phone it scrolls rather than spill */
+.bo-main .seg:has(> a) { max-width: 100%; overflow-x: auto; }
+.bo-main .seg a { display: flex; align-items: center; padding: 0 12px; height: 30px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--ink2); white-space: nowrap; text-decoration: none; transition: background-color 0.15s, color 0.15s; }
+.bo-main .seg a:hover { background: var(--glass-hover); color: var(--ink); text-decoration: none; }
+.bo-main .seg a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* the one chosen stands out of the well; --surface and not --raised, which in the dark look is the well's own colour */
+.seg label:has(input:checked), .bo-main .seg a.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(22, 28, 45, 0.14); }
 .seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* ---- filters and report pieces ---- */
