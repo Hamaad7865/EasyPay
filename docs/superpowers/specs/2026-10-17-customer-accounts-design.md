@@ -165,3 +165,50 @@ Ageing on the pages and the statement is by the bill's day: 0–30, 31–60, 61�
 - Money that moved is never refused: over-payment and over-return are stored, flagged, shown on Exceptions.
 - No void or correction of an account payment.
 - `sale.on_account` held only by the owner until a role is given it.
+
+## 13. What was built and run (2026-10-17)
+
+Built as designed, with these changes found while running it:
+
+- **A return of a sale still on account** takes off the bill first, also inside an exchange: only what was paid of
+  the sale goes to the new sale (and to a credit note, as the shop's Returns say). An exchange of a sale nothing was
+  paid on is refused with "return it instead". The return dialog says how much comes off the bill and whether money
+  changes hands, and is titled Return when none does.
+- **The refund slip** prints what the customer owes on account after the return; a reprint of a sale on account
+  leaves out the balance of the day of the sale (it is not what is owed now).
+- **The tablet's statement** prints its ages with a plain hyphen (0-30 days): the receipt printer drops the dash.
+- **Sales journal** (asked during the build: "Also build the sales journal the sales journal should be available in
+  the standard and premium plan", then "the sales journal should be similar to how it is in carfectionist"): Finance,
+  Sales journal, for every business with a back office (Standard, Premium, trial; the offline plan has none, and the
+  platform admin looking in is told so). Carfectionist's: one period (Today, Yesterday, Current month, Previous
+  month, or any two days), compared with the previous period, month or year, filtered by till, by who rang it up, by
+  an item and by hours; cash basis (every figure is money received in the period, whatever sale it paid); KPI tiles,
+  Sale methods (a shop: one line, "Sales [shop]"; a restaurant: its order types), Taxes, Payments, Categories,
+  People, each footing to the money received to the cent (each sale scaled to the share of it paid in the period,
+  then split over its lines, largest remainder); under Payments the bridge to what was sold: money received, less
+  money on sales made earlier, plus what was settled without money (returned goods, credit notes, deposits, taken
+  off earlier accounts), plus what is still on account. Deposits are said apart (money, not a sale). Its
+  Taxes table has no discount column (Carfectionist's has one).
+
+Run:
+
+- `db/tests/accounts.test.cjs` (60 checks): selling on account and every flag, payments on ticked bills, two tills
+  paying one bill, returns off the bill in an exchange-only shop, money back before money came in, double pay,
+  payment corrections, the pull, settings, clearing a test client.
+- `db/tests/journal.test.cjs` (16 checks) on a day with a cash sale, a sale on account part paid, an earlier sale
+  paid on, a return off a bill, an exchange and a deposit: every table foots to Rs 560.00 and the bridge comes to
+  the Rs 460.00 the Sales summary says was sold; a restaurant on Premium; the offline plan told no.
+- `web/lib/journal.test.mjs`: the money maths, and 500 random periods footing to the cent.
+- `shop-pages` section A (Accounts, a customer's account and statement, Customers' Owes column and filter, Day
+  closing, Sales summary, the dashboard, Receipts, Exceptions), and every other dev suite one after another (23).
+- The till's 660 unit tests (AccountRules, the settings both ways), the Room upgrade 30 to 31 against the exported
+  schema, and the debug build on the emulator with the made-up offline shop and its deposits: a mug all on account,
+  a scarf part cash part on account, a part payment of Rs 500 with Rs 1,000 handed over (Rs 320 and Rs 180 on the two
+  bills, oldest first, the slip, the drawer), a postcard set on account then returned off the bill, the statement, the
+  X report (Rs 860 sold on account, Rs 150 returned off, Rs 500 paid in cash; expected drawer Rs 5,200), the scarf
+  exchanged for a mug (Rs 210 off the bill, Rs 320 to the mug, Rs 60 on a credit note). Its queue (66 operations)
+  replayed on dev: every operation taken, receipts, payments, drawer, stock and the three bills the till's, nothing
+  flagged (`retail-till-replay`, the accounts fixture).
+
+Not seen: two connected tablets paying one bill (proven on the server only), the back office pages in a browser
+behind a sign-in (drawn by the page harness), a statement printed from a browser to paper.
