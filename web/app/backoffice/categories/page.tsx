@@ -5,6 +5,7 @@ import { readTenant } from "@/lib/db";
 import { act, backTo, int, on, Refused, text, UUID, uuid } from "@/lib/action";
 import { toHex } from "@/lib/colour";
 import { loadSettings } from "@/lib/settings";
+import { asNature, onMra } from "@/lib/mra";
 import { Card, Empty, Flash, PageHead, type Search, startKey, startOf } from "../ui";
 import { CategoriesTable, type Category } from "./table";
 import { Submit } from "../busy";
@@ -45,6 +46,10 @@ async function saveCategory(f: FormData) {
     const name = text(f, "name", 40);
     const color = String(f.get("color") ?? "");
     if (!name) throw new Refused("A category needs a name.");
+    // a Premium MRA client says whether a category's items are goods or services (0116)
+    if (onMra(ctx.mra)) {
+      await c.query(`update categories set mra_nature = $3 where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id, asNature(f.get("mra_nature"))]);
+    }
     if (ctx.mode === "retail") {
       // a shop's form has no printers and no Counted tick: both are left as they are
       await c.query(
@@ -64,7 +69,7 @@ async function saveCategory(f: FormData) {
   });
 }
 
-type Row = { id: string; name: string; color: string | null; sort_order: number; is_stock: boolean; printer_ids: string[]; items: number };
+type Row = { id: string; name: string; color: string | null; sort_order: number; is_stock: boolean; printer_ids: string[]; items: number; mra_nature: string | null };
 
 export default async function CategoriesPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
@@ -72,7 +77,7 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
   const d = await readTenant(ctx.tenantId, async (c) => ({
     rows: (
       await c.query(
-        `select c.id, c.name, c.color, c.sort_order, c.is_stock, c.printer_ids,
+        `select c.id, c.name, c.color, c.sort_order, c.is_stock, c.printer_ids, c.mra_nature,
                 (select count(*)::int from items i where i.category_id = c.id and i.tenant_id = c.tenant_id and i.deleted_at is null) as items
            from categories c where c.deleted_at is null and c.tenant_id = $1 order by c.sort_order, c.name`,
         [ctx.tenantId],
@@ -88,6 +93,7 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
       )
     ).rows as { id: string; name: string }[],
     onePrinter: (await loadSettings(c, ctx.tenantId)).onePrinter,
+    nature: onMra(ctx.mra) ? (((await c.query(`select mra_nature from tenants where id = $1`, [ctx.tenantId])).rows[0]?.mra_nature as string | null) ?? "") : undefined,
   }));
   const rows: Category[] = d.rows.map((r) => ({
     id: r.id,
@@ -98,6 +104,7 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
     is_stock: r.is_stock,
     printer_ids: r.printer_ids ?? [],
     items: r.items,
+    mra_nature: r.mra_nature,
   }));
   const start = startOf(sp, "q", "sort", "open");
   return (
@@ -121,7 +128,7 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
       {rows.length === 0 ? (
         <Empty icon={Tags} title="No categories yet">Add the first one above, for example Starters or Drinks.</Empty>
       ) : (
-        <CategoriesTable key={startKey(sp, start)} rows={rows} printers={d.printers} start={start} save={saveCategory} mode={ctx.mode} />
+        <CategoriesTable key={startKey(sp, start)} rows={rows} printers={d.printers} start={start} save={saveCategory} mode={ctx.mode} mraBusiness={d.nature} />
       )}
       {ctx.mode === "restaurant" && d.printers.length === 0 && (
         <p className="muted">

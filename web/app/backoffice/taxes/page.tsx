@@ -2,6 +2,7 @@ import Link from "next/link";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, on, Refused, text, uuid } from "@/lib/action";
+import { isMraCode, MRA_CODES, onMra, suggestCode } from "@/lib/mra";
 import { Card, Flash, PageHead, type Search } from "../ui";
 import { Submit } from "../busy";
 
@@ -41,19 +42,25 @@ async function saveTax(f: FormData) {
       `update taxes set name = $3, rate_bp = $4, type = $5, is_default = is_default or $6 where tenant_id = $1 and id = $2 and deleted_at is null`,
       [ctx.tenantId, id, name, rate(f), f.get("type") === "added" ? "added" : "included", on(f, "is_default")],
     );
+    // a Premium MRA client's taxes carry the MRA's code, sent on every line (0116)
+    if (onMra(ctx.mra)) {
+      const code = String(f.get("mra_code") ?? "");
+      await c.query(`update taxes set mra_code = $3 where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id, isMraCode(code) ? code : null]);
+    }
     return `${name} saved. Orders already open keep the tax they were rung up with.`;
   });
 }
 
-type Row = { id: string; name: string; rate_bp: number; type: string; is_default: boolean; items: number };
+type Row = { id: string; name: string; rate_bp: number; type: string; is_default: boolean; items: number; mra_code: string | null };
 
 export default async function TaxesPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
+  const mra = onMra(ctx.mra);
   const rows = await readTenant(ctx.tenantId, (c) =>
     c
       .query(
-        `select t.id, t.name, t.rate_bp, t.type, t.is_default,
+        `select t.id, t.name, t.rate_bp, t.type, t.is_default, t.mra_code,
                 (select count(*)::int from item_taxes it join items i on i.tenant_id = it.tenant_id and i.id = it.item_id and i.deleted_at is null
                   where it.tenant_id = t.tenant_id and it.tax_id = t.id and it.deleted_at is null) as items
            from taxes t where t.tenant_id = $1 and t.deleted_at is null order by t.is_default desc, t.rate_bp desc, t.name`,
@@ -86,6 +93,7 @@ export default async function TaxesPage({ searchParams }: { searchParams: Search
             <th>Rate %</th>
             <th>Menu prices</th>
             <th className="num">Items</th>
+            {mra && <th>MRA code</th>}
             <th>New items</th>
             <th />
           </tr>
@@ -102,6 +110,19 @@ export default async function TaxesPage({ searchParams }: { searchParams: Search
                 </select>
               </td>
               <td className="num">{t.items}</td>
+              {mra && (
+                <td>
+                  <select form={"t" + t.id} name="mra_code" defaultValue={t.mra_code ?? suggestCode(t.rate_bp, t.name) ?? ""} aria-label="MRA code">
+                    <option value="">Choose</option>
+                    {MRA_CODES.map(([code, words]) => (
+                      <option key={code} value={code}>
+                        {code} {words}
+                      </option>
+                    ))}
+                  </select>
+                  {!t.mra_code && <span className="help">Not saved yet</span>}
+                </td>
+              )}
               <td>
                 {t.is_default ? <span className="badge blue">Default</span> : (
                   <label className="check" style={{ margin: 0 }}>

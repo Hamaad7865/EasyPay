@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { asMode, type Mode } from "@/lib/mode";
 import { hasPremium, isOffline } from "@/lib/plan";
+import { asMra, type MraState } from "@/lib/mra";
 import { auth } from "@/lib/auth/server";
 import { ask } from "@/lib/db";
 
@@ -17,6 +18,8 @@ export type TenantContext = {
   mode: Mode;
   // the plan carries the premium pages (bookings, kitchen screens): lib/plan.ts
   premium: boolean;
+  // Premium MRA: where the client stands with the MRA's e-invoicing (lib/mra.ts, 0116)
+  mra: MraState;
   // for the shell around every page: the restaurant's name and who is signed in
   tenantName: string | null;
   employeeName: string | null;
@@ -83,6 +86,8 @@ export async function adminInside(userId: string, tenantId: string): Promise<Ten
     statusReason: (row.status_reason as string | null) ?? null,
     mode: asMode(row.business_type),
     premium: hasPremium(row.plan),
+    // an offline client is never on MRA (0116: MRA is premium only)
+    mra: "off",
     tenantName: (row.tenant_name as string | null) ?? null,
     employeeName: (row.employee_name as string | null) ?? null,
     admin: true,
@@ -110,7 +115,7 @@ export const tenantContext = cache(async (): Promise<TenantContext> => {
     if (inside) return inside;
   }
   const found = await ask(
-    `select e.id, e.tenant_id, e.name as employee_name, r.name as role, t.status, t.status_reason, t.name as tenant_name, t.business_type, t.plan,
+    `select e.id, e.tenant_id, e.name as employee_name, r.name as role, t.status, t.status_reason, t.name as tenant_name, t.business_type, t.plan, t.mra,
             has_perm(e.id, 'backoffice.access') as may_enter
        from employees e
        join tenants t on t.id = e.tenant_id
@@ -130,6 +135,7 @@ export const tenantContext = cache(async (): Promise<TenantContext> => {
     statusReason: (row.status_reason as string | null) ?? null,
     mode: asMode(row.business_type),
     premium: hasPremium(row.plan),
+    mra: asMra(row.mra),
     tenantName: (row.tenant_name as string | null) ?? null,
     employeeName: (row.employee_name as string | null) ?? null,
     admin: false,

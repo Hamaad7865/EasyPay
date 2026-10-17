@@ -6,13 +6,29 @@ import { Back, Chev, fold, NoMatch, SortTh, type Start, TableSearch, useTable } 
 import { Submit } from "../busy";
 import type { Mode } from "@/lib/mode";
 
-export type Category = { id: string; name: string; hex: string; has_color: boolean; sort_order: number; is_stock: boolean; printer_ids: string[]; items: number };
+export type Category = { id: string; name: string; hex: string; has_color: boolean; sort_order: number; is_stock: boolean; printer_ids: string[]; items: number; mra_nature: string | null };
 type Action = (f: FormData) => Promise<void>;
 
 // The categories as one table, in the order the till shows them. A line says
 // where the category stands, where its items print and whether they are
 // counted; tapping it opens it to change any of that, or to remove it.
-export function CategoriesTable({ rows, printers, start, save, mode }: { rows: Category[]; printers: { id: string; name: string }[]; start: Start; save: Action; mode: Mode }) {
+// mraBusiness: for a Premium MRA client (0116), what the business sells ("" not
+// said yet); a category may say otherwise. Left out for any other client.
+export function CategoriesTable({
+  rows,
+  printers,
+  start,
+  save,
+  mode,
+  mraBusiness,
+}: {
+  rows: Category[];
+  printers: { id: string; name: string }[];
+  start: Start;
+  save: Action;
+  mode: Mode;
+  mraBusiness?: string;
+}) {
   const shop = mode === "retail";
   // a shop's categories have no "Prints on" and no "Stock" column
   const cols = shop ? 4 : 6;
@@ -100,6 +116,16 @@ export function CategoriesTable({ rows, printers, start, save, mode }: { rows: C
                             Colour
                             <input type="color" name="color" defaultValue={r.hex} aria-label={`Colour for ${r.name}`} />
                           </label>
+                          {mraBusiness !== undefined && (
+                            <label className="inline muted">
+                              Goods or services
+                              <select name="mra_nature" defaultValue={r.mra_nature ?? ""}>
+                                <option value="">As the business{mraBusiness ? ` (${mraBusiness === "goods" ? "goods" : "services"})` : ""}</option>
+                                <option value="goods">Goods</option>
+                                <option value="services">Services</option>
+                              </select>
+                            </label>
+                          )}
                           {!shop && (
                             <label className="check" style={{ margin: 0 }}>
                               <input type="checkbox" name="is_stock" defaultChecked={r.is_stock} />
