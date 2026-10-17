@@ -94,7 +94,10 @@ export default async function AdminHomePage({ searchParams }: { searchParams: Se
   const sp = await searchParams;
   const tenants = await db()
     .query(
-      `select t.id, t.name, t.business_type, t.plan, t.status, t.status_reason, t.created_at,
+      `select t.id, t.name, t.business_type,
+              -- a Premium MRA client is premium with the MRA on (0116): named so in the list
+              case when t.mra <> 'off' then 'premium MRA' else t.plan end as plan,
+              t.status, t.status_reason, t.created_at,
               platform.is_setting_up(t.id) as setting_up,
               (select count(*)::int from stores s where s.tenant_id = t.id and s.deleted_at is null) as stores,
               (select count(*)::int from employees e

@@ -66,16 +66,19 @@ async function setMra(formData: FormData) {
 }
 
 // The ID the MRA gave each till, as typed in the MRA part: every field is sent,
-// and only a changed one is written (and audited).
+// and only a changed one is written (and audited). The changed ones are cleared
+// first, so two tills can swap their IDs in one save.
 async function setTillMraIds(formData: FormData) {
   "use server";
   const { adminId, tenantId } = await tenantOf(formData);
-  const ours = (await db().query(`select id from pos_devices where tenant_id = $1`, [tenantId])).rows.map((r) => r.id as string);
+  const ours = (await db().query(`select id, mra_ebs_id from pos_devices where tenant_id = $1`, [tenantId])).rows as { id: string; mra_ebs_id: string | null }[];
+  const changed = ours
+    .filter((d) => formData.has("mra_" + d.id))
+    .map((d) => ({ id: d.id, to: String(formData.get("mra_" + d.id) ?? "").trim(), was: d.mra_ebs_id ?? "" }))
+    .filter((d) => d.to !== d.was);
   try {
-    for (const id of ours) {
-      if (!formData.has("mra_" + id)) continue;
-      await db().query(`select platform.set_till_mra_id($1, $2, $3)`, [adminId, id, String(formData.get("mra_" + id) ?? "")]);
-    }
+    for (const d of changed) if (d.was && d.to) await db().query(`select platform.set_till_mra_id($1, $2, '')`, [adminId, d.id]);
+    for (const d of changed) await db().query(`select platform.set_till_mra_id($1, $2, $3)`, [adminId, d.id, d.to]);
   } catch (e) {
     back(tenantId, "error", adminMessage(e));
   }
