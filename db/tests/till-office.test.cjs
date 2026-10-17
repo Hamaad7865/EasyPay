@@ -407,6 +407,10 @@ const swap = (v, map) => (Array.isArray(v) ? v.map((x) => swap(x, map))
     st = await settings(resto);
     check('Z1b the six deposit settings saved; the notes and the service charge left', r.said === 'applied' && st.deposits === 'on' && st.depositCancel === 'keep' && st.depositDays === 45
       && st.depositOverdue === 'cancel' && st.depositGrace === 3 && st.depositCustomer === 'optional' && st.servicePct === 10 && st.receipt.header === 'Open every day, 9 to 9', JSON.stringify(st));
+    // a shop's customer accounts (0114): the sample a tablet working alone answers itself too
+    r = await rone(...ax('settings-save-accounts'));
+    st = await settings(resto);
+    check('Z1c the two account settings saved; the deposits left', r.said === 'applied' && st.accounts === 'off' && st.accountDays === 45 && st.depositDays === 45, JSON.stringify(st));
     r = await rone('settings.save', { servicePct: 31 });
     const z2 = await rone('settings.save', { servicePct: -1 });
     check('Z2 a service charge over 30 % or below nothing is refused', r.said === 'rejected:bad-value' && z2.said === 'rejected:bad-value' && (await settings(resto)).servicePct === 10, r.said + ' ' + z2.said);

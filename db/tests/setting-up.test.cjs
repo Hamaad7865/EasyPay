@@ -41,6 +41,8 @@ const CLEARED = [
   'till_requests', 'device_activity', 'device_keys', 'pos_devices',
   // a shop's credit notes (0109) and deposits (0113): made at its tills
   'credit_notes', 'deposits', 'deposit_lines', 'deposit_payments',
+  // its customer accounts (0114): bills and the money paid on them, made at its tills
+  'account_bills', 'account_payments', 'account_payment_lines',
 ];
 // stock_movements: the sales, refunds and deposits go, everything else stays.
 // tablet_codes: the codes tills were set up with go, one nobody used yet stays.
