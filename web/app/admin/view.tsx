@@ -147,7 +147,7 @@ export function AdminHome({
               <div className="seg" role="radiogroup" aria-label="Plan">
                 {PLANS.map((p) => (
                   <label key={p}>
-                    <input type="radio" name="plan" value={p} defaultChecked={p === "standard"} />
+                    <input type="radio" name="plan" value={p} defaultChecked={p === "offline"} />
                     {cap(p)}
                   </label>
                 ))}

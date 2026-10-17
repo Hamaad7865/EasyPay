@@ -89,7 +89,7 @@ const id = () => crypto.randomUUID();
     const totals = (html) => rowsOf(html).filter((r) => r.startsWith('Total'));
 
     // ---------------------------------------------------------------- a shop
-    const shop = await business('Journal Shop', 'JN1', 'retail');
+    const shop = await business('Journal Shop', 'JN1', 'retail', 'premium');
     await c.query(`select platform.set_tenant_features($1, $2, array['deposits','accounts'])`, [admin, shop.tid]);
     await c.query(`update pos_settings set data = data || '{"returns":"refund"}'::jsonb where tenant_id = $1`, [shop.tid]);
     const hat = await shop.item('Hat'), scarf = await shop.item('Scarf'), shirt = await shop.item('Shirt');
@@ -122,7 +122,7 @@ const id = () => crypto.randomUUID();
 
     const day = { from: shop.today, to: shop.today };
     let p = await see(shop, day);
-    check('J1 the journal opens for a shop on Standard', !p.error, p.error);
+    check('J1 the journal opens for a shop on Premium', !p.error, p.error);
     // money: cash 115 + 100 + 115 + 115 = 445, card 115: Rs 560.00
     check('J2 the money received: Rs 560.00 from five sales, two of them customers', stats(p.html).join(' | ').startsWith('Sales that took money: 5 | Total received incl. tax: Rs 560.00') && stats(p.html).join(' | ').includes('Customers: 2'), stats(p.html).join(' | '));
     const rows = rowsOf(p.html);
@@ -166,7 +166,10 @@ const id = () => crypto.randomUUID();
     // ---------------------------------------------------------------- the offline plan
     const alone = await business('Journal Tablet', 'JN3', 'retail', 'offline');
     p = await see(alone, { from: alone.today, to: alone.today });
-    check('J11 a business on the offline plan is told the journal is Standard and Premium', !p.error && p.says.includes('comes with the Standard and Premium plans'), p.error || p.says.slice(0, 200));
+    check('J11 a business on the offline plan is told the journal comes with Premium', !p.error && p.says.includes('The sales journal comes with Premium'), p.error || p.says.slice(0, 200));
+    const tried = await business('Journal Trial', 'JN4', 'retail', 'trial');
+    p = await see(tried, { from: tried.today, to: tried.today });
+    check('J12 a business on trial has it', !p.error && !p.says.includes('comes with Premium') && p.says.includes('Total received incl. tax'), p.error || p.says.slice(0, 200));
   } catch (e) {
     failures++;
     console.log('FAIL threw: ' + e.message + '\n' + e.stack);

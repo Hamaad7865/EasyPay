@@ -2,7 +2,7 @@ import Link from "next/link";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { isDay } from "@/lib/day";
-import { isOffline } from "@/lib/plan";
+import { hasPremium } from "@/lib/plan";
 import { money } from "@/lib/settings";
 import { fmtDay, reportStart, today } from "@/lib/report";
 import { journalData } from "@/lib/journal-db";
@@ -14,9 +14,9 @@ import { Submit } from "../../busy";
 
 // The sales journal (Carfectionist's, after Cashmag's "Journal de ventes"):
 // one period, money received, broken down five ways that all foot to the
-// same total, and the bridge from that money to what was sold. Standard and
-// Premium (and trial); a business on the offline plan has no back office of
-// its own, and the platform admin looking in is told so. The address is the
+// same total, and the bridge from that money to what was sold. Premium and
+// trial (the owner's answer, 2026-10-17); a business on the offline plan has
+// no back office of its own, and the platform admin looking in is told so. The address is the
 // report's only state, so a link or a print is the same report.
 
 const PATH = "/backoffice/reports/journal";
@@ -39,7 +39,7 @@ export default async function SalesJournal({ searchParams }: { searchParams: Sea
       device: one(sp.dev) || undefined, user: one(sp.usr) || undefined, item: one(sp.item) || undefined,
       from: minutes(one(sp.t0)), to: minutes(one(sp.t1)),
     };
-    if (!ok || isOffline(t.plan)) return { ok, offline: isOffline(t.plan), s, now, from, to, cmp, filters, t, l };
+    if (!ok || !hasPremium(t.plan)) return { ok, offline: !hasPremium(t.plan), s, now, from, to, cmp, filters, t, l };
     const data = await journalData(c, ctx.tenantId, from, to, shop);
     const label = shop ? `Sales [${t.name}]` : undefined;
     const j = buildJournal({ ...data, filters, shopLabel: label });
@@ -48,7 +48,7 @@ export default async function SalesJournal({ searchParams }: { searchParams: Sea
     return { ok, offline: false, s, now, from, to, cmp, filters, t, l, j, prior, range, data };
   });
   const head = <PageHead title="Sales journal" lede="One period's takings, broken down by sale method, tax, payment, category and person, every part adding up to the same money received." />;
-  if (d.offline) return <div>{head}<div className="note">The sales journal comes with the Standard and Premium plans. This business is on the offline plan: its sales are on its tablet.</div></div>;
+  if (d.offline) return <div>{head}<div className="note">The sales journal comes with Premium. This business is on the offline plan: its sales are on its tablet.</div></div>;
   if (!d.ok || !("j" in d) || !d.j) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;
   const j = d.j;
   const prior = d.prior ?? null;

@@ -21,7 +21,7 @@ async function createTenant(formData: FormData) {
   const code = (text("code") || "S1").toUpperCase();
   const ownerName = text("ownerName");
   const email = text("email").toLowerCase();
-  const plan = text("plan") || "standard";
+  const plan = text("plan") || "offline";
   const type = text("type") === "retail" ? "retail" : "restaurant";
   const password = String(formData.get("password") ?? "");
   const pin = String(formData.get("pin") ?? "").trim();

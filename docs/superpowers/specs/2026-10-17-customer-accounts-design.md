@@ -212,3 +212,9 @@ Run:
 
 Not seen: two connected tablets paying one bill (proven on the server only), the back office pages in a browser
 behind a sign-in (drawn by the page harness), a statement printed from a browser to paper.
+
+**Later the same morning: three plans.** The owner: "Standard is offline. So we should have trial Offline and
+Premium thats it." Asked, they chose: clients on Standard become Offline; the Sales journal is Premium and trial
+only (the menu hides it on another plan); Premium and trial carry deposits and customer accounts, Offline has them
+when switched on in /admin. Migration 0115 moves every client whose plan is not trial, premium or offline to
+offline (its row and its tills' settings) and makes offline the plan of a client created with none.

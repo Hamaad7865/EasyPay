@@ -134,7 +134,7 @@ export const GROUPS: NavGroup[] = [
     icon: Wallet,
     links: [
       { href: "/backoffice/reports/sales", label: "Sales summary", icon: BarChart3, words: "reports overview revenue gross net totals payments takings" },
-      { href: "/backoffice/reports/journal", label: "Sales journal", icon: BookOpenText, words: "journal de ventes cash basis takings money received period compare taxes vat categories payments methods users accountant" },
+      { href: "/backoffice/reports/journal", label: "Sales journal", premium: true, icon: BookOpenText, words: "journal de ventes cash basis takings money received period compare taxes vat categories payments methods users accountant" },
       { href: "/backoffice/reports/items", label: "Item sales", icon: ListOrdered, words: "reports products quantity sold categories cost profit margin" },
       { href: "/backoffice/reports/stock", label: "Stock reports", only: "retail", icon: PackageSearch, words: "stock value worth inventory valuation reorder list low to order losses damaged expired lost stolen shrinkage written off not selling slow dead stock" },
       { href: "/backoffice/receipts", label: "Receipts", icon: Receipt, words: "refund reprint payment correction bills paid orders" },

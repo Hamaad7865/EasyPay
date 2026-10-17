@@ -486,8 +486,8 @@ export function TenantView({
                   </label>
                   <span className="help">
                     Deposits: goods held for a customer who pays part now and collects later. Customer accounts: a named customer takes goods now and pays
-                    later, with statements. Premium and trial carry both already; switch one on here for a client on another plan who paid for it (the
-                    offline edition, a Standard shop).
+                    later, with statements. Premium and trial carry both already; switch one on here for a client on the offline
+                    edition who paid for it.
                   </span>
                   <div className="inline">
                     <Submit className="btn-quiet">Save extras</Submit>

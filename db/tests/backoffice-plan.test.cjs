@@ -42,9 +42,12 @@ check('N2 a premium restaurant has Bookings in its menu', hrefs('restaurant', tr
 check('N2 a standard restaurant does not', !hrefs('restaurant', false).includes(BOOKINGS));
 // the other premium page is the table cards (QR ordering)
 const CARDS = '/backoffice/tables/cards';
-check('N2 and loses nothing else but the table cards, premium too', hrefs('restaurant', true).filter((h) => h !== BOOKINGS && h !== CARDS).join() === hrefs('restaurant', false).join());
+// and the sales journal, Premium and trial only since 0115 (the owner's answer, 2026-10-17)
+const JOURNAL = '/backoffice/reports/journal';
+check('N2 and loses nothing else but the table cards and the sales journal, premium too', hrefs('restaurant', true).filter((h) => h !== BOOKINGS && h !== CARDS && h !== JOURNAL).join() === hrefs('restaurant', false).join());
 check('N3 a shop has no Bookings on any plan', !hrefs('retail', true).includes(BOOKINGS) && !hrefs('retail', false).includes(BOOKINGS));
-check('N3 and a shop\'s menu does not depend on its plan', hrefs('retail', true).join() === hrefs('retail', false).join());
+check('N3 and a shop\'s menu depends on its plan only for the sales journal', hrefs('retail', true).includes(JOURNAL) && !hrefs('retail', false).includes(JOURNAL)
+  && hrefs('retail', true).filter((h) => h !== JOURNAL).join() === hrefs('retail', false).join());
 
 const found = (mode, premium) => nav.pagesOf(mode, premium).some((p) => p.href === BOOKINGS);
 check('N4 the search finds Bookings for a premium restaurant only', found('restaurant', true) && !found('restaurant', false) && !found('retail', true));
