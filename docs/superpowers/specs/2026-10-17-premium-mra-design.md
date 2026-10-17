@@ -100,7 +100,7 @@ What must be true before a client can train or go live, each line with what is m
   (with one, the company address is that branch's).
 - **Taxes**: an MRA code per tax, suggested from the rate (15% TC01, 0% TC02) until saved.
 - **Categories**: goods or services, "as the business" by default.
-- A line at the top of the dashboard while `setting_up`: what the checklist still lacks.
+- The checklist, in words, at the top of the Company details page: what the move still lacks.
 
 A client not on MRA sees none of this.
 
