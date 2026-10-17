@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { isOffline } from "@/lib/plan";
-import { BUSINESS_TYPES, PLAN_HELP, PLANS } from "@/lib/platform";
+import { BUSINESS_TYPES, PLAN_HELP, PLANS, PREMIUM_MRA } from "@/lib/platform";
+import { asMra, MRA_STATE_WORDS, onMra, type ChecklistLine } from "@/lib/mra";
 import { Submit, Wait } from "../../../backoffice/busy";
 import { cap, day, dayTime, Notes, supportId } from "../../bits";
 import { ConfirmSubmit } from "../../confirm";
 import { Password } from "../../password";
 import { type Login, LoginsTable } from "./logins";
 import { type CodeAction, type TabletCode, Tablets } from "./tablets";
+import { MraPanel } from "./mra";
 
 export type Tenant = {
   id: string;
@@ -21,6 +23,8 @@ export type Tenant = {
   created_at: string;
   // extras paid for beyond the plan (0113)
   features: string[];
+  // Premium MRA: off, setting_up, training, live (0116)
+  mra: string;
 };
 export type Store = { id: string; name: string; code: string };
 export type Till = {
@@ -34,6 +38,8 @@ export type Till = {
   active: boolean;
   // nothing recorded on it: no receipt, no day, no cash, no clock-in
   bare: boolean;
+  // the ID the MRA gave it (0116)
+  mra_ebs_id: string | null;
 };
 // Is the client being set up, and how much has been rung up on it so far.
 export type Setup = { settingUp: boolean; receipts: number; orders: number };
@@ -62,6 +68,8 @@ export type TenantActions = {
   goLive: Action;
   backToSettingUp: Action;
   clearTest: Action;
+  setMra: Action;
+  setTillMraIds: Action;
 };
 
 const ACTIONS: Record<string, string> = {
@@ -89,6 +97,8 @@ const ACTIONS: Record<string, string> = {
   "tenant.clear_test": "Test activity cleared",
   "tenant.live": "Put live",
   "tenant.setting_up": "Taken back to being set up",
+  "tenant.mra": "MRA e-invoicing",
+  "till.mra_id": "Till's EBS MRA ID",
 };
 
 const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
@@ -97,6 +107,8 @@ function auditNote(a: Audit): string {
   const d = a.detail ?? {};
   if (a.action === "tenant.plan" || a.action === "tenant.business_type") return `${String(d.from)} to ${String(d.to)}`;
   if (a.action === "tenant.features") return `${(Array.isArray(d.to) ? d.to : []).join(", ") || "none"}`;
+  if (a.action === "tenant.mra") return `${MRA_STATE_WORDS[asMra(d.from)]} to ${MRA_STATE_WORDS[asMra(d.to)]}`;
+  if (a.action === "till.mra_id") return d.to ? String(d.to) : "cleared";
   if (a.action === "tenant.suspended") return String(d.reason ?? "");
   if (a.action === "login.add") return `${String(d.name)} as ${String(d.role)}`;
   if (a.action === "store.add") return `${String(d.name)} (${String(d.code)})`;
@@ -122,6 +134,7 @@ export function TenantView({
   audit,
   codes,
   setup,
+  checklist,
   error,
   notice,
   actions,
@@ -134,12 +147,15 @@ export function TenantView({
   audit: Audit[];
   codes: TabletCode[];
   setup: Setup;
+  // what a Premium MRA client's move still lacks (0116); empty for any other client
+  checklist: ChecklistLine[];
   error?: string;
   notice?: string;
   actions: TenantActions;
 }) {
   const active = tenant.status === "active";
   const offline = isOffline(tenant.plan);
+  const mra = onMra(asMra(tenant.mra));
   const which = <input type="hidden" name="tenant" value={tenant.id} />;
   return (
     <div>
@@ -156,7 +172,7 @@ export function TenantView({
         {setup.settingUp && <span className="badge amber">Setting up</span>}
       </div>
       <p className="lede">
-        {cap(tenant.business_type)} · {cap(tenant.plan)} plan · ID {supportId(tenant.id)} · Created {day(tenant.created_at)}
+        {cap(tenant.business_type)} · {mra ? "Premium MRA" : cap(tenant.plan)} plan · ID {supportId(tenant.id)} · Created {day(tenant.created_at)}
       </p>
       <Notes error={error} notice={notice} />
       {/* An offline client has no back office of its own: EasyPay sets it up from here, for its owner. */}
@@ -463,16 +479,19 @@ export function TenantView({
                 {which}
                 <strong>Plan</strong>
                 <div className="inline">
-                  <select name="plan" defaultValue={tenant.plan} aria-label="Plan">
-                    {Array.from(new Set([...PLANS, tenant.plan])).map((p) => (
+                  <select name="plan" defaultValue={mra ? PREMIUM_MRA : tenant.plan} aria-label="Plan">
+                    {Array.from(new Set<string>([...PLANS, PREMIUM_MRA, tenant.plan])).map((p) => (
                       <option key={p} value={p}>
-                        {cap(p)}
+                        {p === PREMIUM_MRA ? "Premium MRA" : cap(p)}
                       </option>
                     ))}
                   </select>
                   <Submit className="btn-quiet">Change plan</Submit>
                 </div>
-                <span className="help">{PLAN_HELP}</span>
+                <span className="help">
+                  {PLAN_HELP} Premium MRA is Premium for a business that must send every sale to the MRA (turnover over Rs 40 million a year): choosing it
+                  starts the move, and what the move still needs is listed under MRA e-invoicing.
+                </span>
               </form>
               {tenant.business_type === "retail" && (
                 <form action={actions.setFeatures} className="adm-part">
@@ -514,6 +533,19 @@ export function TenantView({
               </form>
             </div>
           </section>
+
+          {mra && (
+            <MraPanel
+              tenantId={tenant.id}
+              state={asMra(tenant.mra)}
+              checklist={checklist}
+              tills={tills
+                .filter((d) => d.active)
+                .map((d) => ({ id: d.id, name: d.name, code: d.code, store: stores.find((st) => st.id === d.store_id)?.name ?? "", mra_ebs_id: d.mra_ebs_id }))}
+              setTillMraIds={actions.setTillMraIds}
+              setMra={actions.setMra}
+            />
+          )}
 
           <section className="card flush">
             <div className="card-head">

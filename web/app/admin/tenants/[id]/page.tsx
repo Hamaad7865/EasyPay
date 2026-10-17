@@ -4,7 +4,8 @@ import { notFound, redirect } from "next/navigation";
 import { db, withTenant } from "@/lib/db";
 import { hashPin, isPin } from "@/lib/pin";
 import { isOffline } from "@/lib/plan";
-import { adminMessage, requirePlatformAdmin } from "@/lib/platform";
+import { adminMessage, PREMIUM_MRA, requirePlatformAdmin } from "@/lib/platform";
+import type { ChecklistLine } from "@/lib/mra";
 import { loginForRestaurant, passwordProblem, removeLogin, setLoginPassword } from "@/lib/platform-auth";
 import { AS_COOKIE, AS_PATH, adminInside } from "@/lib/tenant";
 import type { CodeAnswer, TabletCode } from "./tablets";
@@ -25,16 +26,61 @@ async function tenantOf(formData: FormData): Promise<{ adminId: string; tenantId
   return { adminId: admin.userId, tenantId };
 }
 
+// Premium MRA is the premium plan with the MRA switched on (0116): choosing it
+// makes the client premium (an offline one is connected to the cloud so) and
+// starts its move. A client on MRA leaves it through its MRA part, not this list.
 async function setPlan(formData: FormData) {
   "use server";
   const { adminId, tenantId } = await tenantOf(formData);
+  const plan = String(formData.get("plan") ?? "");
+  const now = (await db().query(`select mra from tenants where id = $1 and deleted_at is null`, [tenantId])).rows[0];
+  if (!now) notFound();
+  const onMraNow = now.mra !== "off";
+  if (onMraNow && plan === PREMIUM_MRA) back(tenantId, "notice", "This client is on Premium MRA already.");
+  if (onMraNow) back(tenantId, "error", adminMessage(new Error("mra-needs-premium")));
   try {
-    await db().query(`select platform.set_tenant_plan($1, $2, $3)`, [adminId, tenantId, String(formData.get("plan") ?? "")]);
+    await db().query(`select platform.set_tenant_plan($1, $2, $3)`, [adminId, tenantId, plan === PREMIUM_MRA ? "premium" : plan]);
+    if (plan === PREMIUM_MRA) await db().query(`select platform.set_tenant_mra($1, $2, 'setting_up')`, [adminId, tenantId]);
   } catch (e) {
     back(tenantId, "error", adminMessage(e));
   }
   revalidatePath(`/admin/tenants/${tenantId}`);
-  back(tenantId, "notice", "Plan changed.");
+  back(
+    tenantId,
+    "notice",
+    plan === PREMIUM_MRA ? "Premium MRA: the move has started. What it still needs is listed under MRA e-invoicing." : "Plan changed.",
+  );
+}
+
+// Back to plain Premium (0116). Training and live come with the till update.
+async function setMra(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  try {
+    await db().query(`select platform.set_tenant_mra($1, $2, $3)`, [adminId, tenantId, String(formData.get("state") ?? "")]);
+  } catch (e) {
+    back(tenantId, "error", adminMessage(e));
+  }
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  back(tenantId, "notice", "MRA turned off: the client is on Premium.");
+}
+
+// The ID the MRA gave each till, as typed in the MRA part: every field is sent,
+// and only a changed one is written (and audited).
+async function setTillMraIds(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  const ours = (await db().query(`select id from pos_devices where tenant_id = $1`, [tenantId])).rows.map((r) => r.id as string);
+  try {
+    for (const id of ours) {
+      if (!formData.has("mra_" + id)) continue;
+      await db().query(`select platform.set_till_mra_id($1, $2, $3)`, [adminId, id, String(formData.get("mra_" + id) ?? "")]);
+    }
+  } catch (e) {
+    back(tenantId, "error", adminMessage(e));
+  }
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  back(tenantId, "notice", "EBS MRA IDs saved.");
 }
 
 // "Login to back office": EasyPay goes into an offline client's back office,
@@ -439,14 +485,14 @@ export default async function TenantPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string; notice?: string }>;
 }) {
-  await requirePlatformAdmin();
+  const admin = await requirePlatformAdmin();
   const { id } = await params;
   const sp = await searchParams;
   if (!UUID.test(id)) notFound();
   const pool = db();
   const tenant = (
     await pool.query(
-      `select id, name, brn, vat_number, plan, business_type, status, status_reason, status_changed_at, created_at, features
+      `select id, name, brn, vat_number, plan, business_type, status, status_reason, status_changed_at, created_at, features, mra
          from tenants where id = $1 and deleted_at is null`,
       [id],
     )
@@ -462,7 +508,7 @@ export default async function TenantPage({
       .then((r) => r.rows as Store[]),
     pool
       .query(
-        `select d.id, d.store_id, d.name, d.code, d.app_version, d.last_seen_at, d.last_receipt_seq,
+        `select d.id, d.store_id, d.name, d.code, d.app_version, d.last_seen_at, d.last_receipt_seq, d.mra_ebs_id,
                 d.deleted_at is null as active, platform.till_is_bare(d.tenant_id, d.id) as bare
            from pos_devices d where d.tenant_id = $1 order by d.created_at`,
         [id],
@@ -500,6 +546,11 @@ export default async function TenantPage({
       )
       .then((r) => r.rows[0] as Setup),
   ]);
+  // what a Premium MRA client's move still lacks (0116)
+  const checklist =
+    tenant.mra !== "off"
+      ? (((await pool.query(`select platform.mra_checklist($1, $2) as r`, [admin.userId, id])).rows[0]?.r ?? []) as ChecklistLine[])
+      : [];
   return (
     <TenantView
       tenant={tenant}
@@ -510,11 +561,13 @@ export default async function TenantPage({
       audit={audit}
       codes={codes}
       setup={setup}
+      checklist={checklist}
       error={sp.error}
       notice={sp.notice}
       actions={{
         setDetails, setPlan, setFeatures, setBusinessType, setStatus, addStore, setTillActive, addLogin, setPassword, setPin, setActive,
         addTablet, moveTablet, endCode, openBackOffice, removeTill, removeCode, goLive, backToSettingUp, clearTest,
+        setMra, setTillMraIds,
       }}
     />
   );
