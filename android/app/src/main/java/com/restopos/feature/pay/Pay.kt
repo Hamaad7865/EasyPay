@@ -67,6 +67,7 @@ import com.restopos.core.data.ReturnRules
 import com.restopos.core.data.LineInfo
 import com.restopos.core.data.OrderOps
 import com.restopos.core.data.PayInput
+import com.restopos.core.data.StaffSession
 import com.restopos.core.data.ServiceRepository
 import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.PaymentTypeEntity
@@ -114,7 +115,14 @@ data class PayDone(
     val kind: String, val table: String?, val phone: String?, val email: String?,
     // an exchange: what the shop gives back when the goods that came back were worth more, and how; or what stays on a credit note
     val exchange: Boolean = false, val back: Long = 0, val backBy: String? = null, val note: Long = 0,
+    // put on the customer's account (0114), and what they owe on it now
+    val onAccount: Long = 0, val owes: Long = 0,
 )
+
+// On account (0114), offered on Pay: the shop sells on account, the sale names
+// a customer, and the person paying may. who: the customer's name; null with
+// no customer on the sale (the key then says to pick one).
+data class AccountOffer(val typeId: String, val who: String?, val owes: Long, val allowed: Boolean)
 
 data class PayUi(
     val loaded: Boolean = false,
@@ -154,6 +162,8 @@ data class PayUi(
     // here, or a restaurant), and whether the number is being asked for
     val noteType: PaymentTypeEntity? = null,
     val noteAsk: Boolean = false,
+    // a shop that sells on account (0114): the key and what it says; null: not offered
+    val account: AccountOffer? = null,
     val busy: Boolean = false,
     val done: PayDone? = null,
 ) {
@@ -181,6 +191,7 @@ class PayViewModel @Inject constructor(
     private val service: ServiceRepository,
     private val exchanges: Exchanges,
     private val creditNotes: CreditNotes,
+    private val staff: StaffSession,
 ) : ViewModel() {
     private val _ui = MutableStateFlow(PayUi())
     val ui: StateFlow<PayUi> = _ui
@@ -327,6 +338,10 @@ class PayViewModel @Inject constructor(
             split = if (ex != null) "full" else split ?: cur.split, n = if (cur.loaded) cur.n else maxOf(2, t.covers ?: 2),
             exchangeOf = ex?.number, credit = ex?.credit ?: 0, policy = settings.returns,
             noteType = if (settings.retail) db.notes().paymentType() else null,
+            account = if (settings.accounts) db.accounts().paymentType()?.let { at ->
+                val c = t.customer_id?.let { db.customers().customer(it) }
+                AccountOffer(at.id, c?.name, c?.let { db.accounts().balance(it.id) } ?: 0, staff.can("sale.on_account"))
+            } else null,
             // one check of a split check: its lines, and only they
             lines = all.filter { cur.check == null || (it.line.check_no == cur.check && !it.line.paid) }.map { PayLine(it, cur.check != null) },
             methods = methods, method = cur.method?.let { m -> methods.firstOrNull { it.id == m.id } } ?: methods.firstOrNull(),
@@ -351,6 +366,30 @@ class PayViewModel @Inject constructor(
         shares = shares + Share("Deposit ${d.number}", PayInput(type.id, amount, amount, 0, d.number, label = "Deposit ${d.number}"))
         keep(ticketId, s.n, if (s.split == "amount") "amount" else "equal")
         show(s.copy(tend = "", piece = 0))
+    }
+
+    // On account (0114): this payment (all that remains, or the part typed)
+    // goes on the customer's account. With nothing left after it the sale is
+    // recorded; otherwise the rest is paid any other way.
+    fun onAccount() {
+        val s = _ui.value
+        val a = s.account ?: return
+        if (s.busy || s.done != null || s.exchangeOf != null || s.check != null) return
+        if (a.who == null) { Toaster.say("Pick the customer first: a sale on account goes on someone's account"); return }
+        if (!a.allowed) { Toaster.say("You are not allowed to sell on account"); return }
+        if (shares.any { it.input.paymentTypeId == a.typeId }) { Toaster.say("Part of this sale is on account already"); return }
+        val amount = s.amount
+        if (amount <= 0) { Toaster.say("There is nothing to put on account"); return }
+        val unpaid = s.lines.filter { !it.info.line.paid }
+        val all = shares + Share("On account", PayInput(a.typeId, amount, null, 0, null, label = "On account"))
+        if (amount < s.remaining) {
+            shares = all
+            keep(ticketId, s.n, if (s.split == "amount") "amount" else "equal")
+            Toaster.say("${Money.format(amount)} on ${a.who}'s account · ${Money.format(s.remaining - amount)} remaining")
+            show(s.copy(tend = "", reference = "", piece = 0))
+            return
+        }
+        record(s, unpaid.map { it.info.line.id }, all)
     }
 
     // works out what this payment is for, from how the bill is being split
@@ -533,10 +572,12 @@ class PayViewModel @Inject constructor(
                     // a takeaway paid when it is handed over has been collected
                     if (t?.stage == "ready") tickets.setStage(t.id, "done")
                     val customer = t?.customer_id?.let { db.customers().customer(it) }
+                    val onAcc = with.filter { it.input.paymentTypeId == s.account?.typeId }.sumOf { it.input.amount }
                     _ui.value = _ui.value.copy(busy = false, done = PayDone(
                         receipt.id, earlierTotal + receipt.total, change,
                         with.filter { it.input.amount > 0 }.let { real -> if (real.size > 1) "${real.size} payments" else real.firstOrNull()?.type ?: "No charge" },
                         s.kind, t?.table_id?.let { db.tables().table(it)?.name }, t?.phone ?: customer?.phone, customer?.email,
+                        onAccount = onAcc, owes = if (onAcc > 0 && customer != null) db.accounts().balance(customer.id) else 0,
                     ))
                 } else {
                     // an amount discount is given once, not on every guest's receipt
@@ -724,6 +765,24 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                             T("Scan the slip, or type its number", 13.sp, 600, V.Text2)
                         }
                     }
+                    // a shop's customer accounts (0114): this payment goes on the customer's account
+                    ui.account?.takeIf { ui.exchangeOf == null && ui.check == null }?.let { a ->
+                        Row(
+                            Modifier.fillMaxWidth().height(if (short) 50.dp else 56.dp).clip(RoundedCornerShape(12.dp)).background(V.BlueWash).clickable(enabled = !ui.busy) { vm.onAccount() }.padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            VIcon(VI.Receipt, 20.dp, V.BlueSoft)
+                            T("On account", 16.sp, 800, V.BlueSoft)
+                            T(
+                                when {
+                                    a.who == null -> "Pick the customer on the sale first"
+                                    !a.allowed -> "Needs someone allowed to sell on account"
+                                    else -> "${Money.format(ui.amount)} on ${a.who}'s account" + if (a.owes > 0) " · owes ${Money.format(a.owes)} now" else ""
+                                },
+                                13.sp, 600, V.Text2, lines = 1,
+                            )
+                        }
+                    }
                 }
                 // an exchange with nothing for the customer to pay has nothing to count in
                 val settled = ui.exchangeOf != null && ui.amount == 0L
@@ -894,8 +953,14 @@ private fun Done(d: PayDone, vm: PayViewModel, onFinish: () -> Unit) {
         ) {
             Box(Modifier.size(76.dp).clip(CircleShape).background(V.Green), contentAlignment = Alignment.Center) { VIcon(VI.Check, 40.dp, V.GreenInk, 2.8f) }
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                T(if (d.exchange) "Exchange complete" else "Payment complete", 26.sp, 800, spacing = (-0.5).sp)
+                T(if (d.exchange) "Exchange complete" else if (d.onAccount > 0 && d.onAccount == d.total) "Put on account" else "Payment complete", 26.sp, 800, spacing = (-0.5).sp)
                 T("${Money.format(d.total)} · ${d.method}", 15.sp, 600, V.Text2)
+            }
+            if (d.onAccount > 0) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(V.BlueWash).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    T("On account ${Money.format(d.onAccount)}", 16.sp, 800, V.BlueSoft)
+                    T("They owe ${Money.format(d.owes)} on account now", 14.sp, 700, V.Dim)
+                }
             }
             if (d.change > 0 || d.back > 0 || d.note > 0) {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(V.GreenWash).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {

@@ -653,6 +653,15 @@ class TicketRepository @Inject constructor(
         val totals = Calc.totalsRounded(calcLines, discPicks, servicePct)
         val chunk = payments.sumOf { it.amount }
         require(chunk == totals.total) { "Payment must equal the amount due" }
+        // On account (0114): a bill on the sale's customer, by someone allowed to give credit
+        val accountType = db.accounts().paymentType()
+        val onAccount = accountType?.let { at -> payments.filter { it.paymentTypeId == at.id }.sumOf { it.amount } } ?: 0L
+        if (onAccount > 0) {
+            require(t.customer_id != null) { "Pick the customer first: a sale on account is put on someone's account" }
+            require(staff.can("sale.on_account")) { "You are not allowed to sell on account" }
+            require(PosSettings.parse(db.ops().settings()).accounts) { "This shop does not sell on account" }
+        }
+        val owedAfter = if (onAccount > 0) db.accounts().balance(t.customer_id!!) + onAccount else null
         // the ticket closes when this receipt leaves no unpaid line behind
         val closing = lines.none { !it.paid && !covered.contains(it.id) }
 
@@ -678,7 +687,7 @@ class TicketRepository @Inject constructor(
             discounts.mapIndexed { i, d -> com.restopos.core.print.DocAmount(d.name, totals.discountAmounts[i]) }.filter { it.amount > 0 },
             payments.map { com.restopos.core.print.DocPayment(it.label ?: types[it.paymentTypeId]?.name ?: "Paid", it.amount, it.tendered, it.change, it.reference) },
             number, now,
-        ))
+        ).copy(owed = owedAfter))
         val payArr = buildJsonArray {
             payments.forEach { p ->
                 add(buildJsonObject {
@@ -750,6 +759,10 @@ class TicketRepository @Inject constructor(
                 val d = db.deposits().deposit(did) ?: return@forEach
                 if (d.status == "open" && db.deposits().lines(did).all { it.left == 0 }) db.deposits().upsert(listOf(d.copy(status = "collected")))
             }
+            // a sale paid in part or whole on account (0114): a bill on its customer, under the receipt's own id
+            if (onAccount > 0) db.accounts().upsertBills(listOf(com.restopos.core.database.AccountBillEntity(
+                receiptId, tenant, store, deviceId, t.customer_id, number, java.time.LocalDate.now().toString(), onAccount, created_at = now,
+            )))
             db.tickets().markPaid(payLines.map { it.id })
             // what was sold leaves this till's copy of the shelf at once; the server's figure comes back with the next sync
             db.moveStock(store, payLines.mapNotNull { l -> (l.qty - (held[l.id] ?: 0)).takeIf { it > 0 }?.let { l to -it } })

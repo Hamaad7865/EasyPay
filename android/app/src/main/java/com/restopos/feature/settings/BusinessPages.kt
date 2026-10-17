@@ -159,6 +159,14 @@ class BusinessViewModel @Inject constructor(db: TillDatabase, private val servic
         }
     }
 
+    // a shop's customer accounts (0114): only what changed is sent
+    fun saveAccounts(was: PosSettings, on: Boolean, days: String) {
+        val d = days.trim().toIntOrNull()?.takeIf { it in 1..365 } ?: run { Toaster.say("Overdue after 1 to 365 days"); return }
+        val changed = listOf(on != was.accountsOn, d != was.accountDays)
+        if (changed.none { it }) { Toaster.say("Nothing was changed."); return }
+        go("Saved. Every till of the shop takes it.", {}) { by -> service.saveAccounts(on.takeIf { changed[0] }, d.takeIf { changed[1] }, by) }
+    }
+
     // another printer (a kitchen's, a bar's): the first one of a store is the receipt printer, the others print what is ticked for them
     fun addPrinter(id: String, name: String, kind: String, address: String, paper: Int, done: () -> Unit) {
         val p = com.restopos.core.data.PrinterForm.read(name, kind, address, paper).getOrElse { Toaster.say(it.message ?: "That is not a printer yet"); return }
@@ -474,6 +482,34 @@ internal fun DepositSettingsPage(vm: BusinessViewModel = hiltViewModel()) {
         }
     }
     Row { VBtn(if (busy) "Saving..." else "Save", bg = V.Blue, fg = Color.White, height = 52.dp, radius = 14.dp, weight = 800, enabled = !busy) { vm.saveDeposits(st, on, cancel, days, overdue, grace, customer) } }
+}
+
+// ---- Settings > Accounts (a shop's customer accounts, 0114) ----
+@Composable
+internal fun AccountSettingsPage(vm: BusinessViewModel = hiltViewModel()) {
+    val st by vm.settings.collectAsState()
+    val busy by vm.busy.collectAsState()
+    var on by remember(st.accountsOn) { mutableStateOf(st.accountsOn) }
+    var days by remember(st.accountDays) { mutableStateOf(st.accountDays.toString()) }
+
+    if (!st.accountsPaid) {
+        Note("Customer accounts are an extra for this shop. Ask EasyPay to add them: a named customer takes the goods now and pays later.")
+        return
+    }
+    Note("A sale is put on the customer's account with On account on Pay, once the sale names a customer. They pay it off under More, Accounts. Who may sell on account is set on the role: Sell on account.")
+    Panel {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Choice("Sell on account", listOf("on" to "On", "off" to "Off"), if (on) "on" else "off") { on = it == "on" }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f)) {
+                    T("Overdue after", 15.sp, 700)
+                    T("Days, 1 to 365: a bill older than that shows as overdue.", 13.sp, 500, V.Text2, lines = 2)
+                }
+                Field(days, { v -> days = v.filter { it.isDigit() }.take(3) }, "30", Modifier.fillMaxWidth(0.25f), height = 50.dp, number = true, size = 17.sp)
+            }
+        }
+    }
+    Row { VBtn(if (busy) "Saving..." else "Save", bg = V.Blue, fg = Color.White, height = 52.dp, radius = 14.dp, weight = 800, enabled = !busy) { vm.saveAccounts(st, on, days) } }
 }
 
 // One setting with its choices as keys, the one picked lit.

@@ -627,6 +627,7 @@ class LocalAnswersTest {
         ask("company.save", """{"name":"Chez Aisha","address":"Royal Road"}""")
         ask("settings.save", OfficeFixtures.payload("settings-save").jsonObject)
         ask("settings.save", OfficeFixtures.payload("settings-save-deposits").jsonObject)
+        ask("settings.save", OfficeFixtures.payload("settings-save-accounts").jsonObject)
         ask("printer.save", """{"id":"${id(410)}","store_id":"$store","name":"Counter","kind":"usb","address":"","paper_mm":80,"one_printer":true}""")
         val after = obj(dao.settings!!.data)
         val written = after.keys.filter { after[it] != before[it] }.toSet()
@@ -1163,6 +1164,31 @@ class LocalAnswersTest {
         assertEquals("done", ask("settings.save", """{"deposits":"off"}"""))
         assertEquals(false, PosSettings.parse(dao.settings!!.data).deposits)
         assertEquals(OfficeFixtures.payload("settings-save-deposits"), OfficePayloads.depositsSave(true, "keep", 45, "cancel", 3, false, null))
+    }
+
+    @Test fun `a shop's account settings, as the server takes them, and nothing else of the settings`() {
+        dao.settings = SettingsEntity(tenant, """{"plan":"offline","businessType":"retail","features":["accounts"],"servicePct":10}""")
+        assertEquals(true, PosSettings.parse(dao.settings!!.data).accounts)
+        assertEquals("done", ask("settings.save", OfficeFixtures.payload("settings-save-accounts").jsonObject))
+        val s = PosSettings.parse(dao.settings!!.data)
+        assertEquals(listOf<Any>(false, 45, 10, false), listOf(s.accountsOn, s.accountDays, s.servicePct, s.accounts))
+        assertEquals("bad-payload", ask("settings.save", """{"accountDays":0}"""))
+        assertEquals("bad-payload", ask("settings.save", """{"accountDays":366}"""))
+        assertEquals("bad-payload", ask("settings.save", """{"accounts":true}"""))
+        assertEquals("done", ask("settings.save", """{"accounts":"on"}"""))
+        assertEquals(true, PosSettings.parse(dao.settings!!.data).accounts)
+        assertEquals(OfficeFixtures.payload("settings-save-accounts"), OfficePayloads.accountsSave(false, 45, null))
+    }
+
+    @Test fun `customer accounts are an extra, only for a shop that has them by its plan or switched on`() {
+        assertEquals(false, PosSettings.parse("""{"businessType":"retail"}""").accounts)
+        assertEquals(false, PosSettings.parse("""{"businessType":"retail","plan":"standard","features":["deposits"]}""").accounts)
+        assertEquals(true, PosSettings.parse("""{"businessType":"retail","plan":"offline","features":["accounts"]}""").accounts)
+        assertEquals(true, PosSettings.parse("""{"businessType":"retail","plan":"premium"}""").accounts)
+        assertEquals(true, PosSettings.parse("""{"businessType":"retail","plan":"trial"}""").accounts)
+        assertEquals(false, PosSettings.parse("""{"businessType":"restaurant","plan":"premium"}""").accounts)
+        assertEquals(false, PosSettings.parse("""{"businessType":"retail","plan":"premium","accounts":"off"}""").accounts)
+        assertEquals(30, PosSettings.parse("""{"businessType":"retail","accountDays":0}""").accountDays)
     }
 
     @Test fun `deposits are an extra, only for a shop that has them by its plan or switched on`() {

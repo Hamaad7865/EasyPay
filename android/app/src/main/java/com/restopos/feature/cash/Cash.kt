@@ -284,6 +284,7 @@ fun CashScreen(vm: CashViewModel, onOpenPeriod: () -> Unit, onClosed: () -> Unit
                     Line("Pay-outs", "− " + Money.format(doc.cashOut))
                     // a shop's deposits (0113): their cash is in the drawer too
                     if (doc.deposits.cash != 0L) Line("Deposit cash", Money.format(doc.deposits.cash))
+                    if (doc.accounts.cash != 0L) Line("Account payments cash", Money.format(doc.accounts.cash))
                     Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
                     Line("Expected in drawer", Money.format(doc.expected), bold = true)
                     Line("Counted", counted?.let { Money.format(it) } ?: NOT_YET, bold = true)

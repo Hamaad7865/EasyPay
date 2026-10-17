@@ -102,7 +102,7 @@ private const val BARS = "M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12"
 // onFast: the sale paid in cash, the exact amount, without the payment screen.
 @Composable
 // onDeposits: the Deposits screen, on the deposit whose slip was scanned if any (0113).
-fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit, onFast: () -> Unit, onReceipts: () -> Unit, onReceipt: (String) -> Unit, onStock: () -> Unit, onNote: (String) -> Unit = {}, onDeposits: (String?) -> Unit = {}) {
+fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit, onFast: () -> Unit, onReceipts: () -> Unit, onReceipt: (String) -> Unit, onStock: () -> Unit, onNote: (String) -> Unit = {}, onDeposits: (String?) -> Unit = {}, onAccounts: () -> Unit = {}) {
     val ui by vm.ui.collectAsState()
     val picking by vm.picking.collectAsState()
     val asking by vm.asking.collectAsState()
@@ -143,6 +143,7 @@ fun RetailSellScreen(vm: RetailViewModel, more: MoreViewModel, onPay: () -> Unit
                 "receipts" -> { sheet = null; onReceipts() }
                 "stock" -> { sheet = null; onStock() }
                 "deposits" -> { sheet = null; onDeposits(null) }
+                "accounts" -> { sheet = null; onAccounts() }
                 "drawer" -> { sheet = null; more.openDrawer() }
                 else -> sheet = pick // note | in | out
             }
@@ -701,6 +702,11 @@ private fun SaleMore(ui: SaleUi, vm: RetailViewModel, onDismiss: () -> Unit, onP
             // a shop's deposits (0113): goods held for customers
             if (ui.deposits || ui.depositsPending) MoreKey(VI.Receipt, "Deposits", "Goods held for customers: pay, collect, cancel", Modifier.weight(1f)) { onPick("deposits") }
             else Spacer(Modifier.weight(1f))
+        }
+        // a shop's customer accounts (0114): who owes, and money taken on their bills
+        if (ui.accounts || ui.accountsPending) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MoreKey(VI.Receipt, "Accounts", "Customers who owe: take a payment, print a statement", Modifier.weight(1f)) { onPick("accounts") }
+            Spacer(Modifier.weight(1f))
         }
     }
 }

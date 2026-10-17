@@ -469,7 +469,7 @@ class SettingsViewModel @Inject constructor(
 private enum class Page(val label: String) {
     Till("This till"), Notices("Notifications"), Cash("Cash drawer"), Reports("Reports"), Payments("Payments"),
     // what the business is set up with, as its back office sets it (server 0094 on)
-    Taxes("Taxes"), Discounts("Discounts"), Staff("Staff"), Roles("Roles"), Receipt("Receipt"), Deposits("Deposits"),
+    Taxes("Taxes"), Discounts("Discounts"), Staff("Staff"), Roles("Roles"), Receipt("Receipt"), Deposits("Deposits"), Accounts("Accounts"),
     Printers("Printers"), Labels("Label printer"), Scanners("Scanners"), Display("Display"), Support("Support"), Help("Help"),
 }
 
@@ -497,6 +497,7 @@ private fun icon(p: Page): String = when (p) {
     Page.Roles -> VI.Lock
     Page.Receipt -> VI.Receipt
     Page.Deposits -> VI.Card
+    Page.Accounts -> VI.Receipt
     Page.Printers -> VI.Print
     Page.Labels -> VI.Tag
     Page.Scanners -> SCAN_ICON
@@ -629,6 +630,7 @@ fun SettingsScreen(
                             Page.Roles -> RolesPage()
                             Page.Receipt -> ReceiptPage()
                             Page.Deposits -> DepositSettingsPage()
+                            Page.Accounts -> AccountSettingsPage()
                             Page.Printers -> PrintersPage(vm, more, retail)
                             Page.Labels -> LabelPrinterPage()
                             Page.Scanners -> ScannersPage(vm, retail == true)
@@ -669,7 +671,7 @@ private fun Menu(page: Page, lock: String, waiting: Boolean, printerTrouble: Boo
         T("Settings", 22.sp, 800, spacing = (-0.4).sp, modifier = Modifier.padding(start = 10.dp, bottom = 14.dp))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             // labels and deposits are a shop's: a restaurant's till has no label printer
-            Page.entries.filter { shop || (it != Page.Labels && it != Page.Deposits) }.forEach { p ->
+            Page.entries.filter { shop || (it != Page.Labels && it != Page.Deposits && it != Page.Accounts) }.forEach { p ->
                 val on = p == page
                 val bg by animateColorAsState(if (on) V.Key else Color.Transparent, tween(140), label = "page")
                 Row(
@@ -887,6 +889,7 @@ private fun CashPage(vm: SettingsViewModel, more: MoreViewModel, keys: CashKeys)
                 Figure("Cash in", Money.format(d.cashIn))
                 Figure("Cash out", Money.format(-d.cashOut))
                 if (d.deposits.cash != 0L) Figure("Deposit cash", Money.format(d.deposits.cash))
+                if (d.accounts.cash != 0L) Figure("Account payments cash", Money.format(d.accounts.cash))
                 Figure("Expected in the drawer", Money.format(d.expected), bold = true)
             } else {
                 Note("What the drawer should hold shows after it has been counted.")
@@ -969,6 +972,7 @@ private fun ReportsPage(vm: SettingsViewModel, more: MoreViewModel, shop: Boolea
                     Figure("Cash in", Money.format(d.cashIn))
                     Figure("Cash out", Money.format(-d.cashOut))
                 if (d.deposits.cash != 0L) Figure("Deposit cash", Money.format(d.deposits.cash))
+                if (d.accounts.cash != 0L) Figure("Account payments cash", Money.format(d.accounts.cash))
                     Figure("Expected in the drawer", Money.format(d.expected), bold = true)
                     d.counted?.let {
                         Figure("Counted", Money.format(it))
@@ -1498,6 +1502,9 @@ private val SHOP_HELP = listOf(
     "Paying more on a deposit" to "Scan the slip on Sell, or tap the More key under the sale, then Deposits, and find it by number, name or phone. Tap Add payment and take the money as on Pay. A slip prints with what is left to pay.",
     "Collecting what was held" to "Open the deposit, tap Collect, and set how many of each the customer takes today (all of them to start with). The goods go on a sale at the price the deposit kept, with Collecting at the top. On Pay, what was paid on the deposit goes first; the rest is paid any way. Goods left on the deposit wait for another visit. A deposit fully collected with money paid over its goods says so: Settle what is left gives it back, puts it on a credit note or keeps it, as the shop's setting says.",
     "Cancelling a deposit" to "Open the deposit and tap Cancel deposit, then say why. What was not collected goes back on the shelf. The money paid and not used goes the way the shop's setting says: given back (in the ways it came in, or all in cash), onto a credit note that prints, or kept by the shop. It needs someone allowed to refund. A deposit past its date is marked overdue on the list; a shop can set it to be cancelled by itself after some days of grace (Settings, Deposits).",
+    "Selling on account" to "With a customer on the sale (tap Add customer above the lines), tap Pay, then On account: all that is left, or the part typed with By amount, goes on their account and the rest is paid any other way. The receipt says what they owe on account. It needs Sell on account on the role, and a shop that has customer accounts.",
+    "Taking a payment on an account" to "Tap the More key under the sale, then Accounts. Find the customer, tick the bills they are paying (all are ticked at first), then Take payment. Type less for a part payment: it goes on the oldest bills first. Cash asks what was handed over. A slip prints with what is still owed; Print a statement prints every bill that owes and how old it is.",
+    "Returning goods bought on account" to "Open the receipt on Receipts and tap Return. What comes back comes off what the customer still owes on that sale first; only what was already paid goes back as the shop's Returns setting says.",
     "The wrong payment type" to "On Receipts, tap the receipt, then Change beside how it was paid, and pick how it was really paid. The amount does not change, and who corrected it and when is kept.",
     "Checking what is in stock" to "Stock check is in the side menu, behind the key at the top left, and behind the More key under the sale. Scan a product, or type its name, SKU or barcode and tap it: it shows what this shop holds of each variant, with its price. The figures are those of the last sync, less what this till has sold since. Nothing is changed from there.",
     "Changing a product's price" to "On Products & stock, scan the product or search for it, then tap it. Change price (Price, on a variant) gives it a new price on every till at its next sync.",

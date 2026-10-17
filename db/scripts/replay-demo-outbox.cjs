@@ -59,7 +59,10 @@ function check(name, cond, extra) {
     const { businessType, ...plain } = shop.settings;
     // The tills of these fixtures gave money back on a refund, which a shop does only when its Returns
     // setting says so since 0109 (a shop is exchange-only until then): the replayed shop is one that refunds.
-    await c.query(`insert into pos_settings (tenant_id, data) values ($1,$2::jsonb)`, [tid, JSON.stringify(restaurant ? plain : { ...shop.settings, returns: 'refund' })]);
+    // A till whose returns put money on credit notes (0109) was a shop set to credit notes, which refunds no money:
+    // its refunds are replayed in such a shop.
+    const notes = till.outbox.some((o) => o.type === 'refund.create' && JSON.parse(o.payload).credit_note);
+    await c.query(`insert into pos_settings (tenant_id, data) values ($1,$2::jsonb)`, [tid, JSON.stringify(restaurant ? plain : { ...shop.settings, returns: notes ? 'credit' : 'refund' })]);
     for (const r of shop.roles) await c.query(`insert into roles (id, tenant_id, name, permissions) values ($1,$2,$3,$4::jsonb)`, [r.id, tid, r.name, JSON.stringify(r.permissions)]);
     for (const [i, e] of shop.staff.entries()) await c.query(`insert into employees (id, tenant_id, name, role_id, pin_hash) values ($1,$2,$3,$4,$5)`, [e.id, tid, e.name, e.role, pinHash(e.pin, i)]);
     await c.query(`insert into taxes (id, tenant_id, name, rate_bp, type, is_default) values ($1,$2,$3,$4,$5,true)`, [shop.tax.id, tid, shop.tax.name, shop.tax.rate_bp, shop.tax.type]);
@@ -78,10 +81,15 @@ function check(name, cond, extra) {
       await c.query(`insert into dining_options (id, tenant_id, name, is_default, sort_order, needs_table, kitchen, kind) values ($1,$2,$3,true,0,false,'pay',$4)`, [shop.dining.id, tid, shop.dining.name, shop.dining.kind]);
     }
     // a shop's Exchange payment type is not a restaurant's
-    // a shop's Deposit type is never active (0113), as on a real shop
-    for (const [i, p] of shop.payments.filter((x) => !restaurant || x.kind !== 'exchange').entries()) await c.query(`insert into payment_types (id, tenant_id, name, kind, opens_drawer, sort_order, is_active) values ($1,$2,$3,$4,$5,$6,$7)`, [p.id, tid, p.name, p.kind, p.opens_drawer, i, p.kind !== 'deposit']);
-    // a till that took deposits is a shop that has them (0113): the extra, as /admin switches it on
-    if (till.outbox.some((o) => o.type.startsWith('deposit.'))) await c.query(`update tenants set features = '{deposits}' where id = $1`, [tid]);
+    // a shop's Deposit type (0113) and On account type (0114) are never active, as on a real shop
+    for (const [i, p] of shop.payments.filter((x) => !restaurant || x.kind !== 'exchange').entries()) await c.query(`insert into payment_types (id, tenant_id, name, kind, opens_drawer, sort_order, is_active) values ($1,$2,$3,$4,$5,$6,$7)`, [p.id, tid, p.name, p.kind, p.opens_drawer, i, p.kind !== 'deposit' && p.kind !== 'account']);
+    // a till that took deposits, or sold on account, is a shop that has them (0113, 0114): the extras, as /admin switches them on
+    const accountType = shop.payments.find((x) => x.kind === 'account')?.id;
+    const extras = [
+      ...(till.outbox.some((o) => o.type.startsWith('deposit.')) ? ['deposits'] : []),
+      ...(till.outbox.some((o) => o.type === 'account.pay' || (accountType && o.payload.includes(accountType))) ? ['accounts'] : []),
+    ];
+    if (extras.length) await c.query(`update tenants set features = $2 where id = $1`, [tid, extras]);
     for (const k of shop.categories) await c.query(`insert into categories (id, tenant_id, name) values ($1,$2,$3)`, [k.id, tid, k.name]);
     for (const it of shop.items) {
       await c.query(
@@ -164,6 +172,16 @@ function check(name, cond, extra) {
     const levels = (await c.query(`select item_id, variant_id, qty from stock_levels where tenant_id = $1 and store_id = $2`, [tid, store])).rows;
     const held = new Map(levels.map((l) => [l.item_id + '|' + (l.variant_id ?? ''), l.qty]));
     const off = till.levels.filter((l) => (held.get(l.item_id + '|' + (l.variant_id ?? '')) ?? 0) !== l.qty);
+    // a shop's bills on account (0114): what each owes on the server is what the till worked out, to the cent
+    if (compare && till.bills && till.bills.length) {
+      const rows = (await c.query(`select id, customer_id, number, amount, paid, returned from account_bills where tenant_id = $1 and deleted_at is null`, [tid])).rows;
+      const one = (b) => [b.id, b.customer_id ?? '', b.number, Number(b.amount), Number(b.paid), Number(b.returned)].join('|');
+      const here = till.bills.map(one).sort().join('\n     '), there = rows.map(one).sort().join('\n     ');
+      check(`the ${till.bills.length} bills on account are the same on both: sold, paid and returned`, here === there, '\n   till:\n     ' + here + '\n   server:\n     ' + there);
+      const flagged = (await c.query(`select count(*)::int as n from account_bills where tenant_id = $1 and jsonb_array_length(flags) > 0`, [tid])).rows[0].n
+        + (await c.query(`select count(*)::int as n from account_payments where tenant_id = $1 and jsonb_array_length(flags) > 0`, [tid])).rows[0].n;
+      check('and nothing about them is flagged', flagged === 0, String(flagged));
+    }
     if (compare) check(`stock: the till's ${till.levels.length} figures are the server's`, off.length === 0, JSON.stringify(off.map((l) => ({ ...l, server: held.get(l.item_id + '|' + (l.variant_id ?? '')) ?? 0 }))));
     // the floor: every table the till holds is on the server where the till has it, and the ones it removed are
     // removed there (a plan changed on the tablet: floor.save, room.rename, room.remove)

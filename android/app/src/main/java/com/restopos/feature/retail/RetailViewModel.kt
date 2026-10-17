@@ -72,6 +72,9 @@ data class SaleUi(
     val collecting: com.restopos.core.database.DepositEntity? = null,
     // deposits still to deal with, so Deposits stays in reach when no new ones are taken
     val depositsPending: Boolean = false,
+    // a shop that sells on account (0114), or bills still owed when it no longer does
+    val accounts: Boolean = false,
+    val accountsPending: Boolean = false,
 ) {
     val empty: Boolean get() = lines.isEmpty()
     // how many things are on the sale, beside its total
@@ -183,6 +186,8 @@ class RetailViewModel @Inject constructor(
             open = _ui.value.open?.takeIf { id -> rows.any { it.id == id } },
             deposits = com.restopos.core.data.PosSettings.parse(db.ops().settings()).deposits,
             depositsPending = com.restopos.core.data.PosSettings.parse(db.ops().settings()).retail && db.deposits().pending() > 0,
+            accounts = com.restopos.core.data.PosSettings.parse(db.ops().settings()).accounts,
+            accountsPending = com.restopos.core.data.PosSettings.parse(db.ops().settings()).retail && db.accounts().openCount() > 0,
             collecting = rows.filter { it.voided_at == null && !it.paid }.firstNotNullOfOrNull { it.deposit_line_id }
                 ?.let { db.deposits().line(it) }?.let { db.deposits().deposit(it.deposit_id) },
         )

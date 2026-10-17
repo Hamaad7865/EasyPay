@@ -75,8 +75,9 @@ import androidx.room.RoomDatabase
         CreditNoteEntity::class,
         PromotionEntity::class,
         DepositEntity::class, DepositLineEntity::class, DepositPaymentEntity::class,
+        AccountBillEntity::class, AccountPaymentEntity::class, AccountPaymentLineEntity::class,
     ],
-    version = 30,
+    version = 31,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
@@ -99,4 +100,5 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun notes(): CreditNoteDao
     abstract fun promotions(): PromotionDao
     abstract fun deposits(): DepositDao
+    abstract fun accounts(): AccountDao
 }

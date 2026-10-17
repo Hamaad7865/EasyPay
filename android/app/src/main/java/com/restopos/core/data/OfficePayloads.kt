@@ -122,6 +122,13 @@ object OfficePayloads {
         approvedBy?.let { put("approved_by", it) }
     }
 
+    // A shop's customer accounts (server 0114): what is null is not sent, and is left as it is.
+    fun accountsSave(on: Boolean?, days: Int?, approvedBy: String?): JsonObject = buildJsonObject {
+        on?.let { put("accounts", if (it) "on" else "off") }
+        days?.let { put("accountDays", it) }
+        approvedBy?.let { put("approved_by", it) }
+    }
+
     // The minutes before an order for later is due that the tills ring; 0 is off (server 0111).
     fun dueReminderSave(minutes: Int, approvedBy: String?): JsonObject = buildJsonObject {
         put("dueReminderMinutes", minutes)

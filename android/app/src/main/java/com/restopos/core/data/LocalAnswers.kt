@@ -1030,6 +1030,9 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         word("depositCustomer", setOf("required", "optional"))
         days("depositDays", 1..365)
         days("depositGrace", 0..365)
+        // a shop's customer accounts (0114)
+        word("accounts", setOf("on", "off"))
+        days("accountDays", 1..365)
         if (patch.isNotEmpty()) mergeSettings(tenant, patch)
     }
 

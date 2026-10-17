@@ -68,6 +68,12 @@
       "name": "Deposit",
       "kind": "deposit",
       "opens_drawer": false
+    },
+    {
+      "id": "d0000000-0000-4000-8000-0000000acc07",
+      "name": "On account",
+      "kind": "account",
+      "opens_drawer": false
     }
   ],
   "roles": [

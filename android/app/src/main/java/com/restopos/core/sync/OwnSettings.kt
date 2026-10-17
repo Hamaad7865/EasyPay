@@ -18,7 +18,7 @@ object OwnSettings {
     // Which of them writes what.
     val WRITES = mapOf(
         "company.save" to setOf("company"),
-        "settings.save" to setOf("receipt", "servicePct", "deposits", "depositCancel", "depositDays", "depositOverdue", "depositGrace", "depositCustomer"),
+        "settings.save" to setOf("receipt", "servicePct", "deposits", "depositCancel", "depositDays", "depositOverdue", "depositGrace", "depositCustomer", "accounts", "accountDays"),
         "printer.save" to setOf("onePrinter"),
     )
     val KINDS = WRITES.keys.toList()

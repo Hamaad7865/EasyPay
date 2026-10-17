@@ -53,6 +53,8 @@ try {
     // and what stands in its rooms beside them
     elements: all(`select id, area, kind, x, y, w, h, rotation, deleted_at is not null as gone from floor_elements order by id`),
   };
+  // a shop's bills on account (0114), as the till worked them out; a build before them has none
+  try { state.bills = all(`select id, customer_id, number, amount, paid, returned from account_bills where pulled = 0 order by id`); } catch { /* no such table */ }
   db.close();
   fs.writeFileSync(out, JSON.stringify(state, null, 1));
   console.log(`${out}: ${state.outbox.length} operations (${[...new Set(state.outbox.map((o) => o.type))].join(', ')}), ${state.receipts.length} receipts, ${state.payments.length} payments, ${state.levels.length} stock figures`);

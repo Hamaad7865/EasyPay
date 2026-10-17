@@ -66,6 +66,14 @@ class Exchanges @Inject constructor(
         return orig.total - db.ops().refundedOf(receiptId)
     }
 
+    // What of that pays for the new sale: a sale on account (0114) gives back
+    // first what its bill still owes, so only the rest was the customer's to
+    // spend (OrderOps.refund takes it off the bill the same way).
+    private suspend fun spendable(receiptId: String, worth: Long): Long {
+        val bill = db.accounts().bill(receiptId) ?: return worth
+        return worth - AccountRules.offBill(worth, bill.amount - bill.paid - bill.returned)
+    }
+
     // The goods named come back, to be exchanged on the sale that is open (one
     // is opened if none is). Nothing is written yet. The right to refund is
     // asked for here, where the cashier is still in front of the receipt.
@@ -78,8 +86,10 @@ class Exchanges @Inject constructor(
             staff.allow("sale.refund", if (settings.retail && settings.returnDays > 0) "return past the ${settings.returnDays}-day window" else "refund", approver)
         }
         require(orig.type == "sale") { "A refund cannot be exchanged" }
-        val credit = worth(receiptId, picks)
-        require(credit > 0) { "Pick what comes back" }
+        val whole = worth(receiptId, picks)
+        require(whole > 0) { "Pick what comes back" }
+        val credit = spendable(receiptId, whole)
+        require(credit > 0) { "All of that comes off what the customer still owes on account for it: return it instead of exchanging, then sell what they take." }
         // The exchange belongs to a sale, so there has to be one now: the one on
         // the register, or a new one (a sale is otherwise only made with its
         // first product; this one waits for it, and is the next sale if the
@@ -112,7 +122,8 @@ class Exchanges @Inject constructor(
         require(staff.can("payment.take")) { "You are not allowed to take payment" }
         require(saleTotal > 0) { "This sale comes to nothing. Cancel the exchange and start again from the receipt." }
         // another till may have refunded part of that receipt since
-        val credit = worth(d.receiptId, d.picks)
+        val whole = worth(d.receiptId, d.picks)
+        val credit = spendable(d.receiptId, whole)
         require(credit == d.credit) { "That receipt has changed since the exchange was started. Cancel it and start again from the receipt." }
         val settled = minOf(credit, saleTotal)
         require((difference?.amount ?: 0L) == saleTotal - settled) { "Payment must equal the amount due" }
@@ -127,7 +138,7 @@ class Exchanges @Inject constructor(
         // One transaction for the two: a sale that cannot be written takes its refund back with it.
         val out = db.withTransaction {
             val refund = orders.refund(d.receiptId, d.reason, (if (note == null) backTypeId else null) ?: type.id, d.approver, d.picks, d.restock, toExchange = settled, quiet = true, note = note).getOrThrow()
-            check(refund.total == credit) { "That receipt has changed since the exchange was started. Cancel it and start again from the receipt." }
+            check(refund.total == whole) { "That receipt has changed since the exchange was started. Cancel it and start again from the receipt." }
             val sale = tickets.pay(
                 listOfNotNull(PayInput(type.id, settled, reference = refund.number, label = "Returned goods"), difference),
                 discounts, servicePct, covered,

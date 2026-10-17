@@ -80,6 +80,23 @@ data class DepositDoc(
     val note: String? = null, // a closing line: the credit note it went on, what the shop kept
 )
 
+// A customer's account on paper (server 0114): a payment's slip (what was
+// paid, which bills it went on, what each still owes) or a short statement
+// (every bill that owes, the ages, the balance).
+data class AccountDoc(
+    val title: String, // ACCOUNT PAYMENT | STATEMENT
+    val number: String?, // the payment's number; none on a statement
+    val customer: String,
+    val phone: String?,
+    val time: Long,
+    val cashier: String?,
+    val bills: List<DocAmount>, // "12 Oct · S1-T1-000123", what it still owes
+    val money: List<DocAmount> = emptyList(), // this visit: "Cash" 500, "Change" 100
+    val paidOn: List<DocAmount> = emptyList(), // a payment: what went on each bill
+    val aged: List<DocAmount> = emptyList(), // a statement: "0–30 days" ...
+    val balance: Long,
+)
+
 @Serializable
 data class ReceiptDoc(
     val kind: String = "receipt", // receipt | bill | refund
@@ -117,6 +134,9 @@ data class ReceiptDoc(
     // the customer can be called (CustomerNumber). Kept with the receipt, so a
     // reprint carries it; a receipt kept from before has none.
     val customerNo: String? = null,
+    // A sale on account (0114): what the customer owes on account with it,
+    // printed under the payments. None on any other receipt.
+    val owed: Long? = null,
 )
 
 @Serializable
@@ -165,6 +185,8 @@ data class ShiftDoc(
     val notesRedeemed: Long = 0,
     // a shop's deposits (0113); nothing prints while there were none
     val deposits: DepositFigures = DepositFigures(),
+    // a shop's customer accounts (0114); nothing prints while there were none
+    val accounts: AccountFigures = AccountFigures(),
 )
 
 // A period's deposits (server 0113): money taken on them by payment method,
@@ -180,6 +202,20 @@ data class DepositFigures(
     val cash: Long = 0,
 ) {
     val any: Boolean get() = taken.isNotEmpty() || used != 0L || back != 0L || noted != 0L || kept != 0L || cash != 0L
+}
+
+// A period's customer accounts (server 0114): what sales put on accounts,
+// what returns took off them, and money taken on accounts by payment method.
+// cash: what account payments put in the drawer, which is in the drawer's
+// expected cash and in no other cash line. In no tender above: a sale on
+// account is a sale the day it is made, money paid on it later is not.
+data class AccountFigures(
+    val sold: Long = 0,
+    val returned: Long = 0,
+    val taken: List<DocAmount> = emptyList(),
+    val cash: Long = 0,
+) {
+    val any: Boolean get() = sold != 0L || returned != 0L || taken.isNotEmpty() || cash != 0L
 }
 
 // The drawer counted during a shift: what was in it and what it should have held.
@@ -224,6 +260,8 @@ data class ZDoc(
     val notesRedeemed: Long = 0,
     // a shop's deposits (0113); nothing prints while there were none
     val deposits: DepositFigures = DepositFigures(),
+    // a shop's customer accounts (0114); nothing prints while there were none
+    val accounts: AccountFigures = AccountFigures(),
 )
 
 // Who the restaurant is on paper, and the notes around the receipt.
@@ -369,6 +407,38 @@ object Docs {
         return p.bytes()
     }
 
+    fun account(d: AccountDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster? = null, openDrawer: Boolean = false): ByteArray {
+        val p = EscPos(paper.columns)
+        if (openDrawer) p.drawer()
+        p.head(shop, logo)
+        p.rule()
+        p.align(EscPos.Align.Center).bold(true).big(true).line(d.title).big(false)
+        d.number?.let { p.tall(true).line(it).tall(false) }
+        p.bold(false).align(EscPos.Align.Left)
+        p.rule()
+        p.row("Customer", d.customer)
+        d.phone?.takeIf { it.isNotBlank() }?.let { p.row("Phone", it) }
+        p.row(stamp(d.time), d.cashier ?: "")
+        p.rule()
+        if (d.paidOn.isNotEmpty()) {
+            p.bold(true).line("Paid on").bold(false)
+            d.paidOn.forEach { p.row(it.name, num(it.amount, decimals)) }
+            d.money.forEach { p.row(it.name, num(it.amount, decimals)) }
+            p.rule()
+        }
+        p.bold(true).line(if (d.bills.isEmpty()) "Nothing is owed" else "Still owed").bold(false)
+        d.bills.forEach { p.row(it.name, num(it.amount, decimals)) }
+        if (d.aged.any { it.amount != 0L }) {
+            p.rule()
+            d.aged.forEach { p.row(it.name, num(it.amount, decimals)) }
+        }
+        p.rule()
+        p.bold(true).tall(true).row("BALANCE", "Rs " + num(d.balance, decimals)).tall(false).bold(false)
+        p.line()
+        p.end(paper)
+        return p.bytes()
+    }
+
     // What the kitchen or the bar has to make: big, and with no prices.
     fun kitchen(d: KitchenDoc, paper: Paper, design: Design = Papers.KITCHEN): ByteArray = kitchenPage(d, paper, design).bytes()
 
@@ -449,6 +519,7 @@ object Docs {
         d.payments.forEach { p.row("${it.name} (${it.count})", n(it.amount)) }
         if (d.notesIssued != 0L || d.notesRedeemed != 0L) { p.row("Credit notes issued", n(d.notesIssued)); p.row("Credit notes redeemed", n(d.notesRedeemed)) }
         depositRows(p, d.deposits, n)
+        accountRows(p, d.accounts, n)
         p.rule()
         p.bold(true).line("CASH DRAWER").bold(false)
         p.row("Opening float", n(d.float))
@@ -457,6 +528,7 @@ object Docs {
         p.row("Cash out", off(d.cashOut, decimals))
         d.moves.forEach { m -> p.row("  ${if (m.type == "in") "In" else "Out"}: ${m.reason ?: ""}", n(m.amount)) }
         if (d.deposits.cash != 0L) p.row("Deposit cash", n(d.deposits.cash))
+        if (d.accounts.cash != 0L) p.row("Account payments cash", n(d.accounts.cash))
         if (d.counts.isNotEmpty()) {
             p.line("Counted during the day:")
             d.counts.forEach { c ->
@@ -513,6 +585,7 @@ object Docs {
         d.payments.forEach { p.row("${it.name} (${it.count})", n(it.amount)) }
         if (d.notesIssued != 0L || d.notesRedeemed != 0L) { p.row("Credit notes issued", n(d.notesIssued)); p.row("Credit notes redeemed", n(d.notesRedeemed)) }
         depositRows(p, d.deposits, n)
+        accountRows(p, d.accounts, n)
         if (detailed) {
             if (d.categories.isNotEmpty()) {
                 p.rule()
@@ -537,6 +610,7 @@ object Docs {
             d.float?.let { p.row("Opening float", n(it)) }
             d.cashTaken?.let { p.row("Cash taken", n(it)) }
             if (d.deposits.cash != 0L) p.row("Deposit cash", n(d.deposits.cash))
+            if (d.accounts.cash != 0L) p.row("Account payments cash", n(d.accounts.cash))
             p.row("Expected in drawer", n(d.expected))
             p.bold(true).row("COUNTED", "Rs " + n(d.counted)).bold(false)
             val diff = d.counted - d.expected
@@ -559,6 +633,16 @@ object Docs {
         if (f.back != 0L) p.row("Given back", n(-f.back))
         if (f.noted != 0L) p.row("Put on credit notes", n(f.noted))
         if (f.kept != 0L) p.row("Kept by the shop", n(f.kept))
+    }
+
+    // A period's customer accounts, under the deposits. Nothing when there were none.
+    private fun accountRows(p: EscPos, f: AccountFigures, n: (Long) -> String) {
+        if (!f.any) return
+        p.rule()
+        p.bold(true).line("CUSTOMER ACCOUNTS").bold(false)
+        if (f.sold != 0L) p.row("Sold on account", n(f.sold))
+        if (f.returned != 0L) p.row("Returned off accounts", n(-f.returned))
+        f.taken.forEach { p.row("Paid on accounts, ${it.name} (${it.count})", n(it.amount)) }
     }
 
     // A report of the till's (feature/reports), on the receipt printer.

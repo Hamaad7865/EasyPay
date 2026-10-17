@@ -72,6 +72,7 @@ private fun what(type: String): String = when (type) {
     "deposit.pay" -> "Payment on a deposit"
     "deposit.cancel" -> "Deposit cancelled"
     "deposit.give_back" -> "Money given back on a deposit"
+    "account.pay" -> "Payment on a customer account"
     "drawer.count" -> "Drawer count"
     "timeclock.punch" -> "Clock in or out"
     else -> type
@@ -82,6 +83,7 @@ private fun why(code: String?): String = when (code) {
     "refund-policy" -> "This shop does not give money back: it exchanges. Check Returns on POS settings in the back office."
     "not-entitled" -> "Deposits are an extra this shop does not have yet. Ask EasyPay to add them. Money already taken was kept."
     "bad-deposit" -> "That deposit does not exist on the server: the operation that took it may have been refused first."
+    "bad-account" -> "The server did not take this account payment: its customer, or how it was split over the bills, did not add up."
     "ticket-closed" -> "The order was already closed."
     "bad-ticket" -> "The order does not exist on the server."
     "unknown-item" -> "The item no longer exists."

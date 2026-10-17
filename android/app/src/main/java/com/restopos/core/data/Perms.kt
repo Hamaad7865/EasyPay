@@ -76,6 +76,7 @@ object Perms {
             "sale.void_line" to "Take a line off a sale",
             "sale.void_sent_line" to "Void an item after it was sent",
             "sale.refund" to "Refund a receipt",
+            "sale.on_account" to "Sell on account",
             "payment.correct" to "Correct the payment type on a paid bill",
         )),
         Group("Orders and tables", listOf(

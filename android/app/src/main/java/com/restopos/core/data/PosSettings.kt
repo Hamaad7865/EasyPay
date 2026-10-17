@@ -90,9 +90,17 @@ data class PosSettings(
     val depositOverdue: String = "show",
     val depositGrace: Int = 7,
     val depositCustomer: Boolean = true,
+    // A shop's customer accounts (server 0114): paid for as deposits are.
+    // accountDays: a bill is overdue after that many days.
+    val accountsPaid: Boolean = false,
+    val accountsOn: Boolean = true,
+    val accountDays: Int = 30,
 ) {
     // a shop that may take deposits now
     val deposits: Boolean get() = retail && depositsPaid && depositsOn
+
+    // a shop that may sell on account now
+    val accounts: Boolean get() = retail && accountsPaid && accountsOn
 
     fun shop(fallbackName: String): Shop =
         Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer, bars = retail)
@@ -156,6 +164,10 @@ data class PosSettings(
                 depositOverdue = d.str("depositOverdue")?.takeIf { it == "show" || it == "cancel" } ?: "show",
                 depositGrace = runCatching { d["depositGrace"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 0..365 } ?: 7,
                 depositCustomer = d.str("depositCustomer") != "optional",
+                accountsPaid = d.str("plan")?.trim()?.lowercase().let { it == "premium" || it == "trial" } ||
+                    runCatching { d["features"]?.jsonArray?.any { it.jsonPrimitive.contentOrNull == "accounts" } }.getOrNull() == true,
+                accountsOn = d.str("accounts") != "off",
+                accountDays = runCatching { d["accountDays"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..365 } ?: 30,
             )
         }
     }

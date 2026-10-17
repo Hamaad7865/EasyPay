@@ -196,7 +196,8 @@ class DemoReceiver : BroadcastReceiver() {
                     val setup = intent.getBooleanExtra("setup", false)
                     // --es returns credit (or exchange, refund): a shop's return policy (server 0109), as its settings would carry it
                     // --ez deposits true: the shop has the deposits extra (server 0113), as /admin switching it on writes into its settings
-                    seed(context, deps.db(), deps.session(), restaurant, plan, setup, intent.getStringExtra("returns")?.trim()?.takeIf { it.isNotEmpty() }, intent.getBooleanExtra("deposits", false))
+                    // --ez accounts true: the shop has the customer accounts extra (server 0114), the same way
+                    seed(context, deps.db(), deps.session(), restaurant, plan, setup, intent.getStringExtra("returns")?.trim()?.takeIf { it.isNotEmpty() }, intent.getBooleanExtra("deposits", false), intent.getBooleanExtra("accounts", false))
                     // --ez ordering true: guests may order from the tables (core/guest). The settings
                     // say so, and the till is given a made-up key of its own to show the ordering
                     // site's relay on this PC, whose stand-in for EasyPay's till service takes any
@@ -243,7 +244,7 @@ class DemoReceiver : BroadcastReceiver() {
         return listOf("pbkdf2-sha256", iterations.toString(), b64.encodeToString(salt), b64.encodeToString(hash)).joinToString("$")
     }
 
-    private suspend fun seed(context: Context, db: TillDatabase, session: SessionStore, restaurant: Boolean, plan: String?, setup: Boolean = false, returns: String? = null, deposits: Boolean = false) {
+    private suspend fun seed(context: Context, db: TillDatabase, session: SessionStore, restaurant: Boolean, plan: String?, setup: Boolean = false, returns: String? = null, deposits: Boolean = false, accounts: Boolean = false) {
         val shop = Json.parseToJsonElement(context.assets.open("demo-shop.json").bufferedReader().use { it.readText() })
         val tenant = shop.str("tenant")!!
         val store = shop.obj("store")
@@ -261,7 +262,7 @@ class DemoReceiver : BroadcastReceiver() {
             val planned = kept + listOfNotNull(
                 plan?.let { "plan" to kotlinx.serialization.json.JsonPrimitive(it) },
                 returns?.let { "returns" to kotlinx.serialization.json.JsonPrimitive(it) },
-                ("features" to kotlinx.serialization.json.JsonArray(listOf(kotlinx.serialization.json.JsonPrimitive("deposits")))).takeIf { deposits && !restaurant },
+                ("features" to kotlinx.serialization.json.JsonArray(listOfNotNull("deposits".takeIf { deposits }, "accounts".takeIf { accounts }).map { kotlinx.serialization.json.JsonPrimitive(it) })).takeIf { (deposits || accounts) && !restaurant },
             )
             db.ops().upsertSettings(SettingsEntity(tenant, JsonObject(if (setup) planned + ("setup" to kotlinx.serialization.json.JsonPrimitive("open")) else planned).toString()))
             catalog.upsertTaxes(listOf(TaxEntity(tax.str("id")!!, tenant, tax.str("name")!!, tax.jsonObject["rate_bp"]!!.jsonPrimitive.intOrNull ?: 0, tax.str("type")!!, true)))
@@ -285,7 +286,7 @@ class DemoReceiver : BroadcastReceiver() {
             }
             // a shop's Exchange and Credit note payment types are not a restaurant's
             // a shop's Deposit type is never active (server 0113): Pay finds it by its kind
-            catalog.upsertPayments(shop.arr("payments").filter { !restaurant || it.str("kind") !in listOf("exchange", "credit_note", "deposit") }.mapIndexed { i, p -> PaymentTypeEntity(p.str("id")!!, tenant, p.str("name")!!, p.str("kind")!!, is_active = p.str("kind") != "deposit", sort_order = i, opens_drawer = p.bool("opens_drawer")) })
+            catalog.upsertPayments(shop.arr("payments").filter { !restaurant || it.str("kind") !in listOf("exchange", "credit_note", "deposit", "account") }.mapIndexed { i, p -> PaymentTypeEntity(p.str("id")!!, tenant, p.str("name")!!, p.str("kind")!!, is_active = p.str("kind") !in listOf("deposit", "account"), sort_order = i, opens_drawer = p.bool("opens_drawer")) })
             db.staff().upsertRoles(shop.arr("roles").map { RoleEntity(it.str("id")!!, tenant, it.str("name")!!, it.arr("permissions").toString()) })
             db.staff().upsertEmployees(shop.arr("staff").mapIndexed { i, e -> EmployeeEntity(e.str("id")!!, tenant, e.str("name")!!, pinHash(e.str("pin")!!, ByteArray(16) { b -> (b * 7 + i + 1).toByte() }), e.str("role")) })
             db.staff().upsertEmployeeStores(shop.arr("staff").map { EmployeeStoreEntity(it.str("id")!!, storeId, tenant) })

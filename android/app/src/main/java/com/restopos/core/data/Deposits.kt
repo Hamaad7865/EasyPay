@@ -355,7 +355,7 @@ class Deposits @Inject constructor(
 
     private suspend fun checkType(id: String) {
         val t = db.ops().paymentType(id) ?: error("Pick how it is paid")
-        require(t.kind !in setOf("exchange", "credit_note", "deposit")) { "Pick another way to pay" }
+        require(t.kind !in setOf("exchange", "credit_note", "deposit", "account")) { "Pick another way to pay" }
     }
 
     // a cash payment in or out is a row of the drawer's, under the payment's own id

@@ -160,6 +160,10 @@
           "Refund a receipt"
         ],
         [
+          "sale.on_account",
+          "Sell on account"
+        ],
+        [
           "payment.correct",
           "Correct the payment type on a paid bill"
         ]

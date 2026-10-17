@@ -164,11 +164,11 @@ import javax.inject.Inject
 // Every screen of the till. Order, Pay and Split belong to whichever order is
 // open; the rest are places. Sell and Products are a shop's: its sell screen
 // in place of tables and orders, its products and stock in place of the menu.
-enum class Screen { Floor, Order, Pay, Split, Takeaway, Kitchen, Bookings, Orders, Today, Menu, Cash, Receipts, Customers, Settings, Sell, Products, StockCheck, Labels, Stock, Reports, Promotions, Deposits }
+enum class Screen { Floor, Order, Pay, Split, Takeaway, Kitchen, Bookings, Orders, Today, Menu, Cash, Receipts, Customers, Settings, Sell, Products, StockCheck, Labels, Stock, Reports, Promotions, Deposits, Accounts }
 
 // what only a restaurant has, and what only a shop has
 private val RESTAURANT_ONLY = setOf(Screen.Floor, Screen.Order, Screen.Takeaway, Screen.Kitchen, Screen.Bookings, Screen.Orders, Screen.Menu)
-private val SHOP_ONLY = setOf(Screen.Sell, Screen.Products, Screen.StockCheck, Screen.Labels, Screen.Stock, Screen.Promotions, Screen.Deposits)
+private val SHOP_ONLY = setOf(Screen.Sell, Screen.Products, Screen.StockCheck, Screen.Labels, Screen.Stock, Screen.Promotions, Screen.Deposits, Screen.Accounts)
 // what only a restaurant on the premium tier has (server 0085): the kitchen
 // display and bookings. Another plan keeps Send to kitchen and its printers.
 private val PREMIUM_ONLY = setOf(Screen.Kitchen, Screen.Bookings)
@@ -706,8 +706,10 @@ fun MainShell(
                         onReceipt = { id -> receipts.showId(id); shell.go(Screen.Receipts) }, onStock = { shell.go(Screen.StockCheck) },
                         onNote = { number -> pay.noteScanned(number); shell.go(Screen.Pay) },
                         onDeposits = { number -> deposits.query.value = ""; number?.let { deposits.openNumber(it) }; shell.go(Screen.Deposits) },
+                        onAccounts = { shell.go(Screen.Accounts) },
                     )
                     Screen.Deposits -> com.restopos.feature.retail.DepositsScreen(deposits, onCollect = { shell.go(Screen.Sell) }, onBack = { shell.go(Screen.Sell) })
+                    Screen.Accounts -> { val vm: com.restopos.feature.retail.AccountsViewModel = hiltViewModel(); com.restopos.feature.retail.AccountsScreen(vm, onBack = { shell.go(Screen.Sell) }) }
                     Screen.Products -> { val vm: ProductsViewModel = hiltViewModel(); ProductsScreen(vm, onLabel = { item -> labels.tap(item); shell.go(Screen.Labels) }, onPromotions = { shell.go(Screen.Promotions) }) }
                     Screen.Promotions -> { val vm: com.restopos.feature.retail.PromotionsViewModel = hiltViewModel(); com.restopos.feature.retail.PromotionsScreen(vm, onBack = { shell.go(Screen.Products) }) }
                     Screen.Labels -> LabelsScreen(labels)

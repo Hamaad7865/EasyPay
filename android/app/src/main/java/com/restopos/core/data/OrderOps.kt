@@ -1,5 +1,6 @@
 package com.restopos.core.data
 
+import com.restopos.core.database.owed
 import android.content.Context
 import androidx.room.withTransaction
 import com.restopos.core.common.Uuid7
@@ -266,7 +267,8 @@ class OrderOps @Inject constructor(
     // would bring to the counter to be refunded a second time.
     suspend fun marked(r: ReceiptEntity, doc: ReceiptDoc, reprint: Boolean): ReceiptDoc {
         val back = if (r.type == "sale") db.ops().refundedOf(r.id) else 0L
-        return doc.copy(reprint = reprint, refunded = back, refundedAll = back > 0 && back >= r.total)
+        // what was owed on account the day of the sale (0114) is not what is owed now: a copy leaves it out
+        return doc.copy(reprint = reprint, refunded = back, refundedAll = back > 0 && back >= r.total, owed = if (reprint || back > 0) null else doc.owed)
     }
 
     // Another copy of a receipt that has just been issued, for the guest who
@@ -428,6 +430,13 @@ class OrderOps @Inject constructor(
         val paid = db.receipts().payments(receiptId).sumOf { it.amount }
         require(paid >= orig.total && already + amount <= paid) { "This receipt was not paid in full. Check it in the back office first." }
         val type = db.ops().paymentType(paymentTypeId) ?: error("Pick how the money goes back")
+        // A sale on account (0114): what comes back comes off what its bill
+        // still owes first; that moves no money, so the return policy does not
+        // ask about it. Only the rest is money.
+        val bill = db.accounts().bill(orig.id)
+        val accountType = if (bill != null) db.accounts().paymentType() ?: error("This till has not been sent the shop's On account payment type yet. Let it sync.") else null
+        val offBill = if (bill != null) AccountRules.offBill(amount, bill.owed) else 0L
+        require(toExchange + (note?.amount ?: 0L) <= amount - offBill) { "${com.restopos.core.common.Money.format(offBill)} of this comes off what the customer still owes on account. Return it instead of exchanging." }
         require(toExchange in 0..amount) { "More than comes back cannot go to the new sale" }
         val exchange = if (toExchange > 0) db.ops().exchangeType() ?: error("This till has no Exchange payment type") else null
         val toNote = note?.amount ?: 0L
@@ -435,7 +444,7 @@ class OrderOps @Inject constructor(
         require(toNote == 0L || (toExchange > 0 && settings.returns == "credit")) { "A credit note only comes out of an exchange" }
         val noteType = if (toNote > 0) db.notes().paymentType() ?: error("This till has not been sent the shop's Credit note payment type yet. Let it sync.") else null
         // what goes back to the customer
-        val rest = amount - toExchange - toNote
+        val rest = amount - offBill - toExchange - toNote
         require(rest == 0L || type.kind != "exchange") { "Pick how the money goes back" }
         // money back only where the shop refunds (0109)
         require(rest == 0L || settings.returns == "refund") { "This shop does not refund. Exchange instead." }
@@ -479,11 +488,14 @@ class OrderOps @Inject constructor(
             discounts = if (!partial) was.discounts else listOfNotNull(parts!!.disc.takeIf { it != 0L }?.let { com.restopos.core.print.DocAmount("Discount", it) }),
             service = parts?.svc ?: was.service, rounding = parts?.rnd ?: was.rounding, total = amount,
             payments = listOfNotNull(
+                if (offBill > 0) DocPayment("Off the bill on account", offBill) else null,
                 if (toExchange > 0) DocPayment("Exchange, to the new sale", toExchange) else null,
                 if (toNote > 0) DocPayment("Credit note, kept for the customer", toNote, reference = noteNumber) else null,
                 if (rest > 0) DocPayment(type.name, rest) else null,
             ),
             refundOf = orig.number, reason = reason.trim(),
+            // a return off a bill on account (0114): what the customer owes on account after it
+            owed = if (offBill > 0 && bill?.customer_id != null) db.accounts().balance(bill.customer_id) - offBill else null,
         )
         val refund = ReceiptEntity(
             id, tenant, store, deviceId, orig.ticket_id, number, type = "refund", refund_of = orig.id,
@@ -503,10 +515,13 @@ class OrderOps @Inject constructor(
                 db.moveStock(store, returned)
             }
             db.receipts().insertPayments(listOfNotNull(
+                if (offBill > 0 && accountType != null) ReceiptPaymentEntity(Uuid7.next(), tenant, id, accountType.id, offBill) else null,
                 if (exchange != null) ReceiptPaymentEntity(Uuid7.next(), tenant, id, exchange.id, toExchange) else null,
                 if (noteType != null) ReceiptPaymentEntity(Uuid7.next(), tenant, id, noteType.id, toNote, reference = noteNumber) else null,
                 if (rest > 0) ReceiptPaymentEntity(Uuid7.next(), tenant, id, type.id, rest) else null,
             ))
+            // what came off the bill (0114)
+            if (offBill > 0 && bill != null) db.accounts().upsertBills(listOf(bill.copy(returned = bill.returned + offBill)))
             // the credit note, under the refund's number, with the refund that backs it
             if (note != null && noteType != null) {
                 db.notes().upsert(listOf(CreditNoteEntity(note.id, tenant, store, deviceId, noteNumber, toNote, toNote, id, note.customerId, note.validTo, issued_by = staff.id(), created_at = now)))
@@ -521,6 +536,7 @@ class OrderOps @Inject constructor(
                     back.forEach { (s, q) -> add(buildJsonObject { put("ticket_line_id", s.line.id); put("qty", q) }) }
                 })
                 put("payments", buildJsonArray {
+                    if (offBill > 0 && accountType != null) add(buildJsonObject { put("payment_type_id", accountType.id); put("amount", offBill) })
                     if (exchange != null) add(buildJsonObject { put("payment_type_id", exchange.id); put("amount", toExchange) })
                     if (noteType != null) add(buildJsonObject { put("payment_type_id", noteType.id); put("amount", toNote); put("reference", noteNumber) })
                     if (rest > 0) add(buildJsonObject { put("payment_type_id", type.id); put("amount", rest) })
@@ -536,7 +552,7 @@ class OrderOps @Inject constructor(
         }
         if (!quiet) {
             pushNow(context)
-            docs.print(doc, openDrawer = type.opens_drawer).onFailure { printing.report(it.message ?: "The refund slip did not print") }
+            docs.print(doc, openDrawer = type.opens_drawer && (rest > 0 || offBill == 0L)).onFailure { printing.report(it.message ?: "The refund slip did not print") }
         }
         refund
     }
@@ -550,7 +566,7 @@ class OrderOps @Inject constructor(
         val names = db.ops().allPaymentTypes().associateBy { it.id }
         // what an exchange settled, a credit note covered or a deposit paid was never money taken at the
         // counter: it is not corrected into cash, nor cash into it (the server refuses it the same way)
-        val fixed = setOf("exchange", "credit_note", "deposit")
+        val fixed = setOf("exchange", "credit_note", "deposit", "account")
         require(names[from]?.kind !in fixed && names[to]?.kind !in fixed) { "That payment cannot be changed: it was not money taken here" }
         val now = Instant.now().toString()
         db.withTransaction {

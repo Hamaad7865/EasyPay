@@ -18,6 +18,7 @@
 //     change; one started and cancelled. Then the drawer counted and the day
 //     closed.
 //   deposits (migration 0113), on the offline plan: see the list below.
+//   customer accounts (migration 0114), the same tablet a day on: see the list below.
 // The server must take every operation and end up with the till's figures.
 // It keeps the server honest about that build: a change to a push function
 // that would refuse or re-price what build 3 sends fails here.
@@ -39,6 +40,12 @@ for (const [what, file, extra] of [
   // sale, the settings changed on the tablet, the day closed, and one cancelled by date as the next day opened
   // and its money given back in cash
   ['deposits', 'demo-till-deposits.json', []],
+  // customer accounts (0114), on the same tablet's next day: a mug all on account, a scarf part cash and part on
+  // account, a part payment in cash with change put on the two bills oldest first, a postcard set on account then
+  // returned off its bill with no money moving, and the scarf exchanged for a mug: Rs 210.00 off its bill, the
+  // Rs 380.00 paid on it to the mug and a credit note (the shop's returns are credit notes); the bills on the
+  // server must be the till's
+  ['accounts', 'demo-till-accounts.json', []],
 ]) {
   const out = spawnSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'replay-demo-outbox.cjs'), path.join(__dirname, 'fixtures', file), ...extra], { encoding: 'utf8' });
   process.stdout.write(out.stdout.split('\n').filter((l) => /^(PASS|FAIL|REPLAY)/.test(l)).map((l) => (/^REPLAY/.test(l) ? l : l.replace(/^(PASS|FAIL) /, `$1 ${what}: `)).slice(0, 170)).join('\n') + '\n');

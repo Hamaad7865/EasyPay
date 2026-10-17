@@ -62,6 +62,13 @@ internal fun printed(r: Report, d: ReportData, cutting: Cutting, byQty: Boolean,
                     if (f.deposits.noted != 0L) add(ReportLine("Put on credit notes", n(f.deposits.noted)))
                     if (f.deposits.kept != 0L) add(ReportLine("Kept by the shop", n(f.deposits.kept)))
                 }
+                // a shop's customer accounts (0114)
+                if (f.accounts.any) {
+                    add(RULE); add(head("Customer accounts"))
+                    if (f.accounts.sold != 0L) add(ReportLine("Sold on account", n(f.accounts.sold)))
+                    if (f.accounts.returned != 0L) add(ReportLine("Returned off accounts", n(-f.accounts.returned)))
+                    f.accounts.taken.forEach { add(ReportLine("Paid on accounts, ${it.name} (${it.count})", n(it.amount))) }
+                }
                 add(RULE); add(head("Cash in and out"))
                 add(ReportLine("Cash in", n(f.cashIn))); add(ReportLine("Cash out", n(-f.cashOut)))
                 val days = Reports.byDay(d.sales, zone)

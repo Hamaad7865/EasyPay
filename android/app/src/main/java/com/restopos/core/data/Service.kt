@@ -492,6 +492,19 @@ class ServiceRepository @Inject constructor(
     // A shop's deposits (server 0113): whether they are taken, what a cancel
     // does with the money, the date offered, what happens past it, and
     // whether a customer is needed. The same for every till of the shop.
+    suspend fun saveAccounts(on: Boolean?, days: Int?, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("settings.device", "change the account settings", approver)
+        ask("settings.save", { code ->
+            when (code) {
+                "bad-payload" -> "Overdue after is a whole number of days, 1 to 365."
+                "forbidden" -> "You are not allowed to change the settings. Ask a manager."
+                "unknown-op" -> "The server has to be updated before this can be changed from a till."
+                null -> "The server refused it."
+                else -> "The server refused it ($code)."
+            }
+        }, OfficePayloads.accountsSave(on, days, staff.approvedBy("settings.device", approver)))
+    }
+
     suspend fun saveDeposits(on: Boolean?, cancel: String?, days: Int?, overdue: String?, grace: Int?, customer: Boolean?, approver: StaffMember? = null): Result<Unit> = runCatching {
         staff.allow("settings.device", "change the deposit settings", approver)
         ask("settings.save", { code ->

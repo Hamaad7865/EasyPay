@@ -411,4 +411,22 @@ object Migrations {
             db.execSQL("ALTER TABLE `cash_movements` ADD COLUMN `deposit_id` TEXT")
         }
     }
+
+    // A shop's customer accounts (server 0114): bills, payments taken on
+    // them and what each payment put on each bill; the drawer's rows that
+    // are an account payment's cash.
+    val V30_V31 = object : Migration(30, 31) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `account_bills` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `device_id` TEXT, `customer_id` TEXT, `number` TEXT NOT NULL, `day` TEXT NOT NULL, `amount` INTEGER NOT NULL, `paid` INTEGER NOT NULL, `returned` INTEGER NOT NULL, `created_at` INTEGER NOT NULL, `server_seq` INTEGER, `pulled` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_account_bills_customer_id` ON `account_bills` (`customer_id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_account_bills_number` ON `account_bills` (`number`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `account_payments` (`id` TEXT NOT NULL, `number` TEXT NOT NULL, `customer_id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `device_id` TEXT NOT NULL, `shift_id` TEXT, `employee_id` TEXT, `payment_type_id` TEXT NOT NULL, `amount` INTEGER NOT NULL, `tendered` INTEGER, `change` INTEGER NOT NULL, `reference` TEXT, `device_time` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_account_payments_customer_id` ON `account_payments` (`customer_id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_account_payments_shift_id` ON `account_payments` (`shift_id`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `account_payment_lines` (`id` TEXT NOT NULL, `payment_id` TEXT NOT NULL, `bill_id` TEXT NOT NULL, `amount` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_account_payment_lines_payment_id` ON `account_payment_lines` (`payment_id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_account_payment_lines_bill_id` ON `account_payment_lines` (`bill_id`)")
+            db.execSQL("ALTER TABLE `cash_movements` ADD COLUMN `account_payment_id` TEXT")
+        }
+    }
 }

@@ -60,6 +60,8 @@ data class CashMoveEntity(
     val server_seq: Long? = null,
     // a deposit's cash (server 0113): in the drawer, but not a pay-in or pay-out anyone made
     val deposit_id: String? = null,
+    // the account payment it is the cash of (0114)
+    val account_payment_id: String? = null,
 )
 
 @Entity(tableName = "day_closes", indices = [Index("device_id")])

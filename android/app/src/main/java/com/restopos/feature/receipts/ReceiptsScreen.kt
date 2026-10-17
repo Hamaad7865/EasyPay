@@ -93,6 +93,8 @@ data class ReceiptDetail(
     val swaps: Map<String, List<ReturnRules.Variant>> = emptyMap(),
     // a refund that kept something for the customer on a credit note
     val note: CreditNoteEntity? = null,
+    // a sale on account (0114): what its bill still owes; a return comes off that first
+    val onBill: Long = 0,
 ) {
     val canRefund: Boolean get() = receipt.type == "sale" && (lines?.any { it.left > 0 } ?: (refunded == 0L))
 }
@@ -181,6 +183,7 @@ class ReceiptsViewModel @Inject constructor(
                 runCatching { docs.look(orders.marked(row, doc, reprint = false)) }.getOrDefault(emptyList()),
                 swaps = if (_retail.value && lines != null) orders.swapsFor(lines) else emptyMap(),
                 note = if (row.type == "refund") db.notes().ofRefund(row.id) else null,
+                onBill = if (row.type == "sale") db.accounts().bill(row.id)?.let { b -> (b.amount - b.paid - b.returned).coerceAtLeast(0) } ?: 0 else 0,
             )
         }
     }
@@ -406,7 +409,7 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                         Text(Money.format(list.sumOf { it.amount }), color = Pos.Text2, fontSize = 14.sp)
                         // what an exchange settled with returned goods, a credit note covered or a deposit paid
                         // was never money taken here: there is nothing to correct (the server refuses it too)
-                        if (r.type == "sale" && names[type]?.kind !in setOf("exchange", "credit_note", "deposit")) {
+                        if (r.type == "sale" && names[type]?.kind !in setOf("exchange", "credit_note", "deposit", "account")) {
                             Text("Change", Modifier.clickable { correcting = type }.padding(start = 12.dp, top = 6.dp, bottom = 6.dp), color = Pos.Link, fontSize = 14.sp)
                         }
                     }
@@ -435,8 +438,8 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // a shop that does not refund has only Exchange, and only where an exchange can go on (the Receipts screen)
-                if (d.canRefund && (refunds || (retail && exchange))) {
-                    OutlinedButton(onClick = { refunding = true }, enabled = !busy) { Text(if (refunds) "Refund" else "Exchange", color = Pos.Pink) }
+                if (d.canRefund && (refunds || d.onBill > 0 || (retail && exchange))) {
+                    OutlinedButton(onClick = { refunding = true }, enabled = !busy) { Text(if (refunds) "Refund" else if (d.onBill > 0) "Return" else "Exchange", color = Pos.Pink) }
                 }
                 Button(onClick = { vm.reprint(r.id) }, enabled = !busy) { Text("Print again") }
             }
@@ -456,9 +459,12 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
         val everything = lines == null || lines.all { picks[it.id] == it.left }
         var amount by remember { mutableStateOf(r.total - d.refunded) }
         LaunchedEffect(picks) { if (lines != null) amount = vm.quote(r.id, picks) }
+        // a sale on account (0114): what comes off the bill, and the money that is left of it
+        val offBill = com.restopos.core.data.AccountRules.offBill(amount, d.onBill)
+        val money = amount - offBill
         AlertDialog(
             onDismissRequest = { refunding = false },
-            title = { Text((if (refunds) "Refund " else "Exchange ") + Money.format(amount)) },
+            title = { Text((if (refunds) "Refund " else if (offBill > 0 && money == 0L) "Return " else "Exchange ") + Money.format(amount)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     if (lines == null) {
@@ -480,7 +486,7 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                             }
                             // the swap keys (0109): another size or colour of the same product, one tap onto the sale
                             val swaps = d.swaps[l.id].orEmpty()
-                            if (retail && exchange && q > 0 && swaps.isNotEmpty()) {
+                            if (retail && exchange && money > 0 && q > 0 && swaps.isNotEmpty()) {
                                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text("Take instead:", color = Pos.Text3, fontSize = 12.sp)
                                     swaps.forEach { v ->
@@ -506,14 +512,21 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                             com.restopos.core.ui.Toggle(restock)
                         }
                     }
-                    if (refunds) {
-                        if (lines != null) Text("Pick how the money goes back.", Modifier.padding(top = 10.dp, bottom = 8.dp), color = Pos.Text2, fontSize = 13.sp)
+                    if (offBill > 0) {
+                        Text(
+                            "${Money.format(offBill)} comes off what the customer still owes on account for this sale." +
+                                if (money > 0) " The other ${Money.format(money)} was paid: " + (if (refunds) "pick how it goes back." else "this shop does not refund it, so exchange instead.") else " No money changes hands.",
+                            Modifier.padding(top = 10.dp), color = Pos.Link, fontSize = 13.sp,
+                        )
+                    }
+                    if (refunds && money > 0) {
+                        if (lines != null && offBill == 0L) Text("Pick how the money goes back.", Modifier.padding(top = 10.dp, bottom = 8.dp), color = Pos.Text2, fontSize = 13.sp)
                         TypeGrid(types, type) { type = it }
                     }
                     OutlinedTextField(reason, { reason = it.take(120) }, Modifier.fillMaxWidth().padding(top = 10.dp), label = { Text("Reason") }, singleLine = true)
-                    if (retail && exchange) {
+                    if (retail && exchange && money > 0) {
                         Text(
-                            when (policy) {
+                            (if (offBill > 0) "Only the ${Money.format(money)} already paid goes to the exchange. " else "") + when (policy) {
                                 "credit" -> "Exchange: what comes back pays for what the customer takes instead. You ring that up next; the customer pays any difference, and what is left over stays with them on a credit note."
                                 "exchange" -> "Exchange: what comes back pays for what the customer takes instead. You ring that up next, and the customer pays any difference. This shop does not refund: the new sale must come to at least what comes back."
                                 else -> "Exchange: what comes back pays for what the customer takes instead. You ring that up next, and only the difference changes hands."
@@ -525,17 +538,17 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
             },
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (retail && exchange) {
+                    if (retail && exchange && money > 0) {
                         OutlinedButton(
                             enabled = !busy && (lines == null || picks.values.any { it > 0 }),
                             onClick = { refunding = false; vm.exchange(r.id, reason, if (lines == null) null else picks.filterValues { it > 0 }, restock) },
                         ) { Text("Exchange") }
                     }
-                    if (refunds) {
+                    if (refunds || (offBill > 0 && money == 0L)) {
                         Button(
-                            enabled = !busy && reason.isNotBlank() && type != null && (lines == null || picks.values.any { it > 0 }),
-                            onClick = { refunding = false; vm.refund(r.id, reason, type!!, if (everything) null else picks.filterValues { it > 0 }, restock) },
-                        ) { Text("Refund") }
+                            enabled = !busy && reason.isNotBlank() && (type != null || money == 0L) && (lines == null || picks.values.any { it > 0 }),
+                            onClick = { refunding = false; vm.refund(r.id, reason, type ?: d.payments.first().payment_type_id, if (everything) null else picks.filterValues { it > 0 }, restock) },
+                        ) { Text(if (money == 0L) "Return" else "Refund") }
                     }
                 }
             },

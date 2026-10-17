@@ -265,6 +265,7 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "device_id") ?: "", str(it, "shift_id"), str(it, "employee_id"),
                         str(it, "type") ?: "out", lng(it, "amount") ?: 0, str(it, "reason"), at, str(it, "deleted_at"), lng(it, "server_seq"),
                         deposit_id = str(it, "deposit_id"),
+                        account_payment_id = str(it, "account_payment_id"),
                     )
                 })
             }
@@ -467,6 +468,23 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                             time(q, "device_time") ?: time(q, "created_at") ?: 0,
                         )
                     })
+                }
+            }
+            // A shop's bills on account (server 0114), as the server has them;
+            // except a bill with something of its own still waiting to go up
+            // (its sale, a payment on it, a return off it): the server's copy
+            // is older, and the next pull after the push brings it.
+            changes["account_bills"]?.let { rows ->
+                val ad = db.accounts()
+                rows.forEach { e ->
+                    val bid = id(e)
+                    if (ad.waiting(bid) > 0) return@forEach
+                    if (str(e, "deleted_at") != null) { ad.drop(bid); return@forEach }
+                    ad.upsertBills(listOf(com.restopos.core.database.AccountBillEntity(
+                        bid, str(e, "tenant_id") ?: "", str(e, "store_id") ?: store, str(e, "device_id"), str(e, "customer_id"),
+                        str(e, "number") ?: return@forEach, str(e, "day")?.take(10) ?: "", lng(e, "amount") ?: 0, lng(e, "paid") ?: 0, lng(e, "returned") ?: 0,
+                        time(e, "created_at") ?: 0, lng(e, "server_seq"), pulled = true,
+                    )))
                 }
             }
             // only a pulled line carries the server's id, so these find nothing for a receipt made here
