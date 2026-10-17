@@ -71,6 +71,13 @@ function check(name, cond, extra) {
     check('D2 an ID with another client\'s name, a name spelt otherwise, no name, an ID nobody has: refused', [wrongName, wrongCase, noName, noSuch].every((r) => r.code === 1 && /nothing was done/.test(r.err)), [wrongName, wrongCase, noName, noSuch].map((r) => r.code).join(' '));
     check('D2 and nothing was', (await rowsOf(tid)) === had && (await rowsOf(other)) === theirs);
 
+    // D2b a client that went live with the MRA keeps its sales (0116)
+    await c.query(`update tenants set mra_live_since = now() where id = $1`, [tid]);
+    const mraLive = run(short, 'DeleteClient-Probe', '--apply');
+    check('D2b a client that went live with the MRA is refused', mraLive.code === 1 && /MRA/.test(mraLive.err) && /nothing was done/.test(mraLive.err), mraLive.code + ' ' + mraLive.err);
+    check('D2b and nothing was', (await rowsOf(tid)) === had && (await rowsOf(other)) === theirs);
+    await c.query(`update tenants set mra_live_since = null where id = $1`, [tid]);
+
     // D3 the real thing
     const done = run(short, 'DeleteClient-Probe', '--apply');
     check('D3 with --apply it is deleted', done.code === 0 && /Deleted/.test(done.out), done.code + ' ' + done.err);

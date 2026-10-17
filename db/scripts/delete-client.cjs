@@ -56,6 +56,10 @@ async function remove(c, short, name, apply) {
     await c.query(`set local lock_timeout = '8s'`);
     await c.query(`set local statement_timeout = '120s'`);
     const t = await clientOf(c, short, name);
+    // a client whose sales went to the MRA keeps them: the MRA's rules forbid
+    // deleting them (0116)
+    const [mra] = await rows(`select mra_live_since from tenants where id = $1`, [t.id]);
+    if (mra && mra.mra_live_since) throw new Error('this client went live with the MRA: its sales were sent to the MRA and are kept for good');
 
     const tables = (await rows(
       `select c.table_name as t from information_schema.columns c
