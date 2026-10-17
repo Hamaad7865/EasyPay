@@ -1857,8 +1857,70 @@ button[aria-busy="true"]::after {
 .sheet button.sheet-unfold { display: block; flex: none; width: 34px; height: auto; padding: 0; border: 0; border-left: 1px solid var(--line-strong); border-radius: 0; background: var(--surface-3); box-shadow: none; color: var(--ink3); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; writing-mode: vertical-rl; cursor: pointer; }
 .sheet button.sheet-unfold:hover { background: var(--well); color: var(--ink); transform: none; }
 .sheet-hint { font-size: 12.5px; }
-.sheet-foot { border-bottom: 1px solid var(--line); }
 @media (max-width: 900px) { .sheet-status { width: 220px; } .sheet-hint { display: none; } }
+
+/* The import's steps, once a file is chosen: a pop-up that takes nearly the
+   whole window, so the sheet has the room of it. Its head (the name, the three
+   steps, the way out), then the step, then the step's keys along the bottom.
+   The sheet takes what the head, the notes and the keys leave; its two panes
+   are stretched to the same height, so they stay level as they scroll. */
+.import-dialog { width: min(1680px, calc(100vw - 40px)); height: calc(100vh - 40px); height: calc(100dvh - 40px); max-width: none; max-height: none; margin: auto; padding: 0; border: 0; border-radius: 14px; background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--hairline), var(--shadow-lg); overflow: hidden; white-space: normal; text-align: left; }
+.import-dialog::backdrop { background: var(--scrim, rgba(17, 24, 39, 0.38)); backdrop-filter: blur(2px); }
+.import-dialog[open] { animation: search-in 0.22s var(--glide); }
+.import-dialog[open]::backdrop { animation: drawer-dim 0.2s ease; }
+html:has(.import-dialog[open]) { overflow: hidden; }
+.imp { display: flex; flex-direction: column; height: 100%; }
+.imp-head { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px; padding: 14px 14px 14px 22px; border-bottom: 1px solid var(--line); }
+.bo-main .imp-head h2 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -0.015em; }
+.imp-name { min-width: 0; }
+.imp-name p { margin: 2px 0 0; color: var(--ink3); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.imp-head .modal-x { justify-self: end; }
+.bo-main .imp-head button.modal-x svg { width: 18px; height: 18px; }
+.imp-steps { display: flex; align-items: center; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.imp-steps li { display: flex; align-items: center; gap: 9px; color: var(--ink3); font-size: 13px; font-weight: 500; white-space: nowrap; }
+.imp-steps li + li::before { content: ""; width: 44px; height: 2px; border-radius: 2px; background: var(--line-strong); }
+.imp-steps li.done + li::before { background: var(--accent-fill); }
+.imp-dot { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 26px; height: 26px; border-radius: 999px; background: var(--well); color: var(--ink3); font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.imp-dot svg { width: 14px; height: 14px; }
+.imp-steps li.on { color: var(--ink); font-weight: 600; }
+.imp-steps li.on .imp-dot { background: var(--accent-soft); color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.imp-steps li.done { color: var(--ink2); }
+.imp-steps li.done .imp-dot { background: var(--accent-fill); color: var(--on-accent); }
+.imp-body { flex: 1; min-height: 0; overflow: auto; }
+.imp-page { max-width: 1080px; margin: 0 auto; padding: 28px 28px 20px; }
+.imp-file { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 28px; text-align: center; }
+.imp-file .note { max-width: 560px; margin: 0; text-align: left; }
+.imp-file p { margin: 0; }
+.imp-file .bo-toolbar { justify-content: center; margin: 0; }
+.imp-notes { flex: none; display: grid; gap: 8px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
+.imp-notes .note { margin: 0; padding: 9px 14px; font-size: 13px; }
+.imp-notes .btn-link { font-size: 13px; }
+.import-dialog .table-filters { flex: none; }
+.import-dialog .sheet { flex: 1; min-height: 0; border: 0; }
+.import-dialog .sheet-grid, .import-dialog .sheet-status { height: auto; }
+.imp-foot { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); background: var(--surface-2); }
+.imp-foot > .muted { font-size: 12.5px; }
+.bo-main .imp-page h3 { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--ink2); }
+.imp-page .stat.bad .stat-value { color: var(--red); }
+.imp-page .note { margin: 0 0 20px; }
+.imp-page .note strong { margin-bottom: 4px; }
+.imp-list { margin-top: 20px; }
+.bo-main .imp-list h3 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; }
+.imp-chips { display: flex; flex-wrap: wrap; gap: 6px; max-height: 10.5rem; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.imp-chips .badge { font-weight: 500; }
+.imp-small { margin: 14px 0 0; font-size: 12.5px; }
+.imp-done { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+.bo-main .imp-done h3 { margin: 0 0 2px; color: var(--ink); font-size: 17px; font-weight: 650; }
+.imp-done p { margin: 0; }
+.imp-tick { display: grid; place-items: center; flex: none; width: 42px; height: 42px; border-radius: 999px; background: var(--green-bg); color: var(--green); }
+.imp-tick svg { width: 22px; height: 22px; }
+@media (max-width: 900px) {
+  .imp-head { grid-template-columns: minmax(0, 1fr) auto; }
+  .imp-steps { grid-column: 1 / -1; grid-row: 2; }
+  .imp-steps li + li::before { width: 18px; }
+  .imp-steps li:not(.on) .imp-step { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .import-dialog[open], .import-dialog[open]::backdrop { animation: none; } }
 
 /* ---- a customer's statement of account (0114): paper, so white with black ink whatever the look ---- */
 .statement { max-width: 794px; margin: 0 auto; padding: 40px 44px; background: #fff; color: #111; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; line-height: 1.45; }
