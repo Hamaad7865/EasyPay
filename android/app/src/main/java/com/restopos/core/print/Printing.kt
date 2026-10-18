@@ -87,7 +87,11 @@ class Printing @Inject constructor(
 
     suspend fun receiptPrinter(): PrinterEntity? = printers().firstOrNull { it.is_receipt }
 
-    fun paper(p: PrinterEntity) = Paper(EscPos.columnsFor(p.paper_mm), p.feed_lines, p.cut)
+    // A tablet that is setting up says so on every paper (Paper.trial, core/data/GoLive).
+    @Volatile private var trial = false
+    init { scope.launch { com.restopos.core.data.settingUpFlow(db, session).collect { trial = it } } }
+
+    fun paper(p: PrinterEntity) = Paper(EscPos.columnsFor(p.paper_mm), p.feed_lines, p.cut, trial)
 
     suspend fun shop(): Shop = settings().shop(session.businessName() ?: "")
 

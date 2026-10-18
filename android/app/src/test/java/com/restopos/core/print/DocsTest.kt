@@ -66,6 +66,22 @@ class DocsTest {
         payments = listOf(DocPayment("Cash", 42300, 50000, 7700)),
     )
 
+    // A tablet that is setting up says so at the top and at the foot of a
+    // paper, whatever it is, and only then (core/data/GoLive).
+    @Test
+    fun aTrialPaperSaysSoTopAndFoot() {
+        fun said(bytes: ByteArray) = read(bytes).lines.map { it.trim() }.filter { it.isNotEmpty() }
+        for (lines in listOf(
+            said(Docs.receipt(receipt, shop, Paper(trial = true), 2)),
+            said(Docs.kitchen(KitchenDoc("ORDER", "Table 4", 1_790_000_000_000, null, null, null, null, receipt.lines, "Kitchen"), Paper(columns = 32, trial = true))),
+            said(Docs.test("Receipt", Paper(trial = true))),
+        )) {
+            assertEquals(Docs.TRIAL_MARK, lines.first())
+            assertEquals(Docs.TRIAL_MARK, lines.last())
+        }
+        assertFalse(read(Docs.receipt(receipt, shop, Paper(), 2)).lines.any { it.contains(Docs.TRIAL_MARK) })
+    }
+
     @Test
     fun wrappingKeepsWordsWhole() {
         assertEquals(listOf("Crevettes sautées", "à l'ail"), EscPos.wrap("Crevettes sautées à l'ail", 17))

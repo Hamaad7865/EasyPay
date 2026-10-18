@@ -279,8 +279,10 @@ data class Shop(
     val bars: Boolean = false,
 )
 
-// One printer's paper: how many characters fit, how far to feed, whether to cut.
-data class Paper(val columns: Int = 48, val feed: Int = 3, val cut: Boolean = true)
+// One printer's paper: how many characters fit, how far to feed, whether to
+// cut, and whether the tablet is setting up, when every paper says it is not
+// a receipt (Docs.TRIAL_MARK; core/data/GoLive).
+data class Paper(val columns: Int = 48, val feed: Int = 3, val cut: Boolean = true, val trial: Boolean = false)
 
 // A logo ready for the printer: one bit per dot.
 class Raster(val widthBytes: Int, val height: Int, val bits: ByteArray)
@@ -329,7 +331,15 @@ object Docs {
         align(EscPos.Align.Left)
     }
 
+    // what a paper printed while the tablet is setting up says it is not
+    const val TRIAL_MARK = "TEST, NOT A RECEIPT"
+
+    // A page. On a tablet that is setting up it starts with the mark, and end() puts it at its foot too.
+    private fun page(paper: Paper): EscPos = EscPos(paper.columns).also { if (paper.trial) it.trialMark() }
+    private fun EscPos.trialMark() { align(EscPos.Align.Center).bold(true).line(TRIAL_MARK).bold(false).align(EscPos.Align.Left) }
+
     private fun EscPos.end(paper: Paper) {
+        if (paper.trial) { line(); trialMark() }
         feed(paper.feed)
         if (paper.cut) cut()
     }
@@ -345,7 +355,7 @@ object Docs {
 
     // The design's blocks, top to bottom, those hidden left out.
     internal fun receiptPage(d: ReceiptDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster? = null, openDrawer: Boolean = false, design: Design = Papers.RECEIPT): EscPos {
-        val p = EscPos(paper.columns)
+        val p = page(paper)
         if (openDrawer) p.drawer()
         design.blocks.filter { !it.hide }.forEach { b -> PaperWalk.print(p, b, PaperWalk.receipt(b, d, shop, decimals, logo)) }
         p.end(paper)
@@ -355,7 +365,7 @@ object Docs {
     // The credit note itself: the number large and in bars, so it is scanned
     // at a till when it is spent.
     fun creditNote(d: CreditNoteDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster? = null): ByteArray {
-        val p = EscPos(paper.columns)
+        val p = page(paper)
         p.head(shop, logo)
         p.rule()
         p.align(EscPos.Align.Center).bold(true).big(true).line("CREDIT NOTE").big(false)
@@ -375,7 +385,7 @@ object Docs {
     }
 
     fun deposit(d: DepositDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster? = null, openDrawer: Boolean = false): ByteArray {
-        val p = EscPos(paper.columns)
+        val p = page(paper)
         if (openDrawer) p.drawer()
         p.head(shop, logo)
         p.rule()
@@ -408,7 +418,7 @@ object Docs {
     }
 
     fun account(d: AccountDoc, shop: Shop, paper: Paper, decimals: Int, logo: Raster? = null, openDrawer: Boolean = false): ByteArray {
-        val p = EscPos(paper.columns)
+        val p = page(paper)
         if (openDrawer) p.drawer()
         p.head(shop, logo)
         p.rule()
@@ -443,7 +453,7 @@ object Docs {
     fun kitchen(d: KitchenDoc, paper: Paper, design: Design = Papers.KITCHEN): ByteArray = kitchenPage(d, paper, design).bytes()
 
     internal fun kitchenPage(d: KitchenDoc, paper: Paper, design: Design = Papers.KITCHEN): EscPos {
-        val p = EscPos(paper.columns)
+        val p = page(paper)
         // A void or a reprint says so whatever the design: the Station block is
         // where it is said, and with it hidden "1 x Burger" voided read as a new
         // order, and was made. A design without the block at all has it first.
@@ -456,7 +466,7 @@ object Docs {
 
     // The paper that goes in the drawer when cash is put in or taken out.
     fun cashSlip(d: CashSlipDoc, shop: Shop, paper: Paper, decimals: Int, openDrawer: Boolean = true): ByteArray {
-        val p = EscPos(paper.columns)
+        val p = page(paper)
         if (openDrawer) p.drawer()
         if (shop.name.isNotBlank()) p.center(shop.name)
         p.align(EscPos.Align.Center).bold(true).big(true)
@@ -477,7 +487,7 @@ object Docs {
 
     // The drawer counted during a shift, at a handover: the two people sign it.
     fun drawerCount(d: DrawerCountDoc, shop: Shop, paper: Paper, decimals: Int): ByteArray {
-        val p = EscPos(paper.columns)
+        val p = page(paper)
         val n = { c: Long -> num(c, decimals) }
         if (shop.name.isNotBlank()) p.center(shop.name)
         p.align(EscPos.Align.Center).bold(true).big(true).line("DRAWER COUNT").big(false).bold(false).align(EscPos.Align.Left)
@@ -502,7 +512,7 @@ object Docs {
     // The day on this till from its drawer's side, from the float to the count:
     // the X report while the day is open, the drawer's report once it is closed.
     fun shift(d: ShiftDoc, shop: Shop, paper: Paper, decimals: Int): ByteArray {
-        val p = EscPos(paper.columns)
+        val p = page(paper)
         val n = { c: Long -> num(c, decimals) }
         if (shop.name.isNotBlank()) p.center(shop.name)
         p.align(EscPos.Align.Center).bold(true).line(if (d.closedAt == null) "X REPORT - DAY SO FAR" else "CASH DRAWER REPORT").bold(false).align(EscPos.Align.Left)
@@ -557,7 +567,7 @@ object Docs {
     // The day closing. With `detailed` off it shows the totals and the cash in
     // and out only, with no breakdown by category or tax.
     fun z(d: ZDoc, shop: Shop, paper: Paper, decimals: Int, detailed: Boolean): ByteArray {
-        val p = EscPos(paper.columns)
+        val p = page(paper)
         val n = { c: Long -> num(c, decimals) }
         p.head(shop, null)
         p.rule()
@@ -657,7 +667,7 @@ object Docs {
     fun reportLook(d: ReportDoc, shop: Shop, paper: Paper): List<String> = reportPage(d, shop, paper).look()
 
     private fun reportPage(d: ReportDoc, shop: Shop, paper: Paper): EscPos {
-        val p = EscPos(paper.columns)
+        val p = page(paper)
         p.head(shop, null)
         p.rule()
         p.align(EscPos.Align.Center).bold(true).line(d.title.uppercase(Locale.US)).bold(false).align(EscPos.Align.Left)
@@ -678,7 +688,7 @@ object Docs {
     }
 
     fun test(printer: String, paper: Paper): ByteArray {
-        val p = EscPos(paper.columns)
+        val p = page(paper)
         p.align(EscPos.Align.Center).bold(true).big(true).line("EasyPay").big(false).bold(false)
         p.line("Test print").line(printer).align(EscPos.Align.Left)
         p.rule()
