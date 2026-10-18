@@ -610,3 +610,23 @@ private fun SettingUpStrip(onGoLive: () -> Unit) {
 - [ ] Emulator (`easypay_claude_size`, 5598, with its window, said first; `adb devices` and free memory checked before): `pm clear`, `DEMO_SHOP --es type restaurant --es plan offline --ez setting_up true`, the stand-in printer at `10.0.2.2`. Watch: the strip; a sale, a refund that puts back, a sale of an item made of others, cash out, a day closed, a delivery and a count (shop seed if the restaurant has no stock papers); the papers in `prints/` say TEST at top and foot; Go live as the owner; read the tablet (`run-as … sqlite3 -readonly`): no receipts, tickets, shifts; the queue holds only set-up kinds; stock as before the sales; the next receipt is …-000001 and prints no TEST; the strip is gone.
 - [ ] `node db/scripts/read-till-state.cjs` then `node db/scripts/replay-demo-outbox.cjs <file> [restaurant]` against dev: REPLAY PASS.
 - [ ] Record what was seen and not, at the foot of this file. **Commit.**
+
+---
+
+## Record: what was built, run and seen (2026-10-18)
+
+Built as planned, on `claude/tablet-golive` (rebased on `restopos` after the other session's commits of that afternoon), plus one thing the run showed: **Go live on the start screen** too. Reaching Settings needs an open day, so the owner would have opened the first real day, pressed Go live (which takes that day away with the rest) and opened it again. On the start screen nobody is signed in, so the owner's PIN is always asked for there; a till with no staff PINs has no such key there (its Settings opens with one tap).
+
+**Unit tests:** 675 pass (`GoLiveRulesTest` 7, `PosSettingsTest` cloud, `DocsTest` the mark). The debug app builds. `tsc` clean.
+
+**Run on `easypay_claude_size` (5598), with its window**, the made-up shop on the offline plan set up with `--ez setting_up true` (and deposits), the stand-in printer at `10.0.2.2`:
+- The strip under the top bar; the Setting up card in This till; the sell screen still whole at 1280 x 800.
+- Set up while trying: the printer (Set-up, Printer), Postcard set's price to Rs 160, 5 Woven baskets added.
+- Rung up: a sale of 2 mugs and a scarf; an exchange of 1 mug for 2 postcards (the mug back on the shelf); a deposit of 2 candles for a new customer; a count of Home (candles 29 counted 30, the others left); a delivery of 10 chocolates; a sale of a candle and a chocolate after the count and the delivery; cash out Rs 100; the day closed.
+- Every paper printed (receipt, cash-out slip, Z report) said TEST, NOT A RECEIPT at its top and at its foot. The set-up's own "Print a test page" does not (it is built with a paper of its own, before the printer is saved).
+- Go live tried as Ben (cashier): approval asked, only Aisha (owner) offered; with her PIN the sheet said "4 receipts, 4 orders, 2 days".
+- After it, read off the tablet: no receipts, orders, lines, shifts, closings, cash, clock-ins, deposits or noted moves; the customer, the count, the deliveries and the price kept; the queue held printer.save, item.set_price, stock.adjust, customer.upsert, count.complete, delivery.receive; stock exactly as worked out beforehand (mug 26, scarf 6, postcards 40, candle 30: the deposit before the count stayed out, the sale after it went back; chocolate 28; basket 9); the receipt number at 0 and no `setting_up` in the preferences. The strip was gone; the next sale was DM-T1-000001, customer C-01, with no mark.
+- `read-till-state.cjs` and `replay-demo-outbox.cjs` against dev: the server took all 11 operations (the six kept, then the first real sale), the sale's figures, lines and payment the same, and its 19 stock figures the tablet's. **REPLAY PASS**, rolled back.
+- Second run after the start-screen key: seeded again, a sale, Log out, Go live on the start screen: owner's PIN asked, sale, day and clock-in gone, the mug back, the queue empty.
+
+**Not seen:** a restaurant (only the shop was run; a restaurant's tables, kitchen tickets and made-of items go through the same code: the shop's product sheet has no Made of, so parts were not run); a real tablet and a real printer; a tablet filled from a backup of one setting up; the flag ending at a Connect to the cloud (needs a server that says premium); a till with no staff PINs; screenshots of the sheets (the emulator's graphics tore twice: the words were read instead).

@@ -20,12 +20,12 @@ A tablet that works on its own (the offline plan). A business in the cloud keeps
 ## While it is setting up
 
 - A strip under the top bar, amber: "Setting up. What is rung up here is for trying, and goes when the business goes live." Its key, Go live, opens Settings at This till.
-- Every paper the tablet prints says **TEST, NOT A RECEIPT** at its top and at its foot: receipts, bills, kitchen tickets, slips and reports. A guest is never handed one that looks real.
+- Every paper the tablet prints says **TEST, NOT A RECEIPT** at its top and at its foot: receipts, bills, kitchen tickets, slips and reports (not the set-up's own test page, made before the printer is saved). A guest is never handed one that looks real.
 - What a sale, a refund that puts things back, and a deposit take off the shelf or put back is also written down as a stock movement marked `trial` (`stock_movements.ref_type`), product by product after an item made of others is split into its parts, as the shelf itself moves. The Stock History shows them.
 
 ## Go live
 
-Settings, This till, the Setting up card: **Go live**. For the owner (a role with `*`); anyone else is asked for the owner's PIN. A sheet says what goes, with how many, and what stays, and has the one key.
+Settings, This till, the Setting up card: **Go live**; and on the start screen, under the way in, so the owner goes live before the drawer is counted for the first real day (there nobody is signed in, and the owner's PIN is always asked for). For the owner (a role with `*`); anyone else is asked for the owner's PIN. A sheet says what goes, with how many, and what stays, and has the one key.
 
 **Goes:** orders and their lines, receipts and refunds with their lines and payments, days (shifts, day closings, drawer counts), cash in and out, clock-ins, kitchen tickets, bookings, requests from the back office, orders from tables, the tablet's own log (price changes, corrected payments), credit notes, deposits with their lines and payments, account bills and account payments.
 
