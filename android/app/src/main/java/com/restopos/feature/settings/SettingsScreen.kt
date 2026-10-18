@@ -73,6 +73,7 @@ import com.restopos.app.BuildConfig
 import com.restopos.core.common.Money
 import com.restopos.core.data.Approvals
 import com.restopos.core.data.CashOps
+import com.restopos.core.data.DayPayments
 import com.restopos.core.data.PosSettings
 import com.restopos.core.data.Routing
 import com.restopos.core.data.StaffMember
@@ -304,6 +305,9 @@ class SettingsViewModel @Inject constructor(
 
     private val _types = MutableStateFlow<Map<String, String>>(emptyMap())
     val types: StateFlow<Map<String, String>> = _types
+    // each payment type's kind, by its id: what moved no money stays out of the Payments total
+    private val _kinds = MutableStateFlow<Map<String, String>>(emptyMap())
+    val kinds: StateFlow<Map<String, String>> = _kinds
 
     private val _staffSales = MutableStateFlow<List<DocAmount>>(emptyList())
     val staffSales: StateFlow<List<DocAmount>> = _staffSales
@@ -359,7 +363,9 @@ class SettingsViewModel @Inject constructor(
         val device = session.deviceId()?.let { db.catalog().device(it) }
         _facts.value = TillFacts(session.businessName(), store?.name, device?.let { if (it.name == it.code) it.code else "${it.name} (${it.code})" })
         session.deviceId()?.let { day.value = it to (db.ops().lastDayClose(it)?.closed_at ?: 0) }
-        _types.value = db.ops().allPaymentTypes().associate { it.id to it.name }
+        val all = db.ops().allPaymentTypes()
+        _types.value = all.associate { it.id to it.name }
+        _kinds.value = all.associate { it.id to it.kind }
         _staffSales.value = runCatching { cash.staffSales() }.getOrDefault(emptyList())
         _pastShifts.value = cash.closedShifts().map { PastShift(it, cash.employeeName(it.opened_by), cash.employeeName(it.closed_by)) }
         _pastDays.value = cash.dayCloses().map { PastDay(it, cash.employeeName(it.closed_by)) }
@@ -1074,16 +1080,23 @@ private fun PaymentsPage(vm: SettingsViewModel, onOpen: (String) -> Unit) {
     }
     val rows by vm.payments.collectAsState()
     val types by vm.types.collectAsState()
+    val kinds by vm.kinds.collectAsState()
     if (rows.isEmpty()) {
         Panel { Text("No payment has been taken on this till since the last day closing.", color = Pos.Text, fontSize = 14.sp) }
         return
     }
-    fun signed(r: PaymentRow) = if (r.type == "refund") -r.amount else r.amount
-    val totals = rows.groupBy { types[it.payment_type_id] ?: "Other" }.map { (name, list) -> DocAmount(name, list.sumOf { signed(it) }, list.size) }.sortedByDescending { it.amount }
+    fun signed(r: PaymentRow) = DayPayments.signed(r)
+    val figures = DayPayments.of(rows, types, kinds)
     Panel {
-        totals.forEach { Figure("${it.name} (${it.count})", Money.format(it.amount)) }
+        figures.money.forEach { Figure("${it.name} (${it.count})", Money.format(it.amount)) }
         Hairline(Modifier.padding(vertical = 6.dp))
-        Figure("Total", Money.format(totals.sumOf { it.amount }), bold = true)
+        Figure("Total", Money.format(figures.total), bold = true)
+        // a sale on account, a credit note or a deposit used, an exchange: no money moved
+        if (figures.noMoney.isNotEmpty()) {
+            Hairline(Modifier.padding(vertical = 6.dp))
+            Text("No money taken, so not in the total", color = V.Text2, fontSize = 13.sp)
+            figures.noMoney.forEach { Figure("${it.name} (${it.count})", Money.format(it.amount)) }
+        }
     }
     Column(Modifier.fillMaxWidth().clip(CardShape).background(V.Panel).border(1.dp, V.Stroke, CardShape)) {
         Row(Modifier.fillMaxWidth().background(V.PanelFoot).padding(horizontal = 6.dp)) {
