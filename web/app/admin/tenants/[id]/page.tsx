@@ -65,20 +65,20 @@ async function setMra(formData: FormData) {
   back(tenantId, "notice", "MRA turned off: the client is on Premium.");
 }
 
-// The ID the MRA gave each till, as typed in the MRA part: every field is sent,
-// and only a changed one is written (and audited). The changed ones are cleared
-// first, so two tills can swap their IDs in one save.
+// The ID the MRA gave each till, as typed in the MRA part: every field is sent
+// in one statement (0118), which writes (and audits) only a changed one, clears
+// the changed ones first so two tills can swap their IDs, and saves nothing if
+// one is refused. Saved one till at a time, a refusal left an ID cleared.
 async function setTillMraIds(formData: FormData) {
   "use server";
   const { adminId, tenantId } = await tenantOf(formData);
-  const ours = (await db().query(`select id, mra_ebs_id from pos_devices where tenant_id = $1`, [tenantId])).rows as { id: string; mra_ebs_id: string | null }[];
-  const changed = ours
-    .filter((d) => formData.has("mra_" + d.id))
-    .map((d) => ({ id: d.id, to: String(formData.get("mra_" + d.id) ?? "").trim(), was: d.mra_ebs_id ?? "" }))
-    .filter((d) => d.to !== d.was);
+  const ids: Record<string, string> = {};
+  for (const [key, value] of formData.entries()) {
+    const till = key.startsWith("mra_") ? key.slice(4) : "";
+    if (UUID.test(till)) ids[till] = String(value).trim();
+  }
   try {
-    for (const d of changed) if (d.was && d.to) await db().query(`select platform.set_till_mra_id($1, $2, '')`, [adminId, d.id]);
-    for (const d of changed) await db().query(`select platform.set_till_mra_id($1, $2, $3)`, [adminId, d.id, d.to]);
+    await db().query(`select platform.set_till_mra_ids($1, $2, $3::jsonb)`, [adminId, tenantId, JSON.stringify(ids)]);
   } catch (e) {
     back(tenantId, "error", adminMessage(e));
   }

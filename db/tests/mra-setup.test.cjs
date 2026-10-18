@@ -129,6 +129,24 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     check('M5 an empty ID clears it', (await setId(till2, 'EBS-0002')) === null && (await setId(till2, '  ')) === null &&
       (await one(`select mra_ebs_id from pos_devices where id = $1`, [till2])).mra_ebs_id === null);
     await setId(till2, 'EBS-0002');
+    // M5b the whole form in one go (0118): all or nothing
+    const setIds = (o) => failsWith(`select platform.set_till_mra_ids($1, $2, $3::jsonb)`, [admin, t, JSON.stringify(o)]);
+    const idOf = async (d) => (await one(`select mra_ebs_id from pos_devices where id = $1`, [d])).mra_ebs_id;
+    check('M5b two tills swap their IDs in one save', (await setIds({ [till]: 'EBS-0002', [till2]: 'EBS-0001' })) === null &&
+      (await idOf(till)) === 'EBS-0002' && (await idOf(till2)) === 'EBS-0001');
+    const lines = async (from, to) => (await one(
+      `select count(*)::int as n from platform.audit where tenant_id = $1 and action = 'till.mra_id' and detail->>'till' = $2
+          and detail->>'from' is not distinct from $3 and detail->>'to' is not distinct from $4`, [t, till, from, to])).n;
+    check('M5b the history says what the till had and has, and no "cleared" between', (await lines('EBS-0001', 'EBS-0002')) === 1 && (await lines('EBS-0001', null)) === 0);
+    await setIds({ [till]: 'EBS-0001', [till2]: 'EBS-0002' });
+    check('M5b an ID another till keeps is refused, and the till keeps its own', said(await setIds({ [till]: 'EBS-0002' })) === 'mra-id-taken' &&
+      (await idOf(till)) === 'EBS-0001' && (await idOf(till2)) === 'EBS-0002');
+    check('M5b one bad ID refuses the whole save: nothing cleared', said(await setIds({ [till]: 'EBS-0009', [till2]: 'a b' })) === 'bad-mra-id' &&
+      (await idOf(till)) === 'EBS-0001' && (await idOf(till2)) === 'EBS-0002');
+    const before = (await one(`select count(*)::int as n from platform.audit where tenant_id = $1 and action = 'till.mra_id'`, [t])).n;
+    check('M5b an unchanged form writes nothing', (await setIds({ [till]: ' EBS-0001 ', [till2]: 'EBS-0002' })) === null &&
+      (await one(`select count(*)::int as n from platform.audit where tenant_id = $1 and action = 'till.mra_id'`, [t])).n === before);
+    check('M5b a till of another client is left alone', (await setIds({ [crypto.randomUUID()]: 'EBS-0005' })) === null);
     l = await list();
     check('M4 complete: every line done', Object.values(l).every((x) => x.ok === true), JSON.stringify(l));
     check('M4 a till taken out of use is not asked for', await (async () => {

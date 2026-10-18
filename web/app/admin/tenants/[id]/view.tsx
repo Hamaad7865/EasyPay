@@ -108,7 +108,8 @@ function auditNote(a: Audit): string {
   if (a.action === "tenant.plan" || a.action === "tenant.business_type") return `${String(d.from)} to ${String(d.to)}`;
   if (a.action === "tenant.features") return `${(Array.isArray(d.to) ? d.to : []).join(", ") || "none"}`;
   if (a.action === "tenant.mra") return `${MRA_STATE_WORDS[asMra(d.from)]} to ${MRA_STATE_WORDS[asMra(d.to)]}`;
-  if (a.action === "till.mra_id") return d.to ? String(d.to) : "cleared";
+  // what the till had is said too: an ID cleared by mistake can be typed back
+  if (a.action === "till.mra_id") return d.to ? (d.from ? `${String(d.from)} to ${String(d.to)}` : String(d.to)) : d.from ? `cleared (was ${String(d.from)})` : "cleared";
   if (a.action === "tenant.suspended") return String(d.reason ?? "");
   if (a.action === "login.add") return `${String(d.name)} as ${String(d.role)}`;
   if (a.action === "store.add") return `${String(d.name)} (${String(d.code)})`;
