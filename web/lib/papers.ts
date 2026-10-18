@@ -355,7 +355,14 @@ class Page {
     this.lines.push({ t: t.trimEnd(), size: st.size, bold: st.bold, align: st.align });
   }
   row(left: string, right: string, width: number, indent: string, st: St) {
-    const room = Math.max(width - right.length - 1 - indent.length, 4);
+    // a right text too wide to share a line (a long customer's name beside the
+    // time) goes under the left text, at the right, wrapped: as the till prints it
+    if (width - right.length - 1 - indent.length < 4) {
+      for (const l of wrap(left, width - indent.length)) this.line(indent + l, st);
+      for (const l of wrap(right, width)) this.line(l.padStart(width), st);
+      return;
+    }
+    const room = width - right.length - 1 - indent.length;
     const parts = wrap(left, room);
     parts.forEach((p, i) => this.line(i === 0 ? (indent + p).padEnd(width - right.length) + right : indent + p, st));
     if (parts.length === 0) this.line(right.padStart(width), st);

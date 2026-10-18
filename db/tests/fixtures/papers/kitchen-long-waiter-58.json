@@ -1,0 +1,41 @@
+{
+  "about": "A waiter's name wider than 58 mm paper beside the time on a kitchen ticket: it goes under the time, at the right (the till threw before, and the order was never marked sent)",
+  "paper": "kitchen",
+  "columns": 32,
+  "decimals": 2,
+  "shop": {
+    "name": "CafeTino",
+    "address": "Royal Road\nCurepipe",
+    "phone": "5 123 4567",
+    "brn": "C12345678",
+    "vat": "VAT27000000",
+    "header": "Open every day, 10:00 to 22:00",
+    "footer": "Thank you. See you again soon.",
+    "bars": false
+  },
+  "design": null,
+  "doc": {
+    "title": "ORDER",
+    "order": "Table 4",
+    "time": 1790000000000,
+    "waiter": "Marie-Claire Ramgoolam-Seeneevassen",
+    "lines": [
+      {
+        "qty": 1000,
+        "name": "Burger",
+        "amount": 0
+      }
+    ],
+    "station": "Kitchen"
+  },
+  "expect": [
+    {"t":"KITCHEN","size":"normal","bold":true,"align":"center"},
+    {"t":"Table 4","size":"big","bold":true,"align":"center"},
+    {"t":"21/09/2026 18:13","size":"normal","bold":false,"align":"left"},
+    {"t":"                    Marie-Claire","size":"normal","bold":false,"align":"left"},
+    {"t":"          Ramgoolam-Seeneevassen","size":"normal","bold":false,"align":"left"},
+    {"t":"================================","size":"normal","bold":false,"align":"left"},
+    {"t":"1 x Burger","size":"tall","bold":true,"align":"left"},
+    {"t":"================================","size":"normal","bold":false,"align":"left"}
+  ]
+}

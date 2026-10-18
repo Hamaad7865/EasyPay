@@ -71,9 +71,17 @@ class EscPos(val columns: Int) {
 
     // "2 Dholl puri            100.00": the left text wraps, the right text
     // sits at the end of its first line. The left text's own leading spaces
-    // go; an indent is kept in front of each of its lines.
+    // go; an indent is kept in front of each of its lines. A right text too
+    // wide to share a line (a long customer's name beside the time) goes under
+    // the left text, at the right, wrapped: padding to less than nothing threw,
+    // and the receipt and its drawer kick never went out.
     fun row(left: String, right: String, width: Int = columns, indent: String = "") = apply {
-        val room = (width - right.length - 1 - indent.length).coerceAtLeast(4)
+        if (width - right.length - 1 - indent.length < 4) {
+            wrap(left, width - indent.length).forEach { line(indent + it) }
+            wrap(right, width).forEach { line(it.padStart(width)) }
+            return@apply
+        }
+        val room = width - right.length - 1 - indent.length
         val parts = wrap(left, room)
         parts.forEachIndexed { i, p ->
             if (i == 0) line((indent + p).padEnd(width - right.length) + right) else line(indent + p)

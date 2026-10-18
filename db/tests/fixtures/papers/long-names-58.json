@@ -1,0 +1,83 @@
+{
+  "about": "Names wider than 58 mm paper: the order's name beside the time and a company's name as the customer go under the left text, at the right, wrapped (the till threw before, and printed nothing)",
+  "paper": "receipt",
+  "columns": 32,
+  "decimals": 2,
+  "shop": {
+    "name": "CafeTino",
+    "address": "Royal Road\nCurepipe",
+    "phone": "5 123 4567",
+    "brn": "C12345678",
+    "vat": "VAT27000000",
+    "header": "Open every day, 10:00 to 22:00",
+    "footer": "Thank you. See you again soon.",
+    "bars": false
+  },
+  "design": null,
+  "doc": {
+    "kind": "receipt",
+    "number": "S1-T1-000131",
+    "time": 1790000000000,
+    "order": "A-07 · Jean-Pierre Ramgoolam-Seeneevassen",
+    "cashier": "Priya",
+    "customer": "Ramgoolam Hardware & Construction Ltd",
+    "lines": [
+      {
+        "qty": 1000,
+        "name": "Cement 25 kg",
+        "amount": 45000,
+        "unit": 45000
+      }
+    ],
+    "subtotal": 45000,
+    "discounts": [],
+    "taxes": [
+      {
+        "name": "VAT",
+        "rateBp": 1500,
+        "amount": 5870,
+        "included": true
+      }
+    ],
+    "rounding": 0,
+    "total": 45000,
+    "service": 0,
+    "payments": [
+      {
+        "name": "Cash",
+        "amount": 45000,
+        "tendered": 50000,
+        "change": 5000
+      }
+    ]
+  },
+  "expect": [
+    {"t":"CafeTino","size":"big","bold":false,"align":"center"},
+    {"t":"Royal Road","size":"normal","bold":false,"align":"center"},
+    {"t":"Curepipe","size":"normal","bold":false,"align":"center"},
+    {"t":"Tel: 5 123 4567","size":"normal","bold":false,"align":"center"},
+    {"t":"BRN: C12345678","size":"normal","bold":false,"align":"center"},
+    {"t":"VAT: VAT27000000","size":"normal","bold":false,"align":"center"},
+    {"t":"Open every day, 10:00 to 22:00","size":"normal","bold":false,"align":"center"},
+    {"t":"--------------------------------","size":"normal","bold":false,"align":"left"},
+    {"t":"RECEIPT","size":"normal","bold":true,"align":"center"},
+    {"t":"No.                 S1-T1-000131","size":"normal","bold":false,"align":"left"},
+    {"t":"21/09/2026 18:13","size":"normal","bold":false,"align":"left"},
+    {"t":"              A-07 · Jean-Pierre","size":"normal","bold":false,"align":"left"},
+    {"t":"          Ramgoolam-Seeneevassen","size":"normal","bold":false,"align":"left"},
+    {"t":"Served by                  Priya","size":"normal","bold":false,"align":"left"},
+    {"t":"Customer","size":"normal","bold":false,"align":"left"},
+    {"t":"            Ramgoolam Hardware &","size":"normal","bold":false,"align":"left"},
+    {"t":"                Construction Ltd","size":"normal","bold":false,"align":"left"},
+    {"t":"--------------------------------","size":"normal","bold":false,"align":"left"},
+    {"t":"1 Cement 25 kg            450.00","size":"normal","bold":false,"align":"left"},
+    {"t":"--------------------------------","size":"normal","bold":false,"align":"left"},
+    {"t":"VAT 15% (incl.)            58.70","size":"normal","bold":false,"align":"left"},
+    {"t":"TOTAL                  Rs 450.00","size":"tall","bold":true,"align":"left"},
+    {"t":"Cash                      450.00","size":"normal","bold":false,"align":"left"},
+    {"t":"Given                     500.00","size":"normal","bold":false,"align":"left"},
+    {"t":"Change                     50.00","size":"normal","bold":false,"align":"left"},
+    {"t":"--------------------------------","size":"normal","bold":false,"align":"left"},
+    {"t":"Thank you. See you again soon.","size":"normal","bold":false,"align":"center"}
+  ]
+}
