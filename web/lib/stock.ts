@@ -110,6 +110,9 @@ export const MOVE_LABEL: Record<string, string> = {
   internal: "Used in the shop",
   found: "Found",
   adjust: "Adjusted",
+  // a shop's deposits (migration 0113)
+  deposit: "Held for a deposit",
+  deposit_release: "Back from a deposit",
 };
 
 export const units = (q: number) => (q / 1000).toLocaleString("en-US", { maximumFractionDigits: 3 });

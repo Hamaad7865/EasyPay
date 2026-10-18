@@ -1,6 +1,8 @@
 // stock.test.mjs — a shop's stock in words and figures (web/lib/stock.ts).
 // Usage: node web/lib/stock.test.mjs   (Node runs the .ts file itself)
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { ADJUST_REASONS, adjustProblem, isLow, lineValue, margin, MOVE_LABEL, reorderList, stockStatus, stockTotals, suggestedQty, units, valueBy } from "./stock.ts";
 
 let failures = 0;
@@ -61,9 +63,20 @@ check("six reasons for an adjustment: five take out, one puts in", () => {
   assert.equal(ADJUST_REASONS.find(([code]) => code === "internal")[1], "Used in the shop");
 });
 check("every reason a movement can have has its words", () => {
-  for (const r of ["sale", "refund", "adjust", "count", "receive", "supplier_return", "opening", "damaged", "expired", "lost", "internal", "found"]) {
+  for (const r of ["sale", "refund", "adjust", "count", "receive", "supplier_return", "opening", "damaged", "expired", "lost", "internal", "found", "deposit", "deposit_release"]) {
     assert.ok(MOVE_LABEL[r], r);
   }
+});
+
+// the reasons the database takes are those of the last migration that set them (0113 added the deposit's two)
+check("every reason the database takes has its words, and nothing else does", () => {
+  const dir = fileURLToPath(new URL("../../db/migrations/", import.meta.url));
+  const last = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()
+    .map((f) => readFileSync(dir + f, "utf8"))
+    .filter((sql) => sql.includes("add constraint stock_movements_reason_check")).at(-1);
+  const list = /add constraint stock_movements_reason_check\s+check \(reason in \(([^)]*)\)\)/.exec(last)[1];
+  const reasons = [...list.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
+  assert.deepEqual(Object.keys(MOVE_LABEL).sort(), reasons);
 });
 
 check("a quantity reads as someone would say it", () => {

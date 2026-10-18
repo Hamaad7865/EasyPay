@@ -16,8 +16,22 @@
 // Runs in ONE transaction that is rolled back: it leaves nothing behind.
 // Usage: node db/tests/deposits.test.cjs
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { Client } = require('pg');
 const devguard = require('./require-dev.cjs');
+
+// a module of web/lib, compiled from the TypeScript it lives in, as stock-reports.test.cjs does
+function lib(name, stubs = {}) {
+  const web = path.join(__dirname, '..', '..', 'web');
+  const ts = require(path.join(web, 'node_modules', 'typescript'));
+  const js = ts.transpileModule(fs.readFileSync(path.join(web, 'lib', name + '.ts'), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const mod = { exports: {} };
+  new Function('require', 'module', 'exports', js)((id) => (id in stubs ? stubs[id] : require(id)), mod, mod.exports);
+  return mod.exports;
+}
 
 let failures = 0;
 function check(name, cond, extra) {
@@ -439,6 +453,43 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
       out = await push([countOp([counted(sock, 19000, 480000)], { clock_ahead_ms: 600000 })]);
       check('T13 a deposit the server cancelled after the line was truly counted: what came back is added', sockDep.status === 'cancelled' && tag(out[0]) === 'applied' && (await stock(sock)) === 20000,
         sockDep.status + ' ' + tag(out[0]) + ' ' + (await stock(sock)));
+    }
+
+    // ---- T14 goods collected from a deposit are sold: in cost and profit, and not slow (0120) ----
+    // A collection moves no stock (it left with the deposit), so what the goods cost is the deposit's
+    // movement, and when they sold is the collection's receipt, as the tablet's own lists read it.
+    {
+      const rep = lib('stock-reports');
+      const report = lib('report', { '@/lib/action': { UUID: /^[0-9a-f-]{36}$/i }, '@/lib/settings': { withDefaults: (x) => x }, '@/lib/day': lib('day') });
+      const tz = (await one(`select timezone from stores where id = $1`, [store])).timezone;
+      const day = report.today(tz);
+      const rattle = await item('Rattle', 5000), blanket = await item('Blanket', 8000);
+      // both in the shop for forty days, the blanket on a promotion for twenty, and neither sold
+      await c.query(`update items set created_at = now() - interval '40 days' where id = any($1::uuid[])`, [[rattle, blanket]]);
+      await c.query(`update stock_movements set created_at = now() - interval '40 days' where tenant_id = $1 and item_id = any($2::uuid[]) and reason = 'receive'`, [tid, [rattle, blanket]]);
+      await c.query(`select promotion_apply($1,$2,$3,null,6000,null)`, [tid, owner, blanket]);
+      await c.query(`update promotions set applied_at = now() - interval '20 days' where tenant_id = $1 and item_id = $2`, [tid, blanket]);
+      const quiet = async () => (await asApp(() => c.query(rep.UNSOLD_SQL, [tid, store, 30]))).rows.map((x) => x.name);
+      const slow = async () => (await c.query(`select name from slow_movers($1, 30)`, [tid])).rows.map((x) => x.name);
+      const stale = async () => (await c.query(`select name from stale_promotions($1, 14)`, [tid])).rows.map((x) => x.name);
+      check('T14 before anything is taken: both are quiet, the rattle slow and the blanket\'s promotion still',
+        (await quiet()).includes('Rattle') && (await slow()).includes('Rattle') && (await stale()).includes('Blanket'), `${await quiet()} | ${await slow()} | ${await stale()}`);
+
+      // a rattle and a blanket taken on a deposit, the shelf's average a rupee then; dearer stock comes in after
+      const [did, num, o] = createOp([{ item_id: rattle, name: 'Rattle', unit_price: 5000 }, { item_id: blanket, name: 'Blanket', unit_price: 6000 }], null);
+      await push([o]);
+      await c.query(`select stock_move($1,$2,$3,null,10000,'receive',4000,'delivery',$4,$5,null)`, [tid, store, rattle, id(), owner]);
+      const L = await lineIds(did);
+      const r = await collect(num, [
+        { item_id: rattle, name_snapshot: 'Rattle', unit_price: 5000, deposit_line_id: L[0].id },
+        { item_id: blanket, name_snapshot: 'Blanket', unit_price: 6000, deposit_line_id: L[1].id },
+      ], [{ payment_type_id: cash, amount: 11000 }]);
+      const rows = await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true), [tid, day, day, null, null, 'all']));
+      const rat = rows.rows.find((x) => x.name === 'Rattle');
+      check('T14 collected: the rattle sold costs what it cost when it left the shelf, and its sale is in the profit',
+        tags(r.out) === 'applied applied applied' && rat && Number(rat.cost) === 1000 && Number(rat.costed) === Number(rat.ex_vat) && Number(rat.costed) > 0, JSON.stringify(rat));
+      check('T14 the rattle is not quiet any more, nor slow', !(await quiet()).includes('Rattle') && !(await slow()).includes('Rattle'), `${await quiet()} | ${await slow()}`);
+      check('T14 and the blanket\'s promotion sold', !(await stale()).includes('Blanket'), String(await stale()));
     }
   } catch (e) {
     failures++;

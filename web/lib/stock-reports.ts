@@ -41,7 +41,8 @@ export const COUNTED_SQL = `
 // The lines of a shop's stock that hold something and have not been sold in
 // the last $3 days, each with when it last sold (never: null) and when stock
 // last came in, so last week's delivery is not read as dead stock. A refund
-// is not a sale. $1 tenant, $2 shop, $3 days
+// is not a sale; goods collected from a deposit are, though no stock moved
+// with them (deposit_collected_at, migration 0120). $1 tenant, $2 shop, $3 days
 export const UNSOLD_SQL = `
   select s.item_id, s.variant_id, s.name, s.variant, s.category, s.supplier, s.qty, s.avg_cost, s.price,
          to_char(x.last_sold at time zone st.timezone, 'FMDD FMMonth YYYY') as last_sold,
@@ -51,7 +52,7 @@ export const UNSOLD_SQL = `
     from stock_on_hand($1, $2) s
     join stores st on st.tenant_id = $1 and st.id = $2
     left join lateral (
-      select max(m.created_at) filter (where m.reason = 'sale') as last_sold,
+      select greatest(max(m.created_at) filter (where m.reason = 'sale'), deposit_collected_at($1, $2, s.item_id, s.variant_id)) as last_sold,
              max(m.created_at) filter (where m.qty > 0 and m.reason in ('receive', 'opening')) as last_in
         from stock_movements m
        where m.tenant_id = $1 and m.store_id = $2 and m.item_id = s.item_id
@@ -68,7 +69,9 @@ export const UNSOLD_SQL = `
 //   cost    what the goods cost when they were sold, where that is known
 //   costed  the part of ex_vat that has a cost: profit is costed - cost
 // A receipt moves a product once, whatever its lines, so each line takes the
-// movement's cost per unit, not its total.
+// movement's cost per unit, not its total. Goods collected from a deposit
+// moved no stock on their receipt: they left the shelf with the deposit
+// (migration 0113), and cost what its movement says.
 // What a shop's till took off single lines, and what prices typed for one
 // sale came to against the listed ones (migration 0077). Both are kept on the
 // line, so a receipt's own discount holds neither: each line at its listed
@@ -129,7 +132,7 @@ export function itemSalesSql(receipts: string, group: "item" | "category" | "sup
   return `with r as (${receipts}),
        l as (
          select r.id as receipt_id, r.sign, r.subtotal, r.discount_total, rl.id as line_id, rl.qty, rl.name_snapshot,
-                tl.item_id, tl.variant_id, ${amount}::bigint as base
+                tl.item_id, tl.variant_id, tl.deposit_line_id, ${amount}::bigint as base
            from r join receipt_lines rl on rl.tenant_id = $1 and rl.receipt_id = r.id
            left join ticket_lines tl on tl.tenant_id = $1 and tl.id = rl.ticket_line_id
        ),
@@ -139,10 +142,16 @@ export function itemSalesSql(receipts: string, group: "item" | "category" | "sup
                 x.net - coalesce((select sum(case when t.type = 'added' then 0
                                         else (x.net * t.rate_bp + (10000 + t.rate_bp) / 2) / (10000 + t.rate_bp) end)
                                     from receipt_line_taxes t where t.tenant_id = $1 and t.receipt_line_id = x.line_id), 0) as ex_vat,
-                (select m.unit_cost from stock_movements m
-                  where m.tenant_id = $1 and m.receipt_id = x.receipt_id and m.item_id = x.item_id
-                    and m.variant_id is not distinct from x.variant_id and m.reason in ('sale', 'refund') and m.deleted_at is null
-                  limit 1) as unit_cost
+                coalesce(
+                  (select m.unit_cost from stock_movements m
+                    where m.tenant_id = $1 and m.receipt_id = x.receipt_id and m.item_id = x.item_id
+                      and m.variant_id is not distinct from x.variant_id and m.reason in ('sale', 'refund') and m.deleted_at is null
+                    limit 1),
+                  (select m.unit_cost from deposit_lines dl
+                     join stock_movements m on m.tenant_id = dl.tenant_id and m.ref_type = 'deposit' and m.ref_id = dl.deposit_id
+                    where dl.tenant_id = $1 and dl.id = x.deposit_line_id and m.item_id = x.item_id
+                      and m.variant_id is not distinct from x.variant_id and m.reason = 'deposit' and m.deleted_at is null
+                    limit 1)) as unit_cost
            from x
        )
        select ${by.replace("rl.", "y.")} as name, ${cat} as cat,
