@@ -72,6 +72,10 @@ fun AuthScreen(
     // the same card asking only for the code EasyPay gave for this tablet
     var byCode by remember { mutableStateOf(false) }
     var code by remember { mutableStateOf("") }
+    // A new tablet: is its business already selling? Not yet, and what is
+    // rung up on it is for trying until Go live (core/data/GoLive). Nothing is
+    // assumed: a business that trades adds a tablet with an ordinary code too.
+    var selling by remember { mutableStateOf<Boolean?>(null) }
     val busy = state == AuthUiState.Busy || state == AuthUiState.SignedIn || state == AuthUiState.CodeTaken
     val problem = (state as? AuthUiState.Error)?.message
     // Sending puts the keyboard away: on a landscape tablet it covers the
@@ -101,11 +105,12 @@ fun AuthScreen(
             return@SetupCard
         }
         if (byCode) {
+            val answered = reauth || selling != null
             val useCode: () -> Unit = {
-                if (!busy && CodeForm.ready(code)) {
+                if (!busy && CodeForm.ready(code) && answered) {
                     keyboard?.hide()
                     focus.clearFocus()
-                    vm.useCode(code)
+                    vm.useCode(code, trying = !reauth && selling == false)
                 }
             }
             if (reauth) Heading("Use this tablet's code", "Type the code this tablet was set up with, or the one EasyPay gave for it since. It needs the internet for a moment.")
@@ -117,7 +122,24 @@ fun AuthScreen(
             )
             // how it reads, to hold against the paper it was written on
             if (code.isNotBlank()) T(CodeForm.typed(code), 22.sp, 800, if (CodeForm.ready(code)) V.Text else V.Text2, Modifier.fillMaxWidth(), align = TextAlign.Center)
-            MainKey(if (!CodeForm.ready(code)) "Enter the code" else if (reauth) "Use this code" else "Set up this tablet", ready = CodeForm.ready(code), busy = busy, onClick = useCode)
+            if (!reauth) {
+                T("Is this business already selling with EasyPay?", 13.sp, 600, V.Text2)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Choice("Not yet: it is being set up", selling == false, Modifier.weight(1f), enabled = !busy) { selling = false }
+                    Choice("Yes: this tablet sells for real", selling == true, Modifier.weight(1f), enabled = !busy) { selling = true }
+                }
+                selling?.let {
+                    T(
+                        if (!it) "What is rung up on it is for trying: it prints TEST, and goes when the owner taps Go live, at the top of the till's screens. What is set up stays."
+                        else "Every sale on it is real from the first one.",
+                        13.sp, 500, V.Text2, lines = 3, height = 18.sp,
+                    )
+                }
+            }
+            MainKey(
+                if (!CodeForm.ready(code)) "Enter the code" else if (!answered) "Say whether the business is selling" else if (reauth) "Use this code" else "Set up this tablet",
+                ready = CodeForm.ready(code) && answered, busy = busy, onClick = useCode,
+            )
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 QuietLink("Back to sign in", enabled = !busy) { byCode = false; vm.onAction(AuthAction.Clear) }
                 Gap()

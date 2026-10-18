@@ -198,6 +198,9 @@ class DemoReceiver : BroadcastReceiver() {
                     // --ez deposits true: the shop has the deposits extra (server 0113), as /admin switching it on writes into its settings
                     // --ez accounts true: the shop has the customer accounts extra (server 0114), the same way
                     seed(context, deps.db(), deps.session(), restaurant, plan, setup, intent.getStringExtra("returns")?.trim()?.takeIf { it.isNotEmpty() }, intent.getBooleanExtra("deposits", false), intent.getBooleanExtra("accounts", false))
+                    // --ez setting_up true: the tablet is being set up (core/data/GoLive), as one set up with
+                    // its code and "Not yet". It counts on the offline plan only (--es plan offline).
+                    if (intent.getBooleanExtra("setting_up", false)) deps.session().setSettingUp(true)
                     // --ez ordering true: guests may order from the tables (core/guest). The settings
                     // say so, and the till is given a made-up key of its own to show the ordering
                     // site's relay on this PC, whose stand-in for EasyPay's till service takes any

@@ -102,7 +102,9 @@ class AuthViewModel @Inject constructor(
     // One code sets up one tablet, with no login. What the tablet is then is
     // what a login's set-up leaves it: the business, the store and the till,
     // and the till's key. Its first pull follows, as after "Name this till".
-    fun useCode(code: String) = viewModelScope.launch {
+    // trying: the business is not selling yet, and this tablet is being set
+    // up (core/data/GoLive) from its first sale until its owner's Go live.
+    fun useCode(code: String, trying: Boolean = false) = viewModelScope.launch {
         if (_state.value == AuthUiState.Busy) return@launch
         _state.value = AuthUiState.Busy
         // A tablet that is a till already and is asked to sign in: its key was
@@ -127,6 +129,7 @@ class AuthViewModel @Inject constructor(
             session.save(out.tenantId, out.storeId, out.deviceId)
             // what the tablet does next waits for a whole pull after this moment (SetupSteps.after)
             session.setRegisteredAt(System.currentTimeMillis())
+            session.setSettingUp(trying)
             if (out.business.isNotBlank()) session.setBusinessName(out.business)
         }.onSuccess {
             SyncScheduler.pullNow(appContext)

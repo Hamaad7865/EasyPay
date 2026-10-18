@@ -625,7 +625,7 @@ fun SettingsScreen(
                     Column(Modifier.widthIn(max = 800.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (page != Page.Till) T(page.label, 22.sp, 800, spacing = (-0.4).sp, modifier = Modifier.padding(bottom = 6.dp))
                         when (page) {
-                            Page.Till -> TillPage(vm, keys, network, standing, shop, onSignIn, onRejected, onSetUp) { page = it }
+                            Page.Till -> TillPage(vm, keys, network, standing, shop, onSignIn, onRejected, onSetUp, onLive = onLock) { page = it }
                             Page.Notices -> NoticesPage(vm, standing)
                             Page.Cash -> CashPage(vm, more, keys)
                             Page.Reports -> ReportsPage(vm, more, shop, keys.close) { sheet = "day" }
@@ -698,7 +698,7 @@ private fun Menu(page: Page, lock: String, waiting: Boolean, printerTrouble: Boo
 // ---- the pages ----
 
 @Composable
-private fun TillPage(vm: SettingsViewModel, keys: CashKeys, network: String, standing: List<Standing>, shop: Boolean, onSignIn: () -> Unit, onRejected: () -> Unit, onSetUp: () -> Unit, onGo: (Page) -> Unit) {
+private fun TillPage(vm: SettingsViewModel, keys: CashKeys, network: String, standing: List<Standing>, shop: Boolean, onSignIn: () -> Unit, onRejected: () -> Unit, onSetUp: () -> Unit, onLive: () -> Unit, onGo: (Page) -> Unit) {
     val user by vm.user.collectAsState()
     val needsSignIn by vm.needsSignIn.collectAsState()
     val pending by vm.pending.collectAsState()
@@ -710,6 +710,8 @@ private fun TillPage(vm: SettingsViewModel, keys: CashKeys, network: String, sta
 
     // what wants attention is said first
     standing.forEach { Alert(it) }
+    // a tablet set up before its business sold for real, and its Go live: the till locks after it
+    SettingUpCard(onLive)
     Heading("Quick actions")
     CashActions(keys)
     Heading("Status")
@@ -1470,6 +1472,7 @@ private val HELP = listOf(
     "Setting the till up" to "A new business is walked through it the first time a tablet is signed in: the menu, the tables, the receipt printer, what prints at the top of a receipt, and staff PINs. Any step can be skipped. Afterwards it is in Settings, under This till: Set-up shows what is done, and a tap on a line does it or changes it. A second printer for the kitchen, which category prints where, and the plan's exact layout are set in the back office. It needs a connection, and may need a manager; adding staff and setting a PIN needs the owner.",
     "Reports for a day, a week or a month" to "Tap the key at the top left, then Reports, or tap Reports on Today. Pick a report on the left: Sales Summary, Sales Analysis, Item Sales Rank, Hourly Sales Report, Transaction Detail, Price Change, Resettlement, Shift Record or Tax Report. Pick the days above it: Today, Yesterday, This week, This month, Last month, or tap Dates for any two days. Print sends the report to the receipt printer. In Transaction Detail a tap opens the receipt; in Shift Record a tap opens that day's closing figures, which can be printed again. The reports are of this till and of what this tablet holds. They are for those allowed to see the day's figures: someone who is can show them with their PIN.",
     "A printer does not print" to "Settings, Printers. Check the printer says Connected and try a test print. A failed print has Try again next to it. An order still reaches the kitchen display when a kitchen printer does not answer.",
+    "Trying the till before opening" to "A tablet set up with its code before the business sells for real (Not yet) is being set up: an amber strip says so at the top of every screen, and everything it prints says TEST. Ring up whatever you like to try it. The day the business opens, the owner taps Go live on the strip, or in Settings under This till: what was rung up goes (orders, receipts, days, cash, clock-ins), what was set up stays (the menu, the staff, the tables, the printers, the stock), and receipts start again at 1. Each tablet goes live on its own.",
     "No internet" to "Keep selling. Everything is saved on the tablet and sent by itself when the connection is back. Printing does not need the internet, only the local network.",
 )
 
@@ -1550,6 +1553,7 @@ private val SHOP_HELP = listOf(
     "The stock history" to "On Stock, tap History. Every movement of the shop's stock is listed, newest first: what was sold, what came in with a delivery, what a count changed, and each correction with its reason and who made it. Tap Sales, Deliveries, Counts or Corrections to see one kind. Scan a product, or type its name, to see that product only. A sale shows here once the till has synced.",
     "Reports for a day, a week or a month" to "Tap the key at the top left, then Reports, or tap Reports on Today. Pick a report on the left: Sales Summary, Sales Analysis, Item Sales Rank, Hourly Sales Report, Transaction Detail, Price Change, Resettlement, Shift Record or Tax Report. Pick the days above it: Today, Yesterday, This week, This month, Last month, or tap Dates for any two days. Print sends the report to the receipt printer. In Transaction Detail a tap opens the receipt; in Shift Record a tap opens that day's closing figures, which can be printed again. The reports are of this till and of what this tablet holds. They are for those allowed to see the day's figures: someone who is can show them with their PIN.",
     "A printer does not print" to "Tap More on the top bar, then Printers. Check the printer says Connected and try a test print. A failed print has Try again next to it. A sale is recorded whether or not its receipt printed, and can be printed again once the printer answers. The cash drawer opens through the receipt printer, so it stays shut while that printer does not answer.",
+    "Trying the till before opening" to "A tablet set up with its code before the shop sells for real (Not yet) is being set up: an amber strip says so at the top of every screen, and everything it prints says TEST. Ring up whatever you like to try it. The day the shop opens, the owner taps Go live on the strip, or under More on the top bar, then This till: what was rung up goes (sales, receipts, refunds, days, cash, clock-ins, deposits), what was set up stays (the products, the staff, the printers, the stock with its deliveries and counts), what the sales took off the shelf goes back, and receipts start again at 1. Each tablet goes live on its own.",
     "No internet" to "Keep selling. Everything is saved on the tablet and sent by itself when the connection is back. What is left of each product, and the receipts of the shop's other tills, catch up then too. Printing does not need the internet, only the local network.",
 )
 

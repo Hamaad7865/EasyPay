@@ -371,7 +371,9 @@ export function TenantView({
                     <strong>What it was tried with</strong>
                     <span className="help">
                       This client runs on its tablet: what was rung up while it was tried is on the tablet, and nothing of it is here to clear. A till it
-                      was tried with can be removed in the list, and a code that waits or is over too.
+                      was tried with can be removed in the list, and a code that waits or is over too. A tablet set up with its code before the business
+                      sold for real (Not yet) is being set up on its own: its owner clears what was rung up on it with Go live, on the strip at the
+                      top of the till or under This till, and keeps what was set up.
                     </span>
                   </div>
                 ) : (

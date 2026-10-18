@@ -159,6 +159,17 @@ internal fun MainKey(label: String, ready: Boolean, busy: Boolean, modifier: Mod
     }
 }
 
+// One of two answers, side by side: the one picked is lit.
+@Composable
+internal fun Choice(label: String, on: Boolean, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    Box(
+        modifier.heightIn(min = 54.dp).clip(RoundedCornerShape(12.dp)).background(if (on) V.Blue else V.Well)
+            .border(1.dp, if (on) V.Blue else V.Stroke, RoundedCornerShape(12.dp))
+            .then(if (enabled) Modifier.press(0.98f, onClick) else Modifier).padding(horizontal = 12.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) { T(label, 14.sp, 700, if (on) Color.White else V.Text, lines = 2, align = TextAlign.Center) }
+}
+
 @Composable
 internal fun QuietLink(label: String, enabled: Boolean, onClick: () -> Unit) {
     T(label, 14.sp, 600, if (enabled) V.BlueText else V.Off, Modifier.then(if (enabled) Modifier.press(0.97f, onClick) else Modifier).padding(vertical = 8.dp))

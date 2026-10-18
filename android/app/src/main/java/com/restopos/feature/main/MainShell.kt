@@ -308,6 +308,8 @@ class ShellViewModel @Inject constructor(
     val needsSignIn: StateFlow<Boolean> = combine(session.needsSignIn, alone) { wanted, a -> wanted && !a }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     val pending: StateFlow<Long> = combine(db.outbox().pendingCountFlow(), alone) { n, a -> if (a) 0L else n }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val rejected: StateFlow<Long> = db.outbox().deadCountFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    // set up before its business sold for real: what is rung up is for trying (core/data/GoLive)
+    val settingUp: StateFlow<Boolean> = com.restopos.core.data.settingUpFlow(db, session).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     val lang: StateFlow<String> = session.lang.stateIn(viewModelScope, SharingStarted.Eagerly, "en")
     // a shop's scan mode: the scanner's keys are taken below the screen (see Scanner)
     val scanMode: StateFlow<Boolean> = session.scanMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
@@ -499,6 +501,7 @@ fun MainShell(
     val needsSignIn by shell.needsSignIn.collectAsState()
     val pending by shell.pending.collectAsState()
     val rejected by shell.rejected.collectAsState()
+    val settingUp by shell.settingUp.collectAsState()
     val lang by shell.lang.collectAsState()
     val update by shell.update.collectAsState()
     val refreshing by shell.refreshing.collectAsState()
@@ -683,6 +686,7 @@ fun MainShell(
                 }
             }
             SyncNotices(needsSignIn, pending, rejected, onSignIn, onRejected, clockAhead, updateRequired)
+            if (settingUp) SettingUpStrip { shell.go(Screen.Settings) }
             // Where the till goes once a sale is paid in full: from the payment
             // screen's last card, or straight from Fast on the sell or order screen.
             val paid: (String) -> Unit = { kind ->
@@ -915,6 +919,16 @@ private fun Entry(n: Nav, on: Boolean, count: Int, badge: Color, ready: Int = 0,
         T(n.label(), 16.sp, 700, if (on) V.Text else V.Dim, Modifier.weight(1f))
         if (count > 0) Badge(count, badge, 22.dp)
         if (ready > 0) Badge(ready, V.Ok, 22.dp)
+    }
+}
+
+// A tablet being set up says so on every screen (core/data/GoLive): what is
+// rung up on it is for trying, and goes at Go live, which the key opens.
+@Composable
+private fun SettingUpStrip(onGoLive: () -> Unit) {
+    Row(Modifier.fillMaxWidth().background(V.AmberWash).padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        T("Setting up. What is rung up here is for trying, and goes when the business goes live.", 13.sp, 600, V.AmberText, Modifier.weight(1f), lines = 2)
+        VBtn("Go live", height = 34.dp, radius = 10.dp, size = 14.sp, onClick = onGoLive)
     }
 }
 
