@@ -70,7 +70,7 @@ const IN_PART = ['stock_movements', 'tablet_codes'];
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'setting-up-test@example.com')`, [admin]);
     const tid = crypto.randomUUID(), other = crypto.randomUUID(), alone = crypto.randomUUID();
     await c.query(
-      `insert into tenants (id, tenant_id, name, plan) values ($1,$1,'Chez Essai','standard'), ($2,$2,'Other Essai','standard'), ($3,$3,'Alone Essai','offline')`,
+      `insert into tenants (id, tenant_id, name, plan) values ($1,$1,'Chez Essai','premium'), ($2,$2,'Other Essai','premium'), ($3,$3,'Alone Essai','offline')`,
       [tid, other, alone]);
 
     // what a client has: a store, an owner, a menu

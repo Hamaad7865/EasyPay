@@ -41,23 +41,23 @@ function check(name, cond, extra) {
     check('T1 app_user cannot read platform.admins', e && e.code === '42501', e ? e.code : 'no error');
     e = await failsWith(`insert into platform.admins (auth_user_id, email) values ($1, 'x@example.com')`, [crypto.randomUUID()]);
     check('T1 app_user cannot make itself an admin', e && e.code === '42501', e ? e.code : 'no error');
-    e = await failsWith(`select platform.create_tenant($1,'X','Main','S1','O',$2,'standard')`, [admin, crypto.randomUUID()]);
+    e = await failsWith(`select platform.create_tenant($1,'X','Main','S1','O',$2,'offline')`, [admin, crypto.randomUUID()]);
     check('T1 app_user cannot call platform.create_tenant', e && e.code === '42501', e ? e.code : 'no error');
     await c.query('SET LOCAL ROLE none');
 
     // T2 only a live platform admin creates tenants
-    e = await failsWith(`select platform.create_tenant($1,'X','Main','S1','O',$2,'standard')`, [stranger, ownerAuth]);
+    e = await failsWith(`select platform.create_tenant($1,'X','Main','S1','O',$2,'offline')`, [stranger, ownerAuth]);
     check('T2 a non-admin is refused', e && e.message === 'not-a-platform-admin', e ? e.message : 'no error');
-    e = await failsWith(`select platform.create_tenant($1,'  ','Main','S1','O',$2,'standard')`, [admin, ownerAuth]);
+    e = await failsWith(`select platform.create_tenant($1,'  ','Main','S1','O',$2,'offline')`, [admin, ownerAuth]);
     check('T2 a name is required', e && e.message === 'name-required', e ? e.message : 'no error');
-    e = await failsWith(`select platform.create_tenant($1,'X','Main','bad code!','O',$2,'standard')`, [admin, ownerAuth]);
+    e = await failsWith(`select platform.create_tenant($1,'X','Main','bad code!','O',$2,'offline')`, [admin, ownerAuth]);
     check('T2 a bad store code is refused', e && e.message === 'bad-store-code', e ? e.message : 'no error');
 
     // T3 a tenant arrives complete
-    const made = (await one(`select platform.create_tenant($1,'Chez Test','Port Louis','pl1','Aisha',$2,'standard') as r`, [admin, ownerAuth])).r;
+    const made = (await one(`select platform.create_tenant($1,'Chez Test','Port Louis','pl1','Aisha',$2,'offline') as r`, [admin, ownerAuth])).r;
     const tid = made.tenant_id;
     const t = await one(`select name, plan, status from tenants where id = $1`, [tid]);
-    check('T3 tenant created, active, on its plan', t.name === 'Chez Test' && t.plan === 'standard' && t.status === 'active', JSON.stringify(t));
+    check('T3 tenant created, active, on its plan', t.name === 'Chez Test' && t.plan === 'offline' && t.status === 'active', JSON.stringify(t));
     const store = await one(`select name, code from stores where tenant_id = $1`, [tid]);
     check('T3 first store created, code upper-cased', store.name === 'Port Louis' && store.code === 'PL1', JSON.stringify(store));
     const roles = (await c.query(`select name from roles where tenant_id = $1 order by name`, [tid])).rows.map((r) => r.name);
@@ -67,7 +67,7 @@ function check(name, cond, extra) {
       from employees e join roles r on r.id = e.role_id where e.tenant_id = $1`, [tid]);
     check('T3 owner login linked, with the Owner role and the store',
       owner.name === 'Aisha' && owner.role === 'Owner' && owner.auth_user_id === ownerAuth && owner.stores === 1, JSON.stringify(owner));
-    e = await failsWith(`select platform.create_tenant($1,'Second','Main','S1','O',$2,'standard')`, [admin, ownerAuth]);
+    e = await failsWith(`select platform.create_tenant($1,'Second','Main','S1','O',$2,'offline')`, [admin, ownerAuth]);
     check('T3 one login cannot own two tenants', e && e.message === 'login-already-linked', e ? e.message : 'no error');
 
     // T4 another login, with a role
@@ -118,6 +118,36 @@ function check(name, cond, extra) {
     await c.query(`select platform.set_tenant_plan($1,$2,'premium')`, [admin, tid]);
     check('T6 plan changed', (await one(`select plan from tenants where id = $1`, [tid])).plan === 'premium');
 
+    // T6b three plans, and nothing else (0121): a name no part of EasyPay knows is refused, and said in /admin
+    const refusedPlans = [];
+    for (const p of ['standard', 'free', 'gold']) {
+      const se = await failsWith(`select platform.set_tenant_plan($1,$2,$3)`, [admin, tid, p]);
+      const ce = await failsWith(`select platform.create_tenant($1,'Plan Test','Main','PT1','O',$2,$3)`, [admin, crypto.randomUUID(), p]);
+      refusedPlans.push(p + ':' + (se && se.message) + ':' + (ce && ce.message));
+    }
+    check('T6b set_tenant_plan and create_tenant refuse a plan that is not trial, offline or premium',
+      refusedPlans.every((x) => x.endsWith(':bad-plan:bad-plan')) && (await one(`select plan from tenants where id = $1`, [tid])).plan === 'premium', refusedPlans.join(' '));
+    const caps = (await one(`select platform.create_tenant($1,'Caps Test','Main','CP1','O',$2,' Trial ') as r`, [admin, crypto.randomUUID()])).r;
+    const capsPlan = await one(`select t.plan, s.data->>'plan' as said from tenants t join pos_settings s on s.tenant_id = t.id where t.id = $1`, [caps.tenant_id]);
+    check('T6b a plan typed with capitals and spaces is written as the plan', capsPlan.plan === 'trial' && capsPlan.said === 'trial', JSON.stringify(capsPlan));
+    const unnamed = (await one(`select platform.create_tenant($1,'Unnamed Test','Main','UN1','O',$2,null) as r`, [admin, crypto.randomUUID()])).r;
+    check('T6b no plan named is offline', (await one(`select plan from tenants where id = $1`, [unnamed.tenant_id])).plan === 'offline');
+    const platformLib = (() => {
+      const fs = require('fs'), path = require('path');
+      const web = path.join(__dirname, '..', '..', 'web');
+      const ts = require(path.join(web, 'node_modules', 'typescript'));
+      const js = ts.transpileModule(fs.readFileSync(path.join(web, 'lib', 'platform.ts'), 'utf8'), {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+      }).outputText;
+      const stubs = { 'next/navigation': {}, '@/lib/auth/server': {}, '@/lib/db': {} };
+      const mod = { exports: {} };
+      new Function('require', 'module', 'exports', js)((name) => stubs[name] ?? require(name), mod, mod.exports);
+      return mod.exports;
+    })();
+    const fallback = platformLib.adminMessage(new Error('nothing-of-the-kind'));
+    check('T6b /admin says what bad-plan means', platformLib.adminMessage(new Error('bad-plan')) !== fallback && /Trial, Offline or Premium/.test(platformLib.adminMessage(new Error('bad-plan'))),
+      platformLib.adminMessage(new Error('bad-plan')));
+
     // T10 stores, business details and tills (migration 0045)
     const store2 = (await one(`select platform.add_store($1,$2,'Grand Baie','gb1') as id`, [admin, tid])).id;
     const access = await one(`select count(*)::int n from employee_stores where store_id = $1`, [store2]);
@@ -136,7 +166,7 @@ function check(name, cond, extra) {
     check('T10 a till is deactivated and reactivated', off.off === true && on.on === true);
     e = await failsWith(`select platform.add_login($1,$2,'Me','Manager',$1)`, [admin, tid]);
     check('T10 a platform admin cannot be made a restaurant login', e && e.message === 'login-is-platform-admin', e ? e.message : 'no error');
-    e = await failsWith(`select platform.create_tenant($1,'Mine','Main','S1','Me',$1,'standard')`, [admin]);
+    e = await failsWith(`select platform.create_tenant($1,'Mine','Main','S1','Me',$1,'offline')`, [admin]);
     check('T10 nor the owner of one', e && e.message === 'login-is-platform-admin', e ? e.message : 'no error');
 
     // T7 switching one login off stops that login, nobody else

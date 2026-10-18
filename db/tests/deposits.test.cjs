@@ -49,7 +49,7 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
   try {
     const admin = id();
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-dep@example.com')`, [admin]);
-    const made1 = (await one(`select platform.create_tenant_of_type($1,'Deposit Test','Main','DP1','Owner',$2,'standard','retail') as r`, [admin, id()])).r;
+    const made1 = (await one(`select platform.create_tenant_of_type($1,'Deposit Test','Main','DP1','Owner',$2,'offline','retail') as r`, [admin, id()])).r;
     const tid = made1.tenant_id, store = made1.store_id, owner = made1.employee_id;
 
     async function asApp(fn) {
@@ -118,7 +118,7 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
     {
       const [, , o] = createOp([{ item_id: cot, name: 'Cot', unit_price: 50000 }], null);
       let out = await push([o]);
-      check('T1 a Standard shop without the feature: a deposit with no money is refused', tag(out[0]) === 'rejected:not-entitled', tag(out[0]));
+      check('T1 a shop on Offline without the feature: a deposit with no money is refused', tag(out[0]) === 'rejected:not-entitled', tag(out[0]));
       const [did, , o2] = createOp([{ item_id: cot, name: 'Cot', unit_price: 50000 }], { payment_type_id: cash, amount: 10000 });
       out = await push([o2]);
       const d = await dep(did);
@@ -134,6 +134,8 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
       catch (e) { said = e.message; await c.query('ROLLBACK TO SAVEPOINT f'); }
       check('T1 a feature nobody knows is refused', said === 'bad-feature', said);
       check('T1 has_feature is true once switched on', (await one(`select has_feature($1,'deposits') as x`, [tid])).x === true);
+      // from here on a shop in the cloud: its server cancels deposits past their date, and Clear test activity is for it
+      await c.query(`select platform.set_tenant_plan($1,$2,'premium')`, [admin, tid]);
     }
 
     // ---- T2 taking one: held, frozen, drawer ----
@@ -327,7 +329,7 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
       await c.query(`update tenants set plan = 'offline' where id = $1`, [tid]);
       nn = (await one(`select deposits_expire($1) as n`, [tid])).n;
       check('T7 a client on the offline plan: the server leaves it to the tablet', nn === 0 && (await dep(d3)).status === 'open');
-      await c.query(`update tenants set plan = 'standard' where id = $1`, [tid]);
+      await c.query(`update tenants set plan = 'premium' where id = $1`, [tid]);
       // a tablet alone cancelling by date sends it as auto, with no right asked
       const out = await push([cancelOp(d3, 'refund', { auto: true })], cara);
       d = await dep(d3);

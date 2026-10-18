@@ -42,7 +42,7 @@ const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
   const tid = crypto.randomUUID(), other = crypto.randomUUID();
   const q1 = async (sql, args) => (await c.query(sql, args)).rows[0];
   // premium, so that a kitchen screen can stand in one of its stores
-  await c.query(`insert into tenants (id, tenant_id, name, plan) values ('${tid}','${tid}','SU-Probe','premium'), ('${other}','${other}','SU-Other','standard')`);
+  await c.query(`insert into tenants (id, tenant_id, name, plan) values ('${tid}','${tid}','SU-Probe','premium'), ('${other}','${other}','SU-Other','premium')`);
   try {
     const store = (await q1(`insert into stores (tenant_id, name, code) values ('${tid}','Main','SUS1') returning id`)).id;
     const second = (await q1(`insert into stores (tenant_id, name, code) values ('${tid}','Annex','SUS3') returning id`)).id;
@@ -283,9 +283,9 @@ const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
     try {
       const admin = crypto.randomUUID();
       await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-su@example.com')`, [admin]);
-      const made = (await q1(`select platform.create_tenant_of_type($1,'SU New','Main','SUN1','Owner',$2,'standard','restaurant') as r`, [admin, crypto.randomUUID()])).r;
+      const made = (await q1(`select platform.create_tenant_of_type($1,'SU New','Main','SUN1','Owner',$2,'premium','restaurant') as r`, [admin, crypto.randomUUID()])).r;
       const fresh = await settings(made.tenant_id);
-      check('N1 a client made in /admin starts with its set-up open', fresh.setup === 'open' && fresh.plan === 'standard', JSON.stringify(fresh));
+      check('N1 a client made in /admin starts with its set-up open', fresh.setup === 'open' && fresh.plan === 'premium', JSON.stringify(fresh));
 
       await c.query(`select platform.set_tenant_details($1, $2, 'New Name', 'C999', 'VAT999')`, [admin, tid]);
       t = await tenant();
@@ -303,8 +303,8 @@ const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
         await c.query(`select company_from_tenants($1)`, [id]);
         return (await q1(`select data from pos_settings where tenant_id = $1`, [id]))?.data;
       };
-      const a = await mk('SU A', 'T1', 'V1', { plan: 'standard' });
-      check('N3 a BRN and VAT number held in /admin alone reach the settings', !!a && a.company.brn === 'T1' && a.company.vat === 'V1' && a.company.name === 'SU A' && a.plan === 'standard', JSON.stringify(a));
+      const a = await mk('SU A', 'T1', 'V1', { plan: 'premium' });
+      check('N3 a BRN and VAT number held in /admin alone reach the settings', !!a && a.company.brn === 'T1' && a.company.vat === 'V1' && a.company.name === 'SU A' && a.plan === 'premium', JSON.stringify(a));
       const b = await mk('SU B', 'ADMIN', null, { company: { brn: 'SAVED', address: 'Here' } });
       check('N3 what a client saved is kept', !!b && b.company.brn === 'SAVED' && b.company.address === 'Here' && b.company.name === 'SU B' && !('vat' in b.company), JSON.stringify(b));
       const d = await mk('SU C', null, null, { company: { name: 'C Saved', address: 'There' } });

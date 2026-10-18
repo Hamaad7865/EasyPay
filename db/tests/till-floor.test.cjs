@@ -45,7 +45,7 @@ const table = (name, x, y, more = {}) => ({ id: id(), name: String(name), seats:
   await c.connect();
   const tid = id(), other = id();
   const q1 = async (sql, args) => (await c.query(sql, args)).rows[0];
-  await c.query(`insert into tenants (id, tenant_id, name, plan) values ('${tid}','${tid}','TF-Resto','offline'), ('${other}','${other}','TF-Other','standard')`);
+  await c.query(`insert into tenants (id, tenant_id, name, plan) values ('${tid}','${tid}','TF-Resto','offline'), ('${other}','${other}','TF-Other','premium')`);
   try {
     const store = (await q1(`insert into stores (tenant_id, name, code) values ('${tid}','Main','TFS1') returning id`)).id;
     const theirStore = (await q1(`insert into stores (tenant_id, name, code) values ('${other}','Main','TFS2') returning id`)).id;

@@ -33,7 +33,7 @@ const lineId = () => `00000000-0000-4000-8000-${String(++made).padStart(12, '0')
   try {
     const admin = id();
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-cn@example.com')`, [admin]);
-    const made1 = (await one(`select platform.create_tenant_of_type($1,'Note Test','Main','CN1','Owner',$2,'standard','retail') as r`, [admin, id()])).r;
+    const made1 = (await one(`select platform.create_tenant_of_type($1,'Note Test','Main','CN1','Owner',$2,'premium','retail') as r`, [admin, id()])).r;
     const tid = made1.tenant_id, store = made1.store_id, owner = made1.employee_id;
 
     async function asApp(fn) {
@@ -254,7 +254,7 @@ const lineId = () => `00000000-0000-4000-8000-${String(++made).padStart(12, '0')
 
     // ---- T9 the type follows the kind of business ----
     {
-      const made2 = (await one(`select platform.create_tenant_of_type($1,'Note Resto','Main','CN2','Owner',$2,'standard','restaurant') as r`, [admin, id()])).r;
+      const made2 = (await one(`select platform.create_tenant_of_type($1,'Note Resto','Main','CN2','Owner',$2,'premium','restaurant') as r`, [admin, id()])).r;
       const live = async (t) => (await c.query(`select kind from payment_types where tenant_id = $1 and kind in ('exchange','credit_note') and deleted_at is null order by 1`, [t])).rows.map((x) => x.kind).join();
       check('T9 a restaurant has neither type', (await live(made2.tenant_id)) === '');
       await c.query(`select platform.set_tenant_business_type($1, $2, 'retail')`, [admin, made2.tenant_id]);

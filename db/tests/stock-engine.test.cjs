@@ -36,7 +36,7 @@ const near = (a, b) => Math.abs(Number(a) - b) < 0.01;
   try {
     const admin = id();
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-se@example.com')`, [admin]);
-    const made = (await one(`select platform.create_tenant($1,'Stock Test','Main','SE1','Owner',$2,'standard') as r`, [admin, id()])).r;
+    const made = (await one(`select platform.create_tenant($1,'Stock Test','Main','SE1','Owner',$2,'premium') as r`, [admin, id()])).r;
     const tid = made.tenant_id, store = made.store_id, emp = made.employee_id;
     const store2 = (await one(`insert into stores (tenant_id, name, code, created_at) values ($1,'Second','SE2', now() + interval '1 second') returning id`, [tid])).id;
     const item = async (name, cost, qty) => (await one(

@@ -31,7 +31,7 @@ const id = () => crypto.randomUUID();
   try {
     const admin = id();
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-sp@example.com')`, [admin]);
-    const tenant = async (name, code, type) => (await one(`select platform.create_tenant_of_type($1,$2,'Main',$3,'Owner',$4,'standard',$5) as r`, [admin, name, code, id(), type])).r;
+    const tenant = async (name, code, type) => (await one(`select platform.create_tenant_of_type($1,$2,'Main',$3,'Owner',$4,'offline',$5) as r`, [admin, name, code, id(), type])).r;
 
     // a business with a till, and a day on it. Every price is Rs 115.00 with VAT in it.
     async function business(name, code, type) {

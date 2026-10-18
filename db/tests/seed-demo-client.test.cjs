@@ -34,7 +34,7 @@ function check(name, cond, extra) {
   const make = async (name, code, plan, type) =>
     (await q1(`select platform.create_tenant_of_type($1, $2, 'Main store', $3, 'Owner', $4, $5, $6) as r`, [admin, name, code, crypto.randomUUID(), plan, type])).r.tenant_id;
   const resto = await make('SeedDemo-Resto', 'SDR1', 'premium', 'restaurant');
-  const store = await make('SeedDemo-Shop', 'SDS1', 'standard', 'retail');
+  const store = await make('SeedDemo-Shop', 'SDS1', 'premium', 'retail');
   const short = (id) => id.slice(0, 8).toUpperCase();
   try {
     const has = (t) => q1(

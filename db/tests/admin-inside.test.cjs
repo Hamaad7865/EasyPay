@@ -38,15 +38,15 @@ function statement() {
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'inside-test@example.com')`, [admin]);
     await c.query(`insert into platform.admins (auth_user_id, email, revoked_at) values ($1, 'inside-gone@example.com', now())`, [gone]);
 
-    const offline = crypto.randomUUID(), standard = crypto.randomUUID(), premium = crypto.randomUUID(), empty = crypto.randomUUID();
+    const offline = crypto.randomUUID(), trial = crypto.randomUUID(), premium = crypto.randomUUID(), empty = crypto.randomUUID();
     await c.query(
       `insert into tenants (id, tenant_id, name, plan, business_type) values
-         ($1,$1,'Chez Inside',' Offline ','restaurant'), ($2,$2,'Standard Inside','standard','retail'),
+         ($1,$1,'Chez Inside',' Offline ','restaurant'), ($2,$2,'Trial Inside','trial','retail'),
          ($3,$3,'Premium Inside','premium','restaurant'), ($4,$4,'Nobody Inside','offline','retail')`,
-      [offline, standard, premium, empty],
+      [offline, trial, premium, empty],
     );
     const people = {};
-    for (const t of [offline, standard, premium, empty]) {
+    for (const t of [offline, trial, premium, empty]) {
       const ownerRole = (await one(`insert into roles (tenant_id, name, permissions) values ($1,'Owner','["*"]'::jsonb) returning id`, [t])).id;
       const cashierRole = (await one(`insert into roles (tenant_id, name, permissions) values ($1,'Cashier','["sale.create","backoffice.access"]'::jsonb) returning id`, [t])).id;
       // the cashier is the older row, and has a login: the admin must still stand in for the owner
@@ -67,7 +67,7 @@ function statement() {
       check('I2 a login that is no platform admin does not', (await inside(stranger, offline)) === null);
       check('I2 nor one whose admin was taken back', (await inside(gone, offline)) === null);
       check('I2 nor the client\'s own owner, by naming their own client', (await inside((await one(`select auth_user_id from employees where id = $1`, [people[offline].owner])).auth_user_id, offline)) === null);
-      check('I3 a client on Standard is not opened from /admin: it has a back office of its own', (await inside(admin, standard)) === null);
+      check('I3 a client on Trial is not opened from /admin: it has a back office of its own', (await inside(admin, trial)) === null);
       check('I3 nor one on Premium', (await inside(admin, premium)) === null);
       check('I3 nor a client that is not there', (await inside(admin, crypto.randomUUID())) === null);
     }

@@ -52,6 +52,7 @@ const MESSAGES: Record<string, string> = {
   "reason-required": "Give a reason for suspending.",
   "bad-status": "Status must be active or suspended.",
   "plan-required": "A plan name is required.",
+  "bad-plan": "Choose Trial, Offline or Premium.",
   "bad-business-type": "Choose restaurant or retail.",
   "open-orders": "This client has open orders. Close or cancel them on the till first, then change the type.",
   "not-a-platform-admin": "You are no longer a platform admin.",

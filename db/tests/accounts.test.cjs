@@ -30,7 +30,7 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
   try {
     const admin = id();
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-acc@example.com')`, [admin]);
-    const made = (await one(`select platform.create_tenant_of_type($1,'Account Test','Main','AC1','Owner',$2,'standard','retail') as r`, [admin, id()])).r;
+    const made = (await one(`select platform.create_tenant_of_type($1,'Account Test','Main','AC1','Owner',$2,'offline','retail') as r`, [admin, id()])).r;
     const tid = made.tenant_id, store = made.store_id, owner = made.employee_id;
 
     async function asApp(fn) {
@@ -86,7 +86,7 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
     };
 
     check('T0 a shop has an On account type, inactive (an old till never offers it), opening no drawer', !!acct && acct.is_active === false && acct.opens_drawer === false && acct.name === 'On account', JSON.stringify(acct));
-    check('T0 has_feature: a Standard shop has no accounts', (await one(`select has_feature($1,'accounts') as x`, [tid])).x === false);
+    check('T0 has_feature: a shop on Offline has no accounts', (await one(`select has_feature($1,'accounts') as x`, [tid])).x === false);
 
     // ---- T1 the extra ----
     {
@@ -102,6 +102,8 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
       const p = await one(`select has_feature(t.id,'accounts') as x from tenants t where lower(plan) in ('premium','trial') limit 1`);
       check('T1 premium and trial carry it', !p || p.x === true);
       await c.query(`update account_bills set deleted_at = now() where id = $1`, [s.rc]);
+      // from here on a shop in the cloud, as one that sells on account is (Clear test activity is not for one on Offline)
+      await c.query(`select platform.set_tenant_plan($1,$2,'premium')`, [admin, tid]);
     }
 
     // ---- T2 selling on account ----

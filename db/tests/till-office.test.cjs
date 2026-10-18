@@ -44,7 +44,7 @@ const swap = (v, map) => (Array.isArray(v) ? v.map((x) => swap(x, map))
   const tid = id(), resto = id(), other = id();
   const q1 = async (sql, args) => (await c.query(sql, args)).rows[0];
   const all = async (sql, args) => (await c.query(sql, args)).rows;
-  await c.query(`insert into tenants (id, tenant_id, name, plan) values ('${tid}','${tid}','TO-Shop','standard'), ('${resto}','${resto}','TO-Resto','standard'), ('${other}','${other}','TO-Other','standard')`);
+  await c.query(`insert into tenants (id, tenant_id, name, plan) values ('${tid}','${tid}','TO-Shop','premium'), ('${resto}','${resto}','TO-Resto','premium'), ('${other}','${other}','TO-Other','premium')`);
   try {
     const mkStore = async (t, name, code) => (await q1(`insert into stores (tenant_id, name, code) values ($1,$2,$3) returning id`, [t, name, code])).id;
     const store = await mkStore(tid, 'Main', 'TOS1');

@@ -29,7 +29,7 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
   try {
     const admin = id();
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-pr@example.com')`, [admin]);
-    const made = (await one(`select platform.create_tenant_of_type($1,'Promo Test','Main','PR1','Owner',$2,'standard','retail') as r`, [admin, id()])).r;
+    const made = (await one(`select platform.create_tenant_of_type($1,'Promo Test','Main','PR1','Owner',$2,'premium','retail') as r`, [admin, id()])).r;
     const tid = made.tenant_id, store = made.store_id, owner = made.employee_id;
     async function asApp(fn) {
       await c.query('SET LOCAL ROLE app_user');

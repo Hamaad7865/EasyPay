@@ -40,7 +40,7 @@ const id = () => crypto.randomUUID();
     if (selftest) {
       const admin = id();
       await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'fill-selftest@example.com')`, [admin]);
-      tid = (await one(`select platform.create_tenant_of_type($1,'Fill selftest','Main','FST1','Owner',$2,'standard','retail') as r`, [admin, id()])).r.tenant_id;
+      tid = (await one(`select platform.create_tenant_of_type($1,'Fill selftest','Main','FST1','Owner',$2,'premium','retail') as r`, [admin, id()])).r.tenant_id;
     } else {
       const found = (await c.query(`select id, name, business_type from tenants where lower(btrim(name)) = lower(btrim($1))`, [name])).rows;
       if (found.length === 0) throw new Error(`no client is called "${name}" on dev. Make it in /admin first (New client, type Shop).`);

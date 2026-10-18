@@ -75,9 +75,9 @@ function check(name, cond, extra) {
     await sw(true);
     const on = await ask(mine);
     check('P2 Premium with the switch on: they may', on.status === 200 && on.json && on.json.ordering === true, on.text.slice(0, 90));
-    await plan('standard');
+    await plan('offline');
     const starter = await ask(mine);
-    check('P2 the Starter pack: they may not', starter.json && starter.json.ordering === false, starter.text.slice(0, 90));
+    check('P2 an Offline client: they may not', starter.json && starter.json.ordering === false, starter.text.slice(0, 90));
     await plan('premium');
 
     // P3 the relay asks this very service

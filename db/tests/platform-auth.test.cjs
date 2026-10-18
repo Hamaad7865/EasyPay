@@ -74,7 +74,7 @@ const cookiesOf = (res) => (res.headers.getSetCookie ? res.headers.getSetCookie(
     check('4 an unlinked login is refused by the API (403)', (await api('/me', jwt)).status === 403);
 
     // 5. the admin creates the tenant around that login
-    const made = (await c.query(`select platform.create_tenant($1, 'PA Test Restaurant', 'Main', 'PA1', 'PA Owner', $2, 'standard') as r`, [adminId, ownerId])).rows[0].r;
+    const made = (await c.query(`select platform.create_tenant($1, 'PA Test Restaurant', 'Main', 'PA1', 'PA Owner', $2, 'premium') as r`, [adminId, ownerId])).rows[0].r;
     tid = made.tenant_id;
     const me = await api('/me', jwt);
     const meBody = await me.json().catch(() => ({}));

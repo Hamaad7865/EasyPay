@@ -78,7 +78,7 @@ async function createTenantAsAdmin(client, { name, storeCode, ownerName, ownerAu
   const adminId = require('crypto').randomUUID();
   await client.query(`insert into platform.admins (auth_user_id, email) values ($1, $2)`,
     [adminId, `test-admin-${adminId}@example.com`]);
-  const made = (await client.query(`select platform.create_tenant($1, $2, 'Main', $3, $4, $5, 'standard') as r`,
+  const made = (await client.query(`select platform.create_tenant($1, $2, 'Main', $3, $4, $5, 'premium') as r`,
     [adminId, name, storeCode, ownerName, ownerAuth])).rows[0].r;
   return { tid: made.tenant_id, storeId: made.store_id, employeeId: made.employee_id, adminId };
 }

@@ -36,8 +36,8 @@ const validEan13 = (code) => /^\d{13}$/.test(code)
   try {
     const admin = id();
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-cat@example.com')`, [admin]);
-    const made = (await one(`select platform.create_tenant($1,'Catalog Test','Main','CT1','Owner',$2,'standard') as r`, [admin, id()])).r;
-    const other = (await one(`select platform.create_tenant($1,'Catalog Other','Main','CT2','Owner',$2,'standard') as r`, [admin, id()])).r;
+    const made = (await one(`select platform.create_tenant($1,'Catalog Test','Main','CT1','Owner',$2,'premium') as r`, [admin, id()])).r;
+    const other = (await one(`select platform.create_tenant($1,'Catalog Other','Main','CT2','Owner',$2,'premium') as r`, [admin, id()])).r;
     const tid = made.tenant_id, store = made.store_id, emp = made.employee_id, uid = other.tenant_id;
     const item = async (t, name, more = {}) => (await one(
       `insert into items (tenant_id, name, price, cost, sku, barcode, track_stock) values ($1,$2,$3,$4,$5,$6,true) returning id`,

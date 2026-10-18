@@ -70,8 +70,8 @@ function lib(name) {
     const make = async (name, code, plan) =>
       (await one(`select platform.create_tenant($1,$2,'Main',$3,'Owner',$4,$5) as r`, [admin, name, code, crypto.randomUUID(), plan])).r;
     const prem = await make('Screens Premium', 'KS1', 'premium');
-    const std = await make('Screens Standard', 'KS2', 'standard');
-    const pid = prem.tenant_id, sid = std.tenant_id;
+    const off = await make('Screens Offline', 'KS2', 'offline');
+    const pid = prem.tenant_id, sid = off.tenant_id;
 
     const put = (t, store, o) => asApp(t, () => c.query(
       `insert into printers (tenant_id, store_id, name, kind, address, pair_code, all_items, is_receipt)
@@ -97,9 +97,9 @@ function lib(name) {
     check('K2 a screen marked as the receipt printer is refused', failed(r) && r.code === '23514', said(r));
 
     // K3 a premium feature
-    r = await put(sid, std.store_id, { name: 'Grill' });
-    check('K3 a standard restaurant cannot be given a screen', failed(r) && r.message === 'not-premium', said(r));
-    r = await put(sid, std.store_id, { name: 'Kitchen', kind: 'network', code: null });
+    r = await put(sid, off.store_id, { name: 'Grill' });
+    check('K3 a restaurant on Offline cannot be given a screen', failed(r) && r.message === 'not-premium', said(r));
+    r = await put(sid, off.store_id, { name: 'Kitchen', kind: 'network', code: null });
     check('K3 a network printer it can', !failed(r), said(r));
 
     // K5 a category ticks a screen as it ticks a printer
@@ -151,9 +151,9 @@ function lib(name) {
       r === true && g2.name === 'Grill 2' && g2.address === '192.168.1.62:9400' && g2.pair_code === 'ABCDEFGH' && g2.all_items === false, failed(r) ? said(r) : JSON.stringify(g2));
 
     // K7 the plan goes down
-    await c.query(`select platform.set_tenant_plan($1, $2, 'standard')`, [admin, fid]);
+    await c.query(`select platform.set_tenant_plan($1, $2, 'offline')`, [admin, fid]);
     const kept = await row(fid, theScreen);
-    check('K7 a plan set to standard leaves the screen\'s row as it was', kept.kind === 'screen' && kept.is_active === true && kept.deleted_at === null);
+    check('K7 a plan set to offline leaves the screen\'s row as it was', kept.kind === 'screen' && kept.is_active === true && kept.deleted_at === null);
     r = await asApp(fid, () => saves.setReceiptPrinter(c, fid, fresh.store_id, null));
     const none = await row(fid, thePrinter);
     r = failed(r) ? r : await asApp(fid, () => saves.setReceiptPrinter(c, fid, fresh.store_id, thePrinter));

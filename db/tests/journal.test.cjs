@@ -28,7 +28,7 @@ const id = () => crypto.randomUUID();
   try {
     const admin = id();
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-jn@example.com')`, [admin]);
-    async function business(name, code, type, plan = 'standard') {
+    async function business(name, code, type, plan = 'premium') {
       const made = (await one(`select platform.create_tenant_of_type($1,$2,'Main',$3,'Owner',$4,$5,$6) as r`, [admin, name, code, id(), plan, type])).r;
       const tid = made.tenant_id, store = made.store_id, owner = made.employee_id;
       const asApp = async (fn) => {

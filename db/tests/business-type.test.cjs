@@ -33,7 +33,7 @@ function check(name, cond, extra) {
   try {
     const admin = crypto.randomUUID(), stranger = crypto.randomUUID();
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-bt@example.com')`, [admin]);
-    const made = (await one(`select platform.create_tenant($1,'Type Test','Main','BT1','Owner',$2,'standard') as r`, [admin, crypto.randomUUID()])).r;
+    const made = (await one(`select platform.create_tenant($1,'Type Test','Main','BT1','Owner',$2,'premium') as r`, [admin, crypto.randomUUID()])).r;
     const tid = made.tenant_id;
     const typeOf = async (t) => (await one(`select business_type from tenants where id = $1`, [t])).business_type;
     const key = async (t) => ((await one(`select data->>'businessType' as k from pos_settings where tenant_id = $1`, [t])) || {}).k ?? null;
@@ -77,14 +77,14 @@ function check(name, cond, extra) {
       (await typeOf(tid)) === 'restaurant' && (await key(tid)) === 'restaurant' && (await logged(tid)) === 2);
 
     // B6 created as a shop in one step
-    const shop = (await one(`select platform.create_tenant_of_type($1,'Shop Test','Main','BT2','Owner',$2,'standard','retail') as r`, [admin, crypto.randomUUID()])).r;
+    const shop = (await one(`select platform.create_tenant_of_type($1,'Shop Test','Main','BT2','Owner',$2,'premium','retail') as r`, [admin, crypto.randomUUID()])).r;
     const roles = (await one(`select count(*)::int as n from roles where tenant_id = $1`, [shop.tenant_id])).n;
     check('B6 a tenant can be created as a shop, complete',
       (await typeOf(shop.tenant_id)) === 'retail' && (await key(shop.tenant_id)) === 'retail' && roles === 4 && Boolean(shop.store_id));
-    const plain = (await one(`select platform.create_tenant_of_type($1,'Resto Test','Main','BT3','Owner',$2,'standard','restaurant') as r`, [admin, crypto.randomUUID()])).r;
+    const plain = (await one(`select platform.create_tenant_of_type($1,'Resto Test','Main','BT3','Owner',$2,'premium','restaurant') as r`, [admin, crypto.randomUUID()])).r;
     check('B6 or as a restaurant, which logs no change of type',
       (await typeOf(plain.tenant_id)) === 'restaurant' && (await logged(plain.tenant_id)) === 0);
-    e = await failsWith(`select platform.create_tenant_of_type($1,'Nowhere Test','Main','BT4','Owner',$2,'standard','hotel')`, [admin, crypto.randomUUID()]);
+    e = await failsWith(`select platform.create_tenant_of_type($1,'Nowhere Test','Main','BT4','Owner',$2,'premium','hotel')`, [admin, crypto.randomUUID()]);
     const none = (await one(`select count(*)::int as n from tenants where name = 'Nowhere Test'`)).n;
     check('B6 an unknown type creates nothing', e && e.message === 'bad-business-type' && none === 0, said(e));
 

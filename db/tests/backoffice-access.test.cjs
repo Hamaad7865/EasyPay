@@ -64,7 +64,7 @@ function tenantLib(client, who) {
     const admin = crypto.randomUUID();
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-boa@example.com')`, [admin]);
     const ownerAuth = crypto.randomUUID(), managerAuth = crypto.randomUUID(), cashierAuth = crypto.randomUUID();
-    const made = (await one(`select platform.create_tenant($1,'Access Test','Main','BA1','Owner',$2,'standard') as r`, [admin, ownerAuth])).r;
+    const made = (await one(`select platform.create_tenant($1,'Access Test','Main','BA1','Owner',$2,'premium') as r`, [admin, ownerAuth])).r;
     const tid = made.tenant_id;
     await c.query(`select platform.add_login($1,$2,'Mina','Manager',$3)`, [admin, tid, managerAuth]);
     const cashier = (await one(`select platform.add_login($1,$2,'Ravi','Cashier',$3) as id`, [admin, tid, cashierAuth])).id;

@@ -23,7 +23,7 @@ function check(name, cond, extra) {
   try {
     const admin = crypto.randomUUID();
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-pp@example.com')`, [admin]);
-    const tid = (await one(`select platform.create_tenant($1,'Payments Test','Main','PP1','Owner',$2,'standard') as r`, [admin, crypto.randomUUID()])).r.tenant_id;
+    const tid = (await one(`select platform.create_tenant($1,'Payments Test','Main','PP1','Owner',$2,'premium') as r`, [admin, crypto.randomUUID()])).r.tenant_id;
     const has = async (role, perm) => (await one(`select permissions ? $3 as has from roles where tenant_id = $1 and name = $2`, [tid, role, perm])).has;
 
     check("P1 a new client's Manager sees the day's payments; its Cashier and Waiter do not",

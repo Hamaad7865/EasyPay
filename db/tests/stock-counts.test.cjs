@@ -33,7 +33,7 @@ const near = (a, b) => Math.abs(Number(a) - b) < 0.01;
   try {
     const admin = id();
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-sc@example.com')`, [admin]);
-    const tenant = async (name, code) => (await one(`select platform.create_tenant($1,$2,'Main',$3,'Owner',$4,'standard') as r`, [admin, name, code, id()])).r;
+    const tenant = async (name, code) => (await one(`select platform.create_tenant($1,$2,'Main',$3,'Owner',$4,'premium') as r`, [admin, name, code, id()])).r;
     const made = await tenant('Counts Test', 'SC1');
     const tid = made.tenant_id, store = made.store_id, emp = made.employee_id;
     const other = await tenant('Counts Other', 'SC2');

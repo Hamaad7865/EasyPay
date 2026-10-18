@@ -53,7 +53,7 @@ const iso = (d) => new Date(d).toISOString();
   const tid = id(), resto = id(), other = id();
   const q1 = async (sql, args) => (await c.query(sql, args)).rows[0];
   const all = async (sql, args) => (await c.query(sql, args)).rows;
-  await c.query(`insert into tenants (id, tenant_id, name, plan) values ('${tid}','${tid}','TS-Probe','standard'), ('${resto}','${resto}','TS-Resto','standard'), ('${other}','${other}','TS-Other','standard')`);
+  await c.query(`insert into tenants (id, tenant_id, name, plan) values ('${tid}','${tid}','TS-Probe','premium'), ('${resto}','${resto}','TS-Resto','premium'), ('${other}','${other}','TS-Other','premium')`);
   try {
     const mkStore = async (t, name, code) => (await q1(`insert into stores (tenant_id, name, code) values ($1,$2,$3) returning id`, [t, name, code])).id;
     const store = await mkStore(tid, 'Main', 'TSS1');

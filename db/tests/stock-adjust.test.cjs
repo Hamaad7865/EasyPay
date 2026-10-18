@@ -35,7 +35,7 @@ const NEW = ['stock.view', 'stock.receive', 'stock.adjust', 'stock.count', 'supp
   try {
     const admin = id();
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-sa@example.com')`, [admin]);
-    const made = (await one(`select platform.create_tenant($1,'Adjust Test','Main','SA1','Owner',$2,'standard') as r`, [admin, id()])).r;
+    const made = (await one(`select platform.create_tenant($1,'Adjust Test','Main','SA1','Owner',$2,'premium') as r`, [admin, id()])).r;
     const tid = made.tenant_id, store = made.store_id, emp = made.employee_id;
     const store2 = (await one(`insert into stores (tenant_id, name, code, created_at) values ($1,'Second','SA2', now() + interval '1 second') returning id`, [tid])).id;
     const counted = (await one(`insert into categories (tenant_id, name, is_stock) values ($1,'Drinks',true) returning id`, [tid])).id;

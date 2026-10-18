@@ -31,7 +31,7 @@ const lineId = () => `00000000-0000-4000-8000-${String(++made).padStart(12, '0')
   try {
     const admin = id();
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-rt@example.com')`, [admin]);
-    const tenant = async (name, code) => (await one(`select platform.create_tenant_of_type($1,$2,'Main',$3,'Owner',$4,'standard','retail') as r`, [admin, name, code, id()])).r;
+    const tenant = async (name, code) => (await one(`select platform.create_tenant_of_type($1,$2,'Main',$3,'Owner',$4,'premium','retail') as r`, [admin, name, code, id()])).r;
     const made1 = await tenant('Till Test', 'RT1');
     const tid = made1.tenant_id, store = made1.store_id, owner = made1.employee_id;
     // this shop gives money back (0109): a shop is exchange-only until its settings say otherwise, and this suite refunds
@@ -388,7 +388,7 @@ const lineId = () => `00000000-0000-4000-8000-${String(++made).padStart(12, '0')
       await c.query(`select platform.set_tenant_business_type($1,$2,'retail')`, [admin, other.tenant_id]);
       const again = await live(other.tenant_id);
       check('E7 a shop that becomes a restaurant has no Exchange type; a shop again, it has the one it had', first.length === 1 && asRestaurant.length === 0 && again.join() === first.join(), JSON.stringify({ first, asRestaurant, again }));
-      const bistro = (await one(`select platform.create_tenant_of_type($1,'Till Bistro','Main','RT9','Owner',$2,'standard','restaurant') as r`, [admin, id()])).r;
+      const bistro = (await one(`select platform.create_tenant_of_type($1,'Till Bistro','Main','RT9','Owner',$2,'premium','restaurant') as r`, [admin, id()])).r;
       check('E7 a restaurant is not given one', (await live(bistro.tenant_id)).length === 0);
       const pulled = await asApp(tid, async () => (await c.query('select sync_pull($1, 0, 1000) as r', [store])).rows[0].r);
       check('E8 the till is sent the Exchange type with the others', (pulled.changes.payment_types || []).some((x) => x.kind === 'exchange' && x.id === exch));
