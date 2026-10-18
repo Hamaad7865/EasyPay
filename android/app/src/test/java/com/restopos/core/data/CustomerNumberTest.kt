@@ -34,4 +34,20 @@ class CustomerNumberTest {
         assertEquals("A-05", CustomerNumber.relabel("C-05", "A"))
         assertEquals("weird", CustomerNumber.relabel("weird", "A"))
     }
+
+    // Yesterday's A-03 was left unpaid at the closing and is still open: the
+    // new day's count starts at 01 again, and steps over 03.
+    @Test fun `a number an open order holds is not given again`() {
+        val held = CustomerNumber.held(listOf("A-03", "C-05", null, "Table 4"))
+        assertEquals(setOf(3, 5), held)
+        var count = 0
+        val take: suspend () -> Int = { ++count }
+        val given = kotlinx.coroutines.runBlocking { (1..4).map { CustomerNumber.next(held) { take() } } }
+        assertEquals(listOf(1, 2, 4, 6), given)
+    }
+
+    @Test fun `with nothing open the count goes on as it was`() {
+        var count = 6
+        assertEquals(7, kotlinx.coroutines.runBlocking { CustomerNumber.next(emptySet()) { ++count } })
+    }
 }

@@ -21,4 +21,18 @@ object CustomerNumber {
 
     // the same number under the letter of another kind: C-05 becomes A-05
     fun relabel(orderNo: String, letter: String): String = digits(orderNo)?.let { "$letter-$it" } ?: orderNo
+
+    // The numbers open orders are called by, whatever their letter: the papers
+    // print the number alone, so A-03 and C-03 are both "03".
+    fun held(orderNos: List<String?>): Set<Int> = orderNos.mapNotNull { digits(it)?.toIntOrNull() }.toSet()
+
+    // The next number from the till's count, stepping over the ones open orders
+    // hold. Orders left unpaid when a day is closed go on into the next one with
+    // their numbers while the count starts again at 01, so the new day's third
+    // takeaway was A-03 beside yesterday's A-03 still waiting.
+    suspend fun next(held: Set<Int>, take: suspend () -> Int): Int {
+        var n = take()
+        while (n in held) n = take()
+        return n
+    }
 }

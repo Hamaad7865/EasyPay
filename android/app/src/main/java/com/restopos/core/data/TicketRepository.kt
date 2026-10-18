@@ -96,9 +96,12 @@ class TicketRepository @Inject constructor(
         val kind = type?.kind ?: if (table != null) "dine" else "counter"
         // An order with no table is known by its customer number
         // (CustomerNumber): one count on this till, back to 01 once its day is
-        // closed. A takeaway or delivery also goes on the board: new, and due
-        // when the kitchen has had its time.
-        val no = if (table == null) CustomerNumber.label(series(kind), session.nextCustomer()) else null
+        // closed, never one an open order is already called by. A takeaway or
+        // delivery also goes on the board: new, and due when the kitchen has had its time.
+        val no = if (table == null) {
+            val held = CustomerNumber.held(db.tickets().openOrderNumbers(store))
+            CustomerNumber.label(series(kind), CustomerNumber.next(held) { session.nextCustomer() })
+        } else null
         val board = kind == "takeaway" || kind == "delivery"
         val due = if (board) System.currentTimeMillis() + PosSettings.parse(db.ops().settings()).prepMinutes * 60_000L * (if (kind == "delivery") 2 else 1) else null
         db.withTransaction {

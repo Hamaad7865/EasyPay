@@ -20,6 +20,10 @@ interface TicketDao {
     @Query("SELECT * FROM tickets WHERE store_id = :store AND status = 'open' AND deleted_at IS NULL ORDER BY updated_at DESC")
     fun openTickets(store: String): Flow<List<TicketEntity>>
 
+    // the numbers the store's open orders are called by (CustomerNumber.held)
+    @Query("SELECT order_no FROM tickets WHERE store_id = :store AND status = 'open' AND deleted_at IS NULL AND order_no IS NOT NULL")
+    suspend fun openOrderNumbers(store: String): List<String>
+
     @Query("SELECT * FROM ticket_lines WHERE ticket_id = :ticket AND voided_at IS NULL AND deleted_at IS NULL ORDER BY rowid")
     fun lines(ticket: String): Flow<List<TicketLineEntity>>
 
