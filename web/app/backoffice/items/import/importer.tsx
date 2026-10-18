@@ -145,7 +145,15 @@ export function Importer({ run }: { run: (rows: ImportRow[], dry: boolean) => Pr
   // only the answer to the last question asked is shown
   const asked = useRef(0);
   const later = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (later.current) clearTimeout(later.current); }, []);
+  // A cell's check waiting its moment is dropped when a column is changed or
+  // another file chosen: it holds the columns and the sheet as they were, and
+  // being asked last, its answer would win. The screen then showed the new
+  // columns while Import sent the rows read the old way.
+  const dropLater = () => {
+    if (later.current) clearTimeout(later.current);
+    later.current = null;
+  };
+  useEffect(() => dropLater, []);
 
   // `open` says whether the pop-up is up; the browser's dialog follows it
   useEffect(() => {
@@ -168,6 +176,7 @@ export function Importer({ run }: { run: (rows: ImportRow[], dry: boolean) => Pr
 
   async function choose(file: File | undefined) {
     if (!file) return;
+    dropLater();
     asked.current += 1;
     setOpen(true);
     setStage("check");
@@ -235,6 +244,8 @@ export function Importer({ run }: { run: (rows: ImportRow[], dry: boolean) => Pr
     const next = sheet.header.map((_, i) => (i === col ? to : to !== null && to !== "option" && mapping[i] === to ? null : (mapping[i] ?? null)));
     setMapping(next);
     setNote("");
+    // the sheet here holds every cell corrected so far: this one check covers them
+    dropLater();
     void check(sheet, next);
   }
 
@@ -246,8 +257,8 @@ export function Importer({ run }: { run: (rows: ImportRow[], dry: boolean) => Pr
     // a moment's wait, so three cells corrected one after the other are one question
     asked.current += 1;
     setBusy("Checking");
-    if (later.current) clearTimeout(later.current);
-    later.current = setTimeout(() => void check(next, mapping), 500);
+    dropLater();
+    later.current = setTimeout(() => { later.current = null; void check(next, mapping); }, 500);
   }
   const commit = () => {
     if (!editing) return;
