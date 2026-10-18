@@ -25,6 +25,12 @@ object GoLiveRules {
     // a set-up change taken out could not be had back.
     fun goes(kind: String): Boolean = kind in RUNG_UP
 
+    // Back to setting up asks for the business's name to be typed: as it is,
+    // whatever its capitals and the spaces around it. A tablet that knows no
+    // name for its business cannot be set up again this way.
+    fun named(typed: String, business: String?): Boolean =
+        !business.isNullOrBlank() && typed.trim().equals(business.trim(), ignoreCase = true)
+
     // A move of stock noted while setting up: the product, its variant ("" for
     // none), how much in thousandths (minus for a sale), and when.
     data class Noted(val item: String, val variant: String, val qty: Int, val at: Long)

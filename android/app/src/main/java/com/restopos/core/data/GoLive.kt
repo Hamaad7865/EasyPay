@@ -5,6 +5,7 @@ import com.restopos.core.database.StockLevelEntity
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.print.Printing
 import com.restopos.core.sync.SessionStore
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,6 +22,17 @@ class GoLive @Inject constructor(
     // what the sheet says goes
     data class Rung(val receipts: Int, val orders: Int, val days: Int)
     suspend fun rung(): Rung = db.goLive().let { Rung(it.receipts(), it.orders(), it.days()) }
+
+    // Back to setting up (0.9.18): an offline tablet that is live is set up
+    // again, so that its Go live clears what was rung up on it. For a
+    // business that has not sold for real yet (the owner's, the business's
+    // name typed: GoLiveViewModel). While it was live it noted nothing of its
+    // sales' stock, so what those sales took off the shelf stays off.
+    suspend fun again(): Result<Unit> = runCatching {
+        check(PosSettings.parse(db.ops().settings()).alone) { "Only a tablet that works on its own is set up again here. A business in the cloud is cleared from EasyPay's office." }
+        check(!session.settingUp.first()) { "This till is being set up already." }
+        session.setSettingUp(true)
+    }
 
     suspend fun go(): Result<Unit> = runCatching {
         check(db.tryingOut(session)) { "This till is not being set up." }

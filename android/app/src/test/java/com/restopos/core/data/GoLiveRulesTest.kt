@@ -53,6 +53,15 @@ class GoLiveRulesTest {
         assertEquals(mapOf(("shirt" to "m") to 1000), back)
     }
 
+    // Back to setting up: the business's name, typed as it is
+    @Test
+    fun theNameIsTypedAsItIs() {
+        assertTrue(GoLiveRules.named(" star grill ", "Star Grill"))
+        assertFalse(GoLiveRules.named("Star", "Star Grill"))
+        assertFalse(GoLiveRules.named("", ""))
+        assertFalse(GoLiveRules.named("Star Grill", null))
+    }
+
     @Test
     fun whatCancelsOutIsNotWritten() =
         assertEquals(emptyMap<Pair<String, String>, Int>(), GoLiveRules.putBack(listOf(Noted("mug", "", -1000, 10), Noted("mug", "", 1000, 20)), emptyMap()))
