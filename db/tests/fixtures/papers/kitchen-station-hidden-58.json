@@ -1,0 +1,70 @@
+{
+  "about": "Station hidden by the owner: an order prints without the station's line",
+  "paper": "kitchen",
+  "columns": 32,
+  "decimals": 2,
+  "shop": {
+    "name": "CafeTino",
+    "address": "Royal Road\nCurepipe",
+    "phone": "5 123 4567",
+    "brn": "C12345678",
+    "vat": "VAT27000000",
+    "header": "Open every day, 10:00 to 22:00",
+    "footer": "Thank you. See you again soon.",
+    "bars": false
+  },
+  "design": {
+    "v": 1,
+    "blocks": [
+      {
+        "k": "station",
+        "hide": true
+      },
+      {
+        "k": "heading"
+      },
+      {
+        "k": "pickup"
+      },
+      {
+        "k": "time_waiter"
+      },
+      {
+        "k": "type_guests"
+      },
+      {
+        "k": "line"
+      },
+      {
+        "k": "items"
+      },
+      {
+        "k": "remark"
+      },
+      {
+        "k": "line"
+      }
+    ]
+  },
+  "doc": {
+    "title": "ORDER",
+    "order": "Table 4",
+    "time": 1790000000000,
+    "waiter": "Priya",
+    "lines": [
+      {
+        "qty": 1000,
+        "name": "Burger",
+        "amount": 0
+      }
+    ],
+    "station": "Kitchen"
+  },
+  "expect": [
+    {"t":"Table 4","size":"big","bold":true,"align":"center"},
+    {"t":"21/09/2026 18:13           Priya","size":"normal","bold":false,"align":"left"},
+    {"t":"================================","size":"normal","bold":false,"align":"left"},
+    {"t":"1 x Burger","size":"tall","bold":true,"align":"left"},
+    {"t":"================================","size":"normal","bold":false,"align":"left"}
+  ]
+}

@@ -471,6 +471,7 @@ export function Designer({
                   )}
                 </div>
                 {b.hide && MRA.has(b.k) && <p className="pd-warn">A receipt without these may not satisfy the MRA. Check with your accountant.</p>}
+                {b.hide && b.k === "station" && <p className="muted">Hidden on an order. A void or a reprint still prints it, so the kitchen can tell.</p>}
                 {isOpen && settings(b)}
               </li>
             );

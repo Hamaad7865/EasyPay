@@ -444,7 +444,12 @@ object Docs {
 
     internal fun kitchenPage(d: KitchenDoc, paper: Paper, design: Design = Papers.KITCHEN): EscPos {
         val p = EscPos(paper.columns)
-        design.blocks.filter { !it.hide }.forEach { b -> PaperWalk.print(p, b, PaperWalk.kitchen(b, d)) }
+        // A void or a reprint says so whatever the design: the Station block is
+        // where it is said, and with it hidden "1 x Burger" voided read as a new
+        // order, and was made. A design without the block at all has it first.
+        val says = d.title != "ORDER"
+        if (says && design.blocks.none { it.k == "station" }) Papers.KITCHEN_KINDS["station"]?.let { b -> PaperWalk.print(p, b, PaperWalk.kitchen(b, d)) }
+        design.blocks.filter { !it.hide || (says && it.k == "station") }.forEach { b -> PaperWalk.print(p, b, PaperWalk.kitchen(b, d)) }
         p.end(paper)
         return p
     }

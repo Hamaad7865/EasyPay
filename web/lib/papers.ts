@@ -660,7 +660,12 @@ export function previewReceipt(design: Design, d: ReceiptDoc, shop: Shop, column
 
 export function renderKitchen(design: Design, d: KitchenDoc, columns: number): Styled[] {
   const p = new Page(columns);
-  for (const b of design.blocks) if (!b.hide) p.print(b, kitchenOut(b, d));
+  // A void or a reprint says so whatever the design: the Station block is where
+  // it is said, and with it hidden "1 x Burger" voided read as a new order, and
+  // was made. A design without the block at all has it first.
+  const says = d.title !== "ORDER";
+  if (says && !design.blocks.some((b) => b.k === "station")) p.print(KINDS.kitchen.station, kitchenOut(KINDS.kitchen.station, d));
+  for (const b of design.blocks) if (!b.hide || (says && b.k === "station")) p.print(b, kitchenOut(b, d));
   return p.done();
 }
 
