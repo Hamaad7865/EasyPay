@@ -189,6 +189,20 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
       check('T4 each line says what was taken', L2.every((l) => l.qty === l.qty_collected));
     }
 
+    // ---- T4b part of a deposit taken, paid in cash: the other tablets hear of it (0117) ----
+    {
+      const [did, num, o] = createOp([{ item_id: cot, name: 'Cot', unit_price: 50000 }, { item_id: cot, name: 'Cot', unit_price: 50000 }], null);
+      await push([o]);
+      const L = await lineIds(did);
+      const before = Number((await dep(did)).server_seq);
+      const r = await collect(num, [{ item_id: cot, name_snapshot: 'Cot', unit_price: 50000, deposit_line_id: L[0].id }], [{ payment_type_id: cash, amount: 50000 }]);
+      const d = await dep(did);
+      const taken = (await lineIds(did)).find((l) => l.id === L[0].id);
+      check('T4b one of two lines taken and paid in cash: the deposit, still open, goes out again at the next pull',
+        tags(r.out) === 'applied applied' && taken.qty_collected === 1000 && d.status === 'open' && Number(d.server_seq) > before,
+        `${tags(r.out)} ${taken.qty_collected} ${d.status} ${before} ${d.server_seq}`);
+    }
+
     // ---- T5 using more than is free; a line beyond what is held ----
     {
       const [did, num, o] = createOp([{ item_id: cot, name: 'Cot', unit_price: 50000 }], { payment_type_id: cash, amount: 20000 });
