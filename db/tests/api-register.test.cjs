@@ -153,6 +153,19 @@ function check(name, cond, extra) {
     check('A5 nor with a code, which stays to be used', byCode.status === 409 && !!byCode.json && byCode.json.why === 'removed' && unused.used_at === null, byCode.status + ' ' + byCode.said.slice(0, 120));
     const fresh = await call('POST', '/devices/register', owner.bearer, till('T3'));
     check('A5 cleared, the tablet has a new id and is set up, under the number that was freed', fresh.status === 200 && !!fresh.json && fresh.json.lastReceiptSeq === 0, fresh.status + ' ' + fresh.said.replace(/[0-9a-f]{64}/g, '<key>').slice(0, 120));
+
+    // A6 a till's key ended with a login: only one that may set up tills, as one is given
+    const key2b = `Device ${t2.deviceId}:${newKey.json && newKey.json.syncKey}`;
+    const cashierEnds = await call('DELETE', `/devices/key?deviceId=${t2.deviceId}`, cashier.bearer);
+    const kept = await call('GET', `/sync/pull?storeId=${store}&cursor=0&limit=5`, key2b);
+    check('A6 a login that may not set up tills cannot end a till\'s key, and is told whose can', cashierEnds.status === 403 && !!cashierEnds.json && /manager/i.test(cashierEnds.json.error || ''), cashierEnds.status + ' ' + cashierEnds.said.slice(0, 120));
+    check('A6 and the till goes on syncing with it', kept.status === 200, String(kept.status));
+    const managerEnds = await call('DELETE', `/devices/key?deviceId=${t2.deviceId}`, manager.bearer);
+    const ended = await call('GET', `/sync/pull?storeId=${store}&cursor=0&limit=5`, key2b);
+    check('A6 a manager\'s login ends it, and it opens nothing more', managerEnds.status === 200 && !!managerEnds.json && managerEnds.json.ended === true && ended.status === 401, managerEnds.status + ' ' + ended.status);
+    const freshKey = `Device ${fresh.json && fresh.json.deviceId}:${fresh.json && fresh.json.syncKey}`;
+    const signOut = await call('DELETE', '/devices/key', freshKey);
+    check('A6 a till signed out ends its own key with the key, whoever set it up', signOut.status === 200 && !!signOut.json && signOut.json.ended === true, signOut.status + ' ' + signOut.said.slice(0, 80));
   } finally {
     await c.query(`delete from platform.removed_tills where tenant_id = $1`, [tid]).catch(() => {});
     await devguard.cleanupPlatform(c, admin, tid).catch(() => {});

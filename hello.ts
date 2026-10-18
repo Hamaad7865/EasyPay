@@ -483,7 +483,11 @@ app.post("/devices/key", async (c) => {
 });
 
 // The tablet is being signed out: its key ends with it. Asked by the till
-// with the key itself, or by a login for a till of its own restaurant.
+// with the key itself, or by a login for a till of its own restaurant. That
+// login is one that may set up tills, as for a key given (POST above): with
+// any other, a cashier could stop every till of the business syncing by its
+// key. The till's own sign-out asks with its key, and is never refused here.
+const NOT_TO_END = { error: "This login cannot end a till's key. Sign out on the till, or use the owner's or a manager's login." };
 app.delete("/devices/key", async (c) => {
   let auth: Authed;
   try {
@@ -493,6 +497,7 @@ app.delete("/devices/key", async (c) => {
   }
   let deviceId = auth.deviceId;
   if (!deviceId) {
+    if (!(await maySetUpTills(auth.employeeId))) return c.json(NOT_TO_END, 403);
     const asked = c.req.query("deviceId") ?? "";
     if (!/^[0-9a-f-]{36}$/i.test(asked)) return c.json({ error: "deviceId required" }, 400);
     const mine = await pool.query(`select 1 from pos_devices where id = $1::uuid and tenant_id = $2::uuid`, [asked, auth.tenantId]).catch(() => ({ rowCount: 0 }));
