@@ -386,6 +386,60 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
       check('T12 Clear test activity clears deposits, their notes and their stock', said === null && left.d === 0 && left.n === 0 && left.m === 0, said || JSON.stringify(left));
       check('T12 and the shelf is back to what was received', pramLevel === 20000, pramLevel);
     }
+
+    // ---- T13 a stock count, and a deposit that reaches the server late (0119) ----
+    // A count sets a line to what was counted plus what moved after the line
+    // was counted. A deposit is set against the tablet's own moment, as a sale
+    // is, not against when it reached the server. The whole test is one
+    // transaction, so everything it writes is written "now" (T): the moments
+    // the tablet says are set around T.
+    {
+      const T = (await one(`select now() as t`)).t.getTime();
+      const at = (ms) => new Date(T + ms).toISOString();
+      const counted = (it, qty, ms) => ({ item_id: it, variant_id: '', counted: qty, counted_at: at(ms), left_out: false });
+      const countOp = (lines, extra = {}) => op('count.complete', { id: id(), store_id: store, scope_kind: 'all', scope_id: '', scope_text: '',
+        started_at: lines[0].counted_at, clock_ahead_ms: 0, uncounted: 'leave', lines, ...extra });
+      const bib = await item('Bib', 2000), bottle = await item('Bottle', 3000), cap = await item('Cap', 4000), sock = await item('Sock', 1000);
+      // their deliveries came in long before any of it
+      await c.query(`update stock_movements set created_at = now() - interval '2 hours' where tenant_id = $1 and item_id = any($2::uuid[]) and reason = 'receive'`,
+        [tid, [bib, bottle, cap, sock]]);
+
+      // taken two minutes before the shelf was counted, sent after it: the shelf showed it gone already
+      let [, , o] = createOp([{ item_id: bib, name: 'Bib', unit_price: 2000 }], null, { device_time: at(-120000) });
+      await push([o]);
+      check('T13 a deposit taken before a line was counted is not what moved after it',
+        (await one(`select stock_moved_since($1,$2,$3,null,$4) as m`, [tid, store, bib, at(-60000)])).m === 0
+        && (await one(`select stock_moved_since_at($1,$2,$3,null,$4,$4) as m`, [tid, store, bib, at(-60000)])).m === 0);
+      let out = await push([countOp([counted(bib, 19000, -60000)])]);
+      check('T13 a count completed after it: the shelf is what was counted, not one less', tag(out[0]) === 'applied' && (await stock(bib)) === 19000, tag(out[0]) + ' ' + (await stock(bib)));
+
+      // taken a minute after the shelf was counted: still on it when it was counted, so it is taken off
+      [, , o] = createOp([{ item_id: bottle, name: 'Bottle', unit_price: 3000 }], null, { device_time: at(-60000) });
+      await push([o]);
+      out = await push([countOp([counted(bottle, 20000, -120000)])]);
+      check('T13 one taken after the line was counted is taken off what was counted', tag(out[0]) === 'applied' && (await stock(bottle)) === 19000, tag(out[0]) + ' ' + (await stock(bottle)));
+
+      // taken before the count, cancelled on the tablet after the line was counted: the cap came back after it
+      let did;
+      [did, , o] = createOp([{ item_id: cap, name: 'Cap', unit_price: 4000 }], null, { device_time: at(-300000) });
+      await push([o]);
+      out = await push([op('deposit.cancel', { deposit_id: did, device_id: dev, device_time: at(120000), reason: 'Changed mind', outcome: 'keep' })]);
+      const capCancel = tag(out[0]);
+      out = await push([countOp([counted(cap, 19000, 60000)])]);
+      check('T13 a deposit cancelled on the tablet after the line was counted: what came back is added', capCancel === 'applied' && tag(out[0]) === 'applied' && (await stock(cap)) === 20000, capCancel + ' ' + tag(out[0]) + ' ' + (await stock(cap)));
+
+      // cancelled by the server past its date: that moment is the server's own. The tablet's clock is
+      // ten minutes fast; its line "counted at T + 8 minutes" was in truth counted two minutes before T.
+      [did, , o] = createOp([{ item_id: sock, name: 'Sock', unit_price: 1000 }], null, { device_time: at(-1800000), collect_by: '2026-01-01' });
+      await push([o]);
+      await setSettings({ depositOverdue: 'cancel', depositGrace: 0, depositCancel: 'keep' });
+      await one(`select deposits_expire($1) as n`, [tid]);
+      await setSettings({ depositOverdue: 'show' });
+      const sockDep = await dep(did);
+      out = await push([countOp([counted(sock, 19000, 480000)], { clock_ahead_ms: 600000 })]);
+      check('T13 a deposit the server cancelled after the line was truly counted: what came back is added', sockDep.status === 'cancelled' && tag(out[0]) === 'applied' && (await stock(sock)) === 20000,
+        sockDep.status + ' ' + tag(out[0]) + ' ' + (await stock(sock)));
+    }
   } catch (e) {
     failures++;
     console.log('FAIL threw: ' + e.message + '\n' + e.stack);
