@@ -18,14 +18,37 @@ class CalcTest {
         assertEquals(15000, t.total)
     }
 
+    // A line's add-ons are added as stored: what each adds to the whole line.
+    // (A sale rung up before 0123, as here, stored one Rs 40 for 2 x Rs 380.)
     @Test
-    fun modifierIsChargedOncePerLine() {
+    fun aLinesAddOnsAreAddedAsStored() {
         // 2 x Rs 380 with one Rs 40 modifier
         val base = Calc.lineAmount(38000, 2000) + 4000
         val t = Calc.totals(listOf(Calc.Line(base, vatIncluded)), emptyList())
         assertEquals(80000, t.subtotal)
         assertEquals(10435, t.tax)
         assertEquals(80000, t.total)
+    }
+
+    // The owner, 2026-10-18: a burger at Rs 100 with an egg at Rs 20, two of
+    // them, is 120 + 120, not 200 + 20. An add-on is for every one of the item.
+    @Test
+    fun anAddOnIsChargedForEveryOneOfTheItem() {
+        val egg = Calc.addonForLine(2000, 2000)
+        assertEquals(4000, egg)
+        assertEquals(24000, Calc.lineAmount(10000, 2000) + egg)
+        // three sausages at Rs 50 on each of two grillades: six
+        assertEquals(30000, Calc.addonForLine(3 * 5000, 2000))
+        // one of the item: what it was
+        assertEquals(2000, Calc.addonForLine(2000, 1000))
+    }
+
+    // + or − on a line rings it up again: what the add-on costs for one of the item is kept
+    @Test
+    fun aQuantityChangeKeepsWhatAnAddOnCostsForOne() {
+        assertEquals(2000, Calc.addonPerOne(4000, 2000))
+        assertEquals(6000, Calc.addonForLine(Calc.addonPerOne(4000, 2000), 3000))
+        assertEquals(2000, Calc.addonPerOne(2000, 1000))
     }
 
     @Test

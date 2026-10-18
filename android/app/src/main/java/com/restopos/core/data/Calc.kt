@@ -3,7 +3,8 @@ package com.restopos.core.data
 // Totals mirror the server (push_receipt_create): integer cents, identical
 // rounding, so the tablet shows and prints exactly what sync_push will store.
 //   line     = (price * qty + 500) / 1000, qty in thousandths, plus its
-//              modifiers, which are charged once per line
+//              modifiers as stored: each is what it adds to the whole line,
+//              for every one of the item since 0123 (addonForLine)
 //   discount = percent of the subtotal (half up), or an amount, never more
 //              than what is left of the subtotal
 //   tax      = per line on (line - its share of the discount):
@@ -14,6 +15,16 @@ package com.restopos.core.data
 //   total    = subtotal - discount + added tax + service + rounding
 object Calc {
     fun lineAmount(price: Long, qty: Int): Long = (price * qty + 500) / 1000
+
+    // An add-on on a line (server 0123): perOne is what it adds to ONE of the
+    // item (its price times how many of it, three sausages), and the line
+    // holds it for every one of the item. The owner: a burger at Rs 100 with
+    // an egg at Rs 20, two of them, is 120 + 120. Until 0123 it was charged
+    // once for the line, whatever the line's quantity.
+    fun addonForLine(perOne: Long, qty: Int): Long = lineAmount(perOne, qty)
+
+    // and back, when a line is rung up again with another quantity
+    fun addonPerOne(onLine: Long, qty: Int): Long = if (qty <= 0) onLine else (onLine * 1000 + qty / 2) / qty
 
     data class Line(val base: Long, val taxes: List<TaxRate>)
     data class TaxRate(val rateBp: Int, val type: String)

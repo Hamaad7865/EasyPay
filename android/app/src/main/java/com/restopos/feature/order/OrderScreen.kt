@@ -575,7 +575,8 @@ private fun OptionsSheet(s: OptionSheet, notes: List<String>, vm: OrderViewModel
         }
         Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Stepper(qty.toString(), key = 52.dp, width = 44.dp, big = 20.sp, onDown = { qty = (qty - 1).coerceAtLeast(1) }, onUp = { qty = (qty + 1).coerceAtMost(99) })
-            val each = s.item.price * qty + picks.sumOf { it.price }
+            // the item with its add-ons, for each one of it
+            val each = (s.item.price + picks.sumOf { it.price }) * qty
             VBtn(
                 if (short != null) "Pick ${short.name}" else "Add to order · ${Money.format(each)}", Modifier.weight(1f),
                 if (short == null) V.Blue else V.Key, if (short == null) Color.White else V.Text3, 60.dp, size = 16.sp, weight = 800, enabled = short == null,

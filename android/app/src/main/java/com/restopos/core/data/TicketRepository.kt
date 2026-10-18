@@ -53,6 +53,9 @@ data class DiscountPick(
 
 // An add-on picked for a line. qty: how many of it (three sausages); price:
 // what they add to the line in all, so for three at Rs 50 it is Rs 150.
+// An add-on picked for an item: price is what it adds to ONE of the item (its
+// own price times qty, how many of it); the line holds it for each of the
+// item it has (Calc.addonForLine, server 0123).
 data class ModPick(val id: String, val name: String, val price: Long, val qty: Int = 1)
 
 // Ticket writes (spec 5.2): data row + outbox row in ONE Room transaction,
@@ -525,11 +528,13 @@ class TicketRepository @Inject constructor(
                 return@runCatching
             }
             val lineId = Uuid7.next()
+            // each add-on for every one of the item on the line: two burgers, two eggs
+            val onLine = mods.map { it.copy(price = Calc.addonForLine(it.price, qty)) }
             // What this till charges goes with the line (price, name, each
             // modifier's price), so the server stores the sale as issued even if
             // the catalog changed while the tablet was offline.
             val modArr = buildJsonArray {
-                mods.forEach { m ->
+                onLine.forEach { m ->
                     add(buildJsonObject { put("modifier_id", m.id); put("price", m.price); put("name", m.name); put("qty", m.qty) })
                 }
             }
@@ -537,7 +542,7 @@ class TicketRepository @Inject constructor(
                 db.tickets().upsertLines(listOf(
                     TicketLineEntity(lineId, tenant, t.id, itemId, null, item.name, price ?: item.price, qty, note, course, seat = seat),
                 ))
-                db.tickets().upsertLineMods(mods.map { TicketLineModEntity(lineId, it.id, it.name, it.price, it.qty) })
+                db.tickets().upsertLineMods(onLine.map { TicketLineModEntity(lineId, it.id, it.name, it.price, it.qty) })
                 db.catalog().upsertLineTaxes(taxes.map { TicketLineTaxEntity(lineId, it.id, it.rate_bp, it.type) })
                 db.outbox().enqueue(op("ticket.add_line", buildJsonObject {
                     put("id", lineId); put("ticket_id", t.id); put("item_id", itemId)
@@ -559,8 +564,8 @@ class TicketRepository @Inject constructor(
         // and fewer of it is always allowed.
         val item = db.catalog().item(itemId) ?: error("unknown item")
         require(qty <= line.qty || item.is_available) { "${item.name} is sold out" }
-        // its options as they were rung up, at the prices charged then
-        val mods = db.tickets().lineMods(lineId).map { ModPick(it.modifier_id, it.name_snapshot, it.price, it.qty) }
+        // its options as they were rung up, at the prices charged then: for one of the item, held again for the new quantity
+        val mods = db.tickets().lineMods(lineId).map { ModPick(it.modifier_id, it.name_snapshot, Calc.addonPerOne(it.price, line.qty), it.qty) }
         voidLine(lineId, reason).getOrThrow()
         // one whose price was typed keeps the price typed for it
         if (qty > 0) addItem(itemId, qty, mods, line.note, line.course, line.seat, again = true, price = line.unit_price.takeIf { item.open_price }).getOrThrow()
@@ -569,13 +574,13 @@ class TicketRepository @Inject constructor(
     // Split check: takes `units` off a line and puts them on a new line of the
     // same order, on the check given. Same item, price, note, course, taxes
     // and kitchen state: nothing is voided and nothing goes to the kitchen
-    // again. A line with a priced add-on is not divided (the add-on is charged
-    // once per line); it moves whole.
+    // again. A line with a priced add-on is not divided (the server gives the
+    // new line the add-on's whole price); it moves whole.
     suspend fun splitLine(lineId: String, units: Int, toCheck: Int): Result<String> = runCatching {
         val line = db.tickets().line(lineId) ?: error("That line is gone")
         require(!line.paid && line.voided_at == null) { "That line cannot be divided" }
         require(line.qty % 1000 == 0 && units >= 1 && units * 1000 < line.qty) { "Pick fewer than the line has" }
-        require(db.tickets().modSum(lineId) == 0L) { "This line has an add-on that is charged once. Move the whole line instead." }
+        require(db.tickets().modSum(lineId) == 0L) { "This line has a priced add-on and cannot be divided. Move the whole line instead." }
         val newId = Uuid7.next()
         db.withTransaction {
             db.tickets().setQty(lineId, line.qty - units * 1000)

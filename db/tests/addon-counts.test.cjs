@@ -129,6 +129,31 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     check('T7 the new line has two of it', tag(r[0]) === 'applied' && row && row.qty === 2, tag(r[0]) + ' ' + JSON.stringify(row));
   }
 
+  // T9 an add-on is for every one of the item (0123). The owner: a burger at
+  // Rs 100 with an egg at Rs 20, two of them, is 120 + 120. Two dholl puris
+  // with an extra rougaille each: the line's add-on is two at 2500.
+  {
+    const two = { qty: 2000, unit_price: 5000 };
+    const each = await ticketWith({ ...two, modifiers: [{ modifier_id: roug, price: 5000, name: 'Extra rougaille', qty: 1 }] });
+    const rc = crypto.randomUUID();
+    await push([rcOp(rc, each.t, { payments: pay(15000) })]);
+    const got = await q1(`select total::text, needs_review from receipts where id='${rc}'`);
+    check('T9 two with an add-on each: 5000 + 2500, twice', got.total === '15000', JSON.stringify(got));
+    check('T9 and is not marked for review', got.needs_review === false && (await reasons(rc)).length === 0, JSON.stringify(await reasons(rc)));
+    // a till built before 0123 still charges it once for the line: not drift either
+    const once = await ticketWith({ ...two, modifiers: [{ modifier_id: roug, price: 2500, name: 'Extra rougaille', qty: 1 }] });
+    const rc2 = crypto.randomUUID();
+    await push([rcOp(rc2, once.t, { payments: pay(12500) })]);
+    check('T9 an older till, once for the line, is not marked', (await reasons(rc2)).length === 0, JSON.stringify(await reasons(rc2)));
+    // neither: marked, and the catalog's figure is for the two
+    const off = await ticketWith({ ...two, modifiers: [{ modifier_id: roug, price: 3000, name: 'Extra rougaille', qty: 1 }] });
+    const rc3 = crypto.randomUUID();
+    await push([rcOp(rc3, off.t, { payments: pay(13000) })]);
+    const d = (await q1(`select detail from receipt_reviews where receipt_id='${rc3}' and reason='price-drift'`)) || { detail: { items: [] } };
+    check('T9 another price is marked, held against two', JSON.stringify(await reasons(rc3)) === '["price-drift"]'
+      && d.detail.items.length === 1 && d.detail.items[0].catalog === 5000, JSON.stringify(d.detail));
+  }
+
   // T8 the count reaches the tills with the row
   {
     const r = await asApp(async () => (await c.query(`select sync_pull($1, 0, 500) as r`, [store])).rows[0].r);
