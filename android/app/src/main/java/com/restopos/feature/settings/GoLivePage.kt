@@ -33,6 +33,7 @@ import com.restopos.core.ui.T
 import com.restopos.core.ui.Toaster
 import com.restopos.core.ui.V
 import com.restopos.core.ui.VBtn
+import com.restopos.core.ui.press
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -57,9 +58,11 @@ class GoLiveViewModel @Inject constructor(
     val rung = MutableStateFlow<GoLive.Rung?>(null)
     val busy = MutableStateFlow(false)
 
-    fun ask() {
+    // owner: whoever is signed in may do it themselves. On the start screen
+    // nobody is, and the owner's PIN is always asked for (from the start).
+    fun ask(fromStart: Boolean = false) {
         val open: () -> Unit = { viewModelScope.launch { rung.value = goLive.rung() } }
-        if (staff.can("*")) open() else approvals.ask("*", "put this till live") { open() }
+        if (!fromStart && staff.can("*")) open() else approvals.ask("*", "put this till live") { open() }
     }
     fun close() { if (!busy.value) rung.value = null }
     fun go(then: () -> Unit) = viewModelScope.launch {
@@ -90,6 +93,24 @@ internal fun SettingUpCard(onLive: () -> Unit, vm: GoLiveViewModel = hiltViewMod
         VBtn("Go live", bg = V.Blue, fg = Color.White, height = 46.dp, weight = 800) { vm.ask() }
     }
     rung?.let { r -> GoLiveSheet(r, busy, onClose = vm::close, onGo = { vm.go(onLive) }) }
+}
+
+// The same on the start screen, so the owner goes live before the drawer is
+// counted for the first real day: a day opened only to reach Settings would
+// go with the rest. `link`: the key alone, where the screen has a row of them.
+@Composable
+fun GoLiveFromStart(modifier: Modifier = Modifier, link: Boolean = false, color: Color, vm: GoLiveViewModel = hiltViewModel()) {
+    val on by vm.settingUp.collectAsState()
+    val rung by vm.rung.collectAsState()
+    val busy by vm.busy.collectAsState()
+    if (!on) return
+    val key = @Composable { T("Go live", 15.sp, 600, color, Modifier.press(0.97f) { vm.ask(fromStart = true) }.padding(10.dp)) }
+    if (link) key()
+    else Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        T("This till is being set up: what is rung up on it is for trying, and goes when the business goes live.", 13.sp, 500, V.AmberText, lines = 3, align = androidx.compose.ui.text.style.TextAlign.Center)
+        key()
+    }
+    rung?.let { r -> GoLiveSheet(r, busy, onClose = vm::close, onGo = { vm.go {} }) }
 }
 
 @Composable

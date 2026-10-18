@@ -91,6 +91,8 @@ fun StartScreen(
                 vm, title = "Register is locked", text = "Open the register to take orders.", button = "Open register",
                 note = (if (com.restopos.core.data.Journey.alone) "Staff PINs are not set up. Add them in Settings, under Staff, to have staff clock in and sign in here." else "Staff PINs are not set up. Add them in the back office, under Staff, to have staff clock in and sign in here."),
                 onButton = onOpen, onSignIn = onSignIn, onSetUp = onSetUp,
+                // no PIN to ask for: Go live is in Settings, which opens with one tap
+                goLive = false,
             )
             active.isEmpty() -> Closed(
                 vm,
@@ -138,6 +140,7 @@ private fun Closed(
     onButton: () -> Unit,
     onSignIn: () -> Unit,
     onSetUp: () -> Unit,
+    goLive: Boolean = true,
 ) {
     val needsSignIn by vm.needsSignIn.collectAsState()
     val setupOpen by vm.setupOpen.collectAsState()
@@ -167,6 +170,7 @@ private fun Closed(
                 Text("Sign in", Modifier.clickable(onClick = onSignIn).padding(10.dp), color = Pos.NavOn, fontSize = 15.sp, fontWeight = FontWeight.Medium)
             }
             if (setupOpen) FinishSetUp(vm, onSetUp)
+            if (goLive) com.restopos.feature.settings.GoLiveFromStart(Modifier.padding(top = 18.dp).width(380.dp), color = Pos.NavOn)
         }
     }
 }
@@ -246,6 +250,7 @@ private fun Users(vm: StaffViewModel, active: List<StaffMember>, shiftOpen: Bool
             Row(verticalAlignment = Alignment.CenterVertically) {
                 BigButton("Clock in/out", Modifier.width(280.dp), onClock)
                 if (setupOpen) { Spacer(Modifier.width(18.dp)); FinishSetUp(vm, onSetUp) }
+                Spacer(Modifier.width(18.dp)); com.restopos.feature.settings.GoLiveFromStart(link = true, color = Pos.NavOn)
             }
         }
     }
