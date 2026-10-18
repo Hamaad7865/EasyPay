@@ -337,6 +337,38 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
       await setSettings({ depositOverdue: 'show' });
     }
 
+    // ---- T7b a cancel "by date" that is not past its date and grace (0122) ----
+    {
+      await setSettings({ depositGrace: 3 });
+      const daysAgo = async (n) => (await one(`select (deposit_today($1,$2) - $3::int)::text as d`, [tid, store, n])).d;
+      const [e1, , o1] = createOp([{ item_id: cot, name: 'Cot', unit_price: 50000 }], { payment_type_id: cash, amount: 5000 }, { collect_by: await daysAgo(2) });
+      await push([o1]);
+      // Cara, who may not refund, on a till set up under her own login: it is not hers to cancel
+      let out = await push([cancelOp(e1, 'refund', { auto: true, back: [{ id: id(), payment_type_id: cash, amount: 5000, shift_id: shift }] })], cara);
+      check('T7b two days past its date with three of grace, sent as by date from a till that does not vouch for Cara: refused, still open',
+        tag(out[0]) === 'rejected:forbidden' && (await dep(e1)).status === 'open', tag(out[0]));
+      // from the till that vouches for her: kept, as a cancel she had no right to, and the early "by date" said
+      out = await push([cancelOp(e1, 'keep', { auto: true }, cara)]);
+      let d = await dep(e1);
+      check('T7b from a till that vouches for her: kept, flagged as hers to approve and as early, not cancelled by date',
+        tag(out[0]) === 'applied' && d.status === 'cancelled' && !d.auto_cancelled && d.flags.some((f) => f.why === 'auto-early') && d.flags.some((f) => f.why === 'cancel-unapproved'),
+        tag(out[0]) + ' ' + JSON.stringify(d.flags));
+      // on the last day of grace it is still not by date, whoever sends it
+      const [e2, , o2] = createOp([{ item_id: cot, name: 'Cot', unit_price: 50000 }], null, { collect_by: await daysAgo(3) });
+      await push([o2]);
+      out = await push([cancelOp(e2, 'keep', { auto: true })]);
+      d = await dep(e2);
+      check('T7b on the last day of grace, from the owner: taken, early said, not by date',
+        tag(out[0]) === 'applied' && !d.auto_cancelled && d.flags.some((f) => f.why === 'auto-early') && !d.flags.some((f) => f.why === 'cancel-unapproved'), JSON.stringify(d.flags));
+      // the day after, it is by date: no right asked, nothing said
+      const [e3, , o3] = createOp([{ item_id: cot, name: 'Cot', unit_price: 50000 }], null, { collect_by: await daysAgo(4) });
+      await push([o3]);
+      out = await push([cancelOp(e3, 'keep', { auto: true })], cara);
+      d = await dep(e3);
+      check('T7b past its grace, from Cara\'s own till: by date, as before', tag(out[0]) === 'applied' && d.auto_cancelled && d.flags.length === 0, tag(out[0]) + ' ' + JSON.stringify(d.flags));
+      await setSettings({ depositGrace: 0 });
+    }
+
     // ---- T8 refunding a collection ----
     {
       await setSettings({ returns: 'refund' });

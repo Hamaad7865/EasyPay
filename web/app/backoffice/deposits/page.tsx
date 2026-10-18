@@ -55,6 +55,7 @@ const FLAG: Record<string, string> = {
   "price-unapproved": "A price on it was changed by someone not allowed to",
   "closed-payment": "Money was taken on it after it was closed",
   "cancel-unapproved": "Cancelled by someone not allowed to refund",
+  "auto-early": "Sent as cancelled by its date before its date and grace were past",
   "over-given": "More was given back than was free on it",
   "note-differs": "Its credit note is not what was free on it",
   "cancelled-twice": "Cancelled at two tills",
