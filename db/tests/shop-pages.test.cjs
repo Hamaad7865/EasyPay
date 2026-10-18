@@ -482,20 +482,22 @@ const id = () => crypto.randomUUID();
     {
       p = await see(shop, '/backoffice/promotions', {});
       check('Z1 Promotions opens for a shop, with nothing quiet yet (every product is new)', !p.error && p.says.includes('Nothing has gone quiet') && p.says.includes('No promotions are running'), p.error || p.says.slice(0, 200));
-      // the scarf was added forty days ago and sold nothing since: a slow mover
-      await c.query(`update items set created_at = now() - interval '40 days' where id = $1`, [scarf]);
-      await c.query(`delete from stock_movements where tenant_id = $1 and item_id = $2 and reason = 'sale'`, [shop.tid, scarf]);
+      // the belt was added forty days ago and sold nothing since: a slow mover. The scarf too, but for
+      // the one Priya collected from her deposit today: a sale with no stock moved, still a sale (0120)
+      await c.query(`update items set created_at = now() - interval '40 days' where id = any($1::uuid[])`, [[belt, scarf]]);
+      await c.query(`delete from stock_movements where tenant_id = $1 and item_id = any($2::uuid[]) and reason = 'sale'`, [shop.tid, [belt, scarf]]);
       p = await see(shop, '/backoffice/promotions', {});
-      let row = rowsOf(p.html).find((r) => r.startsWith('Scarf'));
+      let row = rowsOf(p.html).find((r) => r.startsWith('Belt'));
       check('Z2 a product with stock and no sale for forty days is a slow mover, with its idle days and price', !p.error && !!row && /\| 40 days \|/.test(row) && row.includes('Rs 115.00'), p.error || row || p.says.slice(0, 300));
-      await c.query(`select promotion_apply($1, $2, $3, null, 9000, 'clear it')`, [shop.tid, shop.owner, scarf]);
+      check('Z2 one collected from a deposit today is not', !p.error && !rowsOf(p.html).some((r) => r.startsWith('Scarf')), p.error);
+      await c.query(`select promotion_apply($1, $2, $3, null, 9000, 'clear it')`, [shop.tid, shop.owner, belt]);
       p = await see(shop, '/backoffice/promotions', {});
-      row = rowsOf(p.html).find((r) => r.startsWith('Scarf'));
-      check('Z3 on promotion: Was Rs 115.00 struck through, Now Rs 90.00, Rs 25.00 off, and no longer a slow mover', !p.error && !!row && row.includes('| Rs 115.00 | Rs 90.00 | Rs 25.00 |') && !p.says.includes('days idle') && (rowsOf(p.html).filter((r) => r.startsWith('Scarf')).length === 1), p.error || row);
-      const pid = (await one(`select id from promotions where tenant_id = $1 and item_id = $2 and status = 'active'`, [shop.tid, scarf])).id;
+      row = rowsOf(p.html).find((r) => r.startsWith('Belt'));
+      check('Z3 on promotion: Was Rs 115.00 struck through, Now Rs 90.00, Rs 25.00 off, and no longer a slow mover', !p.error && !!row && row.includes('| Rs 115.00 | Rs 90.00 | Rs 25.00 |') && !p.says.includes('days idle') && (rowsOf(p.html).filter((r) => r.startsWith('Belt')).length === 1), p.error || row);
+      const pid = (await one(`select id from promotions where tenant_id = $1 and item_id = $2 and status = 'active'`, [shop.tid, belt])).id;
       await c.query(`select promotion_lift($1, $2, $3)`, [shop.tid, shop.owner, pid]);
       p = await see(shop, '/backoffice/promotions', {});
-      check('Z4 lifted: back among the slow movers at Rs 115.00, no promotion running', !p.error && p.says.includes('No promotions are running') && (rowsOf(p.html).find((r) => r.startsWith('Scarf')) || '').includes('Rs 115.00'), p.error);
+      check('Z4 lifted: back among the slow movers at Rs 115.00, no promotion running', !p.error && p.says.includes('No promotions are running') && (rowsOf(p.html).find((r) => r.startsWith('Belt')) || '').includes('Rs 115.00'), p.error);
       p = await see(shop, '/backoffice/settings', {});
       check('Z5 a shop\'s POS settings carry the two thresholds', !p.error && p.html.includes('name="slowMoverDays"') && p.html.includes('name="promoStillDays"'), p.error);
     }
