@@ -48,6 +48,10 @@ data class PosSettings(
     // for, and keeps every change in its queue for the day the business goes
     // Premium (docs/superpowers/specs/2026-10-11-tablet-alone-design.md).
     val alone: Boolean = false,
+    // The settings name the plan premium or trial: the business is in the
+    // cloud. Unlike premium, no plan at all is not taken for it: it ends a
+    // tablet's setting up (SettingUp), which no missing word should do.
+    val cloud: Boolean = false,
     // The business's first-run set-up is still open (server 0089): a tablet
     // named for it is walked through the set-up. Only a client made since
     // carries the mark; with none, as for every key here, nothing changes.
@@ -147,6 +151,7 @@ data class PosSettings(
                 // as the server reads it (has_premium): premium, and trial so that a restaurant trying EasyPay sees all of it
                 premium = d.str("plan")?.trim()?.lowercase()?.let { it == "premium" || it == "trial" } ?: true,
                 alone = isAlone(d.str("plan")),
+                cloud = d.str("plan")?.trim()?.lowercase().let { it == "premium" || it == "trial" },
                 setupOpen = d.str("setup") == "open",
                 tableOrdering = d.bool("tableOrdering") ?: false,
                 returns = if (d.str("businessType") != "retail") "refund" else d.str("returns")?.takeIf { it == "exchange" || it == "credit" || it == "refund" } ?: "exchange",

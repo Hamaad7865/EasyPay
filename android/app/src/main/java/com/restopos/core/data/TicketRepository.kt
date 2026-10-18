@@ -713,6 +713,8 @@ class TicketRepository @Inject constructor(
             }
         }
         val lineArr = buildJsonArray { payLines.forEach { add(it.id) } }
+        // a tablet that is setting up writes down what the sale takes off the shelf, for Go live
+        val trial = db.tryingOut(session)
         db.withTransaction {
             db.receipts().insertReceipt(
                 ReceiptEntity(receiptId, tenant, store, deviceId, t.id, number,
@@ -768,7 +770,7 @@ class TicketRepository @Inject constructor(
             )))
             db.tickets().markPaid(payLines.map { it.id })
             // what was sold leaves this till's copy of the shelf at once; the server's figure comes back with the next sync
-            db.moveStock(store, payLines.mapNotNull { l -> (l.qty - (held[l.id] ?: 0)).takeIf { it > 0 }?.let { l to -it } })
+            db.moveStock(store, payLines.mapNotNull { l -> (l.qty - (held[l.id] ?: 0)).takeIf { it > 0 }?.let { l to -it } }, noted = if (trial) "sale" else null)
             if (closing) db.tickets().setStatus(t.id, "paid")
             db.catalog().upsertDevices(listOf(device.copy(last_receipt_seq = seq)))
             db.outbox().enqueue(op("receipt.create", buildJsonObject {

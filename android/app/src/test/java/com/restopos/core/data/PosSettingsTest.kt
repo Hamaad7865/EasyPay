@@ -74,4 +74,14 @@ class PosSettingsTest {
         val s = PosSettings.parse("""{"papers":{"kitchen":{"v":1,"blocks":[{"k":"items","seat":false}]}}}""")
         assertEquals(false, com.restopos.core.print.Papers.kitchen(s.papers).blocks.single().seat)
     }
+
+    // only a plan named premium or trial says the business is in the cloud: no plan is no answer
+    @Test
+    fun cloudIsANamedPlan() {
+        assertTrue(PosSettings.parse("""{"plan":"premium"}""").cloud)
+        assertTrue(PosSettings.parse("""{"plan":"Trial"}""").cloud)
+        assertFalse(PosSettings.parse("""{"plan":"offline"}""").cloud)
+        assertFalse(PosSettings.parse("""{}""").cloud)
+        assertFalse(PosSettings.parse(null).cloud)
+    }
 }

@@ -111,12 +111,13 @@ class Deposits @Inject constructor(
         val payRow = money?.let { DepositPaymentEntity(Uuid7.next(), id, it.paymentTypeId, "in", it.amount, it.tendered, it.change, shift?.id, device, staff.id(), now) }
         val row = DepositEntity(id, tenant, store, device, number, customer?.id, collectBy, total = total, paid = money?.amount ?: 0, created_by = staff.id(), device_time = now)
         val at = iso(now)
+        val trial = db.tryingOut(session)
         db.withTransaction {
             db.deposits().upsert(listOf(row))
             db.deposits().upsertLines(lines)
             payRow?.let { db.deposits().upsertPayments(listOf(it)); drawer(it, row, true) }
             // the goods leave this till's copy of the shelf now, as a sale's do
-            db.moveStock(store, sale.map { it to -it.qty })
+            db.moveStock(store, sale.map { it to -it.qty }, noted = if (trial) "deposit" else null)
             db.outbox().enqueue(op("deposit.create", buildJsonObject {
                 put("id", id); put("store_id", store); put("device_id", device); put("number", number)
                 customer?.let { put("customer_id", it.id) }
@@ -256,13 +257,14 @@ class Deposits @Inject constructor(
             owed = if (outcome == "refund") (free - given).coerceAtLeast(0) else 0,
             kept = d.kept + if (outcome == "keep") free else 0, noted = d.noted + (note?.amount ?: 0), credit_note_id = note?.id,
         )
+        val trial = db.tryingOut(session)
         db.withTransaction {
             db.deposits().upsert(listOf(next))
             payRows.forEach { db.deposits().upsertPayments(listOf(it)); drawer(it, d, false) }
             note?.let { db.notes().upsert(listOf(it)) }
             // what nobody collected goes back on the shelf
             val tenant = d.tenant_id
-            db.moveStock(store, lines.filter { it.left > 0 }.map { stockLine(tenant, it) to it.left })
+            db.moveStock(store, lines.filter { it.left > 0 }.map { stockLine(tenant, it) to it.left }, noted = if (trial) "deposit_release" else null)
             db.outbox().enqueue(op("deposit.cancel", buildJsonObject {
                 put("deposit_id", d.id); put("device_id", device); put("device_time", iso(now))
                 put("reason", next.cancel_reason ?: ""); put("outcome", outcome); if (auto) put("auto", true)

@@ -502,6 +502,8 @@ class OrderOps @Inject constructor(
             subtotal = parts?.sub ?: orig.subtotal, discount_total = parts?.disc ?: orig.discount_total, tax_total = parts?.tax ?: orig.tax_total,
             service_charge = parts?.svc ?: orig.service_charge, rounding = parts?.rnd ?: orig.rounding, total = amount, device_time = now, doc = docs.encode(doc),
         )
+        // a tablet that is setting up writes down what comes back on the shelf, for Go live
+        val trial = db.tryingOut(session)
         db.withTransaction {
             db.receipts().insertReceipt(refund)
             db.receipts().insertLines(
@@ -512,7 +514,7 @@ class OrderOps @Inject constructor(
             if (restock) {
                 val returned = if (back == null) sold.mapNotNull { r -> r.ticket_line_id?.let { db.tickets().line(it) }?.let { it to r.qty } }
                 else back.mapNotNull { (s, q) -> db.tickets().line(s.line.id)?.let { it to q } }
-                db.moveStock(store, returned)
+                db.moveStock(store, returned, noted = if (trial) "refund" else null)
             }
             db.receipts().insertPayments(listOfNotNull(
                 if (offBill > 0 && accountType != null) ReceiptPaymentEntity(Uuid7.next(), tenant, id, accountType.id, offBill) else null,

@@ -8,6 +8,7 @@ import com.restopos.core.database.ItemEntity
 import com.restopos.core.database.ItemVariantEntity
 import com.restopos.core.database.OutboxEntity
 import com.restopos.core.database.StockLevelEntity
+import com.restopos.core.database.StockMovementEntity
 import com.restopos.core.database.TicketLineEntity
 import com.restopos.core.database.TicketLineTaxEntity
 import com.restopos.core.database.TillDatabase
@@ -45,7 +46,11 @@ sealed class PriceEdit {
 // An item made of others (server 0112: a Mix grill) moves its parts instead,
 // each as many times as it is in one, and never itself; what is moved is
 // added up per product first, as the server does (stock_parts).
-suspend fun TillDatabase.moveStock(store: String, lines: List<Pair<TicketLineEntity, Int>>) {
+// noted: on a tablet that is setting up (tryingOut), each product's move is
+// written down as well, under this reason (sale, refund, deposit,
+// deposit_release) and marked trial, so that Go live puts it back exactly
+// (GoLive): the shelf moves by these and nothing else on the tablet says so.
+suspend fun TillDatabase.moveStock(store: String, lines: List<Pair<TicketLineEntity, Int>>, noted: String? = null) {
     suspend fun counted(item: ItemEntity) = item.track_stock || ops().categoryOfItem(item.id)?.is_stock == true
     val moves = LinkedHashMap<Pair<String, String>, Int>()
     for ((l, by) in lines) {
@@ -61,9 +66,11 @@ suspend fun TillDatabase.moveStock(store: String, lines: List<Pair<TicketLineEnt
             if (counted(part)) moves.merge(p.item to "", Parts.share(by, p), Int::plus)
         }
     }
+    val at = System.currentTimeMillis()
     moves.forEach { (key, by) ->
         val (itemId, variant) = key
         if (retail().moveLevel(store, itemId, variant, by) == 0) retail().upsertLevels(listOf(StockLevelEntity(store, itemId, variant, by)))
+        if (noted != null && by != 0) stock().upsertMovements(listOf(StockMovementEntity(Uuid7.next(), store, itemId, variant, by, noted, ref_type = GoLiveRules.TRIAL, created_at = at)))
     }
 }
 

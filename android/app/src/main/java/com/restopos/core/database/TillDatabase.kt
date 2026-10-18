@@ -101,4 +101,6 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun promotions(): PromotionDao
     abstract fun deposits(): DepositDao
     abstract fun accounts(): AccountDao
+    // a DAO, not a table: the version stays as it is
+    abstract fun goLive(): GoLiveDao
 }

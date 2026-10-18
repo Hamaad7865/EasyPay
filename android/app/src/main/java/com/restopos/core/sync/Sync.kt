@@ -171,6 +171,15 @@ class PullWorker @AssistedInject constructor(
                 }
             }
             session.setLastPull(System.currentTimeMillis())
+            // Made Premium, or a trial: the business is the cloud's from now on,
+            // and /admin clears what it was tried with. A tablet that was setting
+            // up is so no more, and what it noted of its sales' stock is the
+            // server's to say. Only a plan named so ends it: settings naming
+            // none are not an answer.
+            if (com.restopos.core.data.PosSettings.parse(db.ops().settings()).cloud && session.settingUp.first()) {
+                db.goLive().dropNoted()
+                session.setSettingUp(false)
+            }
             // Asked whether the business is Premium, and it is: the plan came
             // with the settings just pulled. The queue this tablet kept while
             // it worked on its own goes up now, in the order things happened.
@@ -294,6 +303,8 @@ private val SEQ_CUSTOMER = intPreferencesKey("seq_customer")
 private val DUE_RUNG = stringPreferencesKey("due_rung")
 private val SETUP_CLOSED = booleanPreferencesKey("setup_closed")
 private val REGISTERED_AT = longPreferencesKey("registered_at")
+// set up before the business sold for real: what is rung up is for trying (core/data/GoLive)
+private val SETTING_UP = booleanPreferencesKey("setting_up")
 private val Context.sessionPrefs by preferencesDataStore("device")
 
 // Which tenant, store and device this tablet is. Set once at device setup and
@@ -303,7 +314,30 @@ class SessionStore(private val context: Context) {
 
     suspend fun save(tenant: String, storeId: String, device: String) {
         // set up afresh: whatever this tablet knew of a set-up it closed belongs to the business it was for
-        store.edit { it[TENANT] = tenant; it[STORE] = storeId; it[DEVICE] = device; it.remove(SETUP_CLOSED) }
+        store.edit { it[TENANT] = tenant; it[STORE] = storeId; it[DEVICE] = device; it.remove(SETUP_CLOSED); it.remove(SETTING_UP) }
+    }
+
+    // ---- setting up, then Go live (an offline tablet's: core/data/GoLive) ----
+    // The business was not selling yet when this tablet was set up with its
+    // code: what is rung up on it is for trying, and goes at Go live. Kept
+    // here, so a backup carries it. It counts only while the tablet works on
+    // its own (tryingOut).
+    val settingUp: Flow<Boolean> = store.data.map { it[SETTING_UP] ?: false }
+    suspend fun setSettingUp(on: Boolean) { store.edit { if (on) it[SETTING_UP] = true else it.remove(SETTING_UP) } }
+
+    // Go live, the tablet's own side, written after the database: the day's
+    // bill numbers, the customer and kitchen numbers, the order on the
+    // screen and what waited to go on one, the reminders rung, all of them
+    // the sales' that went, start again; and the tablet is setting up no
+    // more. One write, so it is all or nothing.
+    suspend fun wentLive() {
+        store.edit {
+            listOf(ACTIVE_TICKET, PENDING_DISCOUNT, PENDING_TABLE, PENDING_DINING, SPLIT_SHARES, SEQ_DAY, DUE_RUNG).forEach { k -> it.remove(k) }
+            listOf(PENDING_COVERS, PAY_CHECK, SEQ_CUSTOMER).forEach { k -> it.remove(k) }
+            listOf("C", "A", "D", "K").forEach { s -> it.remove(intPreferencesKey("seq_$s")) }
+            it[PERIOD_SEQ] = 0
+            it.remove(SETTING_UP)
+        }
     }
 
     // ---- the first-run set-up (server 0089) ----
