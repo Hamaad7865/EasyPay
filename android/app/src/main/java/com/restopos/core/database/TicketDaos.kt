@@ -180,7 +180,11 @@ interface OutboxDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun enqueue(op: OutboxEntity)
 
-    @Query("SELECT * FROM outbox WHERE state = 'pending' ORDER BY created_at, rowid LIMIT :limit")
+    // In the order the changes were written, not by the time on each: the
+    // tablet's clock can be put back while changes wait (a time correction
+    // after a day offline), and a payment must never go up before the item
+    // it pays for.
+    @Query("SELECT * FROM outbox WHERE state = 'pending' ORDER BY rowid LIMIT :limit")
     suspend fun pending(limit: Int = 50): List<OutboxEntity>
 
     @Query("DELETE FROM outbox WHERE op_id = :id")
@@ -188,6 +192,11 @@ interface OutboxDao {
 
     @Query("UPDATE outbox SET state = 'dead', last_error = :err WHERE op_id = :id")
     suspend fun dead(id: String, err: String)
+
+    // A refused change sent again (core/sync/Refused): changed in place, so it
+    // keeps its row and its place in the queue.
+    @Query("UPDATE outbox SET op_id = :newId, state = 'pending', last_error = NULL, attempts = :attempts WHERE op_id = :id AND state = 'dead'")
+    suspend fun revive(id: String, newId: String, attempts: Int): Int
 
     @Query("SELECT COUNT(*) FROM outbox WHERE state = 'pending'")
     suspend fun pendingCount(): Long
