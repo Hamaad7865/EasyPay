@@ -266,4 +266,16 @@ class ScreenBookTest {
         runBlocking { book.prune() }
         assertEquals(listOf("k-2"), runBlocking { shelf.tickets() }.map { it.id })
     }
+
+    // A kitchen tablet is kept awake and is rarely started again, so it clears
+    // old tickets as it answers, not only when the app starts. Before, its
+    // answer listed every ticket it ever held, and after a few weeks it was
+    // longer than the till takes: every exchange failed.
+    @Test
+    fun aScreenLeftRunningClearsOldTicketsAsItAnswers() {
+        ask(put = listOf(ticket("k-1", "a")))
+        now += 4 * 24 * 3_600_000L
+        val r = ask(put = listOf(ticket("k-2", "b")))
+        assertEquals(listOf("k-2"), r.have)
+    }
 }

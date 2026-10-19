@@ -35,8 +35,19 @@ object Parts {
         runCatching { Json.parseToJsonElement(part.line_ids).jsonArray.map { it.jsonPrimitive.content } }.getOrDefault(emptyList())
 
     // What an exchange puts: the parts the screen has not confirmed. One the
-    // cooks have bumped is never sent again.
-    fun toPut(open: List<KdsPartEntity>): List<KdsPartEntity> = open.filter { !it.delivered && it.bumped_at == null }
+    // cooks have bumped is never sent again. A kitchen tablet drops a request
+    // longer than ScreenServer.MAX_LINE without answering, and a screen that
+    // was off during service is owed many orders at once: they go a share at
+    // a time (PUT_MOST bytes of them, at least one), the oldest first, and the
+    // rest at the next exchange, a few seconds later.
+    fun toPut(open: List<KdsPartEntity>): List<KdsPartEntity> {
+        val owed = open.filter { !it.delivered && it.bumped_at == null }
+        var size = 0
+        return owed.takeWhile { p ->
+            size += p.payload.toByteArray(Charsets.UTF_8).size
+            size <= PUT_MOST || p === owed.first()
+        }
+    }
 
     // What goes with a part each time it is put: how its lines stand on the
     // till now. A part is frozen as it was sent; a line voided or ticked
@@ -93,6 +104,8 @@ object Parts {
     // "Grill" is "Grill screen"; one already named "Kitchen screen" is left as it is
     fun called(name: String): String = if (name.trim().lowercase().endsWith("screen")) name.trim() else "${name.trim()} screen"
 
+    // well within ScreenServer.MAX_LINE, leaving room for the marks sent with them
+    const val PUT_MOST = 96_000
     private const val BUSY = 3_000L
     private const val IDLE = 15_000L
     private val BACK_OFF = listOf(3_000L, 5_000L, 10_000L)

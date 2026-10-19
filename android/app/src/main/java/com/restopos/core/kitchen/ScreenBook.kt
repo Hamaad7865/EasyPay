@@ -74,6 +74,8 @@ class ScreenBook(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val turn = Mutex()
+    // when old tickets were last cleared while answering (never, at the start)
+    private var pruned = Long.MIN_VALUE / 2
     private val _heard = MutableStateFlow<Heard?>(null)
     // the till that asked last, for the screen's header
     val heard: StateFlow<Heard?> = _heard
@@ -89,6 +91,10 @@ class ScreenBook(
         val req = Wire.decode(first, second, code()) ?: return@withLock Wire.encode(WireReply(ok = false, error = Wire.REFUSED))
         if (req.v != Wire.VERSION) return@withLock Wire.encode(WireReply(ok = false, error = Wire.OTHER_VERSION, build = build))
         val now = clock()
+        // A kitchen tablet is kept awake and rarely started again, so what is
+        // days old is cleared here too, once an hour: the answer lists every
+        // ticket held, and after a few weeks it was longer than the till takes.
+        if (now - pruned >= PRUNE_EVERY) { shelf.prune(now - KEEP_MS); pruned = now }
         // A ticket the screen holds is replaced, never added again, and keeps
         // when it arrived, whether it was bumped and what the cooks ticked.
         var fresh = 0
@@ -173,6 +179,7 @@ class ScreenBook(
 
     companion object {
         const val KEEP_MS = 3 * 24 * 3_600_000L
+        const val PRUNE_EVERY = 3_600_000L
         const val RECALL_MS = 12 * 3_600_000L
 
         // the order of the screen, for whoever shows it from the shelf itself

@@ -30,6 +30,27 @@ class PartsTest {
         assertTrue(Parts.toPut(listOf(part("k-4", bumped = 9))).isEmpty())
     }
 
+    // A kitchen tablet takes a request of at most ScreenServer.MAX_LINE and
+    // drops a longer one without answering. A screen left off during service
+    // is owed many orders at once: they go a share at a time, the oldest
+    // first, and the rest at the next exchange a few seconds later.
+    @Test
+    fun aLongBacklogGoesAShareAtATime() {
+        val big = "x".repeat(10_000)
+        val open = (1..30).map { part("k-$it").copy(payload = big) }
+        val first = Parts.toPut(open)
+        assertTrue(first.size in 2 until 30)
+        assertTrue(first.sumOf { it.payload.length } <= Parts.PUT_MOST)
+        assertEquals(open.take(first.size).map { it.kds_id }, first.map { it.kds_id })
+    }
+
+    // one part on its own is always put, however long: it cannot be shared out
+    @Test
+    fun oneLongPartIsStillPut() {
+        val huge = part("k-1").copy(payload = "x".repeat(Parts.PUT_MOST + 1))
+        assertEquals(listOf("k-1"), Parts.toPut(listOf(huge, part("k-2"))).map { it.kds_id })
+    }
+
     @Test
     fun whatTheScreenNoLongerHoldsIsOwedAgain() {
         val open = listOf(part("k-1", delivered = true), part("k-2", delivered = true), part("k-3"), part("k-4", delivered = true, bumped = 9))
