@@ -141,6 +141,7 @@ internal fun GuestOrders(
                 }
             } else {
                 if (held != null && checked is Checked.Ready) T(held, 13.sp, 600, V.AmberText, lines = 3, height = 18.sp)
+                if (checked is Checked.Ready) open.onTable?.let { T(it, 13.sp, 600, V.AmberText, lines = 3, height = 18.sp) }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     VBtn("Back", Modifier.weight(1f), bg = V.Panel, height = 54.dp, icon = VI.Back) { openId = null }
                     VBtn("Decline", Modifier.weight(1f), bg = V.RedWash, fg = V.RedText, height = 54.dp) { declining = true }

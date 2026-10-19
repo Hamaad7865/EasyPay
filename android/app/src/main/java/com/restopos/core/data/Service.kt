@@ -22,9 +22,12 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -153,7 +156,14 @@ class ServiceRepository @Inject constructor(
 
     // ---- bookings ----
     private fun dayStart(): Long = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-    fun bookingsToday(store: String): Flow<List<BookingEntity>> = dayStart().let { from -> db.service().bookings(store, from, from + 24 * 3_600_000L) }
+    // Today's bookings, and tomorrow's once midnight has passed: the day was
+    // worked out once, so a tablet left on overnight showed yesterday's.
+    fun bookingsToday(store: String): Flow<List<BookingEntity>> = flow {
+        while (true) {
+            emit(dayStart())
+            delay(BookingHold.untilTomorrow(System.currentTimeMillis(), ZoneId.systemDefault()) + 1_000)
+        }
+    }.flatMapLatest { from -> db.service().bookings(store, from, from + 24 * 3_600_000L) }
 
     suspend fun saveBooking(row: BookingEntity): Result<BookingEntity> = runCatching {
         require(row.name.isNotBlank()) { "Type the name the table is booked under" }
@@ -181,9 +191,19 @@ class ServiceRepository @Inject constructor(
         ))
     }
 
-    suspend fun changeBooking(id: String, change: (BookingEntity) -> BookingEntity): Result<BookingEntity> {
-        val row = db.service().booking(id) ?: return Result.failure(IllegalStateException("That booking is gone"))
-        return saveBooking(change(row))
+    // A booking already made: what was changed on it is sent, and only that
+    // (BookingChange), so what the office changed meanwhile stays.
+    suspend fun changeBooking(id: String, change: (BookingEntity) -> BookingEntity): Result<BookingEntity> = runCatching {
+        val row = db.service().booking(id) ?: error("That booking is gone")
+        val next = change(row)
+        require(next.name.isNotBlank()) { "Type the name the table is booked under" }
+        require(next.size in 1..99) { "How many guests?" }
+        db.withTransaction {
+            db.service().upsertBookings(listOf(next))
+            db.outbox().enqueue(op("booking.upsert", BookingChange.payload(row, next)))
+        }
+        pushNow(context)
+        next
     }
 
     // ---- what may be sold ----

@@ -144,12 +144,21 @@ class FloorViewModel @Inject constructor(
         guestBook.waiting().stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), emptyList())
     // Accepting puts the order on its table and opens that table's order: onDone then shows it.
     fun acceptGuest(id: String, onDone: () -> Unit) = viewModelScope.launch {
-        guestBook.accept(id).onSuccess { selected.value = null; onDone() }
+        // accepting is not sending: the order opens on the register for Send, as the owner designed it
+        guestBook.accept(id).onSuccess { table ->
+            selected.value = null
+            onDone()
+            val name = db.tables().table(table)?.name?.let { com.restopos.core.common.tableLabel(it) } ?: "The table"
+            com.restopos.core.ui.Toaster.say("$name's order from the table is on the register. Send it to the kitchen.")
+        }
             .onFailure { com.restopos.core.ui.Toaster.say(it.message ?: "That order could not be taken.") }
     }
     fun declineGuest(id: String, reason: String) { viewModelScope.launch { guestBook.decline(id, reason) } }
     // the list was opened: what is in it no longer counts as new on the top bar's phone key
     fun guestsLooked(ids: List<String>) = guestBook.looked(ids)
+
+    // the clock the floor goes by, once a minute: a booking's hold begins and ends with it
+    private val minutes = kotlinx.coroutines.flow.flow { while (true) { emit(System.currentTimeMillis()); kotlinx.coroutines.delay(60_000) } }
 
     val zone = MutableStateFlow<String?>(null)
     val selected = MutableStateFlow<String?>(null)
@@ -158,7 +167,7 @@ class FloorViewModel @Inject constructor(
 
     val ui: StateFlow<FloorUi> = flow { emit(session.storeId()) }.flatMapLatest { store ->
         if (store == null) flowOf(FloorUi(ready = true))
-        else combine(db.tables().tables(store), service.orders(store), service.bookingsToday(store), db.ops().settingsFlow(), db.tables().elements(store)) { tables, orders, bookings, settings, elements ->
+        else combine(db.tables().tables(store), service.orders(store), service.bookingsToday(store).combine(minutes) { b, now -> b to now }, db.ops().settingsFlow(), db.tables().elements(store)) { tables, orders, (bookings, now), settings, elements ->
             // Bookings are the premium tier's (server 0085). On another plan no
             // table is held for one and none is marked as arrived when a table
             // is seated: the server would refuse that change.
@@ -166,7 +175,8 @@ class FloorViewModel @Inject constructor(
             val waiting = if (premium) bookings.filter { it.status == "confirmed" || it.status == "pending" } else emptyList()
             val rows = tables.map { t ->
                 val order = orders.firstOrNull { it.open && it.ticket.table_id == t.id }
-                val booking = waiting.firstOrNull { it.table_id == t.id }
+                // a booking holds its table around its time only (BookingHold), not all day
+                val booking = waiting.firstOrNull { it.table_id == t.id && com.restopos.core.data.BookingHold.holds(it.booked_for, now) }
                 val status = when {
                     order != null && order.ticket.bill_at != null -> "bill"
                     order != null -> "open"

@@ -135,6 +135,10 @@ private val COLS = listOf(64.dp, 0.dp, 52.dp, 0.dp, 0.dp, 108.dp, 330.dp)
 fun BookingsScreen(vm: BookingsViewModel, serviceLine: String, onAssign: (BookingEntity) -> Unit, onSeated: () -> Unit) {
     val ui by vm.ui.collectAsState()
     var adding by remember { mutableStateOf(false) }
+    // a party that is not coming: asked first, whether they did not turn up or
+    // phoned to cancel (No-show was one tap, could not be undone, and a guest
+    // who phoned to cancel was recorded as a no-show)
+    var notComing by remember { mutableStateOf<BookingEntity?>(null) }
     val live = ui.rows.map { it.booking }.filter { it.status != "noshow" }
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -181,7 +185,7 @@ fun BookingsScreen(vm: BookingsViewModel, serviceLine: String, onAssign: (Bookin
                         Box(Modifier.width(COLS[5])) { Chip(st.first, st.second, st.third, 28.dp, 8.dp, 13.sp) }
                         Row(Modifier.width(COLS[6]), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                             if (b.status == "pending") VBtn("Confirm", height = 46.dp, size = 14.sp, pad = 14.dp) { vm.confirm(b) }
-                            if (up) VBtn("No-show", height = 46.dp, size = 14.sp, pad = 14.dp, fg = V.Dim) { vm.noShow(b) }
+                            if (up) VBtn("Not coming", height = 46.dp, size = 14.sp, pad = 14.dp, fg = V.Dim) { notComing = b }
                             if (up && r.table == null) VBtn("Assign table", bg = V.On, fg = V.OnText, height = 46.dp, size = 14.sp, pad = 16.dp) { onAssign(b) }
                             if (up && r.table != null && r.tableFree) VBtn("Seat", bg = V.Blue, fg = Color.White, height = 46.dp, size = 14.sp, pad = 18.dp) { vm.seat(r, onSeated) }
                             if (up && r.table != null && !r.tableFree) VBtn("Table busy", height = 46.dp, size = 14.sp, pad = 14.dp, fg = V.Text3, enabled = false) {}
@@ -193,6 +197,16 @@ fun BookingsScreen(vm: BookingsViewModel, serviceLine: String, onAssign: (Bookin
         }
     }
     if (adding) NewBooking(ui.areas, vm) { adding = false }
+    notComing?.let { b ->
+        Sheet({ notComing = null }, width = 480.dp) {
+            SheetHead("${b.name} is not coming?", "${b.size} guests at ${HM.format(java.util.Date(b.booked_for))}", { notComing = null })
+            T("Their table is let go either way. A no-show is counted as one; a booking cancelled is not.", 15.sp, 500, V.Text2, lines = 4, height = 21.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                VBtn("They phoned to cancel", Modifier.weight(1f)) { vm.cancel(b); notComing = null }
+                VBtn("No-show", Modifier.weight(1f), bg = V.Red, fg = Color.White) { vm.noShow(b); notComing = null }
+            }
+        }
+    }
 }
 
 @Composable

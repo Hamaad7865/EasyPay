@@ -299,6 +299,16 @@ class GuestTest {
         assertEquals(emptyList<GuestLine>(), GuestWire.lines("not json"))
     }
 
+    // The site tells the guest an order nobody answered in two hours was not
+    // answered: the till no longer offers it, even if it stayed connected all
+    // that time (it was cleared only when the till connected again).
+    @Test
+    fun `an order nobody answered in two hours is no longer offered`() {
+        val now = 1_791_000_000_000L
+        assertFalse(GuestSeen.stale(now - 2 * 60 * 60 * 1000L + 1, now))
+        assertTrue(GuestSeen.stale(now - 2 * 60 * 60 * 1000L - 1, now))
+    }
+
     // The number on the phone key: an order counts as new until the list has
     // been opened on it, and as waiting until it is answered.
     @Test

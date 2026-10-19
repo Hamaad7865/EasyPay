@@ -27,7 +27,9 @@ class GuestKick @Inject constructor() {
 // An order from a table as the cashier is shown it: which table, when, and
 // either its lines at the till's own names and prices or why it cannot be
 // taken as it is.
-data class GuestShown(val id: String, val table: String, val tableName: String, val placedAt: Long, val checked: Checked)
+// `onTable` says when the table already has an order the dishes will go onto
+// (the party before may still be there, waiting for its bill).
+data class GuestShown(val id: String, val table: String, val tableName: String, val placedAt: Long, val checked: Checked, val onTable: String? = null)
 
 // How many orders wait for an answer, and how many of those nobody at the
 // till has looked at yet: the number on the top bar's phone key. The owner:
@@ -38,6 +40,11 @@ data class GuestCount(val waiting: Int = 0, val fresh: Int = 0)
 object GuestSeen {
     // waiting: the ids of the orders that wait; seen: the ones the list was opened on
     fun count(waiting: List<String>, seen: Set<String>) = GuestCount(waiting.size, waiting.count { it !in seen })
+
+    // An order nobody answered for as long as the site waits (it has told the
+    // guest it was not answered). It was cleared only when the till connected
+    // again, so a till that stayed connected could still accept it hours later.
+    fun stale(receivedAt: Long, now: Long): Boolean = now - receivedAt > GuestLink.STALE_MS
 }
 
 // The orders guests sent from their tables, on the till: the ones that wait,
@@ -68,11 +75,21 @@ class GuestBook @Inject constructor(
 
     // What waits, looked at again whenever the menu changes: a dish that sold
     // out since the order came is said so before the cashier taps Accept.
-    fun waiting(): Flow<List<GuestShown>> = combine(db.guest().waiting(), db.guest().pulse()) { rows, _ ->
+    // One nobody answered in time is not offered (GuestSeen.stale).
+    fun waiting(): Flow<List<GuestShown>> = combine(db.guest().waiting(), db.guest().pulse()) { all, _ ->
+        val now = System.currentTimeMillis()
+        val rows = all.filter { !GuestSeen.stale(it.received_at, now) }
         if (rows.isEmpty()) emptyList()
         else {
             val book = book()
-            rows.map { r -> GuestShown(r.id, r.table_id, book.tables[r.table_id] ?: "A table", r.placed_at, GuestCheck.of(r.asOrder(), book)) }
+            rows.map { r ->
+                val name = book.tables[r.table_id] ?: "A table"
+                val open = db.tickets().openTicketForTable(r.table_id)
+                val onTable = open?.let {
+                    "${com.restopos.core.common.tableLabel(name)} already has an order" + (if (it.bill_at != null) " that has asked for its bill" else "") + ": these dishes go onto it."
+                }
+                GuestShown(r.id, r.table_id, name, r.placed_at, GuestCheck.of(r.asOrder(), book), onTable)
+            }
         }
     }
 
@@ -96,6 +113,7 @@ class GuestBook @Inject constructor(
     suspend fun accept(id: String): Result<String> = runCatching {
         answering.withLock {
             val row = db.guest().order(id)?.takeIf { it.status == "waiting" } ?: error("This order was already answered.")
+            if (GuestSeen.stale(row.received_at, System.currentTimeMillis())) error("This order waited too long: the guest has been told it was not answered. Ask them to order again.")
             val ready = when (val c = GuestCheck.of(row.asOrder(), book())) {
                 is Checked.Fault -> error(c.why)
                 is Checked.Ready -> c
