@@ -227,6 +227,14 @@ class FloorViewModel @Inject constructor(
         )
     }
 
+    // An order with nothing left to pay (paid in part, the rest taken off): it is closed as paid.
+    fun close(order: OrderInfo) = viewModelScope.launch {
+        tickets.closeSettled(order.id).fold(
+            onSuccess = { tickets.newTicket(); selected.value = null; Toaster.say("${order.label} is closed: everything on it was paid") },
+            onFailure = { Toaster.say(it.message) },
+        )
+    }
+
     fun startMove(order: OrderInfo) { moving.value = order; selected.value = null }
     fun stopMove() { moving.value = null }
 
@@ -812,6 +820,9 @@ private fun ColumnScope.Picked(t: TableUi, now: Long, vm: FloorViewModel, assign
                 }
                 if (o.lines.isEmpty()) {
                     VBtn("Free the table", Modifier.fillMaxWidth()) { vm.free(o) }
+                } else if (o.paid) {
+                    // paid in part, the rest taken off: nothing is left to pay
+                    VBtn("Close the order", Modifier.fillMaxWidth()) { vm.close(o) }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         VBtn(L.printBill, Modifier.weight(1f)) { vm.printBill(o) }

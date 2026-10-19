@@ -20,6 +20,8 @@ import com.restopos.core.sync.pushNow
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -86,8 +88,20 @@ class TicketRepository @Inject constructor(
         return db.tickets().ticket(id)?.takeIf { it.status == "open" }
     }
 
+    // One order made at a time. "Find the open order, else make one" read
+    // and wrote with nothing between, so two quick taps at the start of a sale
+    // (or on a free table) made two orders, each with half the food. The
+    // second now waits and finds the first. Held only while an order is being
+    // made, never across a transaction someone else is waiting on: the order
+    // already there is taken without it.
+    private val opening = Mutex()
+
     suspend fun ensureTicket(): TicketEntity {
         activeTicket()?.let { return it }
+        return opening.withLock { activeTicket() ?: makeTicket() }
+    }
+
+    private suspend fun makeTicket(): TicketEntity {
         val (tenant, store, _) = ctx()
         val id = Uuid7.next()
         // the table picked on the floor plan, if this order is for one
@@ -137,10 +151,12 @@ class TicketRepository @Inject constructor(
     // Seating a table: the order is opened there and then, with its guests, so
     // the floor shows the table taken and how long it has been. A table that
     // already has an order gets that order back.
-    suspend fun seat(tableId: String, covers: Int): Result<TicketEntity> = runCatching {
+    suspend fun seat(tableId: String, covers: Int): Result<TicketEntity> = runCatching { opening.withLock { seatNow(tableId, covers) } }
+
+    private suspend fun seatNow(tableId: String, covers: Int): TicketEntity = run {
         session.setPendingTable(null)
         session.setPendingDining(null)
-        db.tickets().openTicketForTable(tableId)?.let { session.setActiveTicket(it.id); return@runCatching it }
+        db.tickets().openTicketForTable(tableId)?.let { session.setActiveTicket(it.id); return@run it }
         val (tenant, store, _) = ctx()
         val id = Uuid7.next()
         val dining = dineType()?.id
@@ -566,7 +582,7 @@ class TicketRepository @Inject constructor(
         require(qty <= line.qty || item.is_available) { "${item.name} is sold out" }
         // its options as they were rung up, at the prices charged then: for one of the item, held again for the new quantity
         val mods = db.tickets().lineMods(lineId).map { ModPick(it.modifier_id, it.name_snapshot, Calc.addonPerOne(it.price, line.qty), it.qty) }
-        voidLine(lineId, reason).getOrThrow()
+        voidLine(lineId, reason, settle = qty <= 0).getOrThrow()
         // one whose price was typed keeps the price typed for it
         if (qty > 0) addItem(itemId, qty, mods, line.note, line.course, line.seat, again = true, price = line.unit_price.takeIf { item.open_price }).getOrThrow()
     }
@@ -596,9 +612,12 @@ class TicketRepository @Inject constructor(
     }
 
     // No reason is asked for: "void" stands in when none is given.
-    suspend fun voidLine(lineId: String, reason: String, approvedBy: String? = null): Result<Unit> = runCatching {
+    // settle: close the order if what is left is paid; not while a quantity is
+    // changed (setQty takes the line off and puts it back at once)
+    suspend fun voidLine(lineId: String, reason: String, approvedBy: String? = null, settle: Boolean = true): Result<Unit> = runCatching {
         val why = reason.ifBlank { "void" }
         val at = java.time.Instant.now().toString()
+        val ticketId = db.tickets().line(lineId)?.ticket_id
         db.withTransaction {
             db.tickets().voidLine(lineId, at, why)
             db.outbox().enqueue(op("ticket.void_line", buildJsonObject {
@@ -606,6 +625,31 @@ class TicketRepository @Inject constructor(
                 approvedBy?.let { put("approved_by", it) }
             }))
         }
+        val t = ticketId?.let { db.tickets().openTicket(it) }
+        if (t != null && settle) {
+            // what is left is paid: the order is done, and lets go of its table
+            if (OrderClose.settled(db.tickets().allLines(t.id))) {
+                closeSettled(t.id).getOrThrow()
+                com.restopos.core.ui.Toaster.say("Everything left on this order is paid, so the order is closed.")
+            }
+            // the bill printed before no longer says what is owed
+            else if (t.bill_at != null) setBill(t.id, null)
+        }
+        pushNow(context)
+    }
+
+    // An order with nothing left to pay is closed as paid (OrderClose): after
+    // its last unpaid items were taken off, or from the floor for one left
+    // open that way by an older build. The server closes it the same way on
+    // ticket.cancel (0125).
+    suspend fun closeSettled(ticketId: String): Result<Unit> = runCatching {
+        val t = db.tickets().openTicket(ticketId) ?: return@runCatching
+        require(OrderClose.settled(db.tickets().allLines(ticketId))) { "Something on this order is still to pay" }
+        db.withTransaction {
+            db.tickets().setStatus(ticketId, "paid")
+            db.outbox().enqueue(op("ticket.cancel", buildJsonObject { put("ticket_id", ticketId) }))
+        }
+        if (session.activeTicket() == ticketId) session.clearActiveTicket()
         pushNow(context)
     }
 

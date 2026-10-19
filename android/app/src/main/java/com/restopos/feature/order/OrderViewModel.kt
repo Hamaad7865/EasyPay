@@ -459,7 +459,13 @@ class OrderViewModel @Inject constructor(
     fun cancel(then: () -> Unit) = viewModelScope.launch {
         val t = tickets.activeTicket()
         if (t == null) { tickets.newTicket(); then(); return@launch }
-        if (db.tickets().allLines(t.id).any { it.paid && it.voided_at == null }) {
+        val all = db.tickets().allLines(t.id)
+        // nothing left to pay on it: it is closed as paid, not cancelled
+        if (com.restopos.core.data.OrderClose.settled(all)) {
+            tickets.closeSettled(t.id).fold(onSuccess = { tickets.newTicket(); then() }, onFailure = { Toaster.say(it.message) })
+            return@launch
+        }
+        if (all.any { it.paid && it.voided_at == null }) {
             Toaster.say("Part of this order is already paid, so it cannot be cancelled. Take payment for the rest.")
             return@launch
         }
