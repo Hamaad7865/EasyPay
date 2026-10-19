@@ -158,7 +158,14 @@ class KdsViewModel @Inject constructor(
 
     fun save(p: KitchenPrefs) = viewModelScope.launch { prefsStore.save(p.copy(sound = true)) }
     fun toggle(lineId: String) = viewModelScope.launch { kitchen.toggle(lineId) }
-    fun bump(cardId: String) = viewModelScope.launch { kitchen.bump(cardId)?.let { Toaster.say("$it bumped · ready at the pass") } }
+    // With a station picked, only that station's lines are bumped (Kitchen.bumpStation).
+    fun bump(cardId: String, station: String? = null, lines: List<String> = emptyList()) = viewModelScope.launch {
+        if (station == null) kitchen.bump(cardId)?.let { Toaster.say("$it bumped · ready at the pass") }
+        else kitchen.bumpStation(cardId, station, lines)?.let { label ->
+            val name = ui.value.stations.firstOrNull { it.id == station }?.name ?: "This station"
+            Toaster.say("$label · $name's part is at the pass")
+        }
+    }
     fun recall() = viewModelScope.launch { kitchen.recall()?.let { Toaster.say("$it is back on the screen") } }
 }
 
@@ -167,7 +174,7 @@ fun KdsScreen(vm: KdsViewModel) {
     val ui by vm.ui.collectAsState()
     val prefs by vm.prefs.collectAsState()
     var settings by remember { mutableStateOf(false) }
-    KdsBoard(ui, prefs, onTap = { vm.toggle(it) }, onBump = { vm.bump(it) }, onRecall = { vm.recall() }, onSettings = { settings = true })
+    KdsBoard(ui, prefs, onTap = { vm.toggle(it) }, onBump = { id, station, lines -> vm.bump(id, station, lines) }, onRecall = { vm.recall() }, onSettings = { settings = true })
     if (settings) KitchenPrefsSheet("Kitchen display", prefs, onChange = { vm.save(it) }, onClose = { settings = false })
 }
 
@@ -176,7 +183,7 @@ fun KdsScreen(vm: KdsViewModel) {
 // to cook across all of them.
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun KdsBoard(ui: KdsUi, prefs: KitchenPrefs, onTap: (String) -> Unit, onBump: (String) -> Unit, onRecall: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier) {
+fun KdsBoard(ui: KdsUi, prefs: KitchenPrefs, onTap: (String) -> Unit, onBump: (String, String?, List<String>) -> Unit, onRecall: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier) {
     var picked by remember { mutableStateOf<String?>(null) }
     // A ticket that was not on the screen a moment ago makes a sound. The ones
     // already there when the screen opens do not.
@@ -279,7 +286,7 @@ fun KdsBoard(ui: KdsUi, prefs: KitchenPrefs, onTap: (String) -> Unit, onBump: (S
                                 }
                             }
                         }
-                        VBtn("Bump", Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 12.dp), V.Green, V.GreenInk, 58.dp, 14.dp, 17.sp) { onBump(c.id) }
+                        VBtn("Bump", Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 12.dp), V.Green, V.GreenInk, 58.dp, 14.dp, 17.sp) { onBump(c.id, station, c.lines.map { it.id }) }
                     }
                 }
             }

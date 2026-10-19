@@ -100,9 +100,13 @@ class Kitchen @Inject constructor(
         db.service().putOnKds(lineIds, ticket.id)
     }
 
-    // A takeaway that has just gone to the kitchen moves along the board.
+    // A takeaway that has just gone to the kitchen moves along the board; one
+    // that was ready and had a dish added goes back to the kitchen, and turns
+    // ready again (with its sound) when that is bumped. It stayed Ready while
+    // the kitchen cooked the addition, and nothing sounded when it was done.
     suspend fun afterSend(ticketId: String) {
-        if (db.tickets().ticket(ticketId)?.stage == "new") tickets.setStage(ticketId, "kitchen")
+        val stage = db.tickets().ticket(ticketId)?.stage
+        if (stage == "new" || stage == "ready") tickets.setStage(ticketId, "kitchen")
     }
 
     private suspend fun mark(lineIds: List<String>, status: String) {
@@ -148,6 +152,9 @@ class Kitchen @Inject constructor(
         if (line.kds_id == null) return
         owe(line.kds_id, WireMark(line = line.id, voided = true))
         kick.now()
+        // a ticket with nothing left on it to make no longer holds a takeaway
+        // back from Ready (it is not shown, and was still counted as open)
+        if (db.tickets().allLines(line.ticket_id).any { it.voided_at == null && it.deleted_at == null }) done(line.kds_id, line.ticket_id)
     }
 
     private val _ready = MutableSharedFlow<String>(extraBufferCapacity = 16)
@@ -185,6 +192,21 @@ class Kitchen @Inject constructor(
         done(kdsId, k.ticket_id)
         pushNow(context)
         kick.now()
+        return k.label
+    }
+
+    // Bump on this till's Kitchen screen with one station picked: the card
+    // shows only that station's lines, and only they are at the pass. They are
+    // done; a kitchen screen's own part is bumped with them; and the ticket
+    // leaves when nothing on it is left to make. Until now it bumped the whole
+    // ticket and told every kitchen screen, so the grill's card went before the
+    // burger was made because the bar had bumped its drinks.
+    suspend fun bumpStation(kdsId: String, station: String, lineIds: List<String>): String? {
+        val k = db.service().kds(kdsId) ?: return null
+        lineIds.forEach { setDone(it, true) }
+        if (db.service().partsOf(kdsId).any { it.screen_id == station }) bumpPart(kdsId, station, System.currentTimeMillis())
+        val left = db.service().linesOfKds(kdsId).filter { !it.kitchen_done && it.voided_at == null && it.deleted_at == null }
+        if (left.isEmpty() && db.service().kds(kdsId)?.bumped_at == null) bump(kdsId)
         return k.label
     }
 

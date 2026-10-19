@@ -245,7 +245,7 @@ fun KitchenModeScreen(vm: KitchenModeViewModel = hiltViewModel(), onBecomeTill: 
         else Column(Modifier.fillMaxSize()) {
             problem?.let { T(it, 14.sp, 600, V.RedText, Modifier.fillMaxWidth().background(V.RedWash).padding(horizontal = 24.dp, vertical = 10.dp), lines = 3) }
             // the sound is made where the order arrives (the view model), not by the board noticing a new card
-            KdsBoard(state.ui, prefs.copy(sound = false), onTap = { vm.tap(it) }, onBump = { vm.bump(it) }, onRecall = { vm.recall() }, onSettings = { settings = true }, modifier = Modifier.weight(1f))
+            KdsBoard(state.ui, prefs.copy(sound = false), onTap = { vm.tap(it) }, onBump = { id, _, _ -> vm.bump(id) }, onRecall = { vm.recall() }, onSettings = { settings = true }, modifier = Modifier.weight(1f))
         }
         ToastHost()
     }

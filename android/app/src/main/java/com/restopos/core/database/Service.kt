@@ -111,13 +111,27 @@ interface ServiceDao {
     @Query("SELECT * FROM kds_tickets WHERE bumped_at IS NOT NULL AND bumped_at > :since ORDER BY bumped_at DESC LIMIT 1")
     suspend fun lastBumped(since: Long): KdsTicketEntity?
 
+    // an order's kitchen tickets still on the screens
+    @Query("SELECT * FROM kds_tickets WHERE ticket_id = :ticket AND bumped_at IS NULL")
+    suspend fun kdsOpenOf(ticket: String): List<KdsTicketEntity>
+
+    // what they are called, when the order moves to another table
+    @Query("UPDATE kds_tickets SET label = :label WHERE ticket_id = :ticket AND bumped_at IS NULL")
+    suspend fun relabelKds(ticket: String, label: String)
+
     @Query("SELECT COUNT(*) FROM kds_tickets WHERE bumped_at IS NOT NULL AND bumped_at > :since")
     fun bumpedCount(since: Long): Flow<Int>
 
     @Query("UPDATE kds_tickets SET bumped_at = :at WHERE id = :id")
     suspend fun setBumped(id: String, at: Long?)
 
-    @Query("SELECT COUNT(*) FROM kds_tickets WHERE ticket_id = :ticket AND bumped_at IS NULL")
+    // the order's kitchen tickets still at work: not bumped, with something on
+    // them still to make (one whose every line was voided is not shown, and
+    // must not hold a takeaway back from Ready)
+    @Query(
+        "SELECT COUNT(*) FROM kds_tickets k WHERE k.ticket_id = :ticket AND k.bumped_at IS NULL " +
+            "AND EXISTS (SELECT 1 FROM ticket_lines l WHERE l.kds_id = k.id AND l.voided_at IS NULL AND l.deleted_at IS NULL)",
+    )
     suspend fun kdsOpenFor(ticket: String): Int
 
     // An order put onto another takes its kitchen tickets with it; the ones

@@ -70,6 +70,7 @@ class TicketRepository @Inject constructor(
     private val session: SessionStore,
     private val staff: StaffSession,
     private val docs: DocBuilder,
+    private val screenKick: com.restopos.core.kitchen.ScreenKick,
     @ApplicationContext private val context: Context,
 ) {
     private suspend fun ctx(): Triple<String, String, String> {
@@ -314,7 +315,24 @@ class TicketRepository @Inject constructor(
             db.tickets().upsertTicket(t.copy(table_id = tableId, updated_at = System.currentTimeMillis()))
             db.outbox().enqueue(op("ticket.update_meta", buildJsonObject { put("ticket_id", t.id); put("table_id", tableId) }))
         }
+        db.tables().table(tableId)?.name?.let { relabelKitchen(t.id, it) }
         pushNow(context)
+    }
+
+    // The kitchen is told where an order's food goes now: on this till's
+    // Kitchen screen, and on every kitchen screen, which holds a frozen copy
+    // of each ticket and is sent it again under the new name (Parts.relabeled;
+    // it keeps the cooks' ticks). The cooks' screen still said "Table 3" when
+    // the guests had moved to table 8.
+    private suspend fun relabelKitchen(ticketId: String, label: String) {
+        val open = db.service().kdsOpenOf(ticketId)
+        if (open.isEmpty()) return
+        db.withTransaction {
+            db.service().relabelKds(ticketId, label)
+            val again = open.flatMap { db.service().partsOf(it.id) }.mapNotNull { com.restopos.core.kitchen.Parts.relabeled(it, label) }
+            if (again.isNotEmpty()) db.service().upsertParts(again)
+        }
+        screenKick.now()
     }
 
     // One order put onto another, so the two are one bill: two tables that
@@ -350,6 +368,8 @@ class TicketRepository @Inject constructor(
             }))
         }
         if (session.activeTicket() == fromId) session.setActiveTicket(intoId)
+        // the kitchen screens' copies of what was moved say where it goes now
+        relabelKitchen(intoId, label)
         pushNow(context)
         joined
     }
@@ -606,7 +626,14 @@ class TicketRepository @Inject constructor(
             db.outbox().enqueue(op("ticket.split_line", buildJsonObject {
                 put("line_id", lineId); put("new_id", newId); put("qty", units * 1000)
             }))
+            // a kitchen screen holding the line is sent it again as two lines,
+            // so a void or a tick on the new one reaches it (Parts.divided)
+            line.kds_id?.let { k ->
+                val again = db.service().partsOf(k).mapNotNull { com.restopos.core.kitchen.Parts.divided(it, lineId, newId, units) }
+                if (again.isNotEmpty()) db.service().upsertParts(again)
+            }
         }
+        if (line.kds_id != null) screenKick.now()
         pushNow(context)
         newId
     }

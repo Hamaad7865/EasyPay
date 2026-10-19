@@ -44,6 +44,41 @@ class PartsTest {
         assertEquals(open.take(first.size).map { it.kds_id }, first.map { it.kds_id })
     }
 
+    // An order moved to another table, or put onto another: a kitchen tablet
+    // holds a frozen copy of each ticket and still said the old table when
+    // the food was ready. The part is written again with the new name and put
+    // again; the tablet replaces the ticket it holds and keeps the cooks' ticks.
+    @Test
+    fun aMovedOrdersPartIsPutAgainUnderItsNewName() {
+        val sent = part("k-1", delivered = true).copy(payload = Wire.encodeTicket(WireTicket("k-1", 3, "Table 3", "Dine-in", 2, "Aisha", null, 500, listOf(WireLine("l-1", 1, "Burger")))))
+        val moved = Parts.relabeled(sent, "Table 8")!!
+        assertEquals("Table 8", Wire.decodeTicket(moved.payload)!!.label)
+        assertEquals(listOf("l-1"), Wire.decodeTicket(moved.payload)!!.lines.map { it.id })
+        assertFalse(moved.delivered)
+        // one the cooks have bumped is not sent again
+        assertNull(Parts.relabeled(sent.copy(bumped_at = 9), "Table 8"))
+        // nor one that already says it
+        assertNull(Parts.relabeled(moved.copy(delivered = true), "Table 8"))
+    }
+
+    // Split check divides a line the kitchen already has (two beers, one for
+    // each guest): the kitchen tablet's copy is written again with the two
+    // lines, so a void or a tick on the new one reaches it.
+    @Test
+    fun aLineDividedForASplitCheckIsTwoLinesOnTheScreen() {
+        val sent = part("k-1", delivered = true).copy(
+            payload = Wire.encodeTicket(WireTicket("k-1", 3, "Table 3", "Dine-in", 2, "Aisha", null, 500, listOf(WireLine("l-1", 2, "Beer", "cold")))),
+            line_ids = """["l-1"]""",
+        )
+        val split = Parts.divided(sent, "l-1", "l-2", 1)!!
+        assertEquals(listOf("l-1" to 1, "l-2" to 1), Wire.decodeTicket(split.payload)!!.lines.map { it.id to it.qty })
+        assertEquals("cold", Wire.decodeTicket(split.payload)!!.lines[1].detail)
+        assertEquals(listOf("l-1", "l-2"), Parts.lineIds(split))
+        assertFalse(split.delivered)
+        // a part without that line is left alone
+        assertNull(Parts.divided(sent, "l-9", "l-2", 1))
+    }
+
     // one part on its own is always put, however long: it cannot be shared out
     @Test
     fun oneLongPartIsStillPut() {

@@ -17,6 +17,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -115,15 +118,19 @@ class ScreenLink @Inject constructor(
         while (scope.isActive) {
             var wait = LOOK_AGAIN
             runCatching {
-                for (s in screens()) {
-                    val now = System.currentTimeMillis()
-                    if (asked || now >= (due[s.id] ?: 0)) {
-                        val answered = exchange(s)?.ok == true
-                        failures[s.id] = if (answered) 0 else (failures[s.id] ?: 0) + 1
-                        due[s.id] = System.currentTimeMillis() + Parts.pause(db.service().partsOpen(s.id).size, failures[s.id] ?: 0)
-                    }
-                    wait = minOf(wait, (due[s.id] ?: 0) - System.currentTimeMillis())
+                val all = screens()
+                val now = System.currentTimeMillis()
+                // the screens due are asked side by side: one that is switched off
+                // (a connection that waits 1.5 s for nothing) no longer holds up
+                // every send to the others
+                val heard = coroutineScope {
+                    all.filter { asked || now >= (due[it.id] ?: 0) }.map { s -> async { s.id to (exchange(s)?.ok == true) } }.awaitAll()
                 }
+                for ((id, answered) in heard) {
+                    failures[id] = if (answered) 0 else (failures[id] ?: 0) + 1
+                    due[id] = System.currentTimeMillis() + Parts.pause(db.service().partsOpen(id).size, failures[id] ?: 0)
+                }
+                for (s in all) wait = minOf(wait, (due[s.id] ?: 0) - System.currentTimeMillis())
             }
             // until the soonest screen is due, or something new is written down
             asked = withTimeoutOrNull(wait.coerceIn(250, LOOK_AGAIN)) { kick.await() } != null

@@ -30,6 +30,35 @@ object Parts {
             )
         }
 
+    // A part again under the order's new name (moved to another table, or put
+    // onto another order), to be put again: a kitchen screen holds a frozen
+    // copy of each ticket, and replaces it when it is put again, keeping what
+    // the cooks ticked. Null when there is nothing to do: bumped, or already so.
+    fun relabeled(part: KdsPartEntity, label: String): KdsPartEntity? {
+        if (part.bumped_at != null) return null
+        val t = Wire.decodeTicket(part.payload) ?: return null
+        if (t.label == label) return null
+        return part.copy(payload = Wire.encodeTicket(t.copy(label = label)), delivered = false)
+    }
+
+    // A line divided for a split check (TicketRepository.splitLine): `units`
+    // of it are now the line `newId`. The part holding it is written again with
+    // the two lines and put again, so a void or a tick on the new line reaches
+    // the kitchen screen. Null when the part does not hold the line.
+    fun divided(part: KdsPartEntity, lineId: String, newId: String, units: Int): KdsPartEntity? {
+        val ids = lineIds(part)
+        if (lineId !in ids || part.bumped_at != null) return null
+        val t = Wire.decodeTicket(part.payload) ?: return null
+        val lines = t.lines.flatMap { l ->
+            if (l.id != lineId) listOf(l) else listOf(l.copy(qty = l.qty - units), l.copy(id = newId, qty = units))
+        }
+        return part.copy(
+            payload = Wire.encodeTicket(t.copy(lines = lines)),
+            line_ids = buildJsonArray { (ids + newId).forEach { add(JsonPrimitive(it)) } }.toString(),
+            delivered = false,
+        )
+    }
+
     // the order's lines a part holds
     fun lineIds(part: KdsPartEntity): List<String> =
         runCatching { Json.parseToJsonElement(part.line_ids).jsonArray.map { it.jsonPrimitive.content } }.getOrDefault(emptyList())
