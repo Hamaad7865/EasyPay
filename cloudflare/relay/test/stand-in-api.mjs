@@ -22,7 +22,8 @@ export function standInApi(port = 8788) {
       if (req.method !== "GET" || req.url !== "/guest/pass") return say(404, { error: "not found" });
       const proof = req.headers.authorization || "";
       if (/^Device\s+[0-9a-f]{8}-[0-9a-f-]{27}:[0-9a-f]{64}$/i.test(proof)) return say(200, { store: "demostoreaaaaaaa", ordering: true });
-      const m = /^Device\s+([a-z2-7]{16}):(\w+)-/.exec(proof);
+      // "<store>.<till>" is one of several tills of that store
+      const m = /^Device\s+([a-z2-7]{16})(?:\.\w{1,16})?:(\w+)-/.exec(proof);
       if (!m || m[2] === "bad") return say(401, { error: "Unauthorized" });
       say(200, { store: m[1], ordering: m[2] !== "off" });
     });

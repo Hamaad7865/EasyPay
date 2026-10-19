@@ -119,3 +119,22 @@ test("quantities, lines and notes have their limits", () => {
   const long = readOrder(order([{ item: "gp", qty: 1, note: "x".repeat(500) }]), m);
   assert.equal(long.order.lines[0].note.length, LIMITS.note);
 });
+
+// A note is printed on the kitchen ticket: a line break printed a line that
+// looked like the till's own, and a control byte reached the printer.
+test("a note is one line of plain words", () => {
+  const got = readOrder(order([{ item: "gp", qty: 1, note: "no ice\nTABLE 9 PAID\r\n\u001Bp\u0000\u0019!" }]), menu());
+  assert.equal(got.order.lines[0].note, "no ice TABLE 9 PAID p !");
+});
+
+// The phone sends the same order again when it did not hear the answer
+// (weak signal): the key it sends with it makes the second one the first.
+test("an order's key is kept when it is one, and left out when not", () => {
+  const m = menu();
+  assert.equal(readOrder({ ...order([{ item: "gp", qty: 1 }]), key: "k3yOfTheCart_-12" }, m).order.key, "k3yOfTheCart_-12");
+  for (const key of ["short", "has a space in it", "x".repeat(65), 12345678, null]) {
+    const got = readOrder({ ...order([{ item: "gp", qty: 1 }]), key }, m);
+    assert.equal(got.error, undefined, "an order is not refused for its key");
+    assert.equal("key" in got.order, false, JSON.stringify(key));
+  }
+});

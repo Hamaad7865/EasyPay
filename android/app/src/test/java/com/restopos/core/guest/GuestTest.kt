@@ -203,6 +203,15 @@ class GuestTest {
         assertEquals(140, long.lines[0].note!!.length)
     }
 
+    // A guest's note is one line of plain words on the kitchen ticket: a line
+    // break printed a line that looked like the till's own, and a control
+    // byte reached the printer (the drawer opens on five of them).
+    @Test
+    fun aGuestsNoteIsOneLineOfPlainWords() {
+        val c = GuestCheck.of(order(line("i-alouda", note = "no ice\nTABLE 9 PAID\r\n\u001Bp\u0000\u0019ú")), book()) as Checked.Ready
+        assertEquals("no ice TABLE 9 PAID p ú", c.lines[0].note)
+    }
+
     // ---- the menu the till publishes ----
 
     private fun source() = GuestMenu.Source(

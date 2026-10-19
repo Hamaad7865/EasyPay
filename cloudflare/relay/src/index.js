@@ -95,6 +95,14 @@ export default {
   },
 };
 
+// The till a credential is for: "Device <device id>:<key>". The Worker asked
+// EasyPay's till service about it before the till reached a room, so the id
+// is that till's own.
+function tillOf(proof) {
+  const m = /^Device\s+([^:\s]{1,64}):/i.exec(proof || "");
+  return m ? m[1] : null;
+}
+
 const B32 = "abcdefghijklmnopqrstuvwxyz234567";
 const newId = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => B32[b & 31]).join("");
 
@@ -119,7 +127,10 @@ export class Room extends DurableObject {
   // ---- what is kept ----
 
   inUse() {
-    if (this.made === undefined) this.made = this.sql.exec("select count(*) as n from sqlite_master where type = 'table' and name = 'meta'").one().n > 0;
+    if (this.made === undefined) {
+      this.made = this.sql.exec("select count(*) as n from sqlite_master where type = 'table' and name = 'meta'").one().n > 0;
+      if (this.made) this.fit();
+    }
     return this.made;
   }
   make() {
@@ -128,10 +139,18 @@ export class Room extends DurableObject {
       create table if not exists meta (k text primary key, v text not null);
       create table if not exists orders (
         id text primary key, tbl text not null, body text not null, at integer not null,
-        status text not null default 'waiting', reason text not null default '', answered_at integer
+        status text not null default 'waiting', reason text not null default '', answered_at integer,
+        by_till text, okey text
       );
     `);
     this.made = true;
+  }
+  // A room made before 2026-10-20 has neither of the two later columns: which
+  // till answered an order (by_till), and the key its phone sent (okey).
+  fit() {
+    const cols = this.sql.exec("pragma table_info(orders)").toArray().map((r) => r.name);
+    if (!cols.includes("by_till")) this.sql.exec("alter table orders add column by_till text");
+    if (!cols.includes("okey")) this.sql.exec("alter table orders add column okey text");
   }
   kept(k) {
     if (!this.inUse()) return null;
@@ -151,7 +170,7 @@ export class Room extends DurableObject {
 
   order(id) {
     if (!this.inUse()) return null;
-    const row = this.sql.exec("select id, tbl, body, at, status, reason from orders where id = ?", id).toArray()[0];
+    const row = this.sql.exec("select id, tbl, body, at, status, reason, by_till from orders where id = ?", id).toArray()[0];
     if (!row) return null;
     // one nobody answered in time is as good as not taken
     if (row.status === "waiting" && row.at < Date.now() - LIMITS.staleMs) row.status = "expired";
@@ -171,7 +190,8 @@ export class Room extends DurableObject {
     if (what === "till") {
       const [client, server] = Object.values(new WebSocketPair());
       this.ctx.acceptWebSocket(server, ["till"]);
-      server.serializeAttachment({ since: Date.now() });
+      // which till it is: the device its credential is for, vouched for at the door
+      server.serializeAttachment({ since: Date.now(), till: tillOf(request.headers.get("authorization")) });
       const waiting = this.inUse() ? this.sql.exec("select id, tbl, body, at, status, reason from orders where status = 'waiting' and at >= ? order by at", Date.now() - LIMITS.staleMs).toArray() : [];
       // the till is told its store's public id: it is the address on its table cards
       server.send(JSON.stringify({ t: "hello", store, menu: this.kept("menu") !== null, waiting: waiting.length }));
@@ -212,18 +232,26 @@ export class Room extends DurableObject {
     const got = readOrder(raw, menu);
     if (got.error) return json({ error: got.error, code: got.code }, got.code === "table" ? 404 : 400);
 
+    // The phone did not hear the answer to its order (weak signal) and sends it
+    // again, with the same key: it is the order already placed, not a second.
+    const now = Date.now();
+    const { key, ...placed } = got.order;
+    if (key) {
+      const was = this.sql.exec("select id from orders where okey = ? and tbl = ? and at >= ?", key, placed.table, now - LIMITS.staleMs).toArray()[0];
+      if (was) return json({ id: was.id });
+    }
+
     // A table may only have so many waiting. There is no count by phone: the
     // guests of one room share an address on its Wi-Fi, and the cashier's
     // "accept" is what stands between an order and the kitchen.
-    const now = Date.now();
-    const waiting = this.sql.exec("select count(*) as n from orders where tbl = ? and status = 'waiting' and at >= ?", got.order.table, now - LIMITS.staleMs).one().n;
+    const waiting = this.sql.exec("select count(*) as n from orders where tbl = ? and status = 'waiting' and at >= ?", placed.table, now - LIMITS.staleMs).one().n;
     if (waiting >= LIMITS.waiting) return json({ error: "This table already has orders waiting for staff. Please give them a moment.", code: "busy" }, 429);
 
     // what is old is cleared as new orders come: there is no timer to do it
     this.sql.exec("delete from orders where at < ?", now - LIMITS.keepMs);
     const id = newId();
-    this.sql.exec("insert into orders (id, tbl, body, at) values (?, ?, ?, ?)", id, got.order.table, JSON.stringify(got.order), now);
-    const told = JSON.stringify(this.forTill({ id, at: now, body: JSON.stringify(got.order) }));
+    this.sql.exec("insert into orders (id, tbl, body, at, okey) values (?, ?, ?, ?, ?)", id, placed.table, JSON.stringify(placed), now, key || null);
+    const told = JSON.stringify(this.forTill({ id, at: now, body: JSON.stringify(placed) }));
     for (const till of this.tills()) { try { till.send(told); } catch { /* a till that has just gone is told when it is back */ } }
     return json({ id });
   }
@@ -256,12 +284,17 @@ export class Room extends DurableObject {
       const status = m.status === "accepted" ? "accepted" : m.status === "declined" ? "declined" : null;
       const row = typeof m.id === "string" ? this.order(m.id) : null;
       if (!status || !row) return say({ t: "answer.no", id: m.id, error: "no such order" });
+      const mine = held.till || null;
       if (row.status !== "waiting") {
-        // answered already, here or on another till: the first answer stands
-        return say({ t: row.status === status ? "answer.ok" : "answer.late", id: row.id, status: row.status });
+        // Answered already: the first answer stands. The till that gave it,
+        // saying it again (it did not hear it was taken), is told it stands;
+        // another till is told it was late, even with the same answer: two
+        // tills that both accept put the food on two bills.
+        const same = row.status === status && (!row.by_till || !mine || row.by_till === mine);
+        return say({ t: same ? "answer.ok" : "answer.late", id: row.id, status: row.status });
       }
       const reason = status === "declined" && typeof m.reason === "string" ? m.reason.trim().slice(0, LIMITS.note) : "";
-      this.sql.exec("update orders set status = ?, reason = ?, answered_at = ? where id = ?", status, reason, Date.now(), row.id);
+      this.sql.exec("update orders set status = ?, reason = ?, answered_at = ?, by_till = ? where id = ?", status, reason, Date.now(), mine, row.id);
       const told = JSON.stringify({ id: row.id, status, reason });
       for (const guest of this.ctx.getWebSockets("o:" + row.id)) { try { guest.send(told); guest.close(1000, "answered"); } catch { /* gone */ } }
       for (const till of this.tills()) if (till !== ws) { try { till.send(JSON.stringify({ t: "gone", id: row.id, status })); } catch { /* gone */ } }

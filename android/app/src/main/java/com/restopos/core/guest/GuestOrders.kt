@@ -67,8 +67,11 @@ object GuestCheck {
                 if (OptionRules.tooMany(g.max_select, picked.size)) return Checked.Fault("${item.name}: too many of ${g.name}.")
             }
             if (left.isNotEmpty()) return Checked.Fault("${item.name}: an option is no longer offered.")
-            ready.add(ReadyLine(item, l.qty, picks, l.note.trim().take(140).ifEmpty { null }))
+            // one line of plain words: a line break or a control byte from a phone is a space
+            ready.add(ReadyLine(item, l.qty, picks, l.note.replace(NOT_WORDS, " ").trim().take(140).ifEmpty { null }))
         }
         return Checked.Ready(order.table, ready)
     }
+
+    private val NOT_WORDS = Regex("""[\p{Cntrl}\s]+""")
 }

@@ -68,4 +68,5 @@ export const T12 = "5f0c2a9e-0012-4a11-8c01-000000000012";
 // real store's or a real till's. test/stand-in-api.mjs reads the store off the
 // credential itself, as EasyPay's till service would look it up.
 export const DEMO_STORE = "demostoreaaaaaaa";
-export const proofFor = (store, word = "good") => `Device ${store}:${word}-stand-in-credential`;
+// `till` tells two tills of one store apart: "Device <store>.<till>:..."
+export const proofFor = (store, word = "good", till = "") => `Device ${store}${till ? "." + till : ""}:${word}-stand-in-credential`;

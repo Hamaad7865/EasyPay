@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -81,24 +83,39 @@ class GuestBook @Inject constructor(
     fun looked(ids: Collection<String>) { if (ids.isNotEmpty()) seen.update { it + ids } }
     fun count(): Flow<GuestCount> = combine(db.guest().waiting(), seen) { rows, s -> GuestSeen.count(rows.map { it.id }, s) }
 
-    // Accepts it: all of its lines go on the table's order, or none do and the
-    // cashier is told why. Answers the table's id, whose order is now the one
-    // on the register.
+    // One answer at a time: an accept moves the register to its table, and two
+    // at once (a double tap, or two orders answered quickly) put one order's
+    // food on the other's table or twice on the same one.
+    private val answering = Mutex()
+
+    // Accepts it: its lines go on the table's order. Answers the table's id,
+    // whose order is now the one on the register. The order is taken first,
+    // and only once (the answer is written only while it still waits), so a
+    // second tap, or a tap after the till stopped half way, cannot put the
+    // food on again. The site is told once the lines are on.
     suspend fun accept(id: String): Result<String> = runCatching {
-        val row = db.guest().order(id)?.takeIf { it.status == "waiting" } ?: error("This order was already answered.")
-        val ready = when (val c = GuestCheck.of(row.asOrder(), book())) {
-            is Checked.Fault -> error(c.why)
-            is Checked.Ready -> c
+        answering.withLock {
+            val row = db.guest().order(id)?.takeIf { it.status == "waiting" } ?: error("This order was already answered.")
+            val ready = when (val c = GuestCheck.of(row.asOrder(), book())) {
+                is Checked.Fault -> error(c.why)
+                is Checked.Ready -> c
+            }
+            if (db.guest().answer(id, "accepted", null, System.currentTimeMillis()) == 0) error("This order was already answered.")
+            try {
+                // The register is left first, with whatever order type was picked for
+                // the sale that was on it. Found by running it: an order accepted from
+                // Quick sale went on its table as a counter sale, because the type
+                // Quick sale had set was still the one a new order would take.
+                tickets.newTicket()
+                tickets.openTable(ready.table)
+                for (l in ready.lines) tickets.addItem(l.item.id, l.thousandths, l.mods, l.note).getOrThrow()
+            } catch (e: Exception) {
+                kick.now()
+                throw IllegalStateException("Not every item of this order went on its table: check the table's order and add what is missing. (${e.message})", e)
+            }
+            kick.now()
+            ready.table
         }
-        // The register is left first, with whatever order type was picked for
-        // the sale that was on it. Found by running it: an order accepted from
-        // Quick sale went on its table as a counter sale, because the type
-        // Quick sale had set was still the one a new order would take.
-        tickets.newTicket()
-        tickets.openTable(ready.table)
-        for (l in ready.lines) tickets.addItem(l.item.id, l.thousandths, l.mods, l.note).getOrThrow()
-        if (db.guest().answer(id, "accepted", null, System.currentTimeMillis()) > 0) kick.now()
-        ready.table
     }
 
     // Declines it, with what the guest is told on their phone.

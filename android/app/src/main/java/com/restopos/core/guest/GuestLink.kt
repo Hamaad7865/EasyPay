@@ -184,7 +184,20 @@ class GuestLink @Inject constructor(
                     Toaster.say((table?.let { com.restopos.core.common.tableLabel(it) } ?: "A table") + " placed an order. Tap the phone key at the top to see it.")
                 } else kick.now() // one this till has answered and the site never heard: it is told again
             }
-            is FromRelay.Answered -> db.guest().told(m.id)
+            is FromRelay.Answered -> {
+                db.guest().told(m.id)
+                // Another till answered it first. If this one accepted it too,
+                // its food is on a table here as well as there: the cashier is told.
+                if (m.late) {
+                    val mine = db.guest().order(m.id)
+                    if (mine?.status == "accepted") {
+                        val table = session.storeId()?.let { db.tables().tablesNow(it) }.orEmpty().firstOrNull { it.id == mine.table_id }?.name
+                        val where = table?.let { com.restopos.core.common.tableLabel(it) } ?: "A table"
+                        Chime.order()
+                        Toaster.say("$where's order from the table was ${if (m.status == "declined") "declined" else "accepted"} on another till first. Take its items off this till's order, or they are on two bills.")
+                    }
+                }
+            }
             is FromRelay.Unknown -> { db.guest().gone(m.id); db.guest().told(m.id) }
             is FromRelay.Gone -> db.guest().gone(m.id)
             is FromRelay.MenuRefused -> _state.update { it.copy(trouble = "The ordering site did not take the menu: ${m.why}.") }

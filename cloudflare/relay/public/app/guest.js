@@ -70,17 +70,25 @@
     items: new Map(), groups: new Map(), cats: new Map(),
     screen: "menu", cat: null, veg: false, q: "",
     cart: [], sheet: null, last: null, trouble: "", sending: false,
+    // the orders sent before the last one, newest first: each is still told its answer
+    earlier: [],
+    // what this cart is called when it is sent: sent again with it (the answer
+    // was not heard), the relay gives back the order already placed
+    key: null,
   };
   const KEEP = `easypay:${STORE}:${TABLE}`;
-  const save = () => { try { localStorage.setItem(KEEP, JSON.stringify({ cart: S.cart, last: S.last, at: Date.now() })); } catch (e) { /* a phone that keeps nothing still orders */ } };
+  const save = () => { try { localStorage.setItem(KEEP, JSON.stringify({ cart: S.cart, last: S.last, earlier: S.earlier, key: S.key, at: Date.now() })); } catch (e) { /* a phone that keeps nothing still orders */ } };
   const recall = () => {
     try {
       const kept = JSON.parse(localStorage.getItem(KEEP) || "null");
       if (!kept || Date.now() - kept.at > 6 * 60 * 60 * 1000) return;
       if (Array.isArray(kept.cart)) S.cart = kept.cart;
       if (kept.last && kept.last.id) S.last = kept.last;
+      if (Array.isArray(kept.earlier)) S.earlier = kept.earlier.filter((o) => o && o.id).slice(0, 4);
+      if (typeof kept.key === "string") S.key = kept.key;
     } catch (e) { /* nothing kept */ }
   };
+  const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join("");
 
   function money(cents) {
     const d = S.menu.decimals, v = cents / Math.pow(10, d);
@@ -289,6 +297,7 @@
       <div class="stands-top"><div class="mark ${mark}"><span>${svg(draw, mark === "waits" ? 28 : 32, mark === "waits" ? 1.8 : 2.4)}</span></div>
         <div><small>${esc(tableName())}</small><h1 role="status">${title}</h1><p>${esc(last.status === "declined" && last.reason ? last.reason : words)}</p></div></div>
       <div class="sent">${last.lines.map((l) => `<div class="sent-line"><span class="tile" ${paint(l.look)}>${svg(l.draw, 22, 1.8)}</span><div><b>${esc(l.name)}</b>${l.says ? `<span>${esc(l.says)}</span>` : ""}</div><i>× ${l.qty}</i></div>`).join("")}</div>
+      ${S.earlier.length ? `<div class="sent"><div class="sent-line"><div><b>Your earlier ${S.earlier.length === 1 ? "order" : "orders"}</b></div></div>${S.earlier.map((o) => `<div class="sent-line"><div><b>${LAST[o.status] || ""}</b><span>${esc(o.lines.map((l) => l.qty + " × " + l.name).join(", "))}</span>${o.status === "declined" && o.reason ? `<span>${esc(o.reason)}</span>` : ""}</div></div>`).join("")}</div>` : ""}
     </div><div class="page-foot"><button type="button" class="key wide${last.status === "waiting" ? " line" : ""}" data-a="menu">${
       last.status === "waiting" ? "Add more items" : last.status === "accepted" ? "Order something else" : "Back to the menu"}</button></div></div>`;
     scrollTo(0, 0);
@@ -302,6 +311,7 @@
     if (line) line.qty = Math.min(20, line.qty + qty);
     else S.cart.push({ key, item: it.id, qty, mods, note });
     S.trouble = "";
+    S.key = null; // another cart is another order
     save();
     redrawList();
     drawBar(pop);
@@ -312,6 +322,7 @@
     line.qty = Math.min(20, line.qty + by);
     if (line.qty <= 0) S.cart = S.cart.filter((l) => l !== line);
     S.trouble = "";
+    S.key = null; // another cart is another order
     save();
   }
   function pick(gid, oid) {
@@ -331,16 +342,21 @@
     S.sending = true; S.trouble = ""; drawOrder();
     const shown = S.cart.map((l) => { const it = S.items.get(l.item); return { name: it.name, qty: l.qty, says: modNames(it, l.mods).concat(l.note ? [l.note] : []).join(", "), look: lookOf(it), draw: drawOf(it) }; });
     let r, body = {};
+    if (!S.key) { S.key = newKey(); save(); }
     try {
-      r = await api("/orders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ table: TABLE, lines: S.cart.map((l) => ({ item: l.item, qty: l.qty, mods: l.mods, note: l.note })) }) });
+      r = await api("/orders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ table: TABLE, key: S.key, lines: S.cart.map((l) => ({ item: l.item, qty: l.qty, mods: l.mods, note: l.note })) }) });
       body = await r.json().catch(() => ({}));
     } catch (e) { r = null; }
     S.sending = false;
     if (r && r.ok && body.id) {
+      // the order before it is kept, and still told its answer
+      if (S.last && S.last.id !== body.id) S.earlier = [S.last, ...S.earlier].slice(0, 4);
       S.last = { id: body.id, status: "waiting", reason: "", lines: shown, at: Date.now() };
       S.cart = [];
+      S.key = null;
       save();
       drawStatus();
+      follow();
       return watch();
     }
     S.trouble = r ? body.error || "The order could not be sent. Please try again." : "No connection. Check your signal and try again.";
@@ -355,12 +371,32 @@
 
   let sock = null, beat = 0, later = 0, tries = 0;
   const waiting = () => !!S.last && S.last.status === "waiting";
+  // an answer, for the last order or one sent before it
   function heard(a) {
-    if (!S.last || !a || a.id !== S.last.id || a.status === S.last.status) return;
-    S.last.status = a.status; S.last.reason = a.reason || "";
+    const o = a && [S.last, ...S.earlier].find((x) => x && x.id === a.id);
+    if (!o || a.status === o.status) return;
+    o.status = a.status; o.reason = a.reason || "";
     save();
     if (S.screen === "status") drawStatus(); else redrawNotice();
-    if (!waiting()) hush();
+    if (o === S.last && !waiting()) hush();
+  }
+  // The orders sent before the last one that still wait are asked about now
+  // and then: the line that listens is for the last one only.
+  let following = 0;
+  function follow() {
+    clearInterval(following);
+    if (!S.earlier.some((o) => o.status === "waiting")) return;
+    following = setInterval(async () => {
+      const open = S.earlier.filter((o) => o.status === "waiting");
+      if (!open.length) return clearInterval(following);
+      for (const o of open) {
+        try {
+          const r = await api("/orders/" + o.id);
+          if (r.status === 404) heard({ id: o.id, status: "expired" });
+          else if (r.ok) heard(await r.json());
+        } catch (e) { /* asked again in a moment */ }
+      }
+    }, 8000);
   }
   function hush() { clearInterval(beat); clearTimeout(later); if (sock) { const s = sock; sock = null; try { s.close(); } catch (e) { /* closed */ } } }
   async function check() {
@@ -449,5 +485,6 @@
     recall();
     take({ menu: S.menu, open: S.open, table: S.table }); // what was kept is checked against today's menu
     if (S.last && S.last.status === "waiting") { drawStatus(); watch(); check(); } else drawMenu();
+    follow();
   })();
 })();

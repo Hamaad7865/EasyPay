@@ -36,7 +36,7 @@ function line(url, proof) {
   return { ws, opened, closed, next, say: (o) => ws.send(JSON.stringify(o)), quiet: () => got.length === 0 };
 }
 const tillUrl = `${wsBase}/api/till`;
-const till = (of = store) => line(tillUrl, proofFor(of));
+const till = (of = store, which = "") => line(tillUrl, proofFor(of, "good", which));
 
 let n = 0;
 const step = async (what, run) => { await run(); console.log("ok  " + (++n) + ". " + what); };
@@ -186,6 +186,44 @@ await step("with two tills, the one that did not answer is told the order is gon
   assert.deepEqual(await t1.next(), { t: "gone", id: waiting[0], status: "accepted" });
   t2.ws.close();
   await t2.closed;
+});
+
+// Two tills that both accept one order put its food on two bills: the second
+// is told it was late, even with the same answer. The till that gave the
+// answer, saying it again (it did not hear it was taken), is told it stands.
+await step("a till that accepts what another till accepted is told it was late", async () => {
+  const id = (await (await post({ table: T7, lines: [{ item: "gp", qty: 1 }] })).json()).id;
+  assert.equal((await t1.next()).order.id, id);
+  const t2 = till(store, "2");
+  await t2.opened;
+  const hello = await t2.next();
+  for (let i = 0; i < hello.waiting; i++) await t2.next();
+  t1.say({ t: "answer", id, status: "accepted" });
+  assert.deepEqual(await t1.next(), { t: "answer.ok", id, status: "accepted" });
+  assert.deepEqual(await t2.next(), { t: "gone", id, status: "accepted" });
+  t2.say({ t: "answer", id, status: "accepted" });
+  assert.deepEqual(await t2.next(), { t: "answer.late", id, status: "accepted" });
+  t1.say({ t: "answer", id, status: "accepted" });
+  assert.deepEqual(await t1.next(), { t: "answer.ok", id, status: "accepted" });
+  t2.ws.close();
+  await t2.closed;
+});
+
+// The phone did not hear the answer to its order (weak signal) and sends it
+// again with the same key: it is the same order, and the till is told once.
+await step("an order sent again with its key is the order already placed", async () => {
+  const body = { table: T7, key: "flow-cart-key-0001", lines: [{ item: "gp", qty: 1 }] };
+  const a = (await (await post(body)).json()).id;
+  const told = await t1.next();
+  assert.equal(told.order.id, a);
+  assert.equal("key" in told.order, false, "the till is not handed the phone's key");
+  assert.equal((await (await post(body)).json()).id, a);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.ok(t1.quiet(), "the till was handed it once");
+  const other = (await (await post({ ...body, key: "flow-cart-key-0002" })).json()).id;
+  assert.notEqual(other, a, "another key is another order");
+  assert.equal((await t1.next()).order.id, other);
+  for (const id of [a, other]) { t1.say({ t: "answer", id, status: "declined", reason: "test" }); await t1.next(); }
 });
 
 await step("a till is taken to its own store's room and to no other", async () => {

@@ -128,6 +128,9 @@ class EscPos(val columns: Int) {
             sb.append(
                 when {
                     ch == '’' || ch == '‘' -> '\''
+                    // a control byte is a printer's command, never words (ESC p
+                    // opens the drawer): in a text it prints as a space
+                    ch.code < 0x20 || ch.code == 0x7F -> ' '
                     ch == ' ' -> ' '
                     encoder.canEncode(ch) -> ch
                     else -> java.text.Normalizer.normalize(ch.toString(), java.text.Normalizer.Form.NFD).firstOrNull { encoder.canEncode(it) } ?: '?'

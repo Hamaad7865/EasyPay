@@ -121,10 +121,16 @@ export function readOrder(raw, menu) {
       if (fault) return bad(item.name + ": " + fault, "options");
     }
     if (left.size) return bad(item.name + ": an option is no longer offered", "gone");
-    const note = typeof l.note === "string" ? l.note.trim().slice(0, LIMITS.note) : "";
+    // one line of plain words: it is printed on the kitchen ticket, and a line
+    // break or a control byte there is not the guest's to send
+    const note = typeof l.note === "string" ? l.note.replace(/[\u0000-\u001f\u007f\s]+/g, " ").trim().slice(0, LIMITS.note) : "";
     lines.push({ item: item.id, qty: l.qty, mods, note });
   }
-  return { order: { table: table.c, lines } };
+  const order = { table: table.c, lines };
+  // what the phone calls this order: sent again with the same key (it did not
+  // hear the answer), it is the order already placed, not a second one
+  if (typeof raw.key === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(raw.key)) order.key = raw.key;
+  return { order };
 }
 
 // What a phone is sent: the menu without its tables. A card gives away its own

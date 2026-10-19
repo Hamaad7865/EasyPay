@@ -25,6 +25,16 @@ class EscPosStyledTest {
         )
     }
 
+    // Words never carry a printer's command: a control byte in a text (a note
+    // typed anywhere) prints as a space, so ESC p, which opens the drawer,
+    // cannot be printed from a note.
+    @Test
+    fun `a control byte in a text prints as a space`() {
+        val bytes = EscPos(32).text("a\u001Bp\u0000\u0019b\u007F").bytes()
+        val printed = bytes.drop(bytes.size - 7)
+        assertEquals(listOf<Byte>(0x61, 0x20, 0x70, 0x20, 0x20, 0x62, 0x20), printed)
+    }
+
     @Test
     fun `tall after big is tall alone, the printer having one register for size`() {
         val p = EscPos(32)
