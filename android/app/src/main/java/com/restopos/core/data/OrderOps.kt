@@ -21,6 +21,8 @@ import com.restopos.core.sync.pushNow
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -82,27 +84,34 @@ class OrderOps @Inject constructor(
     // sent. Sending again sends only what was added since. A printer that
     // does not answer does not hold the order back: it is on the display, the
     // till says which printer failed, and the paper can be printed again.
-    suspend fun save(): Result<SaveResult> = runCatching {
-        val t = tickets.activeTicket() ?: return@runCatching SaveResult(0, emptyList())
+    // One send at a time: a send reads what the kitchen has not had, prints it
+    // and only then marks it sent, so a second tap while the first was still
+    // printing sent the same food again (two papers, two kitchen cards). The
+    // second now waits, and finds nothing left to send.
+    private val sending = Mutex()
+
+    suspend fun save(): Result<SaveResult> = runCatching { sending.withLock { saveNow() } }
+
+    private suspend fun saveNow(): SaveResult = run {
+        val t = tickets.activeTicket() ?: return@run SaveResult(0, emptyList())
         // a shop has no kitchen: nothing is ever sent to one
         val settings = PosSettings.parse(db.ops().settings())
-        if (settings.retail) return@runCatching SaveResult(0, emptyList())
+        if (settings.retail) return@run SaveResult(0, emptyList())
         val display = settings.premium
         // an order type set to never go to the kitchen is only put away
         val mode = (t.dining_option_id?.let { db.ops().dining(it) } ?: db.catalog().diningOptions().firstOrNull { it.is_default })?.kitchen ?: "save"
-        if (mode == "off") return@runCatching SaveResult(0, emptyList(), onDisplay = display)
+        if (mode == "off") return@run SaveResult(0, emptyList(), onDisplay = display)
         val fresh = db.tickets().lines(t.id).first().filter { it.sent_to_kitchen_at == null && !it.paid }
-        if (fresh.isEmpty()) return@runCatching SaveResult(0, emptyList(), onDisplay = display)
+        if (fresh.isEmpty()) return@run SaveResult(0, emptyList(), onDisplay = display)
         val out = docs.kitchen(t, fresh, "ORDER")
         markSent(t.id, out.printed)
-        SaveResult(out.printed.size, out.errors, unseen(out, settings), display)
+        SaveResult(out.printed.size, out.errors, unseen(out), display)
     }
 
-    // A line no printer took is still on the kitchen display, for a
-    // restaurant that has one. The display is the premium tier's: without it
-    // that line reached nobody, and the till says which.
-    private fun unseen(out: KitchenOutcome, settings: PosSettings): String? =
-        if (settings.premium) null else Routing.nowhereText(out.nowhere)
+    // A line no printer took and no kitchen screen shows reached nobody in the
+    // kitchen, on any plan: the till says which. (The till's own Kitchen tab
+    // has it, but the kitchen does not look there.)
+    private fun unseen(out: KitchenOutcome): String? = Routing.nowhereText(out.nowhere, out.screens)
 
     private suspend fun markSent(ticketId: String, ids: List<String>) {
         if (ids.isEmpty()) return
@@ -127,7 +136,9 @@ class OrderOps @Inject constructor(
 
     // An order type that goes to the kitchen when it is paid (take away): the
     // lines of this payment that the kitchen has not had yet.
-    suspend fun sendOnPay(ticketId: String, lineIds: List<String>) {
+    suspend fun sendOnPay(ticketId: String, lineIds: List<String>) = sending.withLock { sendOnPayNow(ticketId, lineIds) }
+
+    private suspend fun sendOnPayNow(ticketId: String, lineIds: List<String>) {
         val t = db.tickets().ticket(ticketId) ?: return
         // a shop has no kitchen: a sale that is paid is finished
         val settings = PosSettings.parse(db.ops().settings())
@@ -139,7 +150,7 @@ class OrderOps @Inject constructor(
         if (fresh.isEmpty()) return
         val out = docs.kitchen(t, fresh, "ORDER")
         markSent(ticketId, out.printed)
-        (out.errors + listOfNotNull(unseen(out, settings))).forEach { printing.report(it) }
+        (out.errors + listOfNotNull(unseen(out))).forEach { printing.report(it) }
     }
 
     // After a payment: the receipt prints, the drawer opens if the payment

@@ -77,13 +77,25 @@ object Routing {
     fun <L> nowhere(lines: List<Pair<L, List<String>?>>, printers: List<PrinterEntity>, onePrinter: Boolean): List<L> =
         lines.filter { (_, ticked) -> printersFor(ticked, printers, onePrinter).isEmpty() }.map { it.first }
 
+    // The lines that reach the kitchen nowhere: no paper takes them and no
+    // kitchen screen shows them. They are on the till's own Kitchen tab only,
+    // which is not where the kitchen looks, so the till names them on every
+    // plan. (Until 2026-10-20 a Premium till said nothing, as if that tab were
+    // the kitchen: a category added with nothing ticked was "sent" and never made.)
+    fun <L> unseen(lines: List<Pair<L, List<String>?>>, printers: List<PrinterEntity>, screens: List<PrinterEntity>, onePrinter: Boolean): List<L> {
+        val shown = screenLines(lines.mapIndexed { i, (_, ticked) -> i to ticked }, screens).values.flatten().toSet()
+        return lines.filterIndexed { i, (_, ticked) -> printersFor(ticked, printers, onePrinter).isEmpty() && i !in shown }.map { it.first }
+    }
+
     // What the till says about them: how many lines, and each name once.
-    fun nowhereText(names: List<String>): String? {
+    // `screens`: the restaurant has kitchen screens, so they are named too.
+    fun nowhereText(names: List<String>, screens: Boolean = false): String? {
         if (names.isEmpty()) return null
         val n = names.size
-        return "$n ${if (n == 1) "item" else "items"} went to no printer: ${names.distinct().joinToString(", ")}. " +
+        val where = if (screens) "no printer or kitchen screen" else "no printer"
+        return "$n ${if (n == 1) "item" else "items"} went to $where: ${names.distinct().joinToString(", ")}. " +
             if (Journey.alone) "Switch on \"Kitchen orders print on it too\" for the printer: Settings, This till, Set-up, Printer."
-            else "Tick a printer for ${if (n == 1) "its" else "their"} category in the back office."
+            else "Tick a printer${if (screens) " or a kitchen screen" else ""} for ${if (n == 1) "its" else "their"} category in the back office."
     }
 
     // The kitchen display's stations: the printers where something is made,

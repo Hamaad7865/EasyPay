@@ -28,8 +28,9 @@ import javax.inject.Singleton
 // did not come out. Before the display existed this was only the lines that
 // printed everywhere they should
 // (or have nowhere to print), and what went wrong with the rest.
-// nowhere: the names of the lines that no printer took (Routing.nowhere)
-data class KitchenOutcome(val printed: List<String>, val errors: List<String>, val nowhere: List<String> = emptyList())
+// nowhere: the names of the lines that no printer took and no kitchen screen
+// shows (Routing.unseen); screens: whether the restaurant has kitchen screens
+data class KitchenOutcome(val printed: List<String>, val errors: List<String>, val nowhere: List<String> = emptyList(), val screens: Boolean = false)
 
 // Turns an order into the papers it prints: the receipt, the bill, and the
 // kitchen and bar tickets, each sent to the printer it belongs on.
@@ -197,7 +198,10 @@ class DocBuilder @Inject constructor(
             // a ticket that did not print can be sent again from Settings, Printers
             printing.send(p, Docs.kitchen(doc, printing.paper(p), design), "Kitchen ticket, $order").onFailure { errors.add(it.message ?: "${p.name} did not print") }
         }
-        return KitchenOutcome(rows.map { it.id }, errors, Routing.nowhere(routed, printers, one).map { it.name_snapshot })
+        // kitchen screens are the premium tier's (ScreenLink): on another plan none is sent anything
+        val settings = printing.settings()
+        val screens = if (settings.premium && !settings.retail) printing.screens() else emptyList()
+        return KitchenOutcome(rows.map { it.id }, errors, Routing.unseen(routed, printers, screens, one).map { it.name_snapshot }, screens.isNotEmpty())
     }
 
     fun money(cents: Long) = Money.format(cents)

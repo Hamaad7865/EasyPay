@@ -114,12 +114,22 @@ class BoardViewModel @Inject constructor(
         then()
     }
 
+    // The cards whose key is at work: a second tap on one while the first is
+    // still sending is not taken (it sent the order twice, or moved it on to
+    // Ready straight after it went to the kitchen).
+    private val acting = mutableSetOf<String>()
+
     // The key on a card: on to the next column, or to the payment when it is
     // collected unpaid.
     fun act(o: OrderInfo, toPay: () -> Unit, toOrder: () -> Unit) = viewModelScope.launch {
+        if (!acting.add(o.id)) return@launch
+        try { step(o, toPay, toOrder) } finally { acting.remove(o.id) }
+    }
+
+    private suspend fun step(o: OrderInfo, toPay: () -> Unit, toOrder: () -> Unit) {
         when (o.ticket.stage) {
             "new" -> {
-                if (o.lines.isEmpty()) { tickets.select(o.id); toOrder(); return@launch }
+                if (o.lines.isEmpty()) { tickets.select(o.id); toOrder(); return }
                 tickets.select(o.id)
                 orderOps.save().fold(
                     onSuccess = { r ->

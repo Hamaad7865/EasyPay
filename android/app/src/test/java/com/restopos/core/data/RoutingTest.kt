@@ -261,6 +261,36 @@ class RoutingTest {
         assertNotEquals(Routing.line(screen("grill")), Routing.line(printer("p", address = "192.168.1.60")))
     }
 
+    // A line reaches the kitchen on paper or on a kitchen screen. One that
+    // reaches neither is food nobody makes, on Premium as on any plan: the
+    // till's own Kitchen tab is not where the kitchen looks.
+    @Test
+    fun aLineOnNoPaperAndNoScreenIsUnseen() {
+        val sent = listOf("steak" to listOf("kitchen"), "salad" to listOf("grill"), "dessert" to listOf<String>(), "gift card" to null)
+        assertEquals(listOf("dessert", "gift card"), Routing.unseen(sent, three, listOf(screen("grill")), false))
+    }
+
+    @Test
+    fun aScreenThatShowsEverythingSeesEveryLine() {
+        val sent = listOf("dessert" to listOf<String>(), "gift card" to null)
+        assertEquals(emptyList<String>(), Routing.unseen(sent, three, listOf(screen("pass", all = true)), false))
+    }
+
+    @Test
+    fun withNoScreenUnseenIsWhatPrintsNowhere() {
+        assertEquals(Routing.nowhere(order, three, false), Routing.unseen(order, three, emptyList(), false))
+        // one printer for everything takes every line
+        assertEquals(emptyList<String>(), Routing.unseen(order, three, emptyList(), true))
+    }
+
+    @Test
+    fun theSentenceWithKitchenScreens() {
+        assertEquals(
+            "1 item went to no printer or kitchen screen: Pudding. Tick a printer or a kitchen screen for its category in the back office.",
+            Routing.nowhereText(listOf("Pudding"), screens = true),
+        )
+    }
+
     @Test
     fun theSentenceForThem() {
         assertNull(Routing.nowhereText(emptyList()))
