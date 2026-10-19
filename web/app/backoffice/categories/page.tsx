@@ -93,6 +93,10 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
       )
     ).rows as { id: string; name: string }[],
     onePrinter: (await loadSettings(c, ctx.tenantId)).onePrinter,
+    // a kitchen screen set to show everything takes every category's items
+    everything: Boolean(
+      (await c.query(`select exists (select 1 from printers where tenant_id = $1 and deleted_at is null and is_active and kind = 'screen' and all_items) as e`, [ctx.tenantId])).rows[0]?.e,
+    ),
     nature: onMra(ctx.mra) ? (((await c.query(`select mra_nature from tenants where id = $1`, [ctx.tenantId])).rows[0]?.mra_nature as string | null) ?? "") : undefined,
   }));
   const rows: Category[] = d.rows.map((r) => ({
@@ -107,6 +111,12 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
     mra_nature: r.mra_nature,
   }));
   const start = startOf(sp, "q", "sort", "open");
+  // Categories whose items reach nobody in the kitchen: no printer and no
+  // kitchen screen ticked, and nothing that takes everything. A category added
+  // that way was "sent to kitchen" on the till and never made.
+  const known = new Set(d.printers.map((p) => p.id));
+  const nowhere =
+    ctx.mode === "restaurant" && !d.onePrinter && !d.everything ? rows.filter((r) => r.items > 0 && !r.printer_ids.some((id) => known.has(id))) : [];
   return (
     <div>
       <PageHead
@@ -118,6 +128,13 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
         }
       />
       <Flash sp={sp} />
+      {nowhere.length > 0 && (
+        <div className="note warn">
+          {nowhere.length === 1 ? "One category sends its" : `${nowhere.length} categories send their`} items to no printer and no kitchen screen:{" "}
+          {nowhere.map((r) => r.name).join(", ")}. When they are ordered, nobody in the kitchen gets them. Open {nowhere.length === 1 ? "it" : "each"} and tick
+          where {nowhere.length === 1 ? "its" : "their"} items are made.
+        </div>
+      )}
       <Card title="Add a category">
         <form action={addCategory} className="bo-toolbar" style={{ margin: 0 }}>
           <input name="name" placeholder="Name" required maxLength={40} style={{ minWidth: 260 }} />
