@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
 import { requirePerm, type TenantContext } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
+import type { PoolClient } from "pg";
 
 // A table on the plan. Positions and sizes are grid units on a 100 x 60 plan
 // (migration 0048), so a till can scale the plan to its own screen. Since
@@ -38,6 +39,25 @@ export type FloorElement = {
 type Result = { ok: true } | { error: string };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// A table with an order open on it is not taken away: the order kept its old
+// table and showed with none, and a layout applied over it made a new table of
+// the same number that showed free while the guests at the real one still
+// owed. The tablet's own editor already refuses it. Throws "busy:<names>".
+async function refuseBusy(c: PoolClient, tenantId: string, storeId: string, where: string, args: unknown[]) {
+  const busy = await c.query<{ name: string }>(
+    `select tb.name from tables tb
+      where tb.tenant_id = $1 and tb.store_id = $2 and tb.deleted_at is null and ${where}
+        and exists (select 1 from tickets k where k.tenant_id = tb.tenant_id and k.table_id = tb.id and k.status = 'open')
+      order by tb.name`,
+    [tenantId, storeId, ...args],
+  );
+  if (busy.rows.length > 0) throw new Error("busy:" + busy.rows.map((r) => r.name).join(", "));
+}
+const busyText = (e: unknown) =>
+  e instanceof Error && e.message.startsWith("busy:")
+    ? `${e.message.slice(5)} ${e.message.includes(",") ? "have orders" : "has an order"} open on the tills. Pay or move ${e.message.includes(",") ? "them" : "it"} there first, then take the table away.`
+    : null;
 const SHAPES = ["square", "round", "booth", "stool"] as const;
 const KINDS = ["wall", "door", "window", "bar"] as const;
 const int = (v: unknown, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(Number(v) || 0)));
@@ -113,6 +133,7 @@ export async function saveFloor(
       const store = await c.query(`select 1 from stores where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, storeId]);
       if (store.rowCount !== 1) throw new Error("unknown-store");
       if (gone.length > 0) {
+        await refuseBusy(c, ctx.tenantId, storeId, `tb.id = any($3::uuid[])`, [gone]);
         await c.query(
           `update tables set deleted_at = now() where tenant_id = $1 and store_id = $2 and id = any($3::uuid[]) and deleted_at is null`,
           [ctx.tenantId, storeId, gone],
@@ -165,6 +186,8 @@ export async function saveFloor(
     if (code === "23505") return { error: "Another table in this store already has one of these names (it may be on another floor)." };
     if (e instanceof Error && e.message === "unknown-store") return { error: "Unknown store." };
     if (e instanceof Error && e.message === "too-many-elements") return { error: "A store holds 200 walls, doors, windows and bars at most." };
+    const busy = busyText(e);
+    if (busy) return { error: busy + " Nothing was changed." };
     return { error: "The plan could not be saved. Nothing was changed." };
   }
   revalidatePath("/backoffice/tables");
@@ -201,22 +224,29 @@ export async function renameFloor(storeId: string, from: string, to: string): Pr
   return { ok: true };
 }
 
-// Removes a floor: every table on it, and what stands in it. An order open on
-// one of its tables stays open on the tills, under Orders, without a table.
+// Removes a floor: every table on it, and what stands in it. Not while an
+// order is open on one of its tables (refuseBusy).
 export async function deleteFloor(storeId: string, floor: string): Promise<Result> {
   const who = await allowed();
   if (!who.ctx) return { error: who.error };
   const ctx = who.ctx;
   if (!UUID.test(storeId)) return { error: "Unknown store." };
-  await withTenant(ctx.tenantId, async (c) => {
-    for (const table of ["tables", "floor_elements"]) {
-      await c.query(`update ${table} set deleted_at = now() where tenant_id = $1 and store_id = $2 and area = $3 and deleted_at is null`, [
-        ctx.tenantId,
-        storeId,
-        floor,
-      ]);
-    }
-  });
+  try {
+    await withTenant(ctx.tenantId, async (c) => {
+      await refuseBusy(c, ctx.tenantId, storeId, `tb.area = $3`, [floor]);
+      for (const table of ["tables", "floor_elements"]) {
+        await c.query(`update ${table} set deleted_at = now() where tenant_id = $1 and store_id = $2 and area = $3 and deleted_at is null`, [
+          ctx.tenantId,
+          storeId,
+          floor,
+        ]);
+      }
+    });
+  } catch (e) {
+    const busy = busyText(e);
+    if (busy) return { error: busy };
+    throw e;
+  }
   revalidatePath("/backoffice/tables");
   return { ok: true };
 }
