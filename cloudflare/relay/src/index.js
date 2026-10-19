@@ -146,11 +146,12 @@ export class Room extends DurableObject {
     this.made = true;
   }
   // A room made before 2026-10-20 has neither of the two later columns: which
-  // till answered an order (by_till), and the key its phone sent (okey).
+  // till answered an order (by_till), and the key its phone sent (okey). Each
+  // is added, and one already there refuses and is left as it is.
   fit() {
-    const cols = this.sql.exec("pragma table_info(orders)").toArray().map((r) => r.name);
-    if (!cols.includes("by_till")) this.sql.exec("alter table orders add column by_till text");
-    if (!cols.includes("okey")) this.sql.exec("alter table orders add column okey text");
+    for (const col of ["by_till", "okey"]) {
+      try { this.sql.exec(`alter table orders add column ${col} text`); } catch { /* already there */ }
+    }
   }
   kept(k) {
     if (!this.inUse()) return null;
