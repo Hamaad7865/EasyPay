@@ -58,8 +58,8 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 // One unpaid line of the order, and the check it is on. A line of two or more
-// can be divided between checks, unless it has an add-on with a price (an
-// add-on is charged once per line, so two lines would charge it twice).
+// can be divided between checks, unless it has an add-on with a price: it
+// then moves whole (the server does not divide what an add-on costs).
 data class SplitLine(val id: String, val name: String, val units: Int, val amount: Long, val check: Int, val divisible: Boolean)
 
 data class SplitUi(
@@ -138,7 +138,7 @@ class SplitViewModel @Inject constructor(
         if (line.units >= 2 && line.divisible) { _ui.value = _ui.value.copy(asking = line.id to check); return@launch }
         db.tickets().setCheck(line.id, check)
         _ui.value = _ui.value.copy(selected = null)
-        reload(if (line.units >= 2) "${line.name} has an add-on that is charged once, so it moved whole." else null)
+        reload(if (line.units >= 2) "${line.name} has an add-on with a price, so it moved whole." else null)
     }
 
     // units = how many of the line go to the check; all of them moves the line itself.

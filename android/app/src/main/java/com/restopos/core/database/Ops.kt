@@ -172,6 +172,9 @@ interface OpsDao {
     @Query("SELECT * FROM day_closes WHERE device_id = :device AND deleted_at IS NULL ORDER BY closed_at DESC LIMIT 1")
     suspend fun lastDayClose(device: String): DayCloseEntity?
 
+    @Query("SELECT number FROM day_closes WHERE id = :id")
+    suspend fun dayCloseNumber(id: String): Int?
+
     @Query("SELECT * FROM day_closes WHERE device_id = :device AND deleted_at IS NULL ORDER BY closed_at DESC LIMIT :limit")
     suspend fun dayCloses(device: String, limit: Int = 10): List<DayCloseEntity>
 

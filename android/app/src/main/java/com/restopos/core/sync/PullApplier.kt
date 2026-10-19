@@ -299,8 +299,12 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
             changes["day_closes"]?.let { rows ->
                 ops.upsertDayCloses(rows.mapNotNull {
                     val at = time(it, "closed_at") ?: return@mapNotNull null
+                    // A closing this tablet made keeps the number it printed: the
+                    // tablet counts its own closings, the server the store's, and
+                    // with two tills a reprinted Z said another number.
+                    val number = ops.dayCloseNumber(id(it)) ?: (lng(it, "number") ?: 0).toInt()
                     DayCloseEntity(
-                        id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "device_id") ?: "", (lng(it, "number") ?: 0).toInt(),
+                        id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: store, str(it, "device_id") ?: "", number,
                         str(it, "closed_by"), time(it, "from_time"), at, str(it, "deleted_at"), lng(it, "server_seq"),
                     )
                 })
