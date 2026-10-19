@@ -34,6 +34,19 @@ object PayParts {
         else -> typed + k
     }
 
+    // Shares already taken (`amounts`, in the order taken) against a bill that
+    // is now `due`, no more than they come to: each share as what it keeps and
+    // what of it is given back, the last shares first. The money is in the
+    // drawer; it is recorded, never thrown away.
+    fun covering(amounts: List<Long>, due: Long): List<Pair<Long, Long>> {
+        var over = (amounts.sum() - due).coerceAtLeast(0)
+        return amounts.asReversed().map { a ->
+            val back = minOf(a, over)
+            over -= back
+            (a - back) to back
+        }.asReversed()
+    }
+
     fun cents(typed: String): Long {
         if (typed.isEmpty()) return 0
         val whole = typed.substringBefore('.').toLongOrNull() ?: 0

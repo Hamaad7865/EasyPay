@@ -233,12 +233,26 @@ class PayViewModel @Inject constructor(
         load(if (check != null) "items" else if (kept != null) mode else "full")
         if (kept != null) {
             val s = _ui.value
-            if (s.gone || shares.sumOf { it.input.amount } >= s.pending + s.remaining) {
-                // the bill is no longer bigger than what was taken: start again, and say so
+            val taken = kept.shares.sumOf { it.amount }
+            if (s.gone) {
+                // nothing is left on the bill to pay: the money goes back to the guests
                 shares = emptyList()
                 keep(kept.ticket, 0)
                 show(s.copy(split = "full"))
-                Toaster.say("${Money.format(kept.shares.sumOf { it.amount })} was taken on this bill before the till stopped. The bill has changed since: check it with the guests.")
+                Toaster.say("${Money.format(taken)} was taken on this bill and nothing is left on it to pay. Give it back to the guests: ${kept.shares.joinToString(", ") { "${Money.format(it.amount)} ${it.type}" }}.")
+            } else if (s.remaining <= 0) {
+                // The bill came down to no more than what was taken (an item came
+                // off): the money is in the drawer, so it is the receipt, and what
+                // is over the bill goes back, from the last shares. Until now the
+                // shares were thrown away and the cash had no receipt.
+                val unpaid = s.lines.filter { !it.info.line.paid }
+                val due = totalsFor(unpaid.map { it.info.line.id }).total
+                val fitted = PayParts.covering(shares.map { it.input.amount }, due)
+                val back = fitted.sumOf { it.second }
+                val with = shares.zip(fitted).map { (sh, f) -> Share(sh.type, sh.input.copy(amount = f.first, change = sh.input.change + f.second)) }
+                show(s.copy(split = mode, n = maxOf(kept.n, shares.size)))
+                recordNow(_ui.value, unpaid.map { it.info.line.id }, with)
+                Toaster.say("${Money.format(taken)} taken on this bill covers it now, so it is paid." + if (back > 0) " Give back ${Money.format(back)}." else "")
             } else {
                 show(s.copy(split = mode, n = maxOf(kept.n, shares.size + 1)))
                 Toaster.say("${Money.format(s.pending)} already taken on this bill in ${shares.size} ${if (shares.size == 1) "payment" else "payments"} · ${Money.format(_ui.value.remaining)} remaining")
@@ -276,11 +290,16 @@ class PayViewModel @Inject constructor(
     private suspend fun saveKept(all: Map<String, KeptSplit>) = session.setSplitShares(if (all.isEmpty()) null else json.encodeToString(keptSerializer, all))
 
     // The shares written down for the order on the register, if any. Those of
-    // an order that has been closed since are thrown away.
+    // an order that has been closed since are let go of, and the cashier is
+    // told how much was taken on it: that money is in the drawer with no receipt.
     private suspend fun kept(): KeptSplit? {
         val all = allKept()
         val live = all.filter { (id, k) -> k.shares.isNotEmpty() && db.tickets().openTicket(id) != null }
-        if (live.size != all.size) saveKept(live)
+        if (live.size != all.size) {
+            saveKept(live)
+            val lost = (all - live.keys).values.sumOf { k -> k.shares.sumOf { it.amount } }
+            if (lost > 0) Toaster.say("${Money.format(lost)} was taken on a bill split between guests whose order has been closed since, and has no receipt. Give it back, or take it again on the right bill.")
+        }
         return live[tickets.activeTicket()?.id]
     }
 

@@ -6,6 +6,23 @@ import org.junit.Test
 // A bill paid in parts of any amount. The owner: "one customer total is 175 he
 // wants to pay 100 by cash and 75 by juice".
 class PayPartsTest {
+    // Shares taken on a bill split between guests, then an item came off and
+    // the bill is now no more than what was taken. The money is in the drawer:
+    // it becomes the receipt, what is over the bill is given back from the
+    // last shares, and nothing is thrown away.
+    @Test
+    fun sharesOverTheBillAreTrimmedFromTheLast() {
+        // 3 x 100.00 taken, the bill is now 250.00: the last share keeps 50.00, 50.00 goes back
+        assertEquals(listOf(10000L to 0L, 10000L to 0L, 5000L to 5000L), PayParts.covering(listOf(10000, 10000, 10000), 25000))
+        // the bill is now 150.00: the last share goes back whole and the second gives 50.00
+        assertEquals(listOf(10000L to 0L, 5000L to 5000L, 0L to 10000L), PayParts.covering(listOf(10000, 10000, 10000), 15000))
+    }
+
+    @Test
+    fun sharesThatCoverTheBillExactlyStayAsTheyAre() {
+        assertEquals(listOf(10000L to 0L, 7500L to 0L), PayParts.covering(listOf(10000, 7500), 17500))
+    }
+
     @Test
     fun byAmountThisPaymentIsWhatWasTypedAndThenTheRest() {
         // 175.00, of which 100.00 now
