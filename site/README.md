@@ -10,7 +10,7 @@ also answer at easypaypos.pages.dev, the Cloudflare project's own address;
 the canonical link tells a search engine which of the two is the site.
 
 ```
-index.html      Home: the headline, the three reasons, the line that drops, a list of features, the demo form
+index.html      Home: the head with the product beside it, two cards, a growing business, why (and the facts), what it does, the line that drops, how you start, the back office page by page, the demo form
 product.html    Product: its parts, the back office as it is, the small things, what it runs on
 features.html   Features: each feature of the till, with what can be pressed
 pricing.html    Pricing: the prices, how you start, the questions
@@ -22,6 +22,7 @@ _headers        keeps the project's own address out of search engines (not serve
 css/site.css    the page's look, top to bottom
 css/mock.css    the till drawn in the page: tablet, paper
 css/real.css    the back office in a browser's frame, and the pieces that answer a tap
+css/sections.css the pages in sections: the split head, cards with coloured tiles, the facts, the steps, the plans, the closing band, the foot's contacts
 js/config.js    the site's own details (see below)
 js/main.js      the bar, the choice, the dots, the tablet's film, the demo form
 js/play.js      what a visitor can press (see "What can be pressed")
@@ -61,15 +62,34 @@ The site is four pages, so that none is long: Home, Product, Features and
 Pricing, and a fifth for shops alone (below). They share the head, the bar
 and the foot word for word, and each of the four has the Restaurant / Shop
 switch (what was picked is kept from page to page).
-A part of the site has one home (`why`, `offline`, `features` and `demo` at
+A part of the site has one home, except the few repeated by design since 2026-10-20 (`growing`, `how` and `backoffice` are on Home, the shop's page and Product or Pricing as `start`) (`why`, `offline`, `features` and `demo` at
 Home; `qr`, `floor`, `kitchen`, `payment`, `selling`, `stock` and `returns`
 on Features; `parts`, `backoffice`, `more` and `works` on Product; `pricing`,
 `start` and `faq` on Pricing), and a link to a section is written with its
 page when the section is on another one (`features.html#kitchen`). A change
-to the bar or the foot is made in all four files.
+to the bar or the foot is made in all five files.
 
 The pages are plain files: nothing builds them. Cloudflare Pages serves
 `features.html` at `/features` too.
+
+**In sections (2026-10-20).** At the owner's word, after a Mauritian payroll
+site they liked ("it has different sections"), every page is laid out in
+sections, each with one job, in the order a visitor asks: what it is (Home
+and the shop's page: the words on the left, the back office and the till's
+film on the right, three ticks; the other pages: a band of the stage's
+colours with the page's parts to jump to), what sets it apart (two cards),
+a growing business (MRA e-invoicing, multi-branch, custom features), why
+(four reasons and a band of facts), what it does (cards with tiles in the
+till's own category colours), how you start (four numbered steps), the
+back office page by page (arrows either side of the picture), then one
+thing to do (the demo form, or the dark closing band on Features, Product
+and Pricing). The look is unchanged: the paper, the dots, the pill bar, the
+logo's green, Manrope. Section heads carry no label above them: the
+heading says it, and a feature's heading starts with its name. Pricing
+shows a card for each plan in place of the table. The new pieces are in
+`css/sections.css`; the bar's Features panel and the foot gained "For a
+growing business" and the contacts (e-mail, phone, WhatsApp, filled from
+`js/config.js`).
 
 `shop.html` (`/shop`) is a shop's page and nothing else: `<html
 data-for="shop">` is written in the file, there is no switch on it, and its
@@ -224,14 +244,23 @@ screen changes, its Help changes, and this page is read against it again.
 title, the headline, the first question): it is his claim to make, and the
 first question answers it with what the product does, not with a ranking.
 
-**MRA e-invoicing** is named in one question, on Pricing and on the shop's
-page, and only to say that it is not built: EasyPay does not send invoices
-to the MRA. The answer then says what there is (the BRN and VAT number on
-the receipt, the tax types, the tax report), each of which is in the code.
-It is never in a title, a description or a headline, the words "ready" and
-"compliant" are not used of it, and nothing is said of the MRA's own rules
-or of a date. The day it is built, the answer changes; until then it stays
-"Not yet".
+**MRA e-invoicing and multi-branch** are on the page at the owner's word
+(2026-10-20), as features of EasyPay: MRA e-invoicing "with the Premium MRA
+plan, for businesses that must e-invoice", with the company's legal name,
+TAN, BRN and VAT number set once in the back office, categories marked
+goods or services and taxes with their MRA code; a branch with its own
+tills, printers and tables (or stock), the menu or catalog, staff and
+prices shared. Keep to those words: nothing of the QR code, the IRN,
+real-time sending, certification or a date, and no price for Premium MRA
+("on request": none was given). They are in the hero's ticks, the
+growing-business section of Home, the shop's page, Features (`#business`)
+and Product, the Premium MRA plan card, the questions, the bar's panel and
+the foot. If either changes, every place above changes together, and the
+owner is asked before these lines say more or less.
+
+**Custom features on request** is the owner's offer: "customers can request
+custom features". The page says a customer can ask and that we look at
+building it; it promises no price and no date.
 
 **QR ordering from the table** is on the page as a Premium feature. Guests
 reach it at order.easypaypos.com, which answers only once the relay is
@@ -253,11 +282,12 @@ to upgrade to the premium plan") and is theirs to overrule. Nothing else is
 said of the prices: no annual price, nothing about VAT, no hardware in the
 pack.
 
-They are written in six places in `index.html`, to change together: the
-page's two descriptions at the top, the line under the hero's buttons, the second
-"Why EasyPay" card (its words and its drawing), "How much does it cost?"
-among the questions, the pricing section's headline, and the foot of its
-table. What comes with Premium is also marked where it is described
+They are written in these places in `index.html`, to change together: the
+page's two descriptions at the top, the line under the hero's buttons, the
+second "Why EasyPay" card and the first fact under the four reasons. On
+`pricing.html`: the section's headline, the Starter and Premium cards, and
+"How much does it cost?". The closing band on Features, Product and Pricing
+and the demo panel say "Rs 5,000 once, per tablet". What comes with Premium is also marked where it is described
 (Bookings under Front of house, the kitchen screen under Kitchen and bar).
 They are also in what Home's head tells a search engine (the two offers in
 its `application/ld+json`), in `pricing.html`'s title and description, and

@@ -347,6 +347,7 @@ html[data-for="restaurant"] [data-pick="restaurant"], html[data-for="shop"] [dat
 .feature .stage { min-height: clamp(320px, 37vw, 560px); display: grid; align-items: center; }
 .feature--flip .stage { order: 2; }
 .copy h2 { margin-top: 18px; }
+.copy > h2:first-child { margin-top: 0; }
 
 .points { margin-top: clamp(28px, 3vw, 44px); border-top: 1px solid var(--line); }
 .points li { padding: 22px 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 6px 28px; }
@@ -475,7 +476,7 @@ html[data-for="restaurant"] [data-pick="restaurant"], html[data-for="shop"] [dat
 /* ---- book a demo ---- */
 
 /* the dark panel is also the ground of "When the line drops" */
-.demo-panel, .night {
+.demo-panel, .night, .cta-panel {
   position: relative; isolation: isolate; overflow: hidden;
   display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: clamp(28px, 5vw, 88px); align-items: center;
   padding: clamp(24px, 5vw, 80px);
@@ -487,10 +488,12 @@ html[data-for="restaurant"] [data-pick="restaurant"], html[data-for="shop"] [dat
     var(--forest);
 }
 /* the page's dots again, kept still, on the dark ground */
-.demo-panel::before, .night::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(circle, rgba(255, 255, 255, 0.16) 1.1px, transparent 1.4px) 0 0 / 22px 22px; -webkit-mask-image: linear-gradient(115deg, #000 0%, transparent 46%); mask-image: linear-gradient(115deg, #000 0%, transparent 46%); }
+.demo-panel::before, .night::before, .cta-panel::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(circle, rgba(255, 255, 255, 0.16) 1.1px, transparent 1.4px) 0 0 / 22px 22px; -webkit-mask-image: linear-gradient(115deg, #000 0%, transparent 46%); mask-image: linear-gradient(115deg, #000 0%, transparent 46%); }
 .demo-panel .eyebrow, .night .eyebrow { color: var(--leaf-lit); }
 .demo-panel h2, .night h2 { margin-top: 18px; }
-.demo-panel .dim, .night .dim { color: #8fa596; }
+.demo-panel h2:first-child, .night-copy h2:first-child { margin-top: 0; }
+.demo-panel .dim, .night .dim, .cta-panel .dim { color: #8fa596; }
+.demo-panel h2 em, .night h2 em, .cta-panel h2 em { color: var(--leaf-lit); }
 .demo-lede { margin-top: 22px; max-width: 480px; font-size: 18px; color: #c3d2c6; }
 .demo-direct { margin-top: 26px; font-family: var(--mono); font-size: 14.5px; color: #c3d2c6; }
 .demo-direct a { color: #fff; text-underline-offset: 4px; }

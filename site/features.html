@@ -22,6 +22,7 @@
 <link rel="stylesheet" href="css/site.css">
 <link rel="stylesheet" href="css/mock.css">
 <link rel="stylesheet" href="css/real.css">
+<link rel="stylesheet" href="css/sections.css">
 <script>
   // before anything is drawn: script is on, and whether this visit is a shop's
   // (#shop or a shop's section in the address; else what was picked last time,
@@ -42,9 +43,13 @@
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
   <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z"/></symbol>
   <symbol id="i-wa" viewBox="0 0 24 24"><path d="M3.6 20.4 5 16.2a8.4 8.4 0 1 1 3 2.9z"/><path d="M9.2 8.4c.2 3.1 2.9 5.9 6 6.2l1.1-1.5-1.9-1.1-.9.8a5 5 0 0 1-2.1-2.2l.8-.9-1.1-1.9z"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7.5 8 5.5 8-5.5"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M5.5 4h3.2l1.8 4.6-2.2 1.4a11 11 0 0 0 5.7 5.7l1.4-2.2 4.6 1.8v3.2a2 2 0 0 1-2.1 2A15.6 15.6 0 0 1 3.5 6.1a2 2 0 0 1 2-2.1z"/></symbol>
   <symbol id="i-bars" viewBox="0 0 24 24"><path d="M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12"/></symbol>
   <symbol id="i-floor" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="6" rx="1.5"/><rect x="14" y="4" width="7" height="6" rx="1.5"/><rect x="3" y="14" width="7" height="6" rx="1.5"/><circle cx="17.5" cy="17" r="3"/></symbol>
   <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/></symbol>
@@ -55,6 +60,13 @@
   <symbol id="i-screen" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
   <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 8V4h10v4M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M7 14h10v6H7z"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+  <symbol id="i-mra" viewBox="0 0 24 24"><path d="M6 3h8.5L19 7.5V21H6z"/><path d="M14 3v5h5M9 13.5l2.2 2.2L16 11"/></symbol>
+  <symbol id="i-store" viewBox="0 0 24 24"><path d="M4 10v10h16V10"/><path d="M3 10 4.8 4h14.4L21 10zM3 10h18"/><path d="M9.5 20v-5.5h5V20"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.6 6.4a4.2 4.2 0 0 0-5.5 5.5L3.5 17.5a2.1 2.1 0 0 0 3 3l5.6-5.6a4.2 4.2 0 0 0 5.5-5.5l-2.7 2.7-2.6-.4-.4-2.6z"/></symbol>
+  <symbol id="i-off" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M8.6 16.4a4.8 4.8 0 0 1 6.8 0M5.2 12.9a9.6 9.6 0 0 1 4-2.4M14.8 10.5a9.6 9.6 0 0 1 4 2.4M2 9.3a14.4 14.4 0 0 1 4.4-2.8M10.6 5.1A14.4 14.4 0 0 1 22 9.3"/><path d="M12 20h.01"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9S14.6 18.4 12 21c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3z"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 4v16h16"/><path d="m8 15 3.5-4 3 2.5L20 7"/></symbol>
 </svg>
 
 <div class="wash" aria-hidden="true"></div>
@@ -78,7 +90,6 @@
             <a href="#floor"><svg class="ico"><use href="#i-floor"/></svg><span><b>Front of house</b>The floor plan, tables and bookings</span></a>
             <a href="#kitchen"><svg class="ico"><use href="#i-ticket"/></svg><span><b>Kitchen and bar</b>Each ticket to the right printer</span></a>
             <a href="#payment"><svg class="ico"><use href="#i-split"/></svg><span><b>Payment</b>Split bills, cash and receipts</span></a>
-            <a href="#top"><svg class="ico"><use href="#i-go"/></svg><span><b>Every feature</b>All of them on one page, to try</span></a>
           </div>
           <div class="nav-col">
             <p>For shops</p>
@@ -86,7 +97,13 @@
             <a href="#selling"><svg class="ico"><use href="#i-bars"/></svg><span><b>Selling</b>Scan or tap, sizes, weight, parked sales</span></a>
             <a href="#stock"><svg class="ico"><use href="#i-box"/></svg><span><b>Stock</b>What is left, deliveries and counts</span></a>
             <a href="#returns"><svg class="ico"><use href="#i-back"/></svg><span><b>Returns</b>Refund or exchange from the receipt</span></a>
-            <a href="#top"><svg class="ico"><use href="#i-go"/></svg><span><b>Every feature</b>All of them on one page, to try</span></a>
+          </div>
+          <div class="nav-more">
+            <p>For a growing business</p>
+            <a href="#business"><svg class="ico"><use href="#i-mra"/></svg>MRA e-invoicing</a>
+            <a href="#business"><svg class="ico"><use href="#i-store"/></svg>Multi-branch</a>
+            <a href="#business"><svg class="ico"><use href="#i-tool"/></svg>Custom features</a>
+            <a href="#top" class="nav-all">Every feature <svg class="ico"><use href="#i-go"/></svg></a>
           </div>
         </div>
       </div>
@@ -110,6 +127,8 @@
     <a href="#selling">Selling</a>
     <a href="#stock">Stock</a>
     <a href="#returns">Returns</a>
+    <p>For a growing business</p>
+    <a href="#business">MRA e-invoicing, branches and custom features</a>
     <p>EasyPay</p>
     <a href="product.html">The whole product</a>
     <a href="#top">Every feature</a>
@@ -126,22 +145,30 @@
 <!-- ================= the page's head ================= -->
 <section class="hero hero--page" id="top">
   <div class="wrap">
-    <div class="hero-copy" data-solid>
-      <div class="pick" data-rise style="--i:0">
-        <p class="eyebrow">The best POS in Mauritius for your</p>
-        <div class="pick-keys" role="group" aria-label="What EasyPay is shown for">
-          <i aria-hidden="true"></i>
-          <button type="button" data-pick="restaurant" aria-pressed="true">Restaurant</button>
-          <button type="button" data-pick="shop" aria-pressed="false">Shop</button>
-        </div>
-        <p class="eyebrow dim">Made for Mauritius</p>
-      </div>
-      <h1 data-rise style="--i:1">Every feature of the till. <span class="dim">Press the pieces as you read.</span></h1>
-      <p class="lede" data-only="restaurant" data-rise style="--i:2">From the code on the table to the bill that is split: what the best POS app in Mauritius does in a restaurant. The pieces of the till on this page answer a tap.</p>
-      <p class="lede" data-only="shop" data-rise style="--i:2">From the first scan to the return: what the best POS app in Mauritius does in a shop.</p>
-      <div class="hero-cta" data-rise style="--i:3">
-        <a class="btn-demo" href="index.html#demo">Book a demo <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a>
-        <a class="btn-line" data-wa hidden><svg class="ico"><use href="#i-wa"/></svg>WhatsApp us</a>
+    <div class="page-band" data-solid>
+      <div class="hero-copy">
+          <div class="pick" data-rise style="--i:0">
+            <p class="pick-say">Made in Mauritius, for your</p>
+            <div class="pick-keys" role="group" aria-label="What EasyPay is shown for">
+              <i aria-hidden="true"></i>
+              <button type="button" data-pick="restaurant" aria-pressed="true">Restaurant</button>
+              <button type="button" data-pick="shop" aria-pressed="false">Shop</button>
+            </div>
+          </div>
+        <h1 data-rise style="--i:1">Every feature of the till. <span class="dim">Press the pieces as you read.</span></h1>
+        <p class="lede" data-only="restaurant" data-rise style="--i:2">From the code on the table to the bill that is split: what the best POS app in Mauritius does in a restaurant. The pieces of the till on this page answer a tap.</p>
+        <p class="lede" data-only="shop" data-rise style="--i:2">From the first scan to the return: what the best POS app in Mauritius does in a shop.</p>
+        <nav class="page-jump" aria-label="On this page" data-rise style="--i:3">
+          <a href="#qr" data-only="restaurant"><svg class="ico"><use href="#i-qr"/></svg>QR ordering</a>
+          <a href="#floor" data-only="restaurant"><svg class="ico"><use href="#i-floor"/></svg>Front of house</a>
+          <a href="#kitchen" data-only="restaurant"><svg class="ico"><use href="#i-ticket"/></svg>Kitchen and bar</a>
+          <a href="#payment" data-only="restaurant"><svg class="ico"><use href="#i-split"/></svg>Payment</a>
+          <a href="#selling" data-only="shop"><svg class="ico"><use href="#i-bars"/></svg>Selling</a>
+          <a href="#stock" data-only="shop"><svg class="ico"><use href="#i-box"/></svg>Stock</a>
+          <a href="#returns" data-only="shop"><svg class="ico"><use href="#i-back"/></svg>Returns</a>
+          <a href="#business"><svg class="ico"><use href="#i-mra"/></svg>MRA e-invoicing</a>
+          <a href="#business"><svg class="ico"><use href="#i-store"/></svg>Multi-branch</a>
+        </nav>
       </div>
     </div>
   </div>
@@ -194,8 +221,7 @@
       </div>
     </div>
     <div class="copy" data-solid>
-      <p class="eyebrow" data-reveal>QR ordering <em class="tag">Premium</em></p>
-      <h2 data-reveal="focus">A QR code on every table. <span class="dim">Guests order from their own phone.</span></h2>
+      <h2 data-reveal="focus"><span class="h-name">QR ordering <em class="tag">Premium</em></span> A QR code on every table. <span class="dim">Guests order from their own phone.</span></h2>
       <ul class="points">
         <li data-reveal><h3>A card for each table</h3><p>Print the cards from the back office. Each code knows its table, so the order arrives where the guests are sitting.</p></li>
         <li data-reveal><h3>No app, no account</h3><p>Guests scan with their phone's camera and your menu opens: search, the choices of a dish, a note for the kitchen. A dish you have marked sold out cannot be ordered.</p></li>
@@ -224,8 +250,7 @@
       </div>
     </div>
     <div class="copy" data-solid>
-      <p class="eyebrow" data-reveal>Front of house</p>
-      <h2 data-reveal="focus">See the whole room. <span class="dim">Know what every table owes.</span></h2>
+      <h2 data-reveal="focus"><span class="h-name">Front of house</span> See the whole room. <span class="dim">Know what every table owes.</span></h2>
       <ul class="points">
         <li data-reveal><h3>Your floor plan, as you drew it</h3><p>Lay out each room in the back office: main room, terrace, bar. The tablet shows the same plan, with a count of the tables taken in each.</p></li>
         <li data-reveal><h3>A table says where it stands</h3><p>Free, seated, waiting for its bill or reserved. A seated table carries what it owes and how long the guests have been there, and its chairs light up for the covers.</p></li>
@@ -270,8 +295,7 @@
       </div>
     </div>
     <div class="copy" data-solid>
-      <p class="eyebrow" data-reveal>Kitchen and bar</p>
-      <h2 data-reveal="focus">Send once. <span class="dim">The right printer gets the right ticket.</span></h2>
+      <h2 data-reveal="focus"><span class="h-name">Kitchen and bar</span> Send once. <span class="dim">The right printer gets the right ticket.</span></h2>
       <ul class="points">
         <li data-reveal><h3>Food to the kitchen, drinks to the bar</h3><p>Each category prints where it is made. Options and kitchen notes travel with the line, so nobody walks back to ask.</p></li>
         <li data-reveal><h3>A clock on every ticket <em class="tag">Premium</em></h3><p>The till's kitchen screen lists every send. A ticket turns amber after 8 minutes and red after 15, or the minutes your kitchen sets. Tap a line when it is done, bump the ticket when it reaches the pass, and recall one bumped by mistake.</p></li>
@@ -330,8 +354,7 @@
       </div>
     </div>
     <div class="copy" data-solid>
-      <p class="eyebrow" data-reveal>Payment</p>
-      <h2 data-reveal="focus">Split it any way the table asks. <span class="dim">It still adds up to one bill.</span></h2>
+      <h2 data-reveal="focus"><span class="h-name">Payment</span> Split it any way the table asks. <span class="dim">It still adds up to one bill.</span></h2>
       <ul class="points">
         <li data-reveal><h3>Equally, by seat or line by line</h3><p>Divide the amount into equal shares, each paid its own way, or move lines between separate checks. The shares are kept until they add up to the bill.</p></li>
         <li data-reveal><h3>Cash with the change worked out</h3><p>A keypad, round amounts and the change to give. The service charge you set in the back office sits on the bill as its own line.</p></li>
@@ -365,8 +388,7 @@
       </div>
     </div>
     <div class="copy" data-solid>
-      <p class="eyebrow" data-reveal>Selling</p>
-      <h2 data-reveal="focus">Scan it, tap it, sell it. <span class="dim">The sale builds itself.</span></h2>
+      <h2 data-reveal="focus"><span class="h-name">Selling</span> Scan it, tap it, sell it. <span class="dim">The sale builds itself.</span></h2>
       <ul class="points">
         <li data-reveal><h3>A barcode or a tile</h3><p>A scanner that types like a keyboard rings a product up by its barcode, and every product has a tile to tap. The same product again adds one more to its line.</p></li>
         <li data-reveal><h3>Sizes, colours and weight</h3><p>A product that comes in sizes or colours asks which one, and each choice says what is left. One sold by weight asks for the kilos.</p></li>
@@ -403,8 +425,7 @@
       </div>
     </div>
     <div class="copy" data-solid>
-      <p class="eyebrow" data-reveal>Stock</p>
-      <h2 data-reveal="focus">Know what is on the shelf. <span class="dim">Without walking to it.</span></h2>
+      <h2 data-reveal="focus"><span class="h-name">Stock</span> Know what is on the shelf. <span class="dim">Without walking to it.</span></h2>
       <ul class="points">
         <li data-reveal><h3>Every tile says what is left</h3><p>Amber when few are left, red when it is out. A sale takes from stock by itself, so there is nothing to keep count of at the till.</p></li>
         <li data-reveal><h3>A stock check at the counter</h3><p>Scan a product or type its name: the till shows what the shop holds of each size and colour, with its price.</p></li>
@@ -458,8 +479,7 @@
       </div>
     </div>
     <div class="copy" data-solid>
-      <p class="eyebrow" data-reveal>Returns</p>
-      <h2 data-reveal="focus">Scan the receipt. <span class="dim">The sale opens, ready to put right.</span></h2>
+      <h2 data-reveal="focus"><span class="h-name">Returns</span> Scan the receipt. <span class="dim">The sale opens, ready to put right.</span></h2>
       <ul class="points">
         <li data-reveal><h3>The receipt finds itself</h3><p>Every receipt prints a barcode at its foot. Scan it and the sale opens. Without the paper, find it by its number: the last 30 days are there, from every till in the shop.</p></li>
         <li data-reveal><h3>Refund what comes back</h3><p>Take off what the customer keeps, pick how the money goes back and give a reason. The goods go back into stock, or are written off as damaged when they are faulty.</p></li>
@@ -470,16 +490,55 @@
   </div>
 </section>
 
-<!-- ================= and then ================= -->
-<section class="feature-end">
+<!-- ================= a growing business ================= -->
+<section class="sec" id="business">
   <div class="wrap">
-    <div class="head head--mid" data-solid>
-      <p class="eyebrow" data-reveal>See it on your own <span data-only="restaurant">menu</span><span data-only="shop">products</span></p>
-      <h2 data-reveal="focus">A demo, with your business in it. <span class="dim">Then judge it yourself.</span></h2>
-      <div class="hero-cta" data-reveal>
-        <a class="btn-demo" href="index.html#demo">Book a demo <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a>
-        <a class="btn-line" href="product.html">The whole product</a>
+    <div class="stage stage--b biz" data-solid>
+      <div class="sec-head">
+        <h2 data-reveal="focus">For a business <em>that grows</em>.</h2>
+        <p class="sub" data-reveal>What a larger <span data-only="restaurant">restaurant</span><span data-only="shop">shop</span> asks for: e-invoicing with the MRA, more than one branch, and features of its own.</p>
       </div>
+      <div class="biz-grid">
+        <article class="biz-card" data-reveal>
+          <span class="tile"><svg class="ico"><use href="#i-mra"/></svg></span>
+          <h3>MRA e-invoicing</h3>
+          <p>EasyPay supports the MRA's e-invoicing with the Premium MRA plan, for businesses that must e-invoice. Your legal name, TAN, BRN and VAT number are set once in the back office, each category is marked as goods or services, and each tax carries its MRA code.</p>
+        </article>
+        <article class="biz-card" data-reveal>
+          <span class="tile tile--sea"><svg class="ico"><use href="#i-store"/></svg></span>
+          <h3>Multi-branch</h3>
+          <p data-only="restaurant">One account for all your branches. Each branch has its own tills, printers, tables and bookings, and the menu, the staff and the prices are shared between them.</p>
+          <p data-only="shop">One account for all your branches. Each branch has its own tills, printers and stock, and the catalog, the staff and the prices are shared between them.</p>
+        </article>
+        <article class="biz-card" data-reveal>
+          <span class="tile tile--clay"><svg class="ico"><use href="#i-tool"/></svg></span>
+          <h3>Custom features</h3>
+          <p>Need something EasyPay does not do yet? Tell us. Customers can request custom features, built around the way their business works.</p>
+        </article>
+      </div>
+      <div class="biz-end" data-reveal>
+        <a class="btn-demo" href="index.html#demo">Talk to us <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a>
+        <a class="btn-line" href="pricing.html#pricing">See Premium MRA</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= one thing to do next ================= -->
+<section class="cta" id="next">
+  <div class="wrap">
+    <div class="cta-panel" data-solid>
+      <h2 data-reveal="focus">See EasyPay with your own <em data-only="restaurant">menu</em><em data-only="shop">products</em> in it.</h2>
+      <p class="sub" data-reveal>Book a demo and we show you a full <span data-only="restaurant">service</span><span data-only="shop">day</span> on the till, then the back office behind it. We open every account ourselves, here in Mauritius.</p>
+      <div class="hero-cta" data-reveal>
+        <a class="btn-demo btn-demo--light" href="index.html#demo">Book a demo <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a>
+        <a class="btn-line" data-wa hidden><svg class="ico"><use href="#i-wa"/></svg>WhatsApp us</a>
+      </div>
+      <ul class="cta-ticks" data-reveal>
+        <li><svg class="ico"><use href="#i-check"/></svg>Rs 5,000 once, per tablet</li>
+        <li><svg class="ico"><use href="#i-check"/></svg>Keeps selling offline</li>
+        <li><svg class="ico"><use href="#i-check"/></svg>Set up with you, in Mauritius</li>
+      </ul>
     </div>
   </div>
 </section>
@@ -491,21 +550,26 @@
     <div class="foot-brand">
       <img src="assets/badge.png" alt="EasyPay. Making it easier for you." width="132" height="136">
       <p>A point of sale (POS) system for restaurants and shops, made for Mauritius.</p>
+      <div class="foot-contact">
+        <a data-mail href="mailto:hello@easypaypos.com"><svg class="ico"><use href="#i-mail"/></svg><span>hello@easypaypos.com</span></a>
+        <a data-call href="tel:+23052525270"><svg class="ico"><use href="#i-phone"/></svg><span>+230 5252 5270</span></a>
+        <a data-wa href="https://wa.me/23052525270"><svg class="ico"><use href="#i-wa"/></svg><span>WhatsApp us</span></a>
+      </div>
     </div>
     <nav aria-label="The till">
       <h4>The till</h4>
       <a href="#qr">QR ordering</a><a href="#floor">Front of house</a><a href="#kitchen">Kitchen and bar</a><a href="#payment">Payment</a><a href="#selling">Selling in a shop</a><a href="#stock">Stock</a><a href="#returns">Returns</a>
     </nav>
-    <nav aria-label="The back office">
-      <h4>The back office</h4>
-      <a href="product.html#backoffice"><span data-only="restaurant">Menu and stock</span><span data-only="shop">Catalog and stock</span></a><a href="product.html#backoffice">Reports</a><a href="product.html#backoffice">Staff and roles</a><a data-signin hidden>Sign in</a>
+    <nav aria-label="Business">
+      <h4>Business</h4>
+      <a href="#business">MRA e-invoicing</a><a href="#business">Multi-branch</a><a href="#business">Custom features</a><a href="product.html#backoffice">The back office</a><a data-signin hidden>Sign in</a>
     </nav>
     <nav aria-label="Start">
       <h4>Start</h4>
-      <a href="product.html">The whole product</a><a href="shop.html">POS for shops</a><a href="pricing.html">Pricing</a><a href="pricing.html#start">What you need</a><a href="pricing.html#faq">Questions</a><a href="index.html#demo">Book a demo</a><a data-call hidden></a>
+      <a href="product.html">The whole product</a><a href="shop.html">POS for shops</a><a href="pricing.html">Pricing</a><a href="pricing.html#start">What you need</a><a href="pricing.html#faq">Questions</a><a href="index.html#demo">Book a demo</a>
     </nav>
   </div>
-  <div class="wrap foot-end"><span>© 2026 EasyPay</span><span>easypaypos.com</span></div>
+  <div class="wrap foot-end"><span>© 2026 EasyPay</span><span class="foot-made">Made in Mauritius, for Mauritius</span><span>easypaypos.com</span></div>
 </footer>
 
 <script src="js/config.js"></script>

@@ -51,6 +51,14 @@
         if (to) { e.preventDefault(); to.focus(); show(to); }
       });
     });
+    // the keys either side of the picture: the page before, the next page, round and round
+    const step = (by) => {
+      const at = tabs.findIndex((t) => t.getAttribute("aria-selected") === "true");
+      show(tabs[(at + by + tabs.length) % tabs.length]);
+    };
+    const prev = $("[data-tour-prev]", tour), next = $("[data-tour-next]", tour);
+    if (prev) prev.addEventListener("click", () => step(-1));
+    if (next) next.addEventListener("click", () => step(1));
   }
 
   // ---- when the line drops: sales are kept on the tablet, and sent when it is back ----

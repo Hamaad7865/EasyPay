@@ -27,8 +27,13 @@
     direct.hidden = false;
   }
   // the same number wherever the page gives it, and the keys that open WhatsApp
+  // (a link with an icon keeps it: the words are in its span)
+  const say = (a, words) => { const s = $("span", a); (s || a).textContent = words; };
+  for (const a of $$("[data-mail]")) {
+    if (cfg.email) { a.href = "mailto:" + cfg.email; say(a, cfg.email); } else a.hidden = true;
+  }
   if (digits) {
-    for (const a of $$("[data-call]")) { a.href = "tel:+" + digits; a.textContent = spoken; a.hidden = false; }
+    for (const a of $$("[data-call]")) { a.href = "tel:+" + digits; say(a, spoken); a.hidden = false; }
     const hello = encodeURIComponent("Hello EasyPay, I would like to know more about the till.");
     for (const a of $$("[data-wa]")) { a.href = `https://wa.me/${digits}?text=${hello}`; a.target = "_blank"; a.rel = "noopener"; a.hidden = false; }
   }

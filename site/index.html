@@ -22,6 +22,7 @@
 <link rel="stylesheet" href="css/site.css">
 <link rel="stylesheet" href="css/mock.css">
 <link rel="stylesheet" href="css/real.css">
+<link rel="stylesheet" href="css/sections.css">
 <script>
   // before anything is drawn: script is on, and whether this visit is a shop's
   // (#shop or a shop's section in the address; else what was picked last time,
@@ -39,7 +40,7 @@
 {"@context":"https://schema.org","@graph":[
 {"@type":"Organization","@id":"https://easypaypos.com/#organization","name":"EasyPay","url":"https://easypaypos.com/","logo":"https://easypaypos.com/assets/badge.png","description":"EasyPay makes a point of sale (POS) system for restaurants and shops in Mauritius.","areaServed":{"@type":"Country","name":"Mauritius"},"contactPoint":{"@type":"ContactPoint","contactType":"sales","telephone":"+230 5252 5270","areaServed":"MU"}},
 {"@type":"WebSite","@id":"https://easypaypos.com/#website","url":"https://easypaypos.com/","name":"EasyPay","inLanguage":"en","publisher":{"@id":"https://easypaypos.com/#organization"}},
-{"@type":"SoftwareApplication","@id":"https://easypaypos.com/#software","name":"EasyPay","applicationCategory":"BusinessApplication","applicationSubCategory":"Point of sale (POS) system","operatingSystem":"Android","countriesSupported":"MU","url":"https://easypaypos.com/","image":"https://easypaypos.com/assets/og.png","publisher":{"@id":"https://easypaypos.com/#organization"},"description":"A point of sale (POS) system for restaurants and shops in Mauritius that keeps selling when the internet drops: tables, kitchen tickets and split bills for a restaurant; barcodes, stock, returns and exchanges for a shop. On an Android tablet, with a back office in the browser.","offers":[
+{"@type":"SoftwareApplication","@id":"https://easypaypos.com/#software","name":"EasyPay","applicationCategory":"BusinessApplication","applicationSubCategory":"Point of sale (POS) system","operatingSystem":"Android","countriesSupported":"MU","url":"https://easypaypos.com/","image":"https://easypaypos.com/assets/og.png","publisher":{"@id":"https://easypaypos.com/#organization"},"description":"A point of sale (POS) system for restaurants and shops in Mauritius that keeps selling when the internet drops: tables, kitchen tickets and split bills for a restaurant; barcodes, stock, returns and exchanges for a shop. On an Android tablet, with a back office in the browser.","featureList":["Keeps selling when the internet drops","MRA e-invoicing with Premium MRA","Multi-branch","QR ordering from the table","Kitchen screen","Floor plan and bookings","Split bills","Barcode scanning, stock and returns","Back office in the browser","Custom features on request"],"offers":[
   {"@type":"Offer","name":"Starter pack","price":"5000","priceCurrency":"MUR","url":"https://easypaypos.com/pricing","description":"Paid once for each tablet: the till, the back office and reports."},
   {"@type":"Offer","name":"Premium","url":"https://easypaypos.com/pricing","description":"For a restaurant, from Rs 2,100 a month: adds QR ordering from the table, the kitchen screen and bookings.","priceSpecification":{"@type":"UnitPriceSpecification","minPrice":"2100","priceCurrency":"MUR","unitText":"month"}}
 ]}
@@ -54,9 +55,13 @@
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
   <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z"/></symbol>
   <symbol id="i-wa" viewBox="0 0 24 24"><path d="M3.6 20.4 5 16.2a8.4 8.4 0 1 1 3 2.9z"/><path d="M9.2 8.4c.2 3.1 2.9 5.9 6 6.2l1.1-1.5-1.9-1.1-.9.8a5 5 0 0 1-2.1-2.2l.8-.9-1.1-1.9z"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7.5 8 5.5 8-5.5"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M5.5 4h3.2l1.8 4.6-2.2 1.4a11 11 0 0 0 5.7 5.7l1.4-2.2 4.6 1.8v3.2a2 2 0 0 1-2.1 2A15.6 15.6 0 0 1 3.5 6.1a2 2 0 0 1 2-2.1z"/></symbol>
   <symbol id="i-bars" viewBox="0 0 24 24"><path d="M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12"/></symbol>
   <symbol id="i-floor" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="6" rx="1.5"/><rect x="14" y="4" width="7" height="6" rx="1.5"/><rect x="3" y="14" width="7" height="6" rx="1.5"/><circle cx="17.5" cy="17" r="3"/></symbol>
   <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/></symbol>
@@ -67,6 +72,13 @@
   <symbol id="i-screen" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
   <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 8V4h10v4M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M7 14h10v6H7z"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+  <symbol id="i-mra" viewBox="0 0 24 24"><path d="M6 3h8.5L19 7.5V21H6z"/><path d="M14 3v5h5M9 13.5l2.2 2.2L16 11"/></symbol>
+  <symbol id="i-store" viewBox="0 0 24 24"><path d="M4 10v10h16V10"/><path d="M3 10 4.8 4h14.4L21 10zM3 10h18"/><path d="M9.5 20v-5.5h5V20"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.6 6.4a4.2 4.2 0 0 0-5.5 5.5L3.5 17.5a2.1 2.1 0 0 0 3 3l5.6-5.6a4.2 4.2 0 0 0 5.5-5.5l-2.7 2.7-2.6-.4-.4-2.6z"/></symbol>
+  <symbol id="i-off" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M8.6 16.4a4.8 4.8 0 0 1 6.8 0M5.2 12.9a9.6 9.6 0 0 1 4-2.4M14.8 10.5a9.6 9.6 0 0 1 4 2.4M2 9.3a14.4 14.4 0 0 1 4.4-2.8M10.6 5.1A14.4 14.4 0 0 1 22 9.3"/><path d="M12 20h.01"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9S14.6 18.4 12 21c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3z"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 4v16h16"/><path d="m8 15 3.5-4 3 2.5L20 7"/></symbol>
 </svg>
 
 <div class="wash" aria-hidden="true"></div>
@@ -90,7 +102,6 @@
             <a href="features.html#floor"><svg class="ico"><use href="#i-floor"/></svg><span><b>Front of house</b>The floor plan, tables and bookings</span></a>
             <a href="features.html#kitchen"><svg class="ico"><use href="#i-ticket"/></svg><span><b>Kitchen and bar</b>Each ticket to the right printer</span></a>
             <a href="features.html#payment"><svg class="ico"><use href="#i-split"/></svg><span><b>Payment</b>Split bills, cash and receipts</span></a>
-            <a href="features.html"><svg class="ico"><use href="#i-go"/></svg><span><b>Every feature</b>All of them on one page, to try</span></a>
           </div>
           <div class="nav-col">
             <p>For shops</p>
@@ -98,7 +109,13 @@
             <a href="features.html#selling"><svg class="ico"><use href="#i-bars"/></svg><span><b>Selling</b>Scan or tap, sizes, weight, parked sales</span></a>
             <a href="features.html#stock"><svg class="ico"><use href="#i-box"/></svg><span><b>Stock</b>What is left, deliveries and counts</span></a>
             <a href="features.html#returns"><svg class="ico"><use href="#i-back"/></svg><span><b>Returns</b>Refund or exchange from the receipt</span></a>
-            <a href="features.html"><svg class="ico"><use href="#i-go"/></svg><span><b>Every feature</b>All of them on one page, to try</span></a>
+          </div>
+          <div class="nav-more">
+            <p>For a growing business</p>
+            <a href="features.html#business"><svg class="ico"><use href="#i-mra"/></svg>MRA e-invoicing</a>
+            <a href="features.html#business"><svg class="ico"><use href="#i-store"/></svg>Multi-branch</a>
+            <a href="features.html#business"><svg class="ico"><use href="#i-tool"/></svg>Custom features</a>
+            <a href="features.html" class="nav-all">Every feature <svg class="ico"><use href="#i-go"/></svg></a>
           </div>
         </div>
       </div>
@@ -122,6 +139,8 @@
     <a href="features.html#selling">Selling</a>
     <a href="features.html#stock">Stock</a>
     <a href="features.html#returns">Returns</a>
+    <p>For a growing business</p>
+    <a href="features.html#business">MRA e-invoicing, branches and custom features</a>
     <p>EasyPay</p>
     <a href="product.html">The whole product</a>
     <a href="features.html">Every feature</a>
@@ -135,368 +154,447 @@
 
 <main id="main">
 
-<!-- ================= hero ================= -->
-<section class="hero" id="top">
+<!-- ================= the head: the words on the left, the product on the right ================= -->
+<section class="hero hero--split" id="top">
   <div class="wrap">
-    <div class="hero-copy" data-solid>
-      <div class="pick" data-rise style="--i:0">
-        <p class="eyebrow">The best POS in Mauritius for your</p>
-        <div class="pick-keys" role="group" aria-label="What EasyPay is shown for">
-          <i aria-hidden="true"></i>
-          <button type="button" data-pick="restaurant" aria-pressed="true">Restaurant</button>
-          <button type="button" data-pick="shop" aria-pressed="false">Shop</button>
+    <div class="hero-grid">
+      <div class="hero-copy" data-solid>
+        <div class="pick" data-rise style="--i:0">
+          <p class="pick-say">Made in Mauritius, for your</p>
+          <div class="pick-keys" role="group" aria-label="What EasyPay is shown for">
+            <i aria-hidden="true"></i>
+            <button type="button" data-pick="restaurant" aria-pressed="true">Restaurant</button>
+            <button type="button" data-pick="shop" aria-pressed="false">Shop</button>
+          </div>
         </div>
-        <p class="eyebrow dim">Made for Mauritius</p>
+        <h1 data-rise style="--i:1">The best <em>POS app</em> in Mauritius.</h1>
+        <p class="lede" data-only="restaurant" data-rise style="--i:2">EasyPay runs a restaurant's floor, kitchen and till on one Android tablet. Orders, payments and printing carry on without a connection, and everything reaches your back office when it returns.</p>
+        <p class="lede" data-only="shop" data-rise style="--i:2">EasyPay runs a shop's counter, stock and till on one Android tablet. Sales, payments and printing carry on without a connection, and everything reaches your back office when it returns.</p>
+        <div class="hero-cta" data-rise style="--i:3">
+          <a class="btn-demo" href="#demo">Book a demo <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a>
+          <a class="btn-line" data-wa hidden><svg class="ico"><use href="#i-wa"/></svg>WhatsApp us</a>
+        </div>
+        <ul class="hero-ticks" data-rise style="--i:4">
+          <li><svg class="ico"><use href="#i-check"/></svg>Keeps selling when the internet drops</li>
+          <li><svg class="ico"><use href="#i-check"/></svg>MRA e-invoicing with Premium MRA</li>
+          <li><svg class="ico"><use href="#i-check"/></svg>One account for all your branches</li>
+        </ul>
+        <a class="hero-price" href="pricing.html#pricing" data-rise style="--i:5">
+          <span><b>Starter pack</b>Rs 5,000, once</span>
+          <span data-only="restaurant"><b>Premium</b>from Rs 2,100 a month</span>
+          <svg class="ico"><use href="#i-down"/></svg>
+        </a>
       </div>
-      <h1 data-rise style="--i:1">The best POS app in Mauritius.</h1>
-      <p class="lede" data-only="restaurant" data-rise style="--i:2">EasyPay runs a restaurant's floor, kitchen and till on one Android tablet. Orders, payments and printing carry on without a connection, and everything reaches your back office when it returns.</p>
-      <p class="lede" data-only="shop" data-rise style="--i:2">EasyPay runs a shop's counter, stock and till on one Android tablet. Sales, payments and printing carry on without a connection, and everything reaches your back office when it returns.</p>
-      <div class="hero-cta" data-rise style="--i:3">
-        <a class="btn-demo" href="#demo">Book a demo <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a>
-        <a class="btn-line" data-wa hidden><svg class="ico"><use href="#i-wa"/></svg>WhatsApp us</a>
-      </div>
-      <a class="hero-price" href="pricing.html#pricing" data-rise style="--i:4">
-        <span><b>Starter pack</b>Rs 5,000, once</span>
-        <span data-only="restaurant"><b>Premium</b>from Rs 2,100 a month</span>
-        <svg class="ico"><use href="#i-down"/></svg>
-      </a>
-    </div>
 
-    <div class="stage stage--hero" data-solid data-rise style="--i:5">
-      <!-- the back office as it is (a picture of the real page, with a made-up business in it), and the till in front -->
-      <div class="hero-duo">
-        <figure class="webapp" data-only="restaurant">
-          <div class="webapp-bar" aria-hidden="true"><i></i><i></i><i></i><span>easypaypos.com/backoffice</span></div>
-          <img src="assets/shots/restaurant-insights-1000.webp" srcset="assets/shots/restaurant-insights-1000.webp 1000w, assets/shots/restaurant-insights.webp 2000w" sizes="(max-width: 760px) 92vw, (max-width: 1348px) 70vw, 940px" width="2000" height="1250" alt="EasyPay’s back office open in a browser: a restaurant’s sales patterns, with its busy hours and what stands out" fetchpriority="high" decoding="async">
-        </figure>
-        <figure class="webapp" data-only="shop">
-          <div class="webapp-bar" aria-hidden="true"><i></i><i></i><i></i><span>easypaypos.com/backoffice</span></div>
-          <img src="assets/shots/shop-stock-1000.webp" srcset="assets/shots/shop-stock-1000.webp 1000w, assets/shots/shop-stock.webp 2000w" sizes="(max-width: 760px) 92vw, (max-width: 1348px) 70vw, 940px" width="2000" height="1250" alt="EasyPay’s back office open in a browser: what a shop holds of each product, what is low and what is out" loading="lazy" decoding="async">
-        </figure>
-      <div class="tablet" aria-hidden="true">
-        <div class="tablet-screen">
-          <div class="till">
-            <div class="t-bar">
-              <span class="t-menu"><i></i><i></i><i></i></span>
-              <div class="t-tabs" data-only="restaurant">
-                <span class="t-tab is-on" data-of="floor order">Tables<b>5</b></span>
-                <span class="t-tab">Quick sale</span>
-                <span class="t-tab" data-of="board">Takeaway<b>7</b></span>
-                <span class="t-tab" data-of="kitchen">Kitchen<b>7</b></span>
-                <span class="t-tab">Bookings<b>2</b></span>
-                <span class="t-tab">Orders</span>
+      <div class="stage stage--hero" data-solid data-rise style="--i:6">
+        <!-- the back office as it is (a picture of the real page, with a made-up business in it), and the till in front -->
+        <div class="hero-duo">
+          <figure class="webapp" data-only="restaurant">
+            <div class="webapp-bar" aria-hidden="true"><i></i><i></i><i></i><span>easypaypos.com/backoffice</span></div>
+            <img src="assets/shots/restaurant-insights-1000.webp" srcset="assets/shots/restaurant-insights-1000.webp 1000w, assets/shots/restaurant-insights.webp 2000w" sizes="(max-width: 960px) 86vw, 46vw" width="2000" height="1250" alt="EasyPay’s back office open in a browser: a restaurant’s sales patterns, with its busy hours and what stands out" fetchpriority="high" decoding="async">
+          </figure>
+          <figure class="webapp" data-only="shop">
+            <div class="webapp-bar" aria-hidden="true"><i></i><i></i><i></i><span>easypaypos.com/backoffice</span></div>
+            <img src="assets/shots/shop-stock-1000.webp" srcset="assets/shots/shop-stock-1000.webp 1000w, assets/shots/shop-stock.webp 2000w" sizes="(max-width: 960px) 86vw, 46vw" width="2000" height="1250" alt="EasyPay’s back office open in a browser: what a shop holds of each product, what is low and what is out" loading="lazy" decoding="async">
+          </figure>
+        <div class="tablet" aria-hidden="true">
+          <div class="tablet-screen">
+            <div class="till">
+              <div class="t-bar">
+                <span class="t-menu"><i></i><i></i><i></i></span>
+                <div class="t-tabs" data-only="restaurant">
+                  <span class="t-tab is-on" data-of="floor order">Tables<b>5</b></span>
+                  <span class="t-tab">Quick sale</span>
+                  <span class="t-tab" data-of="board">Takeaway<b>7</b></span>
+                  <span class="t-tab" data-of="kitchen">Kitchen<b>7</b></span>
+                  <span class="t-tab">Bookings<b>2</b></span>
+                  <span class="t-tab">Orders</span>
+                </div>
+                <div class="t-tabs" data-only="shop">
+                  <span class="t-tab is-on" data-of="sell">Sell</span>
+                  <span class="t-tab" data-of="receipts">Receipts</span>
+                  <span class="t-tab">Products &amp; stock</span>
+                  <span class="t-tab">Stock check</span>
+                </div>
+                <div class="t-meta"><i class="t-sync"></i><span class="t-clock">19:42</span><span class="t-staff"><em>P</em>Priya</span></div>
               </div>
-              <div class="t-tabs" data-only="shop">
-                <span class="t-tab is-on" data-of="sell">Sell</span>
-                <span class="t-tab" data-of="receipts">Receipts</span>
-                <span class="t-tab">Products &amp; stock</span>
-                <span class="t-tab">Stock check</span>
-              </div>
-              <div class="t-meta"><i class="t-sync"></i><span class="t-clock">19:42</span><span class="t-staff"><em>P</em>Priya</span></div>
-            </div>
-            <div class="t-body">
+              <div class="t-body">
 
-              <!-- the floor -->
-              <div class="t-screen t-floor is-on" data-screen="floor" data-only="restaurant">
-                <div class="t-main">
-                  <div class="t-areas"><span class="is-on">Main room<b>5/11</b></span><span>Terrace<b>2/6</b></span><span>Bar<b>0/4</b></span></div>
-                  <div class="t-plan">
-                    <div class="tb seated" style="left:5%;top:9%;width:17%;height:19%"><b>1</b><i>Rs 960</i><u>12 min</u></div>
-                    <div class="tb free" style="left:28%;top:9%;width:17%;height:19%"><b>2</b><i>4 seats</i></div>
-                    <div class="tb bill round" style="left:52%;top:5%;width:14%"><b>3</b><i>Rs 2,410</i><u>Bill printed</u></div>
-                    <div class="tb seated" style="left:72%;top:9%;width:23%;height:19%"><b>4</b><i>Rs 1,837</i><u>34 min</u></div>
-                    <div class="tb free round" style="left:7%;top:41%;width:13%"><b>5</b><i>2 seats</i></div>
-                    <div class="tb held" style="left:28%;top:41%;width:17%;height:19%"><b>6</b><i>20:00</i><u>Nadia · 4</u></div>
-                    <div class="tb seated" style="left:51%;top:41%;width:17%;height:19%"><b>7</b><i>Rs 540</i><u>6 min</u></div>
-                    <div class="tb free round" style="left:77%;top:41%;width:13%"><b>8</b><i>2 seats</i></div>
-                    <div class="tb seated" style="left:5%;top:74%;width:28%;height:18%"><b>9</b><i>Rs 3,120</i><u>41 min</u></div>
-                    <div class="tb free" style="left:40%;top:74%;width:17%;height:18%"><b>10</b><i>4 seats</i></div>
-                    <div class="tb free" style="left:63%;top:74%;width:17%;height:18%"><b>11</b><i>4 seats</i></div>
+                <!-- the floor -->
+                <div class="t-screen t-floor is-on" data-screen="floor" data-only="restaurant">
+                  <div class="t-main">
+                    <div class="t-areas"><span class="is-on">Main room<b>5/11</b></span><span>Terrace<b>2/6</b></span><span>Bar<b>0/4</b></span></div>
+                    <div class="t-plan">
+                      <div class="tb seated" style="left:5%;top:9%;width:17%;height:19%"><b>1</b><i>Rs 960</i><u>12 min</u></div>
+                      <div class="tb free" style="left:28%;top:9%;width:17%;height:19%"><b>2</b><i>4 seats</i></div>
+                      <div class="tb bill round" style="left:52%;top:5%;width:14%"><b>3</b><i>Rs 2,410</i><u>Bill printed</u></div>
+                      <div class="tb seated" style="left:72%;top:9%;width:23%;height:19%"><b>4</b><i>Rs 1,837</i><u>34 min</u></div>
+                      <div class="tb free round" style="left:7%;top:41%;width:13%"><b>5</b><i>2 seats</i></div>
+                      <div class="tb held" style="left:28%;top:41%;width:17%;height:19%"><b>6</b><i>20:00</i><u>Nadia · 4</u></div>
+                      <div class="tb seated" style="left:51%;top:41%;width:17%;height:19%"><b>7</b><i>Rs 540</i><u>6 min</u></div>
+                      <div class="tb free round" style="left:77%;top:41%;width:13%"><b>8</b><i>2 seats</i></div>
+                      <div class="tb seated" style="left:5%;top:74%;width:28%;height:18%"><b>9</b><i>Rs 3,120</i><u>41 min</u></div>
+                      <div class="tb free" style="left:40%;top:74%;width:17%;height:18%"><b>10</b><i>4 seats</i></div>
+                      <div class="tb free" style="left:63%;top:74%;width:17%;height:18%"><b>11</b><i>4 seats</i></div>
+                    </div>
+                  </div>
+                  <aside class="t-side">
+                    <h6>In progress</h6>
+                    <ul class="t-list">
+                      <li><b>Table 9</b><span>6 covers · 41 min</span><em>Rs 3,120</em></li>
+                      <li class="amber"><b>Table 3</b><span>2 covers · bill printed</span><em>Rs 2,410</em></li>
+                      <li><b>Table 4</b><span>3 covers · 34 min</span><em>Rs 1,837</em></li>
+                    </ul>
+                    <h6>Arriving next</h6>
+                    <ul class="t-list">
+                      <li class="violet"><b>20:00 · Nadia</b><span>4 guests</span><em>Table 6</em></li>
+                      <li class="violet"><b>20:30 · Rajesh</b><span>2 guests</span><em>No table yet</em></li>
+                    </ul>
+                  </aside>
+                </div>
+
+                <!-- an order -->
+                <div class="t-screen t-order" data-screen="order" data-only="restaurant">
+                  <section class="t-ticket">
+                    <header><div><b>Table 4</b><span>Main room · Priya</span></div><div class="t-covers"><i>−</i>3 covers<i>+</i></div></header>
+                    <div class="t-lines">
+                      <p class="t-group">Sent to the kitchen · 19:08</p>
+                      <div class="t-line sent"><span class="q">2</span><span class="n">Mine frite poulet<small>Extra piment</small></span><span class="p">440.00</span></div>
+                      <div class="t-line sent"><span class="q">1</span><span class="n">Bol renversé<small>No egg</small></span><span class="p">260.00</span></div>
+                      <div class="t-line sent"><span class="q">1</span><span class="n">Vindaye poisson</span><span class="p">320.00</span></div>
+                      <div class="t-line sent"><span class="q">1</span><span class="n">Salade palmiste</span><span class="p">380.00</span></div>
+                      <p class="t-group new">New</p>
+                      <div class="t-line"><span class="q">3</span><span class="n">Alouda</span><span class="p">270.00</span></div>
+                    </div>
+                    <footer>
+                      <div class="t-sum"><span>Subtotal</span><span>1,670.00</span></div>
+                      <div class="t-sum"><span>Service charge 10%</span><span>167.00</span></div>
+                      <div class="t-sum total"><span>Total</span><span>Rs 1,837.00</span></div>
+                      <div class="t-keys"><span>Print bill</span><span>Split</span><span>More</span></div>
+                      <div class="t-keys big"><span class="send">Send to kitchen</span><span class="pay">Pay</span></div>
+                    </footer>
+                  </section>
+                  <section class="t-pane">
+                    <div class="t-search">Search the whole menu</div>
+                    <div class="t-cats">
+                      <span style="--c:#c9622d">Starters</span><span class="is-on" style="--c:#3f8443">Mains</span><span style="--c:#b0443c">Grills</span><span style="--c:#8b6cff">Desserts</span><span style="--c:#2a8fa8">Drinks</span><span style="--c:#b8862a">Bar</span>
+                    </div>
+                    <div class="t-items">
+                      <div class="t-item"><b>Mine frite poulet</b><span>Rs 220</span><i class="t-tag">Options</i></div>
+                      <div class="t-item"><b>Bol renversé</b><span>Rs 260</span><i class="t-tag">Options</i></div>
+                      <div class="t-item"><b>Riz frit poulet</b><span>Rs 230</span></div>
+                      <div class="t-item"><b>Briani poulet</b><span>Rs 290</span></div>
+                      <div class="t-item"><b>Vindaye poisson</b><span>Rs 320</span></div>
+                      <div class="t-item"><b>Rougaille saucisse</b><span>Rs 250</span></div>
+                      <div class="t-item"><b>Cari poulet</b><span>Rs 280</span></div>
+                      <div class="t-item out"><b>Poisson grillé</b><span>Rs 420</span><i class="t-tag">Sold out</i></div>
+                      <div class="t-item"><b>Daube poulet</b><span>Rs 290</span></div>
+                      <div class="t-item"><b>Cari ourite</b><span>Rs 360</span></div>
+                      <div class="t-item"><b>Mine bouilli</b><span>Rs 200</span><i class="t-tag">Options</i></div>
+                      <div class="t-item"><b>Kalia poulet</b><span>Rs 300</span></div>
+                    </div>
+                  </section>
+                </div>
+
+                <!-- the kitchen -->
+                <div class="t-screen t-kds" data-screen="kitchen" data-only="restaurant">
+                  <div class="t-kds-head">
+                    <div class="t-seg"><span class="is-on">All</span><span>Kitchen</span><span>Bar</span></div>
+                    <p class="t-allday"><b>All day</b>Alouda 8 · Mine bouilli 3 · Briani 2 · Cari ourite 2 · Riz frit 2</p>
+                    <span class="t-key">Recall last</span>
+                  </div>
+                  <div class="t-tickets">
+                    <article class="t-tk">
+                      <header><b>Table 7</b><span>2 covers · Kevin</span><em>02:14</em></header>
+                      <ul><li class="done"><i>1</i><span>Riz frit poulet</span></li><li><i>1</i><span>Cari poulet<small>No coriander</small></span></li></ul>
+                      <footer>Bump</footer>
+                    </article>
+                    <article class="t-tk warm">
+                      <header><b>A-12</b><span>Takeaway · due 19:55</span><em>09:31</em></header>
+                      <ul><li class="done"><i>2</i><span>Mine frite poulet<small>Extra piment</small></span></li><li><i>1</i><span>Briani poulet</span></li><li><i>2</i><span>Alouda</span></li></ul>
+                      <footer>Bump</footer>
+                    </article>
+                    <article class="t-tk late">
+                      <header><b>Table 9</b><span>6 covers · Priya</span><em>16:05</em></header>
+                      <ul><li class="done"><i>2</i><span>Bol renversé</span></li><li class="done"><i>1</i><span>Vindaye poisson</span></li><li><i>2</i><span>Cari ourite</span></li><li><i>1</i><span>Kalia poulet<small>Allergy: nuts</small></span></li></ul>
+                      <footer>Bump</footer>
+                    </article>
+                    <article class="t-tk">
+                      <header><b>D-3</b><span>Delivery · due 20:10</span><em>04:40</em></header>
+                      <ul><li><i>1</i><span>Briani poulet</span></li><li><i>2</i><span>Mine bouilli</span></li><li><i>3</i><span>Alouda</span></li></ul>
+                      <footer>Bump</footer>
+                    </article>
+                    <article class="t-tk">
+                      <header><b>Table 1</b><span>2 covers · Kevin</span><em>05:12</em></header>
+                      <ul><li><i>1</i><span>Rougaille saucisse</span></li><li><i>1</i><span>Mine bouilli<small>Sauce on the side</small></span></li></ul>
+                      <footer>Bump</footer>
+                    </article>
+                    <article class="t-tk">
+                      <header><b>Table 4</b><span>Bar · Priya</span><em>00:42</em></header>
+                      <ul><li><i>3</i><span>Alouda</span></li></ul>
+                      <footer>Bump</footer>
+                    </article>
+                    <article class="t-tk">
+                      <header><b>C-42</b><span>Counter · paid</span><em>01:05</em></header>
+                      <ul><li><i>2</i><span>Riz frit poulet</span></li><li><i>1</i><span>Daube poulet</span></li></ul>
+                      <footer>Bump</footer>
+                    </article>
                   </div>
                 </div>
-                <aside class="t-side">
-                  <h6>In progress</h6>
-                  <ul class="t-list">
-                    <li><b>Table 9</b><span>6 covers · 41 min</span><em>Rs 3,120</em></li>
-                    <li class="amber"><b>Table 3</b><span>2 covers · bill printed</span><em>Rs 2,410</em></li>
-                    <li><b>Table 4</b><span>3 covers · 34 min</span><em>Rs 1,837</em></li>
-                  </ul>
-                  <h6>Arriving next</h6>
-                  <ul class="t-list">
-                    <li class="violet"><b>20:00 · Nadia</b><span>4 guests</span><em>Table 6</em></li>
-                    <li class="violet"><b>20:30 · Rajesh</b><span>2 guests</span><em>No table yet</em></li>
-                  </ul>
-                </aside>
-              </div>
 
-              <!-- an order -->
-              <div class="t-screen t-order" data-screen="order" data-only="restaurant">
-                <section class="t-ticket">
-                  <header><div><b>Table 4</b><span>Main room · Priya</span></div><div class="t-covers"><i>−</i>3 covers<i>+</i></div></header>
-                  <div class="t-lines">
-                    <p class="t-group">Sent to the kitchen · 19:08</p>
-                    <div class="t-line sent"><span class="q">2</span><span class="n">Mine frite poulet<small>Extra piment</small></span><span class="p">440.00</span></div>
-                    <div class="t-line sent"><span class="q">1</span><span class="n">Bol renversé<small>No egg</small></span><span class="p">260.00</span></div>
-                    <div class="t-line sent"><span class="q">1</span><span class="n">Vindaye poisson</span><span class="p">320.00</span></div>
-                    <div class="t-line sent"><span class="q">1</span><span class="n">Salade palmiste</span><span class="p">380.00</span></div>
-                    <p class="t-group new">New</p>
-                    <div class="t-line"><span class="q">3</span><span class="n">Alouda</span><span class="p">270.00</span></div>
-                  </div>
-                  <footer>
-                    <div class="t-sum"><span>Subtotal</span><span>1,670.00</span></div>
-                    <div class="t-sum"><span>Service charge 10%</span><span>167.00</span></div>
-                    <div class="t-sum total"><span>Total</span><span>Rs 1,837.00</span></div>
-                    <div class="t-keys"><span>Print bill</span><span>Split</span><span>More</span></div>
-                    <div class="t-keys big"><span class="send">Send to kitchen</span><span class="pay">Pay</span></div>
-                  </footer>
-                </section>
-                <section class="t-pane">
-                  <div class="t-search">Search the whole menu</div>
-                  <div class="t-cats">
-                    <span style="--c:#c9622d">Starters</span><span class="is-on" style="--c:#3f8443">Mains</span><span style="--c:#b0443c">Grills</span><span style="--c:#8b6cff">Desserts</span><span style="--c:#2a8fa8">Drinks</span><span style="--c:#b8862a">Bar</span>
-                  </div>
-                  <div class="t-items">
-                    <div class="t-item"><b>Mine frite poulet</b><span>Rs 220</span><i class="t-tag">Options</i></div>
-                    <div class="t-item"><b>Bol renversé</b><span>Rs 260</span><i class="t-tag">Options</i></div>
-                    <div class="t-item"><b>Riz frit poulet</b><span>Rs 230</span></div>
-                    <div class="t-item"><b>Briani poulet</b><span>Rs 290</span></div>
-                    <div class="t-item"><b>Vindaye poisson</b><span>Rs 320</span></div>
-                    <div class="t-item"><b>Rougaille saucisse</b><span>Rs 250</span></div>
-                    <div class="t-item"><b>Cari poulet</b><span>Rs 280</span></div>
-                    <div class="t-item out"><b>Poisson grillé</b><span>Rs 420</span><i class="t-tag">Sold out</i></div>
-                    <div class="t-item"><b>Daube poulet</b><span>Rs 290</span></div>
-                    <div class="t-item"><b>Cari ourite</b><span>Rs 360</span></div>
-                    <div class="t-item"><b>Mine bouilli</b><span>Rs 200</span><i class="t-tag">Options</i></div>
-                    <div class="t-item"><b>Kalia poulet</b><span>Rs 300</span></div>
-                  </div>
-                </section>
-              </div>
-
-              <!-- the kitchen -->
-              <div class="t-screen t-kds" data-screen="kitchen" data-only="restaurant">
-                <div class="t-kds-head">
-                  <div class="t-seg"><span class="is-on">All</span><span>Kitchen</span><span>Bar</span></div>
-                  <p class="t-allday"><b>All day</b>Alouda 8 · Mine bouilli 3 · Briani 2 · Cari ourite 2 · Riz frit 2</p>
-                  <span class="t-key">Recall last</span>
-                </div>
-                <div class="t-tickets">
-                  <article class="t-tk">
-                    <header><b>Table 7</b><span>2 covers · Kevin</span><em>02:14</em></header>
-                    <ul><li class="done"><i>1</i><span>Riz frit poulet</span></li><li><i>1</i><span>Cari poulet<small>No coriander</small></span></li></ul>
-                    <footer>Bump</footer>
-                  </article>
-                  <article class="t-tk warm">
-                    <header><b>A-12</b><span>Takeaway · due 19:55</span><em>09:31</em></header>
-                    <ul><li class="done"><i>2</i><span>Mine frite poulet<small>Extra piment</small></span></li><li><i>1</i><span>Briani poulet</span></li><li><i>2</i><span>Alouda</span></li></ul>
-                    <footer>Bump</footer>
-                  </article>
-                  <article class="t-tk late">
-                    <header><b>Table 9</b><span>6 covers · Priya</span><em>16:05</em></header>
-                    <ul><li class="done"><i>2</i><span>Bol renversé</span></li><li class="done"><i>1</i><span>Vindaye poisson</span></li><li><i>2</i><span>Cari ourite</span></li><li><i>1</i><span>Kalia poulet<small>Allergy: nuts</small></span></li></ul>
-                    <footer>Bump</footer>
-                  </article>
-                  <article class="t-tk">
-                    <header><b>D-3</b><span>Delivery · due 20:10</span><em>04:40</em></header>
-                    <ul><li><i>1</i><span>Briani poulet</span></li><li><i>2</i><span>Mine bouilli</span></li><li><i>3</i><span>Alouda</span></li></ul>
-                    <footer>Bump</footer>
-                  </article>
-                  <article class="t-tk">
-                    <header><b>Table 1</b><span>2 covers · Kevin</span><em>05:12</em></header>
-                    <ul><li><i>1</i><span>Rougaille saucisse</span></li><li><i>1</i><span>Mine bouilli<small>Sauce on the side</small></span></li></ul>
-                    <footer>Bump</footer>
-                  </article>
-                  <article class="t-tk">
-                    <header><b>Table 4</b><span>Bar · Priya</span><em>00:42</em></header>
-                    <ul><li><i>3</i><span>Alouda</span></li></ul>
-                    <footer>Bump</footer>
-                  </article>
-                  <article class="t-tk">
-                    <header><b>C-42</b><span>Counter · paid</span><em>01:05</em></header>
-                    <ul><li><i>2</i><span>Riz frit poulet</span></li><li><i>1</i><span>Daube poulet</span></li></ul>
-                    <footer>Bump</footer>
-                  </article>
-                </div>
-              </div>
-
-              <!-- takeaway and delivery -->
-              <div class="t-screen t-board" data-screen="board" data-only="restaurant">
-                <div class="t-cols">
-                  <div class="t-col">
-                    <h6>New<b>3</b></h6>
-                    <article class="t-card"><header><b>A-13</b><i class="take">Takeaway</i><em>Due 20:15</em></header><p class="who">Farah</p><p>2 × Riz frit poulet, 1 × Rougaille saucisse</p><footer><span>Rs 710</span><u class="amber">Unpaid</u></footer></article>
-                    <article class="t-card"><header><b>D-4</b><i class="deliv">Delivery</i><em>Due 20:30</em></header><p class="who">Devi · Royal Road, Curepipe</p><p>2 × Briani poulet, 1 × Cari ourite, 2 × Alouda</p><footer><span>Rs 1,120</span><u class="amber">Unpaid</u></footer></article>
-                    <article class="t-card"><header><b>A-14</b><i class="take">Takeaway</i><em>Due 20:35</em></header><p class="who">Li</p><p>3 × Mine bouilli, 1 × Kalia poulet</p><footer><span>Rs 900</span><u class="green">Paid</u></footer></article>
-                  </div>
-                  <div class="t-col">
-                    <h6>In the kitchen<b>2</b></h6>
-                    <article class="t-card"><header><b>A-12</b><i class="take">Takeaway</i><em class="soon">Due 19:55</em></header><p class="who">Anjali</p><p>2 × Mine frite poulet, 1 × Briani poulet, 2 × Alouda</p><footer><span>Rs 910</span><u class="green">Paid</u></footer></article>
-                    <article class="t-card"><header><b>D-3</b><i class="deliv">Delivery</i><em>Due 20:10</em></header><p class="who">Marie · Coastal Road, Flic en Flac</p><p>1 × Briani poulet, 2 × Mine bouilli, 3 × Alouda</p><footer><span>Rs 960</span><u class="amber">Unpaid</u></footer></article>
-                  </div>
-                  <div class="t-col">
-                    <h6>Ready<b>2</b></h6>
-                    <article class="t-card"><header><b>A-11</b><i class="take">Takeaway</i><em>Due 19:40</em></header><p class="who">Ibrahim</p><p>1 × Bol renversé, 1 × Cari poulet</p><footer><span>Rs 540</span><u class="green">Paid</u></footer><div class="t-collect">Collected</div></article>
-                    <article class="t-card"><header><b>D-2</b><i class="deliv">Delivery</i><em>Due 19:50</em></header><p class="who">Sophie · Rider: Yanis</p><p>2 × Mine frite poulet, 2 × Alouda</p><footer><span>Rs 620</span><u class="amber">Unpaid</u></footer><div class="t-collect">Collected</div></article>
+                <!-- takeaway and delivery -->
+                <div class="t-screen t-board" data-screen="board" data-only="restaurant">
+                  <div class="t-cols">
+                    <div class="t-col">
+                      <h6>New<b>3</b></h6>
+                      <article class="t-card"><header><b>A-13</b><i class="take">Takeaway</i><em>Due 20:15</em></header><p class="who">Farah</p><p>2 × Riz frit poulet, 1 × Rougaille saucisse</p><footer><span>Rs 710</span><u class="amber">Unpaid</u></footer></article>
+                      <article class="t-card"><header><b>D-4</b><i class="deliv">Delivery</i><em>Due 20:30</em></header><p class="who">Devi · Royal Road, Curepipe</p><p>2 × Briani poulet, 1 × Cari ourite, 2 × Alouda</p><footer><span>Rs 1,120</span><u class="amber">Unpaid</u></footer></article>
+                      <article class="t-card"><header><b>A-14</b><i class="take">Takeaway</i><em>Due 20:35</em></header><p class="who">Li</p><p>3 × Mine bouilli, 1 × Kalia poulet</p><footer><span>Rs 900</span><u class="green">Paid</u></footer></article>
+                    </div>
+                    <div class="t-col">
+                      <h6>In the kitchen<b>2</b></h6>
+                      <article class="t-card"><header><b>A-12</b><i class="take">Takeaway</i><em class="soon">Due 19:55</em></header><p class="who">Anjali</p><p>2 × Mine frite poulet, 1 × Briani poulet, 2 × Alouda</p><footer><span>Rs 910</span><u class="green">Paid</u></footer></article>
+                      <article class="t-card"><header><b>D-3</b><i class="deliv">Delivery</i><em>Due 20:10</em></header><p class="who">Marie · Coastal Road, Flic en Flac</p><p>1 × Briani poulet, 2 × Mine bouilli, 3 × Alouda</p><footer><span>Rs 960</span><u class="amber">Unpaid</u></footer></article>
+                    </div>
+                    <div class="t-col">
+                      <h6>Ready<b>2</b></h6>
+                      <article class="t-card"><header><b>A-11</b><i class="take">Takeaway</i><em>Due 19:40</em></header><p class="who">Ibrahim</p><p>1 × Bol renversé, 1 × Cari poulet</p><footer><span>Rs 540</span><u class="green">Paid</u></footer><div class="t-collect">Collected</div></article>
+                      <article class="t-card"><header><b>D-2</b><i class="deliv">Delivery</i><em>Due 19:50</em></header><p class="who">Sophie · Rider: Yanis</p><p>2 × Mine frite poulet, 2 × Alouda</p><footer><span>Rs 620</span><u class="amber">Unpaid</u></footer><div class="t-collect">Collected</div></article>
+                    </div>
                   </div>
                 </div>
+
+                <!-- a shop: the sale down the left, the products on the right -->
+                <div class="t-screen t-order t-sell is-on" data-screen="sell" data-only="shop">
+                  <section class="t-ticket">
+                    <header><div><b>Sale</b><span>Counter 1 · Priya</span></div><div class="t-cust">Add customer</div></header>
+                    <div class="t-lines">
+                      <div class="t-line"><span class="q">1</span><span class="n">Polo shirt<small>M · Navy</small></span><span class="p">890.00</span></div>
+                      <div class="t-line"><span class="q">1</span><span class="n">Canvas tote</span><span class="p">450.00</span></div>
+                      <div class="t-line"><span class="q">2</span><span class="n">Notebook A5</span><span class="p">300.00</span></div>
+                    </div>
+                    <footer>
+                      <div class="t-sum"><span>Subtotal</span><span>1,640.00</span></div>
+                      <div class="t-sum off"><span>Discount 10%</span><span>−164.00</span></div>
+                      <div class="t-sum total"><span>Total</span><span>Rs 1,476.00</span></div>
+                      <div class="t-keys"><span>Park sale</span><span class="disc">Discount · 10% off</span><span>More</span></div>
+                      <div class="t-keys big one"><span class="pay">Pay Rs 1,476.00</span></div>
+                    </footer>
+                  </section>
+                  <section class="t-pane">
+                    <div class="t-find"><div class="t-search">Scan, or search a name, SKU or barcode</div><span class="t-scan"><svg class="ico"><use href="#i-bars"/></svg></span></div>
+                    <div class="t-cats">
+                      <span class="is-on" style="--c:#3f8443">All</span><span style="--c:#2a8fa8">Clothing</span><span style="--c:#c9622d">Bags</span><span style="--c:#8b6cff">Stationery</span><span style="--c:#b8862a">Home</span><span style="--c:#b0443c">Gifts</span>
+                    </div>
+                    <div class="t-items">
+                      <div class="t-item"><b>Polo shirt</b><span>Rs 890</span><i class="t-left">11 left</i></div>
+                      <div class="t-item"><b>T-shirt</b><span>Rs 490</span><i class="t-left">24 left</i></div>
+                      <div class="t-item"><b>Linen shirt</b><span>Rs 1,250</span><i class="t-left">6 left</i></div>
+                      <div class="t-item"><b>Denim jacket</b><span>Rs 2,400</span><i class="t-left few">2 left</i></div>
+                      <div class="t-item"><b>Canvas tote</b><span>Rs 450</span><i class="t-left few">4 left</i></div>
+                      <div class="t-item"><b>Leather wallet</b><span>Rs 780</span><i class="t-left">9 left</i></div>
+                      <div class="t-item"><b>Notebook A5</b><span>Rs 150</span><i class="t-left few">1 left</i></div>
+                      <div class="t-item"><b>Gel pen</b><span>Rs 35</span><i class="t-left">60 left</i></div>
+                      <div class="t-item"><b>Scented candle</b><span>Rs 320</span><i class="t-left none">Out</i></div>
+                      <div class="t-item"><b>Ceramic mug</b><span>Rs 260</span><i class="t-left">14 left</i></div>
+                      <div class="t-item"><b>Dried mango</b><span>Rs 620 a kilo</span><i class="t-left">4.2 kg left</i></div>
+                      <div class="t-item"><b>Gift wrap</b><span>Rs 50</span><i class="t-left">31 left</i></div>
+                    </div>
+                  </section>
+                </div>
+
+                <!-- a shop's receipts: the list, and one of them open -->
+                <div class="t-screen t-rcpts" data-screen="receipts" data-only="shop">
+                  <section class="t-rlist">
+                    <div class="t-find"><div class="t-search">Scan a receipt, or type its number</div><span class="t-scan"><svg class="ico"><use href="#i-bars"/></svg></span></div>
+                    <ul>
+                      <li class="is-on"><b>000214</b><span>Today 15:42 · Priya</span><em>Rs 1,476.00</em></li>
+                      <li><b>000213</b><span>Today 15:31 · Kevin</span><em>Rs 620.00</em></li>
+                      <li><b>000212</b><span>Today 15:18 · Priya</span><em>Rs 2,890.00</em></li>
+                      <li><b>000211</b><span>Today 14:57 · Priya</span><em>Rs 150.00</em></li>
+                      <li><b>000210</b><span>Today 14:40 · Kevin</span><em>Rs 1,040.00</em></li>
+                      <li><b>000209</b><span>Today 14:12 · Kevin</span><em>Rs 490.00</em></li>
+                    </ul>
+                  </section>
+                  <section class="t-ropen">
+                    <header><div><b>Receipt 000214</b><span>Today 15:42 · Cash · Priya</span></div><em class="t-chip">Paid</em></header>
+                    <div class="t-rlines">
+                      <div class="t-line"><span class="q">1</span><span class="n">Polo shirt<small>M · Navy</small></span><span class="p">890.00</span></div>
+                      <div class="t-line"><span class="q">1</span><span class="n">Canvas tote</span><span class="p">450.00</span></div>
+                      <div class="t-line"><span class="q">2</span><span class="n">Notebook A5</span><span class="p">300.00</span></div>
+                      <div class="t-sum off"><span>Discount 10%</span><span>−164.00</span></div>
+                      <div class="t-sum total"><span>Total</span><span>Rs 1,476.00</span></div>
+                    </div>
+                    <footer class="t-keys"><span>Print again</span><span>Exchange</span><span class="refund">Refund</span></footer>
+                  </section>
+                </div>
+
+                <!-- what the film lays over a screen: a payment, the paper that prints, the finger -->
+                <div class="f-sheet"></div>
+                <div class="f-slip"><div class="paper"></div></div>
+                <i class="f-hand"></i>
+
               </div>
-
-              <!-- a shop: the sale down the left, the products on the right -->
-              <div class="t-screen t-order t-sell is-on" data-screen="sell" data-only="shop">
-                <section class="t-ticket">
-                  <header><div><b>Sale</b><span>Counter 1 · Priya</span></div><div class="t-cust">Add customer</div></header>
-                  <div class="t-lines">
-                    <div class="t-line"><span class="q">1</span><span class="n">Polo shirt<small>M · Navy</small></span><span class="p">890.00</span></div>
-                    <div class="t-line"><span class="q">1</span><span class="n">Canvas tote</span><span class="p">450.00</span></div>
-                    <div class="t-line"><span class="q">2</span><span class="n">Notebook A5</span><span class="p">300.00</span></div>
-                  </div>
-                  <footer>
-                    <div class="t-sum"><span>Subtotal</span><span>1,640.00</span></div>
-                    <div class="t-sum off"><span>Discount 10%</span><span>−164.00</span></div>
-                    <div class="t-sum total"><span>Total</span><span>Rs 1,476.00</span></div>
-                    <div class="t-keys"><span>Park sale</span><span class="disc">Discount · 10% off</span><span>More</span></div>
-                    <div class="t-keys big one"><span class="pay">Pay Rs 1,476.00</span></div>
-                  </footer>
-                </section>
-                <section class="t-pane">
-                  <div class="t-find"><div class="t-search">Scan, or search a name, SKU or barcode</div><span class="t-scan"><svg class="ico"><use href="#i-bars"/></svg></span></div>
-                  <div class="t-cats">
-                    <span class="is-on" style="--c:#3f8443">All</span><span style="--c:#2a8fa8">Clothing</span><span style="--c:#c9622d">Bags</span><span style="--c:#8b6cff">Stationery</span><span style="--c:#b8862a">Home</span><span style="--c:#b0443c">Gifts</span>
-                  </div>
-                  <div class="t-items">
-                    <div class="t-item"><b>Polo shirt</b><span>Rs 890</span><i class="t-left">11 left</i></div>
-                    <div class="t-item"><b>T-shirt</b><span>Rs 490</span><i class="t-left">24 left</i></div>
-                    <div class="t-item"><b>Linen shirt</b><span>Rs 1,250</span><i class="t-left">6 left</i></div>
-                    <div class="t-item"><b>Denim jacket</b><span>Rs 2,400</span><i class="t-left few">2 left</i></div>
-                    <div class="t-item"><b>Canvas tote</b><span>Rs 450</span><i class="t-left few">4 left</i></div>
-                    <div class="t-item"><b>Leather wallet</b><span>Rs 780</span><i class="t-left">9 left</i></div>
-                    <div class="t-item"><b>Notebook A5</b><span>Rs 150</span><i class="t-left few">1 left</i></div>
-                    <div class="t-item"><b>Gel pen</b><span>Rs 35</span><i class="t-left">60 left</i></div>
-                    <div class="t-item"><b>Scented candle</b><span>Rs 320</span><i class="t-left none">Out</i></div>
-                    <div class="t-item"><b>Ceramic mug</b><span>Rs 260</span><i class="t-left">14 left</i></div>
-                    <div class="t-item"><b>Dried mango</b><span>Rs 620 a kilo</span><i class="t-left">4.2 kg left</i></div>
-                    <div class="t-item"><b>Gift wrap</b><span>Rs 50</span><i class="t-left">31 left</i></div>
-                  </div>
-                </section>
-              </div>
-
-              <!-- a shop's receipts: the list, and one of them open -->
-              <div class="t-screen t-rcpts" data-screen="receipts" data-only="shop">
-                <section class="t-rlist">
-                  <div class="t-find"><div class="t-search">Scan a receipt, or type its number</div><span class="t-scan"><svg class="ico"><use href="#i-bars"/></svg></span></div>
-                  <ul>
-                    <li class="is-on"><b>000214</b><span>Today 15:42 · Priya</span><em>Rs 1,476.00</em></li>
-                    <li><b>000213</b><span>Today 15:31 · Kevin</span><em>Rs 620.00</em></li>
-                    <li><b>000212</b><span>Today 15:18 · Priya</span><em>Rs 2,890.00</em></li>
-                    <li><b>000211</b><span>Today 14:57 · Priya</span><em>Rs 150.00</em></li>
-                    <li><b>000210</b><span>Today 14:40 · Kevin</span><em>Rs 1,040.00</em></li>
-                    <li><b>000209</b><span>Today 14:12 · Kevin</span><em>Rs 490.00</em></li>
-                  </ul>
-                </section>
-                <section class="t-ropen">
-                  <header><div><b>Receipt 000214</b><span>Today 15:42 · Cash · Priya</span></div><em class="t-chip">Paid</em></header>
-                  <div class="t-rlines">
-                    <div class="t-line"><span class="q">1</span><span class="n">Polo shirt<small>M · Navy</small></span><span class="p">890.00</span></div>
-                    <div class="t-line"><span class="q">1</span><span class="n">Canvas tote</span><span class="p">450.00</span></div>
-                    <div class="t-line"><span class="q">2</span><span class="n">Notebook A5</span><span class="p">300.00</span></div>
-                    <div class="t-sum off"><span>Discount 10%</span><span>−164.00</span></div>
-                    <div class="t-sum total"><span>Total</span><span>Rs 1,476.00</span></div>
-                  </div>
-                  <footer class="t-keys"><span>Print again</span><span>Exchange</span><span class="refund">Refund</span></footer>
-                </section>
-              </div>
-
-              <!-- what the film lays over a screen: a payment, the paper that prints, the finger -->
-              <div class="f-sheet"></div>
-              <div class="f-slip"><div class="paper"></div></div>
-              <i class="f-hand"></i>
-
             </div>
           </div>
         </div>
-      </div>
-      </div>
+        </div>
 
-      <!-- the film: what is happening, a key for each chapter, and a way to stop it -->
-      <p class="film-cap"><span data-only="restaurant">A service on the till, from the table to the receipt.</span><span data-only="shop">A sale on the till, from the first scan to a return.</span></p>
-      <div class="film-bar">
-        <div class="switch" data-only="restaurant" aria-label="Chapters of the restaurant's film">
-          <button type="button" class="is-on" data-chapter="seat" aria-pressed="true">Seat</button>
-          <button type="button" data-chapter="order" aria-pressed="false">Order</button>
-          <button type="button" data-chapter="kitchen" aria-pressed="false">Kitchen</button>
-          <button type="button" data-chapter="pay" aria-pressed="false">Pay</button>
-          <button type="button" data-chapter="takeaway" aria-pressed="false">Takeaway</button>
+        <!-- the film: what is happening, a key for each chapter, and a way to stop it -->
+        <p class="film-cap"><span data-only="restaurant">A service on the till, from the table to the receipt.</span><span data-only="shop">A sale on the till, from the first scan to a return.</span></p>
+        <div class="film-bar">
+          <div class="switch" data-only="restaurant" aria-label="Chapters of the restaurant's film">
+            <button type="button" class="is-on" data-chapter="seat" aria-pressed="true">Seat</button>
+            <button type="button" data-chapter="order" aria-pressed="false">Order</button>
+            <button type="button" data-chapter="kitchen" aria-pressed="false">Kitchen</button>
+            <button type="button" data-chapter="pay" aria-pressed="false">Pay</button>
+            <button type="button" data-chapter="takeaway" aria-pressed="false">Takeaway</button>
+          </div>
+          <div class="switch" data-only="shop" aria-label="Chapters of the shop's film">
+            <button type="button" class="is-on" data-chapter="scan" aria-pressed="true">Scan</button>
+            <button type="button" data-chapter="discount" aria-pressed="false">Discount</button>
+            <button type="button" data-chapter="charge" aria-pressed="false">Pay</button>
+            <button type="button" data-chapter="return" aria-pressed="false">Return</button>
+          </div>
+          <button class="film-pause" type="button" aria-pressed="false" hidden><svg class="ico"><use href="#i-pause"/></svg><span>Pause</span></button>
         </div>
-        <div class="switch" data-only="shop" aria-label="Chapters of the shop's film">
-          <button type="button" class="is-on" data-chapter="scan" aria-pressed="true">Scan</button>
-          <button type="button" data-chapter="discount" aria-pressed="false">Discount</button>
-          <button type="button" data-chapter="charge" aria-pressed="false">Pay</button>
-          <button type="button" data-chapter="return" aria-pressed="false">Return</button>
-        </div>
-        <button class="film-pause" type="button" aria-pressed="false" hidden><svg class="ico"><use href="#i-pause"/></svg><span>Pause</span></button>
       </div>
     </div>
 
-    <ul class="strip" data-solid data-reveal>
-      <li class="strip-label">Runs on</li>
-      <li>Android tablets</li>
-      <li>58 mm and 80 mm receipt printers</li>
-      <li>Network or USB</li>
-      <li>Cash drawer</li>
-      <li>Barcode scanner</li>
-      <li data-only="restaurant">English · Français · Kreol Morisien</li>
-    </ul>
+    <!-- what sets it apart, in two cards -->
+    <div class="spots" data-solid>
+      <article class="spot" data-only="restaurant" data-reveal>
+        <span class="tile tile--sea"><svg class="ico"><use href="#i-qr"/></svg></span>
+        <div>
+          <h3>QR ordering from the table <em class="tag">Premium</em></h3>
+          <p>Guests scan the code on their table and order from their own phone. The order is on the till within seconds, for your cashier to accept.</p>
+          <a class="spot-go" href="features.html#qr">Try it on the Features page <svg class="ico"><use href="#i-go"/></svg></a>
+        </div>
+      </article>
+      <article class="spot" data-only="shop" data-reveal>
+        <span class="tile tile--clay"><svg class="ico"><use href="#i-back"/></svg></span>
+        <div>
+          <h3>Returns from the receipt</h3>
+          <p>Scan the barcode at the foot of a receipt and its sale opens. Refund what comes back, or exchange it in one sale and settle the difference.</p>
+          <a class="spot-go" href="features.html#returns">See how a return works <svg class="ico"><use href="#i-go"/></svg></a>
+        </div>
+      </article>
+      <article class="spot" data-reveal>
+        <span class="tile tile--plum"><svg class="ico"><use href="#i-screen"/></svg></span>
+        <div>
+          <h3>A back office in your browser</h3>
+          <p data-only="restaurant">Your figures, your menu and your staff, on any laptop or phone. Change a price tonight; the tablet has it at its next sync.</p>
+          <p data-only="shop">Your figures, your catalog, your stock and your staff, on any laptop or phone. Change a price tonight; every till has it at its next sync.</p>
+          <a class="spot-go" href="#backoffice">Look at its real pages <svg class="ico"><use href="#i-go"/></svg></a>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ================= a growing business ================= -->
+<section class="sec" id="growing">
+  <div class="wrap">
+    <div class="stage stage--b biz" data-solid>
+      <div class="sec-head">
+        <h2 data-reveal="focus">Ready for a business <em>that grows</em>.</h2>
+        <p class="sub" data-reveal>MRA e-invoicing, all your branches under one account, and the features your business asks for.</p>
+      </div>
+      <div class="biz-grid">
+        <article class="biz-card" data-reveal>
+          <span class="tile"><svg class="ico"><use href="#i-mra"/></svg></span>
+          <h3>MRA e-invoicing</h3>
+          <p>EasyPay supports the MRA's e-invoicing with the Premium MRA plan, for businesses that must e-invoice. Your legal name, TAN, BRN and VAT number are set once in the back office.</p>
+        </article>
+        <article class="biz-card" data-reveal>
+          <span class="tile tile--sea"><svg class="ico"><use href="#i-store"/></svg></span>
+          <h3>Multi-branch</h3>
+          <p data-only="restaurant">One account for all your branches. Each branch has its own tills, printers and tables, and the menu, the staff and the prices are shared between them.</p>
+          <p data-only="shop">One account for all your branches. Each branch has its own tills, printers and stock, and the catalog, the staff and the prices are shared between them.</p>
+        </article>
+        <article class="biz-card" data-reveal>
+          <span class="tile tile--clay"><svg class="ico"><use href="#i-tool"/></svg></span>
+          <h3>Custom features</h3>
+          <p>Need something EasyPay does not do yet? Tell us. Customers can request custom features, built around the way their business works.</p>
+        </article>
+      </div>
+      <div class="biz-end" data-reveal>
+        <a class="btn-demo" href="#demo">Talk to us <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a>
+        <a class="btn-line" href="pricing.html#pricing">See Premium MRA</a>
+      </div>
+    </div>
   </div>
 </section>
 
 <!-- ================= why ================= -->
-<section class="why" id="why">
+<section class="sec" id="why">
   <div class="wrap">
-    <div class="head head--mid" data-solid>
-      <p class="eyebrow" data-reveal>Why it is the best POS in Mauritius</p>
-      <h2 data-reveal="focus">A till you can count on. <span class="dim">At a price you can see.</span></h2>
+    <div class="sec-head" data-solid>
+      <h2 data-reveal="focus">Why EasyPay is the <em>best POS</em> in Mauritius.</h2>
+      <p class="sub" data-reveal>A till you can count on, at a price you can see, set up by people you can call.</p>
     </div>
-    <div class="trio" data-solid>
-      <article class="why-card" data-reveal>
+    <div class="why4" data-solid>
+      <article data-reveal>
+        <span class="tile"><svg class="ico"><use href="#i-off"/></svg></span>
         <h3>It sells without the internet</h3>
         <p><span data-only="restaurant">Orders</span><span data-only="shop">Sales</span> and payments are saved on the tablet, and receipts print over your own network or a USB cable. Everything is sent on when the connection returns.</p>
-        <div class="why-shot">
-          <a class="why-go" href="#offline" aria-label="What carries on without a connection"><svg class="ico"><use href="#i-down"/></svg></a>
-          <div class="sync-rows" aria-hidden="true"><span class="off"><i></i>No connection</span><span class="wait"><i></i>3 sales waiting to sync</span><span class="ok"><i></i>Everything is synced</span></div>
-        </div>
       </article>
-      <article class="why-card" data-reveal>
+      <article data-reveal>
+        <span class="tile tile--sun"><svg class="ico"><use href="#i-tag"/></svg></span>
         <h3>The price is on the page</h3>
-        <p data-only="restaurant">The Starter pack is Rs 5,000, paid once for each tablet. Premium starts from Rs 2,100 a month and adds QR ordering from the table, the kitchen screen and bookings.</p>
-        <p data-only="shop">The Starter pack is Rs 5,000, paid once for each tablet, with the back office and your reports.</p>
-        <div class="why-shot why-shot--b">
-          <a class="why-go" href="pricing.html#pricing" aria-label="What each price includes"><svg class="ico"><use href="#i-down"/></svg></a>
-          <div class="tag-card" aria-hidden="true">
-            <p><span>Starter pack</span><b>Rs 5,000</b><i>once, per tablet</i></p>
-            <p data-only="restaurant"><span>Premium</span><b>from Rs 2,100</b><i>a month</i></p>
-          </div>
-        </div>
+        <p data-only="restaurant">The Starter pack is Rs 5,000, paid once for each tablet. Premium starts from Rs 2,100 a month and adds QR ordering, the kitchen screen and bookings.</p>
+        <p data-only="shop">The Starter pack is Rs 5,000, paid once for each tablet, with the back office, your stock and your reports.</p>
       </article>
-      <article class="why-card" data-reveal>
+      <article data-reveal>
+        <span class="tile tile--sea"><svg class="ico"><use href="#i-user"/></svg></span>
         <h3>Set up with you, in Mauritius</h3>
-        <p>We open your account ourselves and walk you through the till. Reach us on WhatsApp or by phone, on a Mauritian number.<span data-only="restaurant"> The till speaks English, French and Kreol Morisien.</span></p>
-        <div class="why-shot why-shot--c">
-          <a class="why-go" href="pricing.html#start" aria-label="The three steps to your first sale"><svg class="ico"><use href="#i-down"/></svg></a>
-          <div class="tag-card">
-            <p><span>WhatsApp or call</span><a data-call hidden></a></p>
-            <p class="tag-steps" aria-hidden="true"><i>1 Demo</i><i>2 Your account</i><i>3 First sale</i></p>
-          </div>
-        </div>
+        <p>We open your account ourselves and walk you through the till. Reach us on WhatsApp or by phone, on a Mauritian number.</p>
+      </article>
+      <article data-reveal>
+        <span class="tile tile--plum"><svg class="ico"><use href="#i-print"/></svg></span>
+        <h3>Hardware you can buy anywhere</h3>
+        <p>An Android tablet, any ESC/POS receipt printer, a cash drawer and a scanner that types like a keyboard. Nothing tied to one supplier.</p>
       </article>
     </div>
+    <ul class="facts" data-solid data-reveal>
+      <li><b>Rs 5,000</b><span>The Starter pack, paid once for each tablet</span></li>
+      <li><b>58 <small>&amp;</small> 80 mm</b><span>Receipt paper, on your network or by USB cable</span></li>
+      <li><b>Android 8+</b><span>The tablet you choose, used in landscape</span></li>
+      <li data-only="restaurant"><b>3 <small>languages</small></b><span>English, Français and Kreol Morisien on the till</span></li>
+      <li data-only="shop"><b>30 <small>days</small></b><span>Of receipts found from any till, for a return</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================= what it does ================= -->
+<section class="sec index" id="features">
+  <div class="wrap">
+    <div class="sec-head" data-solid>
+      <h2 data-only="restaurant" data-reveal="focus">Everything a service needs.</h2>
+      <h2 data-only="shop" data-reveal="focus">Everything a shop's day needs.</h2>
+      <p class="sub" data-reveal>Each feature has its place on the Features page, with pieces of the till you can press.</p>
+    </div>
+    <div class="index-grid index-grid--3" data-solid>
+      <a class="index-card" data-only="restaurant" href="features.html#qr" data-reveal><span class="tile tile--sea"><svg class="ico"><use href="#i-qr"/></svg></span><b>QR ordering <em class="tag">Premium</em></b><span>Guests scan the code on their table and order from their own phone. The till accepts.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+      <a class="index-card" data-only="restaurant" href="features.html#floor" data-reveal><span class="tile"><svg class="ico"><use href="#i-floor"/></svg></span><b>Front of house</b><span>Your floor plan, what every table owes, and bookings seated on the same plan.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+      <a class="index-card" data-only="restaurant" href="features.html#kitchen" data-reveal><span class="tile tile--clay"><svg class="ico"><use href="#i-ticket"/></svg></span><b>Kitchen and bar</b><span>Each ticket to the right printer, and a kitchen screen with a clock on every order.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+      <a class="index-card" data-only="restaurant" href="features.html#payment" data-reveal><span class="tile tile--sun"><svg class="ico"><use href="#i-split"/></svg></span><b>Payment</b><span>Split a bill equally, by seat or line by line. Cash, card, receipts and refunds.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+      <a class="index-card" data-only="shop" href="features.html#selling" data-reveal><span class="tile tile--sea"><svg class="ico"><use href="#i-bars"/></svg></span><b>Selling</b><span>Scan or tap, sizes and colours, weight, discounts and parked sales.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+      <a class="index-card" data-only="shop" href="features.html#stock" data-reveal><span class="tile tile--sun"><svg class="ico"><use href="#i-box"/></svg></span><b>Stock</b><span>What is left of every product, deliveries, counts and corrections.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+      <a class="index-card" data-only="shop" href="features.html#returns" data-reveal><span class="tile tile--clay"><svg class="ico"><use href="#i-back"/></svg></span><b>Returns</b><span>Scan the receipt, refund what comes back, or exchange it in one sale.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+      <a class="index-card" data-only="shop" href="product.html#more" data-reveal><span class="tile"><svg class="ico"><use href="#i-user"/></svg></span><b>Staff and the drawer</b><span>A PIN for each member of staff, a manager's PIN for a refund, and a drawer counted at the close.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+      <a class="index-card" href="product.html#backoffice" data-reveal><span class="tile tile--plum"><svg class="ico"><use href="#i-chart"/></svg></span><b>Back office</b><span>Your figures, your <span data-only="restaurant">menu</span><span data-only="shop">catalog</span> and your staff, in any browser. Real pages to look at.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+      <a class="index-card" href="product.html#works" data-reveal><span class="tile tile--chili"><svg class="ico"><use href="#i-print"/></svg></span><b>Payments, printers and devices</b><span>The payment types you take, the printers you can buy anywhere, the tablet you choose.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+    </div>
+    <p class="index-all" data-reveal><a class="btn-demo" href="features.html">See every feature <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a><a class="btn-line" href="product.html">The whole product</a></p>
   </div>
 </section>
 
 <!-- ================= when the line drops ================= -->
-<section class="offline" id="offline">
+<section class="sec offline" id="offline">
   <div class="wrap">
     <div class="night" data-solid>
       <div class="night-copy">
-        <p class="eyebrow" data-reveal>When the line drops</p>
         <h2 data-reveal="focus">Unplug the router. <span class="dim">Keep selling.</span></h2>
         <p class="night-lede" data-reveal>The till keeps its own copy of <span data-only="restaurant">the menu</span><span data-only="shop">your products</span>, the staff and the day's work. With no connection it goes on as before, and catches up by itself when the line is back.</p>
         <div class="night-lists">
@@ -541,39 +639,86 @@
   </div>
 </section>
 
-<!-- ================= what it does ================= -->
-<section class="index" id="features">
+<!-- ================= how you start ================= -->
+<section class="sec" id="how">
   <div class="wrap">
-    <div class="head head--mid" data-solid>
-      <p class="eyebrow" data-reveal>What it does</p>
-      <h2 data-only="restaurant" data-reveal="focus">Everything a service needs. <span class="dim">Each feature has its place, to try.</span></h2>
-      <h2 data-only="shop" data-reveal="focus">Everything a shop's day needs. <span class="dim">Each feature has its place, to try.</span></h2>
+    <div class="sec-head" data-solid>
+      <h2 data-reveal="focus">From a demo to your first sale.</h2>
+      <p class="sub" data-reveal>There is no form to sign up with. We open every account ourselves and set it up with you.</p>
     </div>
-    <div class="index-grid" data-solid>
-      <a class="index-card" data-only="restaurant" href="features.html#qr" data-reveal><svg class="ico"><use href="#i-qr"/></svg><b>QR ordering <em class="tag">Premium</em></b><span>Guests scan the code on their table and order from their own phone. The till accepts.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
-      <a class="index-card" data-only="restaurant" href="features.html#floor" data-reveal><svg class="ico"><use href="#i-floor"/></svg><b>Front of house</b><span>Your floor plan, what every table owes, and bookings seated on the same plan.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
-      <a class="index-card" data-only="restaurant" href="features.html#kitchen" data-reveal><svg class="ico"><use href="#i-ticket"/></svg><b>Kitchen and bar</b><span>Each ticket to the right printer, and a kitchen screen with a clock on every order.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
-      <a class="index-card" data-only="restaurant" href="features.html#payment" data-reveal><svg class="ico"><use href="#i-split"/></svg><b>Payment</b><span>Split a bill equally, by seat or line by line. Cash, card, receipts and refunds.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
-      <a class="index-card" data-only="shop" href="features.html#selling" data-reveal><svg class="ico"><use href="#i-bars"/></svg><b>Selling</b><span>Scan or tap, sizes and colours, weight, discounts and parked sales.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
-      <a class="index-card" data-only="shop" href="features.html#stock" data-reveal><svg class="ico"><use href="#i-box"/></svg><b>Stock</b><span>What is left of every product, deliveries, counts and corrections.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
-      <a class="index-card" data-only="shop" href="features.html#returns" data-reveal><svg class="ico"><use href="#i-back"/></svg><b>Returns</b><span>Scan the receipt, refund what comes back, or exchange it in one sale.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
-      <a class="index-card" href="product.html#more" data-reveal><svg class="ico"><use href="#i-plus"/></svg><b>The small things</b><span>A second PIN for what matters, the drawer counted your way, clocking in, three languages.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
-      <a class="index-card" href="product.html#backoffice" data-reveal><svg class="ico"><use href="#i-screen"/></svg><b>Back office</b><span>Your figures, your menu or catalog and your staff, in any browser. Real pages to look at.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
-      <a class="index-card" href="product.html#works" data-reveal><svg class="ico"><use href="#i-print"/></svg><b>Payments, printers and devices</b><span>The payment types you take, the printers you can buy anywhere, the tablet you choose.</span><i aria-hidden="true"><svg class="ico"><use href="#i-go"/></svg></i></a>
+    <ol class="flow" data-solid>
+      <li data-reveal><span class="tile tile--sea"><svg class="ico"><use href="#i-phone"/></svg></span><h3>Book a demo</h3><p data-only="restaurant">We walk you through a full service on the till, and the back office behind it.</p><p data-only="shop">We walk you through a sale, a return and a stock check, and the back office behind it.</p></li>
+      <li data-reveal><span class="tile"><svg class="ico"><use href="#i-user"/></svg></span><h3>We open your account</h3><p>We create your <span data-only="restaurant">restaurant</span><span data-only="shop">shop</span> and your logins, and set the till up with you.</p></li>
+      <li data-reveal><span class="tile tile--sun"><svg class="ico"><use href="#i-tag"/></svg></span><h3 data-only="restaurant">Add your menu</h3><h3 data-only="shop">Bring in your products</h3><p data-only="restaurant">The menu, the tables and the staff go into the back office, at your own pace.</p><p data-only="shop">Your products come in from a spreadsheet, with their sizes, prices and barcodes.</p></li>
+      <li data-reveal><span class="tile tile--clay"><svg class="ico"><use href="#i-print"/></svg></span><h3>Install and sell</h3><p>Install EasyPay on your tablet, connect the printer and print a test page. The next <span data-only="restaurant">ticket</span><span data-only="shop">receipt</span> is a real one.</p></li>
+    </ol>
+    <p class="flow-end" data-reveal><a class="btn-demo" href="#demo">Book a demo <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a><a class="btn-line" href="pricing.html#start">What you need</a></p>
+  </div>
+</section>
+
+<!-- ================= the back office, page by page ================= -->
+<section class="sec office" id="backoffice">
+  <div class="wrap">
+    <div class="sec-head" data-solid>
+      <h2 data-only="restaurant" data-reveal="focus">Your restaurant, <em>in your browser</em>.</h2>
+      <h2 data-only="shop" data-reveal="focus">Your shop, <em>in your browser</em>.</h2>
+      <p class="sub" data-reveal>These are the back office's real pages, with a made-up business in them. Step through them.</p>
     </div>
-    <p class="index-all" data-reveal><a class="btn-demo" href="features.html">See every feature <span class="btn-dot"><svg class="ico"><use href="#i-go"/></svg></span></a><a class="btn-line" href="product.html">The whole product</a><a class="btn-line" href="pricing.html">The prices</a></p>
+    <div class="stage stage--office" data-solid data-reveal>
+      <div class="tour" data-tour data-only="restaurant">
+          <div class="tour-tabs" role="tablist" aria-label="Pages of a restaurant’s back office">
+            <button type="button" role="tab" aria-selected="true" data-shot="restaurant-insights" data-alt="The Sales patterns page: sales, orders and average check for the last 30 days, what stands out, and a grid of busy hours" data-says="When you sell. The days and the hours that bring the money in, set beside the days before, with what stands out written in plain words.">Insights</button>
+            <button type="button" role="tab" aria-selected="false" data-shot="restaurant-sales" data-alt="The Sales summary page: what was collected, refunds, and the sales of each day" data-says="What was sold, refunded and collected over the days you pick, by payment method, order type and member of staff. It downloads as a spreadsheet.">Sales</button>
+            <button type="button" role="tab" aria-selected="false" data-shot="restaurant-orders" data-alt="The Orders page: receipts listed with their table or order type, who rang them up and their total" data-says="Every receipt in full: what was ordered, by whom, the discounts, the tax and how it was paid.">Orders</button>
+            <button type="button" role="tab" aria-selected="false" data-shot="restaurant-menu" data-alt="The Items page: dishes with their category, tax, add-ons, price and whether they are on sale" data-says="Your dishes with their category, tax, add-ons and price. Change a price or take a dish off sale in the list; the tablets have it at their next sync.">Menu</button>
+            <button type="button" role="tab" aria-selected="false" data-shot="restaurant-floor" data-alt="The Floor plan page: tables drawn on a grid, with a list of table kinds and room pieces beside it" data-says="Draw each room: tables, booths and bar stools where they stand, and the walls, doors and bar around them. The tablets seat guests on the same plan.">Floor plan</button>
+            <button type="button" role="tab" aria-selected="false" data-shot="restaurant-day" data-alt="The Day closing page: a closed day with its sales, payments by method and the cash drawer counted" data-says="Each day on each till: what the drawer should hold, what was counted, and what was sold and how it was paid.">Day closing</button>
+            <button type="button" role="tab" aria-selected="false" data-shot="restaurant-team" data-alt="The Staff performance page: what each member of staff sold, their average check and what they gave away" data-says="What each member of staff sold, their average check, and the discounts and refunds they gave, beside the restaurant as a whole.">Team</button>
+          </div>
+          <div class="tour-view">
+            <button class="tour-arrow tour-arrow--prev" type="button" data-tour-prev aria-label="The page before"><svg class="ico"><use href="#i-left"/></svg></button>
+            <figure class="webapp">
+              <div class="webapp-bar" aria-hidden="true"><i></i><i></i><i></i><span>easypaypos.com/backoffice</span></div>
+              <img data-tour-img src="assets/shots/restaurant-insights-1000.webp" srcset="assets/shots/restaurant-insights-1000.webp 1000w, assets/shots/restaurant-insights.webp 2000w" sizes="(max-width: 1348px) 84vw, 1140px" width="2000" height="1250" alt="The Sales patterns page: sales, orders and average check for the last 30 days, what stands out, and a grid of busy hours" loading="lazy" decoding="async">
+            </figure>
+            <button class="tour-arrow tour-arrow--next" type="button" data-tour-next aria-label="The next page"><svg class="ico"><use href="#i-right"/></svg></button>
+          </div>
+          <p class="tour-says" data-tour-says aria-live="polite">When you sell. The days and the hours that bring the money in, set beside the days before, with what stands out written in plain words.</p>
+      </div>
+      <div class="tour" data-tour data-only="shop">
+          <div class="tour-tabs" role="tablist" aria-label="Pages of a shop’s back office">
+            <button type="button" role="tab" aria-selected="true" data-shot="shop-products" data-alt="The Products page: products with their category, cost, margin, stock, price and whether they are on sale" data-says="Your products with their sizes and colours, cost and margin, barcode and stock. Bring them in from a spreadsheet and print barcode labels.">Products</button>
+            <button type="button" role="tab" aria-selected="false" data-shot="shop-stock" data-alt="The Stock on hand page: the worth of the stock, what is low or out, and every product with what is left of it" data-says="What the shop holds now, what it is worth, what is low and what is out. A sale takes from it, a delivery adds to it.">Stock</button>
+            <button type="button" role="tab" aria-selected="false" data-shot="shop-sales" data-alt="The Item sales page: products ranked by what they brought in, with their cost, profit and margin" data-says="What sells, ranked by what it brought in, with what each product cost you and the profit it left.">Sales and profit</button>
+            <button type="button" role="tab" aria-selected="false" data-shot="shop-value" data-alt="The Stock value page: what the stock cost and what it would sell for, by category and by supplier" data-says="What your stock cost and what it would sell for, by category and by supplier, with a list of what to order again.">Stock value</button>
+          </div>
+          <div class="tour-view">
+            <button class="tour-arrow tour-arrow--prev" type="button" data-tour-prev aria-label="The page before"><svg class="ico"><use href="#i-left"/></svg></button>
+            <figure class="webapp">
+              <div class="webapp-bar" aria-hidden="true"><i></i><i></i><i></i><span>easypaypos.com/backoffice</span></div>
+              <img data-tour-img src="assets/shots/shop-products-1000.webp" srcset="assets/shots/shop-products-1000.webp 1000w, assets/shots/shop-products.webp 2000w" sizes="(max-width: 1348px) 84vw, 1140px" width="2000" height="1250" alt="The Products page: products with their category, cost, margin, stock, price and whether they are on sale" loading="lazy" decoding="async">
+            </figure>
+            <button class="tour-arrow tour-arrow--next" type="button" data-tour-next aria-label="The next page"><svg class="ico"><use href="#i-right"/></svg></button>
+          </div>
+          <p class="tour-says" data-tour-says aria-live="polite">Your products with their sizes and colours, cost and margin, barcode and stock. Bring them in from a spreadsheet and print barcode labels.</p>
+      </div>
+    </div>
   </div>
 </section>
 
 <!-- ================= book a demo ================= -->
-<section class="demo" id="demo">
+<section class="sec demo" id="demo">
   <div class="wrap">
     <div class="demo-panel" data-solid>
       <div class="demo-copy">
-        <p class="eyebrow" data-reveal>Book a demo</p>
-        <h2 data-reveal="focus">Making it easier for you. <span class="dim">Starting with a look at the till.</span></h2>
+        <h2 data-reveal="focus">See it with your own <em data-only="restaurant">menu</em><em data-only="shop">products</em>. <span class="dim">Then judge it yourself.</span></h2>
         <p class="demo-lede" data-only="restaurant" data-reveal>Tell us about your restaurant and we will arrange a time to show you a full service, from the first table to the Z report.</p>
         <p class="demo-lede" data-only="shop" data-reveal>Tell us about your shop and we will arrange a time to show you a full day, from the first scan to the close.</p>
+        <ul class="cta-ticks" data-reveal>
+          <li><svg class="ico"><use href="#i-check"/></svg>Rs 5,000 once, per tablet</li>
+          <li><svg class="ico"><use href="#i-check"/></svg>Keeps selling offline</li>
+          <li><svg class="ico"><use href="#i-check"/></svg>Set up with you, in Mauritius</li>
+        </ul>
         <p class="demo-direct" data-direct hidden data-reveal></p>
       </div>
       <form class="demo-form" data-demo-form novalidate data-reveal>
@@ -599,21 +744,26 @@
     <div class="foot-brand">
       <img src="assets/badge.png" alt="EasyPay. Making it easier for you." width="132" height="136">
       <p>A point of sale (POS) system for restaurants and shops, made for Mauritius.</p>
+      <div class="foot-contact">
+        <a data-mail href="mailto:hello@easypaypos.com"><svg class="ico"><use href="#i-mail"/></svg><span>hello@easypaypos.com</span></a>
+        <a data-call href="tel:+23052525270"><svg class="ico"><use href="#i-phone"/></svg><span>+230 5252 5270</span></a>
+        <a data-wa href="https://wa.me/23052525270"><svg class="ico"><use href="#i-wa"/></svg><span>WhatsApp us</span></a>
+      </div>
     </div>
     <nav aria-label="The till">
       <h4>The till</h4>
       <a href="features.html#qr">QR ordering</a><a href="features.html#floor">Front of house</a><a href="features.html#kitchen">Kitchen and bar</a><a href="features.html#payment">Payment</a><a href="features.html#selling">Selling in a shop</a><a href="features.html#stock">Stock</a><a href="features.html#returns">Returns</a>
     </nav>
-    <nav aria-label="The back office">
-      <h4>The back office</h4>
-      <a href="product.html#backoffice"><span data-only="restaurant">Menu and stock</span><span data-only="shop">Catalog and stock</span></a><a href="product.html#backoffice">Reports</a><a href="product.html#backoffice">Staff and roles</a><a data-signin hidden>Sign in</a>
+    <nav aria-label="Business">
+      <h4>Business</h4>
+      <a href="features.html#business">MRA e-invoicing</a><a href="features.html#business">Multi-branch</a><a href="features.html#business">Custom features</a><a href="product.html#backoffice">The back office</a><a data-signin hidden>Sign in</a>
     </nav>
     <nav aria-label="Start">
       <h4>Start</h4>
-      <a href="product.html">The whole product</a><a href="shop.html">POS for shops</a><a href="pricing.html">Pricing</a><a href="pricing.html#start">What you need</a><a href="pricing.html#faq">Questions</a><a href="#demo">Book a demo</a><a data-call hidden></a>
+      <a href="product.html">The whole product</a><a href="shop.html">POS for shops</a><a href="pricing.html">Pricing</a><a href="pricing.html#start">What you need</a><a href="pricing.html#faq">Questions</a><a href="#demo">Book a demo</a>
     </nav>
   </div>
-  <div class="wrap foot-end"><span>© 2026 EasyPay</span><span>easypaypos.com</span></div>
+  <div class="wrap foot-end"><span>© 2026 EasyPay</span><span class="foot-made">Made in Mauritius, for Mauritius</span><span>easypaypos.com</span></div>
 </footer>
 
 <script src="js/config.js"></script>
