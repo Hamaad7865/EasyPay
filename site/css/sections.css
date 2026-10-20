@@ -46,27 +46,28 @@ h1 em, h2 em:not(.tag) { font-style: normal; color: var(--leaf-deep); }
 /* ---- the home page's head: the words on the left, the product on the right ---- */
 
 .hero--split { padding-top: clamp(112px, 11vw, 158px); }
-.hero-grid { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: clamp(28px, 4.4vw, 72px); align-items: center; }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: clamp(28px, 3.6vw, 56px); align-items: center; }
 .hero--split .hero-copy { max-width: 610px; margin: 0; text-align: left; }
 .hero--split .pick { justify-content: flex-start; }
 .pick-say { font-size: 15px; font-weight: 600; color: var(--ink-2); }
-.hero--split .hero-copy h1 { margin-top: 22px; font-size: clamp(40px, 4.6vw, 68px); }
+.hero--split .hero-copy h1 { margin-top: 22px; font-size: clamp(40px, 4.4vw, 64px); }
 .hero--split .lede { margin: 22px 0 0; max-width: 54ch; font-size: clamp(16.5px, 1.25vw, 19px); }
 .hero--split .hero-cta { justify-content: flex-start; margin-top: 30px; }
-.hero--split .hero-price { margin: 18px 0 0; }
+.hero--split .hero-price { margin: 18px 0 0; justify-content: flex-start; gap: 6px 12px; padding: 8px 12px 8px 16px; font-size: 12.5px; }
+.hero--split .hero-price b { margin-right: 7px; font-size: 11.5px; }
+.hero--split .hero-price span + span { padding-left: 12px; }
 
 /* three things the visitor should leave knowing */
 .hero-ticks { margin-top: 28px; display: grid; gap: 11px; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
 .hero-ticks li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px; align-items: center; }
 .hero-ticks .ico { width: 24px; height: 24px; padding: 5px; border-radius: 50%; background: var(--mint); color: var(--leaf-deep); stroke-width: 3; }
 
-/* the back office and the till, smaller beside the words */
-.hero--split .stage--hero { margin-top: 0; padding: clamp(14px, 2.6vw, 36px) clamp(14px, 2.6vw, 36px) clamp(14px, 2vw, 24px); }
-/* (in a narrow window real.css and mock.css stack them, and a phone shows the tablet larger) */
-@media (min-width: 761px) {
-  .hero--split .hero-duo { padding-bottom: 15%; }
-  .hero--split .hero-duo .webapp { width: 86%; }
-  .hero--split .hero-duo .tablet { width: 72%; }
+/* the till on its own beside the words, as wide as the column allows: nothing in front of it */
+.hero--split .stage--hero { margin-top: 0; padding: clamp(14px, 1.8vw, 26px) clamp(14px, 1.8vw, 26px) clamp(14px, 1.6vw, 22px); }
+.hero--split .hero-duo { padding-bottom: 0; }
+/* (a phone shows it larger still, running off the side, as mock.css and real.css have it) */
+@media (min-width: 621px) {
+  .hero--split .hero-duo .tablet { position: relative; right: auto; bottom: auto; width: 100%; }
 }
 .hero--split .film-cap { margin-top: 16px; font-size: clamp(14.5px, 1.1vw, 16.5px); }
 .hero--split .film-bar { margin-top: 12px; }
