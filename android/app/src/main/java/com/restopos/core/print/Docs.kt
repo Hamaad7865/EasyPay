@@ -281,8 +281,15 @@ data class Shop(
 
 // One printer's paper: how many characters fit, how far to feed, whether to
 // cut, and whether the tablet is setting up, when every paper says it is not
-// a receipt (Docs.TRIAL_MARK; core/data/GoLive).
-data class Paper(val columns: Int = 48, val feed: Int = 3, val cut: Boolean = true, val trial: Boolean = false)
+// a receipt (Docs.TRIAL_MARK; core/data/GoLive). `inWide`: a 57 mm roll in a
+// printer made for 80 mm rolls (EscPos).
+data class Paper(val columns: Int = 48, val feed: Int = 3, val cut: Boolean = true, val trial: Boolean = false, val inWide: Boolean = false) {
+    companion object {
+        // a printer's paper_mm: 80, 58, or 57 (EscPos.IN_WIDE)
+        fun of(paperMm: Int, feed: Int = 3, cut: Boolean = true, trial: Boolean = false) =
+            Paper(EscPos.columnsFor(paperMm), feed, cut, trial, EscPos.inWide(paperMm))
+    }
+}
 
 // A logo ready for the printer: one bit per dot.
 class Raster(val widthBytes: Int, val height: Int, val bits: ByteArray)
@@ -335,7 +342,7 @@ object Docs {
     const val TRIAL_MARK = "TEST, NOT A RECEIPT"
 
     // A page. On a tablet that is setting up it starts with the mark, and end() puts it at its foot too.
-    private fun page(paper: Paper): EscPos = EscPos(paper.columns).also { if (paper.trial) it.trialMark() }
+    private fun page(paper: Paper): EscPos = EscPos(paper.columns, paper.inWide).also { if (paper.trial) it.trialMark() }
     private fun EscPos.trialMark() { align(EscPos.Align.Center).bold(true).line(TRIAL_MARK).bold(false).align(EscPos.Align.Left) }
 
     private fun EscPos.end(paper: Paper) {

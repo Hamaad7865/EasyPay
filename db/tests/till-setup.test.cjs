@@ -138,6 +138,8 @@ const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
     p = await printer(blue);
     check('P2 a second printer does not take the receipts', pr2.said === 'applied' && p.is_receipt === false && p.kind === 'bluetooth' && p.address === 'MPT-II' && p.paper_mm === 58 && pr2.data.receipt === false, pr2.said + ' ' + JSON.stringify(p));
     check('P2 a till that does not say leaves the switch as it was', (await settings()).onePrinter === true);
+    const pr2b = await one(op('printer.save', { id: blue, store_id: store, name: 'Bar', kind: 'bluetooth', address: 'MPT-II', paper_mm: 57 }));
+    check('P2 a 57 mm roll in an 80 mm printer is kept as 57 (0127)', pr2b.said === 'applied' && (await printer(blue)).paper_mm === 57, pr2b.said + ' ' + JSON.stringify(await printer(blue)));
 
     const before = await printer(receipt);
     const pr3 = await one(op('printer.save', { id: receipt, store_id: store, name: 'Counter', kind: 'usb', address: 'whatever', paper_mm: 80, one_printer: false }));
@@ -158,7 +160,7 @@ const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
     await noPrinter('P4 a Bluetooth printer needs a name or an address', { kind: 'bluetooth', address: '' }, 'bad-address');
     await noPrinter('P4 which an IP address is not', { kind: 'bluetooth', address: '192.168.1.9' }, 'bad-address');
     await noPrinter('P4 a kitchen screen is not made from a till', { kind: 'screen' }, 'bad-payload');
-    await noPrinter('P4 paper is 58 or 80', { paper_mm: 70 }, 'bad-payload');
+    await noPrinter('P4 paper is 57, 58 or 80', { paper_mm: 70 }, 'bad-payload');
     await noPrinter('P4 the switch is yes or no', { one_printer: 'yes' }, 'bad-payload');
     await noPrinter("P4 another client's store", { store_id: theirStore }, 'bad-store');
     const theirPrinter = (await q1(`insert into printers (tenant_id, store_id, name, kind, address) values ($1,$2,'Theirs','network','10.0.0.9') returning id`, [other, theirStore])).id;

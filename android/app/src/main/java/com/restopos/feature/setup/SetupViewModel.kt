@@ -29,7 +29,6 @@ import com.restopos.core.database.RoleEntity
 import com.restopos.core.database.TableEntity
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.print.Docs
-import com.restopos.core.print.EscPos
 import com.restopos.core.print.Paper
 import com.restopos.core.print.Printing
 import com.restopos.core.sync.SessionStore
@@ -272,7 +271,7 @@ class SetupViewModel @Inject constructor(
     // The test page of a printer whose form is still open: sent from what was
     // typed, before anything is saved. Null when it was sent; else why not.
     suspend fun testPrinter(id: String, p: PrinterForm.Printer): String? =
-        printing.trial(PrinterForm.entity(p, id, tenant, storeId), Docs.test(p.name, Paper(EscPos.columnsFor(p.paper), 3, true)))
+        printing.trial(PrinterForm.entity(p, id, tenant, storeId), Docs.test(p.name, Paper.of(p.paper)))
             .exceptionOrNull()?.let { it.message ?: "${p.name} did not print" }
 
     // The test page of a printer the store has.

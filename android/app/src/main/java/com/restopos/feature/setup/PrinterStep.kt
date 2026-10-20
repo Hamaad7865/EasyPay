@@ -91,7 +91,7 @@ private fun PrinterList(vm: SetupViewModel, printers: List<PrinterEntity>, onCha
                                 if (p.is_receipt) Chip("Prints the receipts", V.GreenWash, V.GreenText)
                                 if (!p.is_active) Chip("Switched off", V.Key, V.Text3)
                             }
-                            T(PrinterForm.connection(p.kind, p.address) + "  ·  ${p.paper_mm} mm", 14.sp, 500, V.Text2)
+                            T(PrinterForm.connection(p.kind, p.address) + "  ·  " + PrinterForm.paperName(p.paper_mm), 14.sp, 500, V.Text2)
                         }
                         val sending = said[p.id] == ""
                         QuietLink(if (sending) "Sending" else "Test", enabled = !sending) {
@@ -176,9 +176,10 @@ private fun PrinterEditor(vm: SetupViewModel, facts: SetupFacts, was: PrinterEnt
             SetupField("Its name", name, { name = it; touched() }, "Receipt", Modifier.weight(1f), enabled = !testing, ime = ImeAction.Done)
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 T("Paper", 13.sp, 600, V.Text2)
-                Seg(listOf(SegOption("80 mm", paper == 80) { paper = 80; touched() }, SegOption("58 mm", paper == 58) { paper = 58; touched() }), well = V.Well, height = 46.dp)
+                Seg(PrinterForm.PAPER_KEYS.map { (mm, key) -> SegOption(key, paper == mm) { paper = mm; touched() } }, well = V.Well, height = 46.dp)
             }
         }
+        PrinterForm.paperHint(paper)?.let { T(it, 13.sp, 500, V.Text3, lines = 2) }
         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             T("How it is connected", 13.sp, 600, V.Text2)
             Seg(

@@ -25,6 +25,16 @@ export type PrinterRow = {
 };
 export type PrinterCat = { id: string; name: string; printer_ids: string[] };
 
+// A printer's paper (paper_mm): 80 mm, 58 mm, or 57, a 57 mm roll in a printer
+// made for 80 mm rolls, which the till prints in the middle 48 mm of the
+// printer's line (0127). The form's choice as a paper, and a paper in words.
+export function paperOf(picked: unknown): 57 | 58 | 80 {
+  return picked === "57" ? 57 : picked === "58" ? 58 : 80;
+}
+export function paperName(mm: number): string {
+  return mm === 57 ? "57 mm roll in an 80 mm printer" : `${mm} mm`;
+}
+
 // What an order that prints nowhere still does. With the kitchen display (the
 // premium tier's) it is on the display; without it, it reaches nobody, and
 // the till says so when the order is sent.

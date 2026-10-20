@@ -373,11 +373,13 @@ internal fun AddPrinterKey(vm: BusinessViewModel = hiltViewModel()) {
                 ),
                 well = V.Key, height = 38.dp, radius = 12.dp, size = 14.sp,
             )
-            com.restopos.core.ui.Seg(
-                listOf(SegOption("80 mm", paper == 80) { paper = 80 }, SegOption("58 mm", paper == 58) { paper = 58 }),
-                well = V.Key, height = 38.dp, radius = 12.dp, size = 14.sp,
-            )
         }
+        // a row of its own: three paper keys beside the three ways in do not fit the sheet
+        com.restopos.core.ui.Seg(
+            com.restopos.core.data.PrinterForm.PAPER_KEYS.map { (mm, key) -> SegOption(key, paper == mm) { paper = mm } },
+            well = V.Key, height = 38.dp, radius = 12.dp, size = 14.sp,
+        )
+        com.restopos.core.data.PrinterForm.paperHint(paper)?.let { T(it, 13.sp, 500, V.Text3, lines = 2) }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f))
             VBtn("Cancel", height = 50.dp, enabled = !busy) { adding = null }

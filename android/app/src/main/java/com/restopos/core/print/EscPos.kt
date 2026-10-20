@@ -14,7 +14,13 @@ data class Styled(val t: String, val size: String = "normal", val bold: Boolean 
 // about Android or about receipts: it lays text out in a fixed number of
 // columns and adds the commands for bold, size, alignment, feed, cut and the
 // cash drawer.
-class EscPos(val columns: Int) {
+// `inWide`: a 57 mm roll in a printer made for 80 mm rolls (paper_mm 57). That
+// printer lays out an 80 mm line, 576 dots, with the roll in the middle of it,
+// so a line starting at its left edge starts off the paper (Star Grill's "r
+// type" for "Order type", 2026-10-20). It is told to print in the middle 48
+// mm, 384 dots: what it then centres, and the logo and the barcode, land on
+// the roll.
+class EscPos(val columns: Int, inWide: Boolean = false) {
     private val out = ByteArrayOutputStream()
     // Western European, so "Crevettes sautées à l'ail" prints as written. A
     // character the page lacks is printed without its accent, or as "?".
@@ -24,6 +30,10 @@ class EscPos(val columns: Int) {
     init {
         raw(0x1B, 0x40) // reset
         raw(0x1B, 0x74, 16) // code page WPC1252
+        if (inWide) {
+            raw(0x1D, 0x4C, WIDE_MARGIN and 0xFF, WIDE_MARGIN shr 8) // left margin, in dots
+            raw(0x1D, 0x57, 384 and 0xFF, 384 shr 8) // print area, in dots
+        }
     }
 
     private fun raw(vararg b: Int) = apply { b.forEach { out.write(it) } }
@@ -147,6 +157,11 @@ class EscPos(val columns: Int) {
     }
 
     companion object {
+        // paper_mm of a 57 mm roll in a printer made for 80 mm rolls (0127)
+        const val IN_WIDE = 57
+        // the 192 dots an 80 mm line has over a 58 mm one, half on each side
+        const val WIDE_MARGIN = (576 - 384) / 2
+        fun inWide(paperMm: Int): Boolean = paperMm == IN_WIDE
         // characters per line in the standard font
         fun columnsFor(paperMm: Int): Int = if (paperMm <= 58) 32 else 48
         // dots across the printable width

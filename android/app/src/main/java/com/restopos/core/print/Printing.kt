@@ -91,7 +91,7 @@ class Printing @Inject constructor(
     @Volatile private var trial = false
     init { scope.launch { com.restopos.core.data.settingUpFlow(db, session).collect { trial = it } } }
 
-    fun paper(p: PrinterEntity) = Paper(EscPos.columnsFor(p.paper_mm), p.feed_lines, p.cut, trial)
+    fun paper(p: PrinterEntity) = Paper.of(p.paper_mm, p.feed_lines, p.cut, trial)
 
     suspend fun shop(): Shop = settings().shop(session.businessName() ?: "")
 

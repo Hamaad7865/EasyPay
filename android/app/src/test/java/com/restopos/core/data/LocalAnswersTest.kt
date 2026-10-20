@@ -609,6 +609,9 @@ class LocalAnswersTest {
         // changed: its name and paper; that it prints the receipts stays
         assertEquals("done", ask("printer.save", p(400, "").replace("Counter", "Front").replace("\"paper_mm\":80", "\"paper_mm\":58")))
         assertEquals(listOf("Front", 58, true), dao.printers[id(400)]!!.let { listOf(it.name, it.paper_mm, it.is_receipt) })
+        // a 57 mm roll in a printer made for 80 mm (0127)
+        assertEquals("done", ask("printer.save", p(400, "").replace("Counter", "Front").replace("\"paper_mm\":80", "\"paper_mm\":57")))
+        assertEquals(57, dao.printers[id(400)]!!.paper_mm)
     }
 
     @Test fun `the business's details go into the settings beside what is there`() {

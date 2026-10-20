@@ -353,7 +353,7 @@ fun PrinterList(vm: MoreViewModel) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(p.name + if (p.is_receipt) "  (receipts)" else "", color = Pos.Text, fontSize = 15.sp)
-                Text("${if (p.kind == "usb") "USB" else p.address ?: "no address"} · ${p.paper_mm} mm", color = Pos.Text3, fontSize = 12.sp)
+                Text("${if (p.kind == "usb") "USB" else p.address ?: "no address"} · ${com.restopos.core.data.PrinterForm.paperName(p.paper_mm)}", color = Pos.Text3, fontSize = 12.sp)
             }
             OutlinedButton(onClick = { vm.testPrint(p.id) }, enabled = !busy) { Text("Test print") }
         }

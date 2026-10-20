@@ -35,7 +35,25 @@ object PrinterForm {
                 at
             }
         }
-        Printer(called, how, where, if (paper == 58) 58 else 80)
+        Printer(called, how, where, if (paper in PAPERS) paper else 80)
+    }
+
+    // A printer's paper: 80 mm, 58 mm, or 57, a 57 mm roll in a printer made
+    // for 80 mm rolls (EscPos.IN_WIDE, 0127).
+    val PAPERS = setOf(80, 58, com.restopos.core.print.EscPos.IN_WIDE)
+
+    // The paper in words, for a list: "80 mm paper".
+    fun paperName(mm: Int): String = if (mm == com.restopos.core.print.EscPos.IN_WIDE) "57 mm roll in an 80 mm printer" else "$mm mm paper"
+
+    // The choices, as the forms' keys say them.
+    val PAPER_KEYS = listOf(80 to "80 mm", 58 to "58 mm", com.restopos.core.print.EscPos.IN_WIDE to "57 in 80 mm")
+
+    // A word under the choice: what to pick when 58 mm cuts letters off at the
+    // left, and what 57 in 80 mm is for.
+    fun paperHint(mm: Int): String? = when (mm) {
+        58 -> "Letters cut off at the left? If the printer takes 80 mm rolls, pick 57 in 80 mm."
+        com.restopos.core.print.EscPos.IN_WIDE -> "A 57 mm roll in a printer made for 80 mm rolls: the print is kept in the middle of the roll. A printer made for 58 mm rolls stays on 58 mm."
+        else -> null
     }
 
     // The same printer as a row, though it is not stored: the test page is

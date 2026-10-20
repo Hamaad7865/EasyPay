@@ -40,10 +40,13 @@ class SetupFormsTest {
         assertEquals("Pick the printer among the devices paired with this tablet", whyNot("bluetooth", "192.168.1.9"))
     }
 
-    @Test fun `a USB printer has no address, and paper is 58 or 80`() {
+    @Test fun `a USB printer has no address, and paper is 58, 80, or 57 in 80`() {
         assertNull(printer("usb", "whatever was typed").getOrThrow().address)
         assertEquals(58, printer("usb", "", paper = 58).getOrThrow().paper)
         assertEquals(80, printer("usb", "", paper = 72).getOrThrow().paper)
+        // a 57 mm roll in a printer made for 80 mm is kept as 57, never read as 80 (0127)
+        assertEquals(57, printer("usb", "", paper = 57).getOrThrow().paper)
+        assertEquals(57, PrinterForm.entity(printer("usb", "", paper = 57).getOrThrow(), "id", "t", "s").paper_mm)
         // a kind the till does not know is a network printer, as the back office reads it
         assertEquals("network", printer("carrier pigeon", "10.0.0.2").getOrThrow().kind)
     }

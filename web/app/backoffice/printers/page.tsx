@@ -4,7 +4,7 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, int, on, Refused, text, uuid } from "@/lib/action";
 import { PREMIUM_ONLY } from "@/lib/plan";
-import { type PrinterCat as Cat, type PrinterRow as Row, printerWarnings, receiptField, receiptPicks } from "@/lib/printers";
+import { type PrinterCat as Cat, type PrinterRow as Row, paperName, paperOf, printerWarnings, receiptField, receiptPicks } from "@/lib/printers";
 import * as saves from "@/lib/saves";
 import { loadSettings, saveSettings } from "@/lib/settings";
 import { Empty, Flash, PageHead, type Search } from "../ui";
@@ -56,7 +56,7 @@ function fields(f: FormData) {
     name,
     kind,
     address: kind === "usb" ? null : address,
-    paper: f.get("paper_mm") === "58" ? 58 : 80,
+    paper: paperOf(f.get("paper_mm")),
     feed: int(f, "feed_lines", 0, 12, 3),
     cut: on(f, "cut"),
   };
@@ -190,7 +190,12 @@ function Hardware({ p }: { p?: Row }) {
           <select name="paper_mm" defaultValue={String(p?.paper_mm ?? 80)}>
             <option value="80">80 mm</option>
             <option value="58">58 mm</option>
+            <option value="57">57 mm roll in an 80 mm printer</option>
           </select>
+          <span className="help">
+            For a printer made for 80 mm rolls holding a 57 mm roll: on 58 mm its receipts lose their first letters at the left. The tablet needs EasyPay
+            0.9.20 or later.
+          </span>
         </label>
       </div>
       <div className="form-row">
@@ -363,7 +368,7 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
               <div>
                 <h2>{p.name}</h2>
                 <p>
-                  {p.kind === "usb" ? "USB" : p.kind === "bluetooth" ? `Bluetooth · ${p.address ?? ""}` : p.address} · {p.paper_mm} mm
+                  {p.kind === "usb" ? "USB" : p.kind === "bluetooth" ? `Bluetooth · ${p.address ?? ""}` : p.address} · {paperName(p.paper_mm)}
                   {many ? ` · ${storeName.get(p.store_id) ?? ""}` : ""}
                 </p>
               </div>
