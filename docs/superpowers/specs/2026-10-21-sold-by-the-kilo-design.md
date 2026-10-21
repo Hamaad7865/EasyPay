@@ -43,9 +43,9 @@ A shop's product is sold one of three ways:
 4. Restaurants: nothing changes. Their order screen has no weighing, so their sheet
    and editor do not offer it, and a restaurant's save never sends `sold_by`.
 
-## The server (migration 0129)
+## The server (migration 0131)
 
-`0128` is the loyalty work's. `0129_sold_by.sql`, built from the live definitions on dev:
+`0128` is the loyalty work's and `0130` the customer display's (first numbered 0129). `0131_sold_by.sql`, built from the live definitions on dev:
 
 - `item_holds_stock(p_tenant uuid, p_item uuid) returns boolean`: rule 3's "holds stock",
   one place for the till save, the import and the back office page.
@@ -138,6 +138,6 @@ A shop's product is sold one of three ways:
 ## Release
 
 The tablet part is a till release (version raised, the owner's `v*` tag, which also
-takes 0129 to production). Built in the worktree `claude/sold-by` beside the loyalty
+takes 0131 to production). Built in the worktree `claude/sold-by` beside the loyalty
 work (which has uncommitted changes in `LocalAnswers.kt` and `OfficePayloads.kt` in the
 main folder) and rebased on its commits before being merged.

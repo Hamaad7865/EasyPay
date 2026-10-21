@@ -1,10 +1,10 @@
 // sold-by.test.cjs — a shop's product sold by the kilo, set by the shop itself
-// (migration 0129): the till's item.save (push_item_save) and the import
+// (migration 0131): the till's item.save (push_item_save) and the import
 // (catalog_import) read how a product is sold, and a change of unit is
 // refused while the product counts stock and holds any (item_holds_stock).
 // Runs in ONE transaction that is rolled back: it leaves nothing behind.
 // Usage: node db/tests/sold-by.test.cjs
-//   WITH_MIGRATION=db/migrations/0129_sold_by.sql runs that file inside the
+//   WITH_MIGRATION=db/migrations/0131_sold_by.sql runs that file inside the
 //   transaction first, to try it before it is applied to dev.
 const crypto = require('crypto');
 const fs = require('fs');

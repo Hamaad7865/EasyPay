@@ -24,7 +24,7 @@ const WHY: Record<string, string> = {
   "sku-taken": "Another product already has this SKU.",
   "too-many-variants": "That would make more than 200 lines for one product.",
   "product-has-problems": "Another row of this product has a problem, so the whole product waits.",
-  // how it is sold, and whether it counts stock (0129)
+  // how it is sold, and whether it counts stock (0131)
   "bad-sold-by": "Sold by says each, kilo, or at the sale (for a price typed at the till). This row says something else.",
   "bad-count-stock": "Count stock says yes or no. This row says something else.",
   "open-price-not-here": "A product with variants has prices of its own: its price cannot be typed at the sale.",

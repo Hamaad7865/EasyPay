@@ -155,7 +155,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         }
     }
 
-    // ---- push_item_save (0084, 0087, 0094, 0129) ----
+    // ---- push_item_save (0084, 0087, 0094, 0131) ----
     private suspend fun itemSave(p: JsonObject, tenant: String) {
         val id = p.id("id")
         var price = p.long("price") ?: 0
@@ -163,7 +163,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         val open = p.bool("open_price") ?: false
         val avail = p.bool("available") ?: true
         val track = p.bool("track_stock")
-        // how it is sold (0129): each or weight; not said, it stays as it is
+        // how it is sold (0131): each or weight; not said, it stays as it is
         val sold = p.str("sold_by")?.trim()?.ifEmpty { null }
         if (sold != null && sold != "each" && sold != "weight") bad()
         val newTax = p.str("tax_id")?.ifEmpty { null }
@@ -205,7 +205,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
 
         if (was != null) {
             if (was.deleted_at != null) throw Refused("bad-item")
-            // its unit after this save (0129): what the sheet sends, or what it was
+            // its unit after this save (0131): what the sheet sends, or what it was
             val unit = sold ?: was.sold_by
             if (open && (unit == "weight" || dao.variantsOf(id).isNotEmpty())) throw Refused("open-price-not-here")
             // a kilo is not a piece: a product that counts stock and holds some keeps

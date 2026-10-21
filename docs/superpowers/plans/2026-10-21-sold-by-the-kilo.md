@@ -7,7 +7,7 @@
 and in the import file; the import also says "at the sale" and "count stock".
 
 **Architecture:** one rule set, written where each door already saves a product:
-`push_item_save` and `catalog_import` (migration 0129, with `item_holds_stock` shared),
+`push_item_save` and `catalog_import` (migration 0131, with `item_holds_stock` shared),
 `LocalAnswers.itemSave` for an offline tablet, and the back office's `saveProduct`. The
 tablet's sheet and the back office page get a three-way choice; the import's browser
 parser turns two new kinds of column into `sold_by` and `count_stock`.
@@ -16,13 +16,13 @@ parser turns two new kinds of column into `sold_by` and `count_stock`.
 
 ---
 
-### Task 1: the server (migration 0129) and its suite
+### Task 1: the server (migration 0131) and its suite
 
 **Files:**
-- Create: `db/migrations/0129_sold_by.sql` (from the live `push_item_save`, = 0112, and
+- Create: `db/migrations/0131_sold_by.sql` (from the live `push_item_save`, = 0112, and
   `catalog_import`, = 0081; dumped with `node db/scripts/dump-function.cjs`)
 - Create: `db/tests/sold-by.test.cjs` (pattern of `catalog-import.test.cjs`: one
-  transaction, rolled back; `WITH_MIGRATION=db/migrations/0129_sold_by.sql` applies it
+  transaction, rolled back; `WITH_MIGRATION=db/migrations/0131_sold_by.sql` applies it
   inside the transaction first)
 
 - [ ] Write the suite. Cases, each a `check`:
@@ -41,9 +41,9 @@ parser turns two new kinds of column into `sold_by` and `count_stock`.
     an existing counted product holding stock → `unit-has-stock`; `sold_by: x` →
     `bad-sold-by`; `open` with price null is not `price-missing`.
   - S8 import changes an existing product's unit and stock counting only when the row says.
-- [ ] Run `WITH_MIGRATION=db/migrations/0129_sold_by.sql node db/tests/sold-by.test.cjs`
+- [ ] Run `WITH_MIGRATION=db/migrations/0131_sold_by.sql node db/tests/sold-by.test.cjs`
   before writing the migration: it fails (file missing).
-- [ ] Write 0129:
+- [ ] Write 0131:
   - `create or replace function item_holds_stock(p_tenant uuid, p_item uuid) returns boolean`
     `language sql stable`: `exists (select 1 from stock_levels where tenant_id = p_tenant
     and item_id = p_item and qty <> 0) or exists (select 1 from items where tenant_id =
@@ -59,7 +59,7 @@ parser turns two new kinds of column into `sold_by` and `count_stock`.
     the checks listed in the spec; the product loop takes both from the first row; insert
     and update as the spec's table.
 - [ ] Run the suite with `WITH_MIGRATION`: all PASS. Run `catalog-import`, `till-office`,
-  `made-of` (as they are, after `node db/migrate.cjs` applies 0129 to dev): PASS.
+  `made-of` (as they are, after `node db/migrate.cjs` applies 0131 to dev): PASS.
 - [ ] Commit.
 
 ### Task 2: the import on the web
@@ -130,3 +130,30 @@ parser turns two new kinds of column into `sold_by` and `count_stock`.
   `git -C C:/Projects/RestoPOS merge --ff-only claude/sold-by`.
 - [ ] Version: raise `versionName`/`versionCode` past whatever `restopos` has then; the tag
   is the owner's.
+
+---
+
+## Record (2026-10-21)
+
+**Built:** 0131 (`85c06c8`), the import's two columns and the export (`c71adc1`), the back
+office product page (`1ab459e`), the tablet's sheet and offline answer (`7fcb409`).
+
+**Run:**
+- `sold-by.test.cjs` 32 checks PASS (first inside a rolled-back transaction with
+  `WITH_MIGRATION`, then after `node db/migrate.cjs` applied 0131 to dev); `catalog-import`
+  (25), `till-office` (119), `made-of` (25) PASS after it, one at a time.
+- `catalog-rows.test.mjs`: PASS with four new checks. Web type-check clean.
+- Unit tests: `ItemFormTest` 11, `LocalAnswersTest` 67, `OfficeFormsTest` 16, PASS.
+- Sunwave's real price list with "Sold by" and "Count stock" filled in the owner's words
+  ("Kg", "A déterminer" with A DETERMINER left in the price cells, "oui", "no"), through
+  the import screen's own parser and `catalog_import` on dev, rolled back: 46 products,
+  no problems, and exactly what the one-off script made (6 by the kilo at their price a
+  kilo, 17 typed at the sale, 31 services not counted, 15 goods counted).
+
+**Not run:**
+- The sheet on an emulator, and a kilo sale on a tablet: emulator 5598 closed during the
+  first build (memory about 0.5 GB free with the loyalty session running); the owner
+  wants to watch a test run. Selling by the kilo itself is older code (`RetailViewModel.put`).
+- The back office page in a browser (needs a sign-in to a dev shop).
+- An offline tablet's queue replayed against dev: covered by the same payloads in the
+  server suite and `LocalAnswersTest`, not by a real tablet's outbox.

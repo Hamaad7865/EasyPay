@@ -1,4 +1,4 @@
--- 0129: how a shop's product is sold, set by the shop itself (spec
+-- 0131: how a shop's product is sold, set by the shop itself (spec
 -- docs/superpowers/specs/2026-10-21-sold-by-the-kilo-design.md).
 -- The till sells by the kilo (items.sold_by = 'weight', 0004) but nothing set it.
 -- - item_holds_stock: whether a product holds stock, in one place.
@@ -30,7 +30,7 @@ declare
   -- the fuller sheet (0094)
   v_new_tax uuid; v_sup uuid; v_store uuid; v_cost bigint; v_point int; v_qty int;
   v_reorder boolean; v_may_cost boolean;
-  -- how it is sold (0129): each or weight; null when the till does not say
+  -- how it is sold (0131): each or weight; null when the till does not say
   v_sold text; v_unit text;
 begin
   begin
@@ -41,7 +41,7 @@ begin
     v_avail := coalesce((p->>'available')::boolean, true);
     -- whether its stock is counted (0087); a till that does not say leaves it as it is
     v_track := (p->>'track_stock')::boolean;
-    -- how it is sold (0129); a till that does not say leaves it as it is
+    -- how it is sold (0131); a till that does not say leaves it as it is
     v_sold := nullif(btrim(p->>'sold_by'), '');
   exception when others then
     raise exception 'bad-payload';
@@ -94,14 +94,14 @@ begin
   select id, deleted_at, sold_by, track_stock into v_was from items where id = v_id and tenant_id = p_tenant for update;
   if found then
     if v_was.deleted_at is not null then raise exception 'bad-item'; end if;
-    -- its unit after this save (0129): what the till sends, or what it was
+    -- its unit after this save (0131): what the till sends, or what it was
     v_unit := coalesce(v_sold, v_was.sold_by);
     if v_open and (v_unit = 'weight'
         or exists (select 1 from item_variants where tenant_id = p_tenant and item_id = v_id and deleted_at is null)) then
       raise exception 'open-price-not-here';
     end if;
     -- a kilo is not a piece: a product that counts stock and holds some keeps
-    -- its unit until it is counted to zero, or no longer counted (0129)
+    -- its unit until it is counted to zero, or no longer counted (0131)
     if v_unit <> v_was.sold_by and coalesce(v_track, v_was.track_stock) and not v_open
        and item_holds_stock(p_tenant, v_id) then
       raise exception 'unit-has-stock';
@@ -200,7 +200,7 @@ begin
            (x.r->>'reorder')::int as reorder,
            (x.r->>'order_qty')::int as order_qty,
            (x.r->>'stock')::int as stock,
-           -- how it is sold and whether it counts stock (0129); not said: as before
+           -- how it is sold and whether it counts stock (0131); not said: as before
            nullif(lower(btrim(x.r->>'sold_by')), '') as sold_by,
            case when jsonb_typeof(x.r->'count_stock') = 'boolean' then (x.r->>'count_stock')::boolean end as count_stock,
            x.r ? 'count_stock' and jsonb_typeof(x.r->'count_stock') not in ('boolean', 'null') as count_bad,
@@ -225,7 +225,7 @@ begin
     or (select count(distinct lower(x)) from unnest(names) x) <> coalesce(array_length(names, 1), 0));
   update _imp set why = 'bad-sold-by' where why is null and sold_by is not null and sold_by not in ('each', 'weight', 'open');
   update _imp set why = 'bad-count-stock' where why is null and count_bad;
-  -- one whose price is typed at the sale needs none in the file (0129)
+  -- one whose price is typed at the sale needs none in the file (0131)
   update _imp set why = 'price-missing' where why is null and ((price is null and sold_by is distinct from 'open') or price < 0);
   update _imp set why = 'bad-number' where why is null
      and (cost < 0 or reorder < 0 or order_qty < 0 or stock < 0);
@@ -262,7 +262,7 @@ begin
     and (exists (select 1 from items x where x.id = i.item_id and coalesce(x.stock_qty, 0) <> 0)
       or exists (select 1 from stock_levels l where l.tenant_id = p_tenant and l.item_id = i.item_id and l.qty <> 0));
 
-  -- how an existing product is sold (0129): at the sale is not for one with variants, and
+  -- how an existing product is sold (0131): at the sale is not for one with variants, and
   -- a kilo is not a piece while it counts stock and holds some
   update _imp i set why = 'open-price-not-here' where why is null and i.item_id is not null and i.sold_by = 'open'
     and exists (select 1 from item_variants v where v.tenant_id = p_tenant and v.item_id = i.item_id and v.deleted_at is null);
@@ -367,7 +367,7 @@ begin
       -- a product with lines keeps its own price and cost: the file prices its lines, and a line
       -- the file does not name must not follow whichever row happened to come first
       update items set price = case when p.has_lines then price when p.sold_by = 'open' then 0 else p.price end,
-             -- how it is sold and whether it counts stock: only when the file says (0129)
+             -- how it is sold and whether it counts stock: only when the file says (0131)
              sold_by = case when p.sold_by is null then sold_by when p.sold_by = 'weight' then 'weight' else 'each' end,
              open_price = case when p.sold_by is null then open_price else p.sold_by = 'open' end,
              track_stock = case when p.sold_by = 'open' then false when p.count_stock is not null then p.count_stock else track_stock end,

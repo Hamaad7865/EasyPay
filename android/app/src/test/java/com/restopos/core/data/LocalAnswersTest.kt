@@ -292,7 +292,7 @@ class LocalAnswersTest {
         assertTrue(dao.items.isEmpty())
     }
 
-    // ---- how it is sold (0129), the cases of sold-by.test.cjs ----
+    // ---- how it is sold (0131), the cases of sold-by.test.cjs ----
     private fun sold(item: String, name: String, extra: String) =
         ask("item.save", """{"id":"$item","name":"$name","price":12000,"open_price":false,"category_id":"","barcode":"","available":true$extra}""")
 

@@ -13,7 +13,7 @@ const HEAD = [
   "Name", "Category", "Brand", "Supplier", "Supplier code", "Option 1", "Value 1", "Option 2", "Value 2", "Option 3", "Value 3",
   "SKU", "Barcode", "Price", "Cost", "Tax", "Reorder at", "Order quantity", "Opening stock", "Sold by", "Count stock",
 ];
-// how a product is sold, in the words the importer reads back (0129)
+// how a product is sold, in the words the importer reads back (0131)
 const way = (r: Row) => (r.open_price ? "at the sale" : r.sold_by === "weight" ? "kilo" : "each");
 const cell = (v: unknown) => {
   const s = v === null || v === undefined ? "" : String(v);

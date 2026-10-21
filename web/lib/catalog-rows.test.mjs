@@ -137,7 +137,7 @@ await check("an Excel workbook gives the rows its CSV twin gives", async () => {
   assert.equal(fromExcel.rows[3].n, 6);
 });
 
-// ---- how it is sold, and whether it counts stock (0129) ----
+// ---- how it is sold, and whether it counts stock (0131) ----
 await check("Sold by and Count stock are read from their headers and their words", () => {
   const { rows, mapping } = read(
     "Name,Price,Sold by,Count stock\n" +

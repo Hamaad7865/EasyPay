@@ -69,7 +69,7 @@ async function saveProduct(f: FormData) {
       const tax = String(f.get("tax") ?? "");
       const category = String(f.get("category") ?? "");
       const supplier = String(f.get("supplier") ?? "");
-      // How it is sold (0129): one price each, a price for a kilo, or its price
+      // How it is sold (0131): one price each, a price for a kilo, or its price
       // typed at the till each time (0083), which is sold each and counts no stock.
       // A form that does not say leaves its unit as it was.
       const sold = String(f.get("sold") ?? "");

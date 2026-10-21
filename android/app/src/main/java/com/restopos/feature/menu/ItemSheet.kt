@@ -74,7 +74,7 @@ class ItemEditor(private val service: ServiceRepository, private val approvals: 
     private val thing = if (shop) "product" else "item"
 
     fun new(category: String?) = show(ItemEdit(null, category))
-    // fixedPrice: a product whose variants carry its prices; it cannot be one whose price is typed (0129: a kilo is now a choice on the sheet)
+    // fixedPrice: a product whose variants carry its prices; it cannot be one whose price is typed (0131: a kilo is now a choice on the sheet)
     fun open(item: ItemEntity, fixedPrice: Boolean = false) = show(ItemEdit(item, item.category_id, fixedPrice))
     fun close() { if (!busy.value) editing.value = null }
 
@@ -86,7 +86,7 @@ class ItemEditor(private val service: ServiceRepository, private val approvals: 
     // count: whether its stock is counted, as the sheet's switch stands
     // typed: the sheet's second page, or null when it had not been read yet: the server then leaves all of it as it is
     // from: that page as it opened, for an item being changed: only what was changed since is sent
-    // way: how a shop's product is sold (0129); null for a restaurant's item, whose sheet does not say
+    // way: how a shop's product is sold (0131); null for a restaurant's item, whose sheet does not say
     fun save(
         name: String, price: String, open: Boolean, category: String?, barcode: String, available: Boolean, count: Boolean,
         typed: ItemForm.Typed? = null, from: ItemForm.Typed? = null, by: StaffMember? = null, way: ItemForm.Way? = null, done: () -> Unit = {},
@@ -155,7 +155,7 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
     var name by remember(edit) { mutableStateOf(was?.name ?: "") }
     var price by remember(edit) { mutableStateOf(if (was == null || was.open_price) "" else rupees(was.price)) }
     var open by remember(edit) { mutableStateOf(was?.open_price ?: false) }
-    // how a shop's product is sold (0129): a price each, a price for a kilo, or typed at the sale
+    // how a shop's product is sold (0131): a price each, a price for a kilo, or typed at the sale
     var way by remember(edit) { mutableStateOf(ItemForm.wayOf(was?.open_price ?: false, was?.sold_by)) }
     var cat by remember(edit) { mutableStateOf(was?.category_id ?: edit.category) }
     var barcode by remember(edit) { mutableStateOf(was?.barcode ?: "") }
@@ -250,7 +250,7 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             // however many categories a menu has.
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (shop) {
-                    // How a shop's product is sold (0129). One with variants has prices of its own: not typed at the sale.
+                    // How a shop's product is sold (0131). One with variants has prices of its own: not typed at the sale.
                     val atSale = !edit.fixedPrice && more?.variants != true
                     Seg(
                         listOf(

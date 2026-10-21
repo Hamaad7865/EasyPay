@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 export type TaxChoice = { id: string; name: string; rate_bp: number; type: string };
-// how it is sold (0129): one price each, a price for a kilo, or a price typed at the till
+// how it is sold (0131): one price each, a price for a kilo, or a price typed at the till
 export type Way = "each" | "weight" | "open";
 
 // Only for the margin shown while typing: the server reads the amounts for

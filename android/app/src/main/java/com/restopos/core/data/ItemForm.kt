@@ -7,10 +7,10 @@ import com.restopos.core.common.Money
 // it again and has the last word; reading it here catches a slip before the
 // tablet asks, and puts the server's refusals in the till's words.
 object ItemForm {
-    // soldBy: how it is sold (0129), "each" or "weight"; null: not said, the server leaves it as it is
+    // soldBy: how it is sold (0131), "each" or "weight"; null: not said, the server leaves it as it is
     class Item(val name: String, val price: Long, val open: Boolean, val barcode: String?, val soldBy: String? = null)
 
-    // How a shop's product is sold, as its sheet offers it (0129): one price
+    // How a shop's product is sold, as its sheet offers it (0131): one price
     // each, a price for a kilo (the till asks how heavy), or its price typed
     // at the sale (sold each, and counting no stock).
     enum class Way { FIXED, KILO, AT_SALE }
@@ -155,7 +155,7 @@ object ItemForm {
             "conflict" -> "That did not work. Close this and try again."
             "forbidden" -> "You are not allowed to change the ${if (shop) "products" else "menu"}. Ask a manager."
             "open-price-not-here" -> "A product with variants, or sold by weight, has prices of its own: its price cannot be typed at the sale."
-            // how it is sold (0129)
+            // how it is sold (0131)
             "unit-has-stock" -> "It holds stock, so it cannot change between each and by the kilo. Count it to zero first, or switch off \"Count its stock\"."
             "unknown-op" -> "The server has to be updated before items can be changed from a till."
             null -> "The server refused it."

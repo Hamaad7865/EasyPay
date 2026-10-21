@@ -16,7 +16,7 @@ export type CatalogRow = {
   o1?: string; v1?: string; o2?: string; v2?: string; o3?: string; v3?: string;
   sku?: string; barcode?: string; tax?: string;
   price?: number | null; cost?: number | null; reorder?: number | null; order_qty?: number | null; stock?: number | null;
-  // how it is sold (0129): each, by the kilo, or its price typed at the sale; and whether it counts stock
+  // how it is sold (0131): each, by the kilo, or its price typed at the sale; and whether it counts stock
   sold_by?: "each" | "weight" | "open"; count_stock?: boolean;
   bad?: string;
 };

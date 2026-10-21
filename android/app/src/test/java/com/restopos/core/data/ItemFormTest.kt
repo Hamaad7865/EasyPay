@@ -11,7 +11,7 @@ import org.junit.Test
 class ItemFormTest {
     private fun read(name: String = "Samosa", price: String = "30", open: Boolean = false, barcode: String = "") = ItemForm.read(name, price, open, barcode)
 
-    // how a shop's product is sold (0129): what the sheet's choice sends
+    // how a shop's product is sold (0131): what the sheet's choice sends
     @Test fun `a new product always says how it is sold`() {
         assertEquals("each", ItemForm.soldBy(ItemForm.Way.FIXED, null))
         assertEquals("weight", ItemForm.soldBy(ItemForm.Way.KILO, null))

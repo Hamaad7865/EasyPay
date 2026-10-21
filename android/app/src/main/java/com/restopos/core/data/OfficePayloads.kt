@@ -29,7 +29,7 @@ object OfficePayloads {
         put("id", id); put("name", item.name); put("price", item.price); put("open_price", item.open)
         put("category_id", categoryId ?: ""); put("barcode", item.barcode ?: ""); put("available", available)
         countStock?.let { put("track_stock", it) }
-        // how it is sold (0129), when the sheet says
+        // how it is sold (0131), when the sheet says
         item.soldBy?.let { put("sold_by", it) }
         more?.let { m ->
             // only what the page says is to be sent: for an item being changed, what the person changed
