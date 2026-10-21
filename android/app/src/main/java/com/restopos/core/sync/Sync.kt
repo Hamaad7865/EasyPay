@@ -297,6 +297,9 @@ private val LANG = stringPreferencesKey("lang")
 private val MODE = stringPreferencesKey("mode")
 private val CABLE_ON = booleanPreferencesKey("cable_display")
 private val CABLE_MESSAGE = stringPreferencesKey("cable_display_message")
+private val POLE_ON = booleanPreferencesKey("pole_display")
+private val POLE_COMMANDS = stringPreferencesKey("pole_display_commands")
+private val POLE_BAUD = intPreferencesKey("pole_display_baud")
 private val PAIR_CODE = stringPreferencesKey("pair_code")
 private val KITCHEN_EPOCH = stringPreferencesKey("kitchen_epoch")
 private val SEQ_DAY = stringPreferencesKey("seq_day")
@@ -401,6 +404,13 @@ class SessionStore(private val context: Context) {
     val cableDisplay: Flow<Boolean> = store.data.map { it[CABLE_ON] ?: false }.distinctUntilChanged()
     val cableMessage: Flow<String> = store.data.map { it[CABLE_MESSAGE].orEmpty() }.distinctUntilChanged()
     suspend fun setCableDisplay(on: Boolean, message: String) { store.edit { it[CABLE_ON] = on; it[CABLE_MESSAGE] = message } }
+
+    // ---- a 2-line customer pole display plugged into this tablet by USB (core/display/PoleDisplay) ----
+    // A tablet setting too: whether it is used, which kind of command it
+    // takes (PoleText.EPSON or CD5220) and its speed.
+    data class Pole(val on: Boolean = false, val commands: String = "epson", val baud: Int = 9600)
+    val pole: Flow<Pole> = store.data.map { Pole(it[POLE_ON] ?: false, it[POLE_COMMANDS] ?: "epson", it[POLE_BAUD] ?: 9600) }.distinctUntilChanged()
+    suspend fun setPole(p: Pole) { store.edit { it[POLE_ON] = p.on; it[POLE_COMMANDS] = p.commands; it[POLE_BAUD] = p.baud } }
     suspend fun businessName(): String? = store.data.map { it[BUSINESS] }.first()
     suspend fun setBusinessName(name: String) { store.edit { it[BUSINESS] = name } }
 

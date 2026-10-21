@@ -161,6 +161,7 @@ class SettingsViewModel @Inject constructor(
     private val approvals: Approvals,
     private val screenLink: com.restopos.core.kitchen.ScreenLink,
     private val displayLink: com.restopos.core.display.DisplayLink,
+    private val poleDisplay: com.restopos.core.display.PoleDisplay,
     private val door: com.restopos.core.data.SetupDoor,
     private val backups: com.restopos.core.data.Backup,
     @ApplicationContext private val context: Context,
@@ -205,6 +206,12 @@ class SettingsViewModel @Inject constructor(
         session.setCableDisplay(on, com.restopos.core.data.PrinterForm.displayMessage(first, second).orEmpty())
         com.restopos.core.ui.Toaster.say(if (on) "The customer display shows on a second screen as soon as one is connected." else "Nothing is shown on a second screen.")
     }
+    // A 2-line pole display on this tablet's USB (core/display/PoleDisplay): this tablet's own.
+    val pole: StateFlow<com.restopos.core.sync.SessionStore.Pole> = session.pole.held(com.restopos.core.sync.SessionStore.Pole())
+    val poleStatus: StateFlow<String?> = poleDisplay.status
+    fun setPole(p: com.restopos.core.sync.SessionStore.Pole) = viewModelScope.launch { session.setPole(p) }
+    fun testPole() = viewModelScope.launch { com.restopos.core.ui.Toaster.say(poleDisplay.test()) }
+
     // the second screens Android offers for it now, by name
     fun secondScreens(): List<String> =
         runCatching { context.getSystemService(android.hardware.display.DisplayManager::class.java).getDisplays(android.hardware.display.DisplayManager.DISPLAY_CATEGORY_PRESENTATION).map { it.name } }.getOrDefault(emptyList())
@@ -1313,6 +1320,39 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
     }
     changing?.let { d -> DisplaySheet(d.id, d) { changing = null } }
     picturing?.let { (owner, name) -> DisplayPicturesSheet(owner, name) { picturing = null } }
+    // A 2-line pole display on this tablet's USB: this tablet's own too.
+    val pole by vm.pole.collectAsState()
+    val poleStatus by vm.poleStatus.collectAsState()
+    Heading("Pole display (USB)")
+    Panel {
+        val change = "change how this till is set up"
+        Toggle(
+            "Show the sale on a pole display",
+            "The small display of 2 lines on a stand, plugged into this tablet's USB: the last item and the total, then the change.",
+            pole.on,
+        ) { on -> vm.guard("settings.device", change) { vm.setPole(pole.copy(on = on)) } }
+        if (pole.on) {
+            Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Its commands, as the switch under it is set (most take Epson's)", color = Pos.Text2, fontSize = 13.sp)
+                com.restopos.core.ui.Seg(
+                    listOf(
+                        com.restopos.core.ui.SegOption("Epson", pole.commands == com.restopos.core.display.PoleText.EPSON) { vm.guard("settings.device", change) { vm.setPole(pole.copy(commands = com.restopos.core.display.PoleText.EPSON)) } },
+                        com.restopos.core.ui.SegOption("CD5220", pole.commands == com.restopos.core.display.PoleText.CD5220) { vm.guard("settings.device", change) { vm.setPole(pole.copy(commands = com.restopos.core.display.PoleText.CD5220)) } },
+                    ),
+                    well = V.Key, height = 38.dp, radius = 12.dp, size = 14.sp,
+                )
+                Text("Its speed (9600 unless its manual says otherwise)", color = Pos.Text2, fontSize = 13.sp)
+                com.restopos.core.ui.Seg(
+                    listOf(2400, 4800, 9600, 19200).map { b -> com.restopos.core.ui.SegOption(b.toString(), pole.baud == b) { vm.guard("settings.device", change) { vm.setPole(pole.copy(baud = b)) } } },
+                    well = V.Key, height = 38.dp, radius = 12.dp, size = 14.sp,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(poleStatus ?: "Looking for it…", Modifier.weight(1f), color = Pos.Text2, fontSize = 13.sp)
+                    Small("Test") { vm.testPole() }
+                }
+            }
+        }
+    }
     // The customer display on a second screen by cable: this tablet's own.
     val cableOn by vm.cableOn.collectAsState()
     val cableMessage by vm.cableMessage.collectAsState()
@@ -1539,7 +1579,7 @@ private const val ADDONS_HELP = "On Menu & stock, tap Add-ons. A group (Extras, 
 private const val RECEIPT_HELP = "In Settings, under Receipt: a note under the business's name and a note at the foot of every receipt and bill, and for a restaurant the service charge added to orders served at a table."
 private const val STAFF_HELP = "In Settings. Staff: tap Add staff and give them a name, a role and a PIN of 4 digits; tap someone to change their name or role, to give them a new PIN, or to switch them off, after which they can no longer sign in. Roles: tap a role and tick what it may do; the owner's role can do everything and cannot be changed, and a role staff still have cannot be removed. Discounts: a name, which prints on the receipt, a percentage of the bill or an amount off it, and whether it needs a manager. Each may need the owner's or a manager's PIN."
 
-private const val DISPLAY_HELP = "A second tablet can face the customer and show the sale as it is rung up: each line, the discounts, the VAT and the total, then the change after Pay, and between sales the business's name, logo and a message. On that tablet, install EasyPay and tap Set up as a customer display on its first screen: it needs no login, and shows its address and a pairing code. A business on the cloud adds it in the back office, under Printers, Customer displays, with that address and code and the till it faces; a tablet that works on its own adds it here, in Settings, Printers, Add a customer display. It works over the shop's own Wi-Fi, with or without internet. If Settings, Printers says it is not answering: check the display tablet is on, has EasyPay open, and is on the same Wi-Fi, and keep its address the same on the router, as for a printer."
+private const val DISPLAY_HELP = "A second tablet can face the customer and show the sale as it is rung up: each line, the discounts, the VAT and the total, then the change after Pay, and between sales the business's name, logo and a message. On that tablet, install EasyPay and tap Set up as a customer display on its first screen: it needs no login, and shows its address and a pairing code. A business on the cloud adds it in the back office, under Printers, Customer displays, with that address and code and the till it faces; a tablet that works on its own adds it here, in Settings, Printers, Add a customer display. It works over the shop's own Wi-Fi, with or without internet. If Settings, Printers says it is not answering: check the display tablet is on, has EasyPay open, and is on the same Wi-Fi, and keep its address the same on the router, as for a printer. Pictures: a display's Pictures key, in Settings, Printers, takes up to 5 from this tablet's photos, shown in turn beside the sale and between sales. A screen joined to this tablet by a cable (a monitor on HDMI or USB-C, or a terminal's own customer screen) shows the same thing: in Settings, Printers, switch on Show it on a second screen. A small pole display of 2 lines on this tablet's USB: switch on Show the sale on a pole display, pick its commands (Epson or CD5220, as the switch under it is set) and its speed, and tap Test."
 private val HELP = listOf(
     "Starting the day" to "Clock in: tap Clock in/out, pick your name and enter your PIN. Then open the day: someone allowed to taps their name on the start screen and counts the cash in the drawer, which opens for the count. The till sells from then on.",
     "Loyalty points" to "Switched on in Settings, Loyalty, with the percentage that comes back. A customer named on the order earns points on what they pay, and a point is worth Rs 1. On Pay, Use points shows their balance: tap it to take some or all of it off the bill, as a discount before VAT. Points are used before any payment is taken, and not on one check of a split check. A refund takes back its share of the points the sale earned and gives back its share of the points it used. A customer can have a loyalty card: on Customers, open them, tap New number (or scan a card bought with a barcode) and Save; open them again for Print card. Scanning the card on the order screen puts them on it.",

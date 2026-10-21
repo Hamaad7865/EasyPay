@@ -16,6 +16,7 @@ serialization = "1.9.0"
 workmanager = "2.10.0"
 paging = "3.3.6"
 zxing = "3.5.3"
+usbserial = "3.10.0"
 
 [libraries]
 core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
@@ -49,6 +50,7 @@ paging-runtime = { group = "androidx.paging", name = "paging-runtime", version.r
 paging-compose = { group = "androidx.paging", name = "paging-compose", version.ref = "paging" }
 # the bars of a label (EAN-13, Code 128): the till draws them, ZXing works them out
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
+usb-serial = { group = "com.github.mik3y", name = "usb-serial-for-android", version.ref = "usbserial" }
 junit = { group = "junit", name = "junit", version = "4.13.2" }
 
 [plugins]

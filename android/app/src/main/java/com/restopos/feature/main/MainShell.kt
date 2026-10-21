@@ -204,6 +204,7 @@ class ShellViewModel @Inject constructor(
     private val kitchen: com.restopos.core.data.Kitchen,
     private val screens: com.restopos.core.kitchen.ScreenLink,
     private val displays: com.restopos.core.display.DisplayLink,
+    private val poles: com.restopos.core.display.PoleDisplay,
     private val guests: com.restopos.core.guest.GuestLink,
     private val guestBook: com.restopos.core.guest.GuestBook,
     private val requests: com.restopos.core.data.TillRequests,
@@ -253,6 +254,8 @@ class ShellViewModel @Inject constructor(
         screens.start()
         // and the customer displays facing this till, the same way
         displays.start()
+        // and a pole display plugged into it by USB, when one is switched on
+        poles.start()
         // The line to the ordering site, where guests order from their tables:
         // up from the moment the till is, whichever screen is open, and only
         // listening when the settings and an open day say this till should.

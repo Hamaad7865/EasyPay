@@ -110,5 +110,6 @@ dependencies {
     implementation(libs.paging.runtime)
     implementation(libs.paging.compose)
     implementation(libs.zxing.core)
+    implementation(libs.usb.serial)
     testImplementation(libs.junit)
 }
