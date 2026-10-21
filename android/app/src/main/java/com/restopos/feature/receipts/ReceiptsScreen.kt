@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -33,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -80,6 +82,9 @@ import javax.inject.Inject
 
 // A receipt opened from the list: what it printed, how it was paid, and
 // whether it was refunded.
+// the words the title block of a paper prints (core/print/PaperWalk)
+private val TITLES = setOf("RECEIPT", "REFUND", "BILL")
+
 data class ReceiptDetail(
     val receipt: ReceiptEntity,
     val doc: ReceiptDoc?,
@@ -95,6 +100,9 @@ data class ReceiptDetail(
     val note: CreditNoteEntity? = null,
     // a sale on account (0114): what its bill still owes; a return comes off that first
     val onBill: Long = 0,
+    // a Premium MRA client's receipt: the QR code the MRA sent back (its PNG), shown
+    // where the paper prints it; null for one the MRA has not answered for, or never had
+    val mraQr: android.graphics.Bitmap? = null,
 ) {
     val canRefund: Boolean get() = receipt.type == "sale" && (lines?.any { it.left > 0 } ?: (refunded == 0L))
 }
@@ -176,14 +184,18 @@ class ReceiptsViewModel @Inject constructor(
             val row = db.ops().receipt(it.id) ?: it
             val doc = docs.decode(row.doc) ?: orders.docOf(row)
             val lines = if (row.type == "sale") orders.refundable(row.id) else null
+            // what the paper says of the MRA now: its QR code, or Not Yet Fiscalised in its place
+            val mra = db.mra().byReceipt(row.id)
+            val fiscal = com.restopos.core.mra.MraQrPng.fiscal(mra)
             ReceiptDetail(
                 row, doc, db.receipts().payments(row.id),
                 if (row.type == "sale") db.ops().refundedOf(row.id) else 0,
                 lines,
-                runCatching { docs.look(orders.marked(row, doc, reprint = false)) }.getOrDefault(emptyList()),
+                runCatching { docs.look(orders.marked(row, doc, reprint = false).copy(fiscal = fiscal)) }.getOrDefault(emptyList()),
                 swaps = if (_retail.value && lines != null) orders.swapsFor(lines) else emptyMap(),
                 note = if (row.type == "refund") db.notes().ofRefund(row.id) else null,
                 onBill = if (row.type == "sale") db.accounts().bill(row.id)?.let { b -> (b.amount - b.paid - b.returned).coerceAtLeast(0) } ?: 0 else 0,
+                mraQr = if (fiscal is com.restopos.core.print.Fiscal.Qr) com.restopos.core.mra.MraQrPng.bitmap(mra) else null,
             )
         }
     }
@@ -374,7 +386,21 @@ private fun Detail(d: ReceiptDetail, types: List<PaymentTypeEntity>, busy: Boole
                         Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(RoundedCornerShape(8.dp)).background(Color.White).horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 12.dp),
                         contentAlignment = Alignment.TopCenter,
                     ) {
-                        Text(d.look.joinToString("\n"), color = Color(0xFF16181D), fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, softWrap = false)
+                        // the MRA's QR code goes where the paper prints it: just above the title
+                        val qr = d.mraQr
+                        val at = if (qr == null) -1 else d.look.indexOfFirst { it.trim() in TITLES }.let { i -> if (i > 0 && d.look[i - 1].trim() == "TRAINING") i - 1 else i }
+                        if (qr == null || at < 0) {
+                            Text(d.look.joinToString("\n"), color = Color(0xFF16181D), fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, softWrap = false)
+                        } else {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(d.look.take(at).joinToString("\n"), color = Color(0xFF16181D), fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, softWrap = false)
+                                androidx.compose.foundation.Image(
+                                    qr.asImageBitmap(), "The MRA's QR code", Modifier.padding(vertical = 4.dp).size(96.dp),
+                                    filterQuality = androidx.compose.ui.graphics.FilterQuality.None,
+                                )
+                                Text(d.look.drop(at).joinToString("\n"), color = Color(0xFF16181D), fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, softWrap = false)
+                            }
+                        }
                     }
                 } else {
                     d.doc?.lines?.forEach { l ->

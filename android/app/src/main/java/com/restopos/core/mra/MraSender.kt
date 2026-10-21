@@ -186,7 +186,9 @@ class MraSender @Inject constructor(
     private suspend fun status() {
         val device = session.deviceId() ?: return
         val s = settings()
-        if (!s.mraOn && !hasWaiting()) return
+        // from the day the business is moved to the MRA (setting up too): /admin
+        // and the back office say whether each till is connected before training
+        if (s.mra == "off" && !hasWaiting()) return
         val c = db.mra().counts().first()
         val st = login.state.value
         val now = System.currentTimeMillis()

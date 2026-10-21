@@ -23,6 +23,15 @@ class MraSandboxInvoicesTest {
         "TC1-E" to Item("Milk", 4000, "TC03", 0), "TC1-F" to Item("Rice 1 kg", 2500, "TC03", 0),
     )
 
+    // the owner's probe-mixed (mra/invoice.cjs probeMixed): a till's lines, by code, its service line by its name
+    private val probe = mapOf(
+        "PM-A" to Line("Chicken curry", "PM-A", "TC01", "GOODS", 1000, 11500, 1074, 1500),
+        "PM-B" to Line("Prawns (kg)", "PM-B", "TC01", "GOODS", 250, 20000, 1869, 1500),
+        "PM-C" to Line("Cake", "PM-C", "TC01", "GOODS", 1000, 10000, 934, 1500, added = true),
+        "PM-D" to Line("Burger (Egg)", "PM-D", "TC01", "GOODS", 1000, 12000, 1121, 1500),
+        "Service charge" to Line("Service charge", "", "TC03", "SERVICES", 1000, 4850),
+    )
+
     private fun JsonObject.s(k: String) = this[k]!!.jsonPrimitive.content
 
     @Test fun everyInvoiceTheMraFiscalisedIsWhatTheTillBuilds() {
@@ -34,16 +43,23 @@ class MraSandboxInvoicesTest {
         fun chained(x: JsonObject) = Chained(x.s("dateTimeInvoiceIssued"), x.s("totalAmtPaid"), x["seller"]!!.jsonObject.s("brn"), x.s("invoiceIdentifier"))
         sent.forEach { x ->
             val previous = if (x.s("previousNoteHash") == "0") null else {
-                val before = sent.firstOrNull { y -> y.s("invoiceTypeDesc") == x.s("invoiceTypeDesc") && MraCrypto.previousNoteHash(chained(y)) == x.s("previousNoteHash") }
+                // probe-chain chained to an invoice the MRA never saw: EPTSTD999999, Rs 1.00, dated as it was sent
+                val at = MraApi.mraMoment(x.s("dateTimeInvoiceIssued"))!!
+                val madeUp = listOf(0L, 1000L).map { Chained(MraInvoice.mraDateTime(at - it), "1.00", x["seller"]!!.jsonObject.s("brn"), "EPTSTD999999") }
+                val before = (sent.filter { y -> y.s("invoiceTypeDesc") == x.s("invoiceTypeDesc") }.map { chained(it) } + madeUp)
+                    .firstOrNull { MraCrypto.previousNoteHash(it) == x.s("previousNoteHash") }
                 assertNotNull("${x.s("invoiceIdentifier")}: no invoice of its kind hashes to its previousNoteHash", before)
-                chained(before!!)
+                before!!
             }
             val s = x["seller"]!!.jsonObject
             val lines = x["itemList"]!!.jsonArray.map { e ->
                 val it = e.jsonObject
-                val item = byCode.getValue(it.s("productCodeOwn"))
-                val qty = it.s("quantity").toInt()
-                Line(item.desc, it.s("productCodeOwn"), item.taxCode, it.s("nature"), qty * 1000, item.unitPrice * qty, vatBp = item.vatBp)
+                val item = byCode[it.s("productCodeOwn")]
+                if (item == null) probe.getValue(it.s("productCodeOwn").ifEmpty { it.s("itemDesc") })
+                else {
+                    val qty = it.s("quantity").toInt()
+                    Line(item.desc, it.s("productCodeOwn"), item.taxCode, it.s("nature"), qty * 1000, item.unitPrice * qty, vatBp = item.vatBp)
+                }
             }
             val built = MraInvoice.build(MraInvoice.Input(
                 counter = x.s("invoiceCounter").toLong(), identifier = x.s("invoiceIdentifier"), type = x.s("invoiceTypeDesc"), previous = previous,

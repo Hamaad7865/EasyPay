@@ -10,6 +10,12 @@ import java.util.Base64
 // sent, base64, read with Android's BitmapFactory and made 2 x 2 cm), or "Not
 // Yet Fiscalised" in its place; nothing for a receipt that never went to it.
 object MraQrPng {
+    // the MRA's PNG as it came, for the screen; null when there is none or it cannot be read
+    fun bitmap(e: MraInvoiceEntity?): android.graphics.Bitmap? {
+        val qr = e?.qr?.takeIf { it.isNotBlank() && e.status == "fiscalised" } ?: return null
+        return runCatching { Base64.getDecoder().decode(qr).let { BitmapFactory.decodeByteArray(it, 0, it.size) } }.getOrNull()
+    }
+
     fun fiscal(e: MraInvoiceEntity?): Fiscal? {
         e ?: return null
         val training = e.type == "TRN"
