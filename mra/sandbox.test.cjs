@@ -1,6 +1,6 @@
 // The owner's command (sandbox.cjs) run whole against a stand-in for the MRA
 // on this computer, with its own key and certificate: sign-in, sending test
-// cases 1 to 3, the QR code kept, the hash going from one invoice to the next, a
+// cases 1 to 7, the QR code kept, the hash going from one invoice to the next, a
 // send with no answer stopping the next, and nothing secret in what it writes.
 //   node --test mra/*.test.cjs
 const test = require('node:test');
@@ -16,7 +16,7 @@ const PASSWORD = 'pass-for-the-stand-in-only';
 const SCRIPT = path.join(__dirname, 'sandbox.cjs');
 const run = (env, ...args) => new Promise((resolve) => execFile(process.execPath, [SCRIPT, ...args], { env: { ...process.env, ...env } }, (err, stdout) => resolve(stdout)));
 
-test('sign-in and test cases 1 to 3 against a stand-in for the MRA', async (t) => {
+test('sign-in and test cases 1 to 7 against a stand-in for the MRA', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mra-sandbox-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   try {
@@ -30,6 +30,7 @@ test('sign-in and test cases 1 to 3 against a stand-in for the MRA', async (t) =
   const invoiceKey = Buffer.alloc(32, 5);
   const received = [];
   let silent = false;
+  let requests = 0;
   const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; });
@@ -48,8 +49,14 @@ test('sign-in and test cases 1 to 3 against a stand-in for the MRA', async (t) =
       if (silent) return; // never answers: the script must give up and not send again
       assert.equal(req.headers.token, 'stand-in-token');
       const list = JSON.parse(aesDecrypt(invoiceKey, b.encryptedInvoice));
-      received.push(list[0]);
-      return answer({ responseId: 'R1', requestId: b.requestId, status: 'SUCCESS', environment: 'TEST', fiscalisedInvoices: [{ invoiceIdentifier: list[0].invoiceIdentifier, irn: `irn-${received.length}`, qrCode: Buffer.from('png').toString('base64'), status: 'SUCCESS' }] });
+      requests += 1;
+      const answers = list.map((i) => {
+        received.push(i);
+        return i.seller.tan === '12345678'
+          ? { invoiceIdentifier: i.invoiceIdentifier, irn: `irn-${received.length}`, qrCode: Buffer.from('png').toString('base64'), status: 'SUCCESS' }
+          : { invoiceIdentifier: i.invoiceIdentifier, status: 'ERROR', errorMessages: [{ code: 'LV_ERR002', description: 'Invalid TAN' }] };
+      });
+      return answer({ responseId: 'R1', requestId: b.requestId, status: answers.every((a) => a.status === 'SUCCESS') ? 'SUCCESS' : 'HAS_ERROR', environment: 'TEST', fiscalisedInvoices: answers });
     });
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -95,9 +102,57 @@ test('sign-in and test cases 1 to 3 against a stand-in for the MRA', async (t) =
   }
   assert.equal(drn2.previousNoteHash, previousNoteHash({ dateTime: drn.dateTimeInvoiceIssued, totalAmtPaid: drn.totalAmtPaid, brn: 'C07012345', invoiceIdentifier: 'EPTDRN000005' }));
 
+  // test case 4: 10 invoices in one request, chained one to the next from the last
+  // standard invoice fiscalised (EPTSTD000004), each with an item with VAT and one without
+  const before = requests;
+  const out4 = await run(env, 'send', 'case4');
+  assert.match(out4, /EPTSTD000008 fiscalised/);
+  assert.match(out4, /EPTSTD000017 fiscalised/);
+  assert.equal(requests, before + 1);
+  const ten = received.slice(6, 16);
+  assert.equal(ten.length, 10);
+  const std4 = received[2];
+  ten.forEach((i, n) => {
+    const prev = n === 0 ? std4 : ten[n - 1];
+    assert.equal(i.previousNoteHash, previousNoteHash({ dateTime: prev.dateTimeInvoiceIssued, totalAmtPaid: prev.totalAmtPaid, brn: 'C07012345', invoiceIdentifier: prev.invoiceIdentifier }));
+    assert.equal(Number(i.invoiceCounter), Number(ten[0].invoiceCounter) + n);
+    assert.ok(i.itemList.some((l) => l.vatAmt !== '0.00') && i.itemList.some((l) => l.vatAmt === '0.00'));
+  });
+
+  // test case 5: a TAN other than the seller's is refused, as the case expects; the
+  // number is used, and the chain goes on from the last invoice fiscalised
+  assert.match(await run(env, 'send', 'case5'), /EPTSTD000018 refused, as test case 5 expects/);
+  assert.notEqual(received[16].seller.tan, '12345678');
+  assert.match(await run(env, 'send', 'case1'), /EPTSTD000019 fiscalised/);
+  assert.equal(received[17].previousNoteHash, previousNoteHash({ dateTime: ten[9].dateTimeInvoiceIssued, totalAmtPaid: ten[9].totalAmtPaid, brn: 'C07012345', invoiceIdentifier: 'EPTSTD000017' }));
+
+  // test cases 6 and 7: a pro forma and a training invoice of two items, each kind its own chain
+  assert.match(await run(env, 'send', 'case6'), /EPTPRF000020 fiscalised/);
+  assert.match(await run(env, 'send', 'case7'), /EPTTRN000021 fiscalised/);
+  const [prf, trn] = received.slice(18);
+  assert.equal(prf.invoiceTypeDesc, 'PRF');
+  assert.equal(trn.invoiceTypeDesc, 'TRN');
+  for (const i of [prf, trn]) {
+    assert.equal(i.previousNoteHash, '0');
+    assert.ok(i.itemList.length >= 2);
+    assert.equal(i.invoiceRefIdentifier, '');
+  }
+
   // what it writes for anyone to read holds no password, token or key
   for (const f of fs.readdirSync(path.join(dir, 'out')).filter((f) => f.endsWith('.json'))) {
     const text = fs.readFileSync(path.join(dir, 'out', f), 'utf8');
     assert.ok(!text.includes(PASSWORD) && !text.includes('stand-in-token') && !text.includes(invoiceKey.toString('base64')), f);
   }
+});
+
+// After a batch of 10 got no answer and was checked on the portal, the next
+// send starts after all 10 numbers, not after the first.
+test('forget after an unanswered batch skips every number in it', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mra-forget-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({ counter: 7, number: 7, last: {}, unsure: { identifier: 'EPTSTD000008 to EPTSTD000017', count: 10 } }));
+  assert.match(await run({ MRA_DIR: dir }, 'forget'), /EPTSTD000008 to EPTSTD000017 is let go of/);
+  const st = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
+  assert.equal(st.number, 17);
+  assert.equal(st.unsure, null);
 });

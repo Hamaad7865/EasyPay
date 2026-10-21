@@ -115,4 +115,12 @@ const testCase2Lines = () => [testCase1Lines()[0]];
 // Test case 3, a credit note of 1 item: one soft drink brought back.
 const testCase3Lines = () => [{ ...testCase1Lines()[2], qty: 1 }];
 
-module.exports = { money, mraDateTime, vatIncluded, build, chained, testCase1Lines, testCase2Lines, testCase3Lines };
+// Test case 4, invoice i of the 10 sent in one request: an item with VAT and one without.
+const testCase4Lines = (i) => { const l = testCase1Lines(); return [l[i % 3], l[3 + (i % 3)]]; };
+// Test case 5, 1 item (sent with a TAN that is not the seller's, to be refused).
+const testCase5Lines = () => [testCase1Lines()[0]];
+// Test case 6, a pro forma, and 7, a training invoice: 2 items each.
+const testCase6Lines = () => { const l = testCase1Lines(); return [l[1], l[4]]; };
+const testCase7Lines = () => { const l = testCase1Lines(); return [l[2], l[5]]; };
+
+module.exports = { money, mraDateTime, vatIncluded, build, chained, testCase1Lines, testCase2Lines, testCase3Lines, testCase4Lines, testCase5Lines, testCase6Lines, testCase7Lines };

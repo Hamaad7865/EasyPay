@@ -7,6 +7,10 @@
 //   node mra/sandbox.cjs send case1     sends one invoice of the MRA's test case 1
 //   node mra/sandbox.cjs send case2     a debit note on the last invoice fiscalised (test case 2)
 //   node mra/sandbox.cjs send case3     a credit note on the last invoice fiscalised (test case 3)
+//   node mra/sandbox.cjs send case4     10 invoices in one request (test case 4)
+//   node mra/sandbox.cjs send case5     an invoice with a TAN not the seller's, to be refused (test case 5)
+//   node mra/sandbox.cjs send case6     a pro forma (test case 6)
+//   node mra/sandbox.cjs send case7     a training invoice (test case 7)
 //   node mra/sandbox.cjs forget         after an unanswered send has been checked on the portal
 //
 // It reads .claude/mra/sandbox.env and the MRA public key named there, keeps
@@ -93,10 +97,15 @@ async function signIn() {
 }
 
 // A note (DRN, CRN) corrects the last standard invoice the MRA fiscalised.
+// `count` invoices go in one request; `refused`: the MRA is expected to refuse it.
 const CASES = {
   case1: { type: 'STD', lines: inv.testCase1Lines },
   case2: { type: 'DRN', lines: inv.testCase2Lines, reason: 'Item served and left off the invoice' },
   case3: { type: 'CRN', lines: inv.testCase3Lines, reason: 'Return of product' },
+  case4: { type: 'STD', lines: inv.testCase4Lines, count: 10 },
+  case5: { type: 'STD', lines: inv.testCase5Lines, refused: true },
+  case6: { type: 'PRF', lines: inv.testCase6Lines },
+  case7: { type: 'TRN', lines: inv.testCase7Lines },
 };
 
 async function sendCase(name) {
@@ -111,46 +120,66 @@ async function sendCase(name) {
   const ref = which.reason ? state.last.STD && state.last.STD.invoiceIdentifier : '';
   if (which.reason && !ref) { console.log('A note corrects an invoice the MRA fiscalised: none yet. Send case1 first.'); return; }
 
-  const identifier = `EPT${which.type}${String(state.number + 1).padStart(6, '0')}`;
-  const invoice = inv.build({ counter: state.counter + 1, identifier, type: which.type, previous: state.last[which.type] || null, issuedAt: new Date(), seller: c.seller, lines: which.lines(), payment: 'CASH', ref, reason: which.reason });
+  // test case 5: any TAN but the seller's
+  const seller = which.refused ? { ...c.seller, tan: c.seller.tan === '12345678' ? '87654321' : '12345678' } : c.seller;
+  // each invoice chained to the one before it, the first to the last of its kind fiscalised
+  const invoices = [];
+  let previous = state.last[which.type] || null;
+  for (let i = 0; i < (which.count || 1); i++) {
+    const identifier = `EPT${which.type}${String(state.number + 1 + i).padStart(6, '0')}`;
+    const invoice = inv.build({ counter: state.counter + 1 + i, identifier, type: which.type, previous, issuedAt: new Date(), seller, lines: which.lines(i), payment: 'CASH', ref, reason: which.reason });
+    invoices.push(invoice);
+    previous = inv.chained(invoice);
+  }
+  const ids = invoices.map((x) => x.invoiceIdentifier);
+  const label = ids.length > 1 ? `${ids[0]} to ${ids[ids.length - 1]}` : ids[0];
   fs.mkdirSync(OUT, { recursive: true });
-  fs.writeFileSync(path.join(OUT, `invoice-${identifier}.json`), JSON.stringify([invoice], null, 2));
+  fs.writeFileSync(path.join(OUT, `invoice-${ids[0]}.json`), JSON.stringify(invoices, null, 2));
   // written down before it goes: a send with no answer must not be repeated unknowingly
-  state.unsure = { identifier, at: new Date().toISOString() };
+  state.unsure = { identifier: label, count: invoices.length, at: new Date().toISOString() };
   writeJson('state.json', state);
 
-  const req = api.transmitRequest({ ...c.who, token: session.token, invoiceKey: Buffer.from(session.invoiceKey, 'base64'), invoices: [invoice], requestId: api.requestId() });
+  const req = api.transmitRequest({ ...c.who, token: session.token, invoiceKey: Buffer.from(session.invoiceKey, 'base64'), invoices, requestId: api.requestId() });
   let r;
   try { r = await api.send(toFake(req)); } catch (e) {
     const why = e.name === 'TimeoutError' ? 'no answer within 15 seconds' : e.message;
-    outcome(`send-${identifier}.json`, { identifier, answered: false, error: why });
-    console.log(`No answer for ${identifier} (${why}). It is not sent again. Check on the portal whether it was fiscalised, then  node mra/sandbox.cjs forget`);
+    outcome(`send-${ids[0]}.json`, { identifiers: ids, answered: false, error: why });
+    console.log(`No answer for ${label} (${why}). It is not sent again. Check on the portal whether it was fiscalised, then  node mra/sandbox.cjs forget`);
     return;
   }
   const a = r.json ? api.readTransmit(r.json) : { status: `HTTP ${r.httpStatus}`, errors: [r.text], invoices: [] };
-  const mine = a.invoices.find((x) => x.identifier === identifier);
+  // answered: every number sent is used, fiscalised or refused; the chain goes on
+  // from the last one fiscalised (a refused invoice is not the MRA's previous one)
   state.unsure = null;
-  if (mine && mine.status === 'SUCCESS') {
-    state.counter += 1;
-    state.number += 1;
-    state.last[which.type] = inv.chained(invoice);
-    if (mine.qrCode) fs.writeFileSync(path.join(OUT, `qr-${identifier}.png`), Buffer.from(mine.qrCode, 'base64'));
-  }
+  state.counter += invoices.length;
+  state.number += invoices.length;
+  const results = invoices.map((invoice) => {
+    const mine = a.invoices.find((x) => x.identifier === invoice.invoiceIdentifier) || null;
+    if (mine && mine.status === 'SUCCESS') {
+      state.last[which.type] = inv.chained(invoice);
+      if (mine.qrCode) fs.writeFileSync(path.join(OUT, `qr-${invoice.invoiceIdentifier}.png`), Buffer.from(mine.qrCode, 'base64'));
+    }
+    return { identifier: invoice.invoiceIdentifier, mine };
+  });
   writeJson('state.json', state);
-  outcome(`send-${identifier}.json`, { identifier, answered: true, httpStatus: r.httpStatus, status: a.status, environment: a.environment, responseId: a.responseId, errors: a.errors, info: a.info,
-    invoice: mine ? { status: mine.status, irn: mine.irn, qrSaved: Boolean(mine.qrCode), errors: mine.errors, warnings: mine.warnings } : null });
-  if (mine && mine.status === 'SUCCESS') console.log(`${identifier} fiscalised. IRN ${mine.irn}. QR code saved in .claude/mra/out/qr-${identifier}.png`);
-  else console.log(`${identifier} not fiscalised (${a.status}): ${[...a.errors, ...(mine ? mine.errors : [])].join('; ') || 'no reason given'}`);
+  outcome(`send-${ids[0]}.json`, { identifiers: ids, answered: true, httpStatus: r.httpStatus, status: a.status, environment: a.environment, responseId: a.responseId, errors: a.errors, info: a.info,
+    invoices: results.map(({ identifier, mine }) => (mine ? { identifier, status: mine.status, irn: mine.irn, qrSaved: Boolean(mine.qrCode), errors: mine.errors, warnings: mine.warnings } : { identifier, status: null })) });
+  for (const { identifier, mine } of results) {
+    const ok = mine && mine.status === 'SUCCESS';
+    const why = [...a.errors, ...(mine ? mine.errors : [])].join('; ') || 'no reason given';
+    if (which.refused) console.log(ok ? `${identifier} was fiscalised, but test case 5 expects a refusal` : `${identifier} refused, as test case 5 expects: ${why}`);
+    else console.log(ok ? `${identifier} fiscalised. IRN ${mine.irn}. QR code saved in .claude/mra/out/qr-${identifier}.png` : `${identifier} not fiscalised (${a.status}): ${why}`);
+  }
 }
 
 function forget() {
   const state = readJson('state.json', null);
   if (!state || !state.unsure) { console.log('Nothing is waiting.'); return; }
   console.log(`${state.unsure.identifier} is let go of: the next send uses the next number.`);
-  state.number += 1;
+  state.number += state.unsure.count || 1;
   state.unsure = null;
   writeJson('state.json', state);
 }
 
 const [cmd, arg] = process.argv.slice(2);
-({ check, 'sign-in': signIn, send: () => sendCase(arg), forget }[cmd] || (() => console.log('node mra/sandbox.cjs check | sign-in | send case1|case2|case3 | forget')))();
+({ check, 'sign-in': signIn, send: () => sendCase(arg), forget }[cmd] || (() => console.log('node mra/sandbox.cjs check | sign-in | send case1 ... case7 | forget')))();

@@ -138,3 +138,19 @@ test('test cases 2 and 3 are one item each, taken from test case 1', () => {
     assert.ok(names.includes(lines[0].desc), lines[0].desc);
   }
 });
+
+// Test case 4: 10 invoices in one request, each with an item with VAT and one without.
+test('each of test case 4\'s 10 invoices has an item with VAT and one without', () => {
+  for (let i = 0; i < 10; i++) {
+    const lines = inv.testCase4Lines(i);
+    assert.ok(lines.some((l) => l.vatBp > 0), `invoice ${i}`);
+    assert.ok(lines.some((l) => l.vatBp === 0), `invoice ${i}`);
+  }
+});
+
+// Test case 5 is one item; 6 (pro forma) and 7 (training) at least two.
+test('test case 5 is one item, test cases 6 and 7 at least two', () => {
+  assert.equal(inv.testCase5Lines().length, 1);
+  assert.ok(inv.testCase6Lines().length >= 2);
+  assert.ok(inv.testCase7Lines().length >= 2);
+});

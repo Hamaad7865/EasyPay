@@ -130,7 +130,9 @@ after the row is made. Its exact columns follow the API guide.
 Sign-in and sending one invoice proven against the sandbox first, on its own, before the till changes.
 Then the choice: the call made by our server (the client's MRA login kept encrypted on the server, one
 implementation, fixed without a tablet update) or by the tablet (no hop, works if our server is down; keys in
-Android's secure storage). Decided by timing a round trip both ways in the sandbox. Either way, one EBS per
+Android's secure storage). **Decided 2026-10-21, by the owner: the tablet** ("what we actually need is each
+tablet signs in to the MRA"): the login is typed on the till and never kept on our server. The order of the
+work from here is `docs/superpowers/plans/2026-10-21-mra-e-invoicing-plan.md`. Either way, one EBS per
 till: each till keeps its own counter and hash chain, so tills selling offline at the same time stay in
 sequence. EasyPay already numbers receipts per till (`store-till-R000123`, `pos_devices.last_receipt_seq`,
 sales and refunds in one series, a refund pointing at its sale).
