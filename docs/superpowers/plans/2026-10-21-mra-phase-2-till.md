@@ -608,11 +608,11 @@ class MraCryptoTest {
 ```
 
 The certificate path is tested here too, with a made-up certificate (not the MRA's), made once and committed:
-`openssl req -x509 -newkey rsa:2048 -nodes -keyout NUL -subj "/CN=EasyPay test" -days 3650 -out mra/fixtures/test-cert.pem`.
+`openssl req -x509 -newkey rsa:2048 -nodes -keyout NUL -subj "/CN=EasyPay test" -days 3650 -out mra/fixtures/test-cert.crt`.
 
 ```kotlin
     @Test fun theCertificatesKeyIsRead() {
-        val key = MraCrypto.publicKeyOf(repoFile("mra/fixtures/test-cert.pem").readBytes())
+        val key = MraCrypto.publicKeyOf(repoFile("mra/fixtures/test-cert.crt").readBytes())
         assertEquals("RSA", key.algorithm)
         assertTrue(MraCrypto.rsaEncrypt(key, "x").isNotEmpty())
     }

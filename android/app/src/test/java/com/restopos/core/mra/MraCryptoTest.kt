@@ -49,9 +49,9 @@ class MraCryptoTest {
         assertEquals("""{"username":"u"}""", String(c.doFinal(Base64.getDecoder().decode(sealed)), Charsets.UTF_8))
     }
 
-    // a made-up certificate (mra/fixtures/test-cert.pem), read as the MRA's .crt is read
+    // a made-up certificate (mra/fixtures/test-cert.crt), read as the MRA's .crt is read
     @Test fun theCertificatesKeyIsRead() {
-        val key = MraCrypto.publicKeyOf(repoFile("mra/fixtures/test-cert.pem").readBytes())
+        val key = MraCrypto.publicKeyOf(repoFile("mra/fixtures/test-cert.crt").readBytes())
         assertEquals("RSA", key.algorithm)
         assertTrue(MraCrypto.rsaEncrypt(key, "x").isNotEmpty())
     }
