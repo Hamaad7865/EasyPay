@@ -23,7 +23,7 @@ piece list in its section 12.
 - **Each till signs in to the MRA itself.** The owner: "what we actually need is each tablet signs in to the
   MRA". The MRA login is typed on the till, kept in Android's secure storage, and never sent to our server.
 - **One EBS per till** (design section 9): each till keeps its own invoice counter and hash chains, so tills
-  selling at the same time, or offline, never share a sequence. To be confirmed by the MRA (question 1).
+  selling at the same time, or offline, never share a sequence. The MRA is not asked (see "Open points").
 - **Testing first**, then the till.
 
 ## When to press Test Drive (decided)
@@ -49,7 +49,7 @@ The owner:
    public key `.crt` beside it.
 2. Runs `node mra/sandbox.cjs check`, then `sign-in`, then `send case1` three times, then `send case2` to
    `send case7` once each. Case 5 is meant to be refused (a TAN that is not the seller's).
-3. Sends the questions below to einvoicing@mra.mu (Claude drafts them).
+3. ~~Sends the questions below to the MRA.~~ Not sent: the owner decided not to ask the MRA (see "Open points").
 
 Claude: reads `.claude/mra/out/`, fixes what the MRA refuses, writes down the round-trip time and every error
 code met. The seven cases, as the portal gives them, are in `.claude/mra/test-scenarios.md`.
@@ -168,7 +168,8 @@ The page is only for a client whose `mra` is not `off`. It is read-only: nothing
 2. The EBS MRA IDs are typed in `/admin`; a manager connects each till.
 3. A few days in `training`, then `live` from the next day's opening.
 
-This needs the production address (question 2).
+The live address is the guide's own unless the portal shows another (see "Open points"); its first invoice
+must come back `environment: LIVE`.
 
 ## Multi-branch
 
@@ -186,18 +187,21 @@ branches, and logins for a chain's own managers.
 The public site already says EasyPay supports multi-branch (`123f790`). The site's rule is to claim only what
 is built: to be looked at separately.
 
-## Questions for the MRA (to send now)
+## Open points, settled without asking the MRA
 
-1. Must each till (each POS tablet) be registered as its own EBS, with its own EBS MRA ID?
-2. What are the production addresses of the two APIs? The guide gives only `vfisc.mra.mu`, and test cases 3,
-   6 and 7 say "The mode of transmission is LIVE using Live API".
-3. In production, whose login does a till sign in with (the business's IFP username?), and is there an area
-   code?
-4. Must a restaurant's bill printed before payment be sent as a pro forma (PRF)?
-5. When are a deposit, and a sale on account, invoiced?
-6. How long may an outage last before the waiting invoices must be sent?
-7. When the certified EBS gets a new version, does it need a new Test Drive, or only its version updated on
-   the portal?
+**Decided 2026-10-21, by the owner:** the MRA is not asked. "No we wont email MRA because many companies did it
+without interacting with them". Each point is settled from the guides and the phase 2 build, and checked on the
+first live client where the table says so.
+
+| Point | How it is settled | Checked on the first live client |
+|---|---|---|
+| One EBS per till? | Yes, as built. The EBS registration asks a serial number for each POS device. | Its tills register on the IFP, one row each. |
+| The live address | The guide gives one address (`vfisc.mra.mu`), and every answer says TEST or LIVE by the EBS's state. `/admin` keeps one field for the address and certificate (phase 2), so a different address needs no app update. A live till never prints a TEST answer as fiscalised. | Its first invoice comes back `environment: LIVE`. |
+| Whose login | The client's own portal username, password and area code, typed on each till (as built). | Its manager connects each till. |
+| A restaurant's bill before payment | Not sent: a bill is not a sale, and a real till cannot send a pro forma (phase 2, choice 12). | — |
+| Deposits and sales on account | Invoiced at the sale. A sale with any part on account is CREDIT; one paid by deposit is OTHER (phase 2, choice 7). | — |
+| An outage | The waiting invoices go as soon as the line is back, at most 500 a request, as the guide says. The back office MRA page shows how many wait (phase 3). | — |
+| A new EasyPay version | Its version is updated on the portal at each release; Test Drive again only if the portal asks for it. | — |
 
 ## Choices that were Claude's, to be confirmed
 
@@ -207,7 +211,7 @@ is built: to be looked at separately.
 - Test invoice numbers are `EPT` + type + 6 digits (sandbox only). The till's numbers will be its receipt
   numbers.
 - The reasons given for test cases 2 and 3.
-- Test cases 3, 6 and 7 go to the same address as the others (question 2).
+- Test cases 3, 6 and 7 go to the same address as the others. They passed there.
 - Test case 4's invoices are B2C, like the rest (the portal's sample shows B2B). Each has one item with VAT
   and one without.
 - Test case 5 sends TAN 12345678, or 87654321 if that is the seller's.
