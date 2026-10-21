@@ -25,6 +25,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -33,7 +36,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
@@ -44,7 +49,6 @@ import com.restopos.core.display.PicLine
 import com.restopos.core.display.Picture
 import com.restopos.core.ui.L
 import com.restopos.core.ui.T
-import com.restopos.core.ui.V
 import com.restopos.core.ui.Wordmark
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -58,11 +62,44 @@ import java.util.Locale
 // table (Description, Qty, Price, Disc%, Amount), the figures under it
 // (Total, Discount, VAT, Payment, Balance, Total quantity), the logo and the
 // shop's pictures in turn on the right, today's date at the foot.
+//
+// Its colours are its own, light unless asked dark: on a cable screen it is
+// drawn beside the till's, whose own setting (Pos.light) is the cashier's.
 @Composable
-fun CustomerScreen(p: Picture, logo: ImageBitmap?, pictures: List<ImageBitmap> = emptyList(), modifier: Modifier = Modifier) {
+fun CustomerScreen(p: Picture, logo: ImageBitmap?, pictures: List<ImageBitmap> = emptyList(), modifier: Modifier = Modifier, light: Boolean = true) {
     // the words follow the till's language
     LaunchedEffect(p.lang) { L.lang = p.lang }
-    Box(modifier.fillMaxSize().background(V.Bg)) {
+    CompositionLocalProvider(LocalInk provides Ink(light)) { Screen(p, logo, pictures, modifier) }
+}
+
+// The customer display's colours, as the till's own (V2), light or dark.
+internal class Ink(light: Boolean) {
+    private val l = light
+    private fun c(dark: Long, bright: Long) = Color(if (l) bright else dark)
+    val bg = c(0xFF131519, 0xFFEEF0F4)
+    val panel = c(0xFF1B1E24, 0xFFFFFFFF)
+    val well = c(0xFF131519, 0xFFE9EBF0)
+    val stroke = c(0xFF2B3039, 0xFFD9DCE4)
+    val rowLine = c(0xFF252932, 0xFFE4E7ED)
+    val text = c(0xFFF2F4F7, 0xFF1A1C21)
+    val text2 = c(0xFFA6AEBB, 0xFF4B5261)
+    val text3 = c(0xFF79818F, 0xFF7A8191)
+    val green = c(0xFF2BD48A, 0xFF0F8050)
+}
+
+private val LocalInk = staticCompositionLocalOf { Ink(true) }
+private val ink: Ink @Composable @ReadOnlyComposable get() = LocalInk.current
+
+// T in the display's own colours
+@Composable
+private fun Tx(
+    text: String, size: TextUnit = 15.sp, weight: Int = 700, color: Color = ink.text, modifier: Modifier = Modifier,
+    lines: Int = 1, align: TextAlign? = null, spacing: TextUnit = TextUnit.Unspecified, height: TextUnit = TextUnit.Unspecified,
+) = T(text, size, weight, color, modifier, lines, align, spacing, height)
+
+@Composable
+private fun Screen(p: Picture, logo: ImageBitmap?, pictures: List<ImageBitmap>, modifier: Modifier) {
+    Box(modifier.fillMaxSize().background(ink.bg)) {
         if (p.state == Picture.IDLE) Idle(p, logo, pictures)
         else Column(Modifier.fillMaxSize()) {
             Head(p.business.ifBlank { p.title })
@@ -103,14 +140,22 @@ internal object W {
     val welcome get() = L.t("Welcome", "Bienvenue", "Byenveni")
 }
 
+// A logo or a picture kept as a data URL ("data:image/png;base64,...") as an image, or null.
+fun decodePicture(data: String?): ImageBitmap? = data?.let {
+    runCatching {
+        val bytes = android.util.Base64.decode(it.substringAfter(','), android.util.Base64.DEFAULT)
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+    }.getOrNull()
+}
+
 // "1,250.00" with the decimals the business shows; "Rs 1,250.00" with `rs`
 internal fun money(cents: Long, places: Int, rs: Boolean = false): String =
     (if (cents < 0) "-" else "") + (if (rs) "Rs " else "") + Money.plain(Math.abs(cents), places)
 
 @Composable
 private fun Head(name: String) {
-    Box(Modifier.fillMaxWidth().background(V.Panel).padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
-        T(name, 22.sp, 800, lines = 1, align = TextAlign.Center)
+    Box(Modifier.fillMaxWidth().background(ink.panel).padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+        Tx(name, 22.sp, 800, lines = 1, align = TextAlign.Center)
     }
 }
 
@@ -119,8 +164,8 @@ private fun Head(name: String) {
 private fun Foot() {
     val locale = if (L.fr) Locale.FRENCH else Locale.UK
     val today = remember(L.lang) { SimpleDateFormat("EEEE d MMMM yyyy", locale).format(Date()).replaceFirstChar { it.uppercase() } }
-    Box(Modifier.fillMaxWidth().background(V.Panel).padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-        T(today, 16.sp, 700, V.Text2)
+    Box(Modifier.fillMaxWidth().background(ink.panel).padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+        Tx(today, 16.sp, 700, ink.text2)
     }
 }
 
@@ -130,22 +175,22 @@ private fun Sale(p: Picture, modifier: Modifier) {
     val list = rememberLazyListState()
     // the newest line is always in view
     LaunchedEffect(p.lines.size) { if (p.lines.isNotEmpty()) list.animateScrollToItem(p.lines.size - 1) }
-    Column(modifier.clip(RoundedCornerShape(18.dp)).background(V.Panel).border(1.dp, V.Stroke, RoundedCornerShape(18.dp)).padding(horizontal = 18.dp, vertical = 12.dp)) {
-        if (p.title.isNotBlank() && p.business.isNotBlank()) T(p.title, 14.sp, 700, V.Text3, Modifier.padding(bottom = 6.dp))
-        Row(Modifier.fillMaxWidth().background(V.Well, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 6.dp)) {
-            Cell(W.description, Modifier.weight(3f), V.Text2, 14.sp, 700)
-            Cell(W.qty, Modifier.weight(0.7f), V.Text2, 14.sp, 700, end = true)
-            Cell(W.price, Modifier.weight(1.3f), V.Text2, 14.sp, 700, end = true)
-            Cell(W.disc, Modifier.weight(0.8f), V.Text2, 14.sp, 700, end = true)
-            Cell(W.amount, Modifier.weight(1.4f), V.Text2, 14.sp, 700, end = true)
+    Column(modifier.clip(RoundedCornerShape(18.dp)).background(ink.panel).border(1.dp, ink.stroke, RoundedCornerShape(18.dp)).padding(horizontal = 18.dp, vertical = 12.dp)) {
+        if (p.title.isNotBlank() && p.business.isNotBlank()) Tx(p.title, 14.sp, 700, ink.text3, Modifier.padding(bottom = 6.dp))
+        Row(Modifier.fillMaxWidth().background(ink.well, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 6.dp)) {
+            Cell(W.description, Modifier.weight(3f), ink.text2, 14.sp, 700)
+            Cell(W.qty, Modifier.weight(0.7f), ink.text2, 14.sp, 700, end = true)
+            Cell(W.price, Modifier.weight(1.3f), ink.text2, 14.sp, 700, end = true)
+            Cell(W.disc, Modifier.weight(0.8f), ink.text2, 14.sp, 700, end = true)
+            Cell(W.amount, Modifier.weight(1.4f), ink.text2, 14.sp, 700, end = true)
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list) {
             itemsIndexed(p.lines) { i, l ->
-                if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(V.RowLine))
+                if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(ink.rowLine))
                 LineRow(l, p.decimals)
             }
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(ink.stroke))
         Figures(p)
     }
 }
@@ -154,20 +199,20 @@ private fun Sale(p: Picture, modifier: Modifier) {
 private fun LineRow(l: PicLine, places: Int) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 9.dp), verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(3f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            T(l.name, 18.sp, 700, lines = 2, height = 23.sp)
-            if (l.detail.isNotBlank()) T(l.detail, 14.sp, 500, V.Text2, lines = 2, height = 18.sp)
+            Tx(l.name, 18.sp, 700, lines = 2, height = 23.sp)
+            if (l.detail.isNotBlank()) Tx(l.detail, 14.sp, 500, ink.text2, lines = 2, height = 18.sp)
         }
-        Cell(l.qty, Modifier.weight(0.7f), V.Text, 18.sp, 700, end = true)
+        Cell(l.qty, Modifier.weight(0.7f), ink.text, 18.sp, 700, end = true)
         // a version 1 till sends no price: the amount alone
-        Cell(if (l.price > 0) money(l.price, places) else "", Modifier.weight(1.3f), V.Text2, 16.sp, 600, end = true)
-        Cell(if (l.price > 0) l.off.toString() else "", Modifier.weight(0.8f), if (l.off > 0) V.GreenText else V.Text2, 16.sp, 600, end = true)
-        Cell(money(l.amount, places), Modifier.weight(1.4f), V.Text, 18.sp, 700, end = true)
+        Cell(if (l.price > 0) money(l.price, places) else "", Modifier.weight(1.3f), ink.text2, 16.sp, 600, end = true)
+        Cell(if (l.price > 0) l.off.toString() else "", Modifier.weight(0.8f), if (l.off > 0) ink.green else ink.text2, 16.sp, 600, end = true)
+        Cell(money(l.amount, places), Modifier.weight(1.4f), ink.text, 18.sp, 700, end = true)
     }
 }
 
 @Composable
 private fun Cell(text: String, modifier: Modifier, color: androidx.compose.ui.graphics.Color, size: TextUnit, weight: Int, end: Boolean = false) {
-    T(text, size, weight, color, modifier, lines = 1, align = if (end) TextAlign.End else TextAlign.Start)
+    Tx(text, size, weight, color, modifier, lines = 1, align = if (end) TextAlign.End else TextAlign.Start)
 }
 
 // Every figure the receipt has, adding up to the balance (Pictures.sale).
@@ -185,19 +230,19 @@ private fun ColumnScope.Figures(p: Picture) {
         Figure(if (p.vatAdded > 0) W.vat else W.vatIncluded, money(p.vat, d))
         Figure(W.payment, money(p.paid, d))
         Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            T(if (paid) W.change else W.balance, 22.sp, 800, if (paid) V.GreenText else V.Text, Modifier.weight(1f))
-            T(money(if (paid) p.change else p.left, d, rs = true), 40.sp, 800, if (paid) V.GreenText else V.Text, spacing = (-1).sp)
+            Tx(if (paid) W.change else W.balance, 22.sp, 800, if (paid) ink.green else ink.text, Modifier.weight(1f))
+            Tx(money(if (paid) p.change else p.left, d, rs = true), 40.sp, 800, if (paid) ink.green else ink.text, spacing = (-1).sp)
         }
         if (p.quantity > 0) Figure(W.quantity, p.quantity.toString())
-        if (paid) T(W.thanks, 22.sp, 800, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp))
+        if (paid) Tx(W.thanks, 22.sp, 800, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp))
     }
 }
 
 @Composable
 private fun Figure(label: String, value: String) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        T(label, 16.sp, 600, V.Text2, Modifier.weight(1f))
-        T(value, 16.sp, 700)
+        Tx(label, 16.sp, 600, ink.text2, Modifier.weight(1f))
+        Tx(value, 16.sp, 700)
     }
 }
 
@@ -205,7 +250,7 @@ private fun Figure(label: String, value: String) {
 @Composable
 private fun Side(logo: ImageBitmap?, pictures: List<ImageBitmap>, modifier: Modifier) {
     Column(
-        modifier.clip(RoundedCornerShape(18.dp)).background(V.Panel).border(1.dp, V.Stroke, RoundedCornerShape(18.dp)).padding(14.dp),
+        modifier.clip(RoundedCornerShape(18.dp)).background(ink.panel).border(1.dp, ink.stroke, RoundedCornerShape(18.dp)).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (logo != null) Image(logo, null, Modifier.heightIn(max = 110.dp).widthIn(max = 260.dp), contentScale = ContentScale.Fit)
@@ -235,10 +280,10 @@ private fun Idle(p: Picture, logo: ImageBitmap?, pictures: List<ImageBitmap>) {
     val message = p.message.lines().map { it.trim() }.filter { it.isNotEmpty() }
     val words: @Composable (Float) -> Unit = { scale ->
         if (logo != null) Image(logo, null, Modifier.heightIn(max = (170 * scale).dp).widthIn(max = (340 * scale).dp), contentScale = ContentScale.Fit)
-        if (p.business.isNotBlank()) T(p.business, (42 * scale).sp, 800, lines = 2, align = TextAlign.Center, spacing = (-0.8).sp, height = (48 * scale).sp)
+        if (p.business.isNotBlank()) Tx(p.business, (42 * scale).sp, 800, lines = 2, align = TextAlign.Center, spacing = (-0.8).sp, height = (48 * scale).sp)
         else if (logo == null) Wordmark()
-        if (message.isEmpty()) T(W.welcome, (24 * scale).sp, 600, V.Text2)
-        else message.forEach { T(it, (24 * scale).sp, 600, V.Text2, lines = 2, align = TextAlign.Center, height = (31 * scale).sp) }
+        if (message.isEmpty()) Tx(W.welcome, (24 * scale).sp, 600, ink.text2)
+        else message.forEach { Tx(it, (24 * scale).sp, 600, ink.text2, lines = 2, align = TextAlign.Center, height = (31 * scale).sp) }
     }
     if (pictures.isEmpty()) Column(Modifier.fillMaxSize().padding(40.dp), verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
         words(1f)

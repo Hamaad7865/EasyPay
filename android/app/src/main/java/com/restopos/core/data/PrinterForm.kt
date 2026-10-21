@@ -92,9 +92,13 @@ object PrinterForm {
         require(IP.matches(at)) { "Type the address the display shows, for example 192.168.1.70" }
         val tidy = com.restopos.core.kitchen.PairCode.tidy(code)
         require(tidy != null) { "Type the pairing code the display shows: eight letters and digits" }
-        val message = listOf(first, second).map { it.trim() }.filter { it.isNotEmpty() }.joinToString("\n").take(120).ifEmpty { null }
-        Display(called, at, tidy, message)
+        Display(called, at, tidy, displayMessage(first, second))
     }
+
+    // A display's two lines for between sales, as kept: each trimmed, one line
+    // break between them, at most 120 characters; null for none.
+    fun displayMessage(first: String, second: String): String? =
+        listOf(first, second).map { it.trim() }.filter { it.isNotEmpty() }.joinToString("\n").take(120).ifEmpty { null }
 
     // The server's refusal of a display, in words.
     fun refusedDisplay(code: String?): String = when (code) {

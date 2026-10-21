@@ -196,6 +196,19 @@ class SettingsViewModel @Inject constructor(
         _testing.value = null
     }
 
+    // The customer display on a second screen joined to this tablet by a
+    // cable (feature/display/CableDisplay): this tablet's own setting, with
+    // its two lines for between sales.
+    val cableOn: StateFlow<Boolean> = session.cableDisplay.held(false)
+    val cableMessage: StateFlow<String> = session.cableMessage.held("")
+    fun saveCable(on: Boolean, first: String, second: String) = viewModelScope.launch {
+        session.setCableDisplay(on, com.restopos.core.data.PrinterForm.displayMessage(first, second).orEmpty())
+        com.restopos.core.ui.Toaster.say(if (on) "The customer display shows on a second screen as soon as one is connected." else "Nothing is shown on a second screen.")
+    }
+    // the second screens Android offers for it now, by name
+    fun secondScreens(): List<String> =
+        runCatching { context.getSystemService(android.hardware.display.DisplayManager::class.java).getDisplays(android.hardware.display.DisplayManager.DISPLAY_CATEGORY_PRESENTATION).map { it.name } }.getOrDefault(emptyList())
+
     // ---- the scanners added on this tablet (Settings, Scanners) ----
     // A scanner that types what it reads (USB, or Bluetooth as a keyboard)
     // works without being added. Adding it tells the till which device it is:
@@ -1296,6 +1309,32 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
         Note("A customer display shows the customer this till's sale as it is rung up, the change after Pay, and the business's name, logo and message between sales, over the shop's own Wi-Fi, with or without internet.")
     }
     changing?.let { d -> DisplaySheet(d.id, d) { changing = null } }
+    // The customer display on a second screen by cable: this tablet's own.
+    val cableOn by vm.cableOn.collectAsState()
+    val cableMessage by vm.cableMessage.collectAsState()
+    Heading("Customer display on a second screen")
+    Panel {
+        var first by remember(cableMessage) { mutableStateOf(cableMessage.lines().getOrElse(0) { "" }) }
+        var second by remember(cableMessage) { mutableStateOf(cableMessage.lines().getOrElse(1) { "" }) }
+        val screens = remember(cableOn) { vm.secondScreens() }
+        val change = "change how this till is set up"
+        Toggle(
+            "Show it on a second screen",
+            "A monitor on this tablet's HDMI or USB-C, or a POS terminal's own customer screen: the same customer display, with no Wi-Fi and no pairing.",
+            cableOn,
+        ) { on -> vm.guard("settings.device", change) { vm.saveCable(on, first, second) } }
+        Text(
+            if (screens.isEmpty()) "No second screen is connected to this tablet now." else "Connected now: ${screens.joinToString(", ")}.",
+            Modifier.padding(top = 6.dp), color = Pos.Text2, fontSize = 13.sp,
+        )
+        if (cableOn) {
+            Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                com.restopos.core.ui.Field(first, { first = it.take(60) }, "Ask about our lunch deal", Modifier.fillMaxWidth(), height = 50.dp, size = 16.sp)
+                com.restopos.core.ui.Field(second, { second = it.take(60) }, "Open every day till 22:00", Modifier.fillMaxWidth(), height = 50.dp, size = 16.sp)
+                Row { Small("Save the message") { vm.guard("settings.device", change) { vm.saveCable(true, first, second) } } }
+            }
+        }
+    }
     // only a restaurant sends orders to a kitchen
     if (retail == false && orderTypes.isNotEmpty()) {
         Heading("When an order goes to the kitchen")

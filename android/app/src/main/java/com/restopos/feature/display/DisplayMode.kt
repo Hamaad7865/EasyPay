@@ -125,7 +125,7 @@ class DisplayModeViewModel @Inject constructor(
     // what is on screen: null until a till has spoken to it (the pairing page)
     val shown: StateFlow<Picture?> = combine(book.held, tick) { _, now -> book.shown(now) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
-    val logo: StateFlow<ImageBitmap?> = book.logo.map { decode(it) }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val logo: StateFlow<ImageBitmap?> = book.logo.map { decodePicture(it) }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     init {
         viewModelScope.launch {
@@ -215,13 +215,6 @@ class DisplayModeViewModel @Inject constructor(
             }
         }.onFailure { Toaster.say("This tablet would not open its installer: ${it.message}") }
     }
-
-    private fun decode(data: String?): ImageBitmap? = data?.let {
-        runCatching {
-            val bytes = android.util.Base64.decode(it.substringAfter(','), android.util.Base64.DEFAULT)
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-        }.getOrNull()
-    }
 }
 
 @Composable
@@ -240,7 +233,7 @@ fun DisplayModeScreen(vm: DisplayModeViewModel = hiltViewModel(), onBecomeTill: 
 
     Box(Modifier.fillMaxSize().background(V.Bg).systemBarsPadding()) {
         val p = shown
-        if (p == null) Waiting(address, code, problem) else CustomerScreen(p, logo)
+        if (p == null) Waiting(address, code, problem) else CustomerScreen(p, logo, light = light)
         if (p != null) problem?.let { T(it, 14.sp, 600, V.RedText, Modifier.align(Alignment.TopCenter).fillMaxWidth().background(V.RedWash).padding(horizontal = 24.dp, vertical = 10.dp), lines = 3) }
         Box(Modifier.align(Alignment.BottomEnd).padding(14.dp)) { IconKey(VI.Gear, 40.dp, onClick = { settings = true }) }
         ToastHost()

@@ -9,7 +9,11 @@ import com.restopos.core.database.TillDatabase
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.ui.L
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -49,6 +53,20 @@ class DisplayFeed @Inject constructor(
         session.pendingDiscountFlow.map { },
         held.map { },
     )
+
+    // What a screen on a cable shows, as it changes: the picture of now at
+    // once on every change, and every second besides (the change after Pay
+    // goes back to idle by the clock).
+    fun live(): Flow<Picture> = channelFlow {
+        launch { changes.collect { send(now()) } }
+        while (true) {
+            send(now())
+            delay(1000)
+        }
+    }.distinctUntilChanged()
+
+    // the business's logo (a data URL, as on the receipts), for a cable screen; a Wi-Fi display is sent it
+    val logo: Flow<String?> = db.ops().settingsFlow().map { PosSettings.parse(it).logo }.distinctUntilChanged()
 
     // Pay: a sale has just been paid in full.
     fun paid(total: Long, change: Long, at: Long = System.currentTimeMillis()) {

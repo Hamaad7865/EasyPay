@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var staffRepo: com.restopos.core.data.StaffRepository
     @Inject lateinit var db: com.restopos.core.database.TillDatabase
     @Inject lateinit var pictures: com.restopos.core.data.Pictures
+    @Inject lateinit var displayFeed: com.restopos.core.display.DisplayFeed
 
     // The screens are drawn for a 1280 x 720dp landscape tablet and scaled to
     // the tablet they run on: a 15-inch till shows the same layout larger,
@@ -178,6 +179,8 @@ class MainActivity : ComponentActivity() {
         // them. While EasyPay is open the tablet's volume keys set that volume.
         volumeControlStream = android.media.AudioManager.STREAM_ALARM
         SyncScheduler.pullNow(this)
+        // the customer display on a second screen by cable, when one is switched on in Settings, Printers
+        com.restopos.feature.display.CableDisplay(this, displayFeed, session).start()
         setContent {
             val scope = rememberCoroutineScope()
             // A till that goes to sleep between orders is a nuisance; Settings, Display can let it.

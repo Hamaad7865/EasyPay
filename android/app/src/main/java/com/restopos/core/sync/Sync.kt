@@ -295,6 +295,8 @@ private val LAST_BACKUP_PLACE = stringPreferencesKey("last_backup_place")
 private val LAST_USE = longPreferencesKey("last_use")
 private val LANG = stringPreferencesKey("lang")
 private val MODE = stringPreferencesKey("mode")
+private val CABLE_ON = booleanPreferencesKey("cable_display")
+private val CABLE_MESSAGE = stringPreferencesKey("cable_display_message")
 private val PAIR_CODE = stringPreferencesKey("pair_code")
 private val KITCHEN_EPOCH = stringPreferencesKey("kitchen_epoch")
 private val SEQ_DAY = stringPreferencesKey("seq_day")
@@ -391,6 +393,14 @@ class SessionStore(private val context: Context) {
         }
     }
     suspend fun leaveDisplay() { store.edit { it.remove(MODE); it.remove(PAIR_CODE) } }
+
+    // ---- the customer display on a second screen joined to this till by a cable ----
+    // A tablet setting, as the label printer is: the screen belongs to the
+    // tablet it is plugged into. Off until switched on; its two lines for
+    // between sales beside it.
+    val cableDisplay: Flow<Boolean> = store.data.map { it[CABLE_ON] ?: false }.distinctUntilChanged()
+    val cableMessage: Flow<String> = store.data.map { it[CABLE_MESSAGE].orEmpty() }.distinctUntilChanged()
+    suspend fun setCableDisplay(on: Boolean, message: String) { store.edit { it[CABLE_ON] = on; it[CABLE_MESSAGE] = message } }
     suspend fun businessName(): String? = store.data.map { it[BUSINESS] }.first()
     suspend fun setBusinessName(name: String) { store.edit { it[BUSINESS] = name } }
 
