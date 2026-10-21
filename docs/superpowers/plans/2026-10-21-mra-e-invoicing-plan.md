@@ -25,19 +25,20 @@ piece list in its section 12.
   selling at the same time, or offline, never share a sequence. To be confirmed by the MRA (question 1).
 - **Testing first**, then the till.
 
-## The one decision for the owner: when to press Test Drive
+## When to press Test Drive (decided)
 
 Confirm (self-certification) tells the MRA that the EBS registered, "EasyPay POS Android" at its version, is
 compliant. If Test Drive is run from `mra/sandbox.cjs`, it certifies a script; the till itself sends nothing yet.
 
-Proposed order:
+**Decided 2026-10-21, by the owner:** "Test Drive from the till once phase 2 is built. Leave the portal alone
+until then." The order:
 
-1. **Sandbox (now):** test cases 1 to 7 from `sandbox.cjs`. Can be repeated; nothing counts.
+1. **Sandbox:** test cases 1 to 7 from `sandbox.cjs`. Done (phase 1).
 2. The till built (phase 2) and held to the same values as the script.
 3. **Test Drive** run from the till on the test emulator.
 4. **Confirm**, pressed by the owner.
 
-Until this is decided: do not press Test Drive or Confirm.
+Until phase 2 is built, nobody presses Test Drive or Confirm or changes the EBS on the portal.
 
 ## Phase 1: finish the sandbox testing (done)
 
