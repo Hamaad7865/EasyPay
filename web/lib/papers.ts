@@ -74,6 +74,13 @@ export type ReceiptDoc = {
   refunded?: number;
   refundedAll?: boolean;
   customerNo?: string | null;
+  // a sale on account (0114): what the customer owes on account with it
+  owed?: number | null;
+  // loyalty points (0128): earned on a sale, taken back and given back by a refund, the balance after
+  pointsEarned?: number | null;
+  pointsTaken?: number | null;
+  pointsBack?: number | null;
+  pointsBalance?: number | null;
 };
 export type KitchenDoc = {
   title: string;
@@ -574,7 +581,7 @@ function receiptOut(b: Block, d: ReceiptDoc, shop: Shop, decimals: number, logo:
         if (p.tendered !== null && p.tendered !== undefined && (p.change ?? 0) > 0)
           out.push({ o: "row", left: "  Given", right: n(p.tendered) }, { o: "row", left: "  Change", right: n(p.change ?? 0) });
         return out;
-      });
+      }).concat(after(d, n));
     case "bill_note":
       return kind === "bill" ? [{ o: "words", s: "This is not a receipt" }] : [];
     case "remark":
@@ -687,6 +694,19 @@ const SAMPLE_LINES: DocLine[] = [
   },
   { qty: 2000, name: "Alouda", amount: 18000, unit: 9000 },
 ];
+
+// What prints under the payments, as the till has it (PaperWalk): what is
+// owed on account (0114), and the loyalty points (0128).
+function after(d: ReceiptDoc, n: (v: number) => string): Out[] {
+  const out: Out[] = [];
+  const has = (v: number | null | undefined): v is number => v !== null && v !== undefined;
+  if (has(d.owed)) out.push({ o: "row", left: "Balance owed on account", right: n(d.owed) });
+  if (has(d.pointsEarned) && d.pointsEarned > 0) out.push({ o: "row", left: "Points earned", right: n(d.pointsEarned) });
+  if (has(d.pointsTaken) && d.pointsTaken > 0) out.push({ o: "row", left: "Points taken back", right: n(d.pointsTaken) });
+  if (has(d.pointsBack) && d.pointsBack > 0) out.push({ o: "row", left: "Points given back", right: n(d.pointsBack) });
+  if (has(d.pointsBalance)) out.push({ o: "row", left: "Points balance", right: (d.pointsBalance < 0 ? "-" : "") + n(Math.abs(d.pointsBalance)) });
+  return out;
+}
 
 // A receipt or a bill for a takeaway (customer No. 05) or a table; a shop's sale.
 export function sampleReceipt(kind: "receipt" | "bill", takeaway: boolean, shop: boolean, now: number): ReceiptDoc {

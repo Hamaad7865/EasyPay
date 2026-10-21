@@ -100,6 +100,23 @@ function describe(v: Review): string {
         .map((n) => `credit note ${n.number} had ${rs(n.balance)} left and this sale took ${rs(n.amount)}: ${rs(n.excess)} is not covered (two tills spent it while apart)`)
         .join("; ");
     }
+    case "points": {
+      // loyalty points (migration 0128): the till's figures were kept, held to what they could be
+      const flags = (Array.isArray(d.flags) ? d.flags : []) as { why?: string; used?: number; balance?: number; total?: number; left?: number; till?: string | number | null; what?: string }[];
+      return flags
+        .map((f) =>
+          f.why === "overspent"
+            ? `${rs(f.used)} of points used when the customer had ${rs(f.balance)}: their balance is below zero (two tills spent it while apart)`
+            : f.why === "no-customer"
+              ? `points earned or used for a customer this business does not know: the points were not kept (the discount on the receipt stands)`
+              : f.why === "over-earned"
+                ? `the till said ${rs(Number(f.till) || 0)} of points earned on a sale of ${rs(f.total)}: kept as the most it could be`
+                : f.why === "over-returned"
+                  ? `the refund ${f.what === "back" ? "gave back" : "took back"} more points than the sale had left (${rs(f.left)}): held to that`
+                  : `points: ${f.why ?? "flagged"}`,
+        )
+        .join("; ");
+    }
     default:
       return v.reason;
   }

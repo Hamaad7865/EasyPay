@@ -182,6 +182,24 @@ function check(name, cond, extra) {
         + (await c.query(`select count(*)::int as n from account_payments where tenant_id = $1 and jsonb_array_length(flags) > 0`, [tid])).rows[0].n;
       check('and nothing about them is flagged', flagged === 0, String(flagged));
     }
+    // loyalty points (0128): every receipt earned and used on the server what it did on the till, and every
+    // customer's balance is the till's, to the cent; nothing about points is flagged
+    if (compare && till.points && till.customers) {
+      const rows = (await c.query(`select id, number, type, customer_id, points_earned, points_used from receipts where tenant_id = $1 and customer_id is not null`, [tid])).rows;
+      const one = (r) => [r.id, r.number, r.type, r.customer_id, Number(r.points_earned), Number(r.points_used)].join('|');
+      const here = till.points.map(one).sort().join('\n     '), there = rows.map(one).sort().join('\n     ');
+      check(`points: the ${till.points.length} receipts that moved points are the same on both`, here === there, '\n   till:\n     ' + here + '\n   server:\n     ' + there);
+      const bals = (await c.query(`select id, points from customers where tenant_id = $1`, [tid])).rows;
+      const bal = new Map(bals.map((b) => [b.id, Number(b.points)]));
+      const wrong = till.customers.filter((cu) => (bal.get(cu.id) ?? 0) !== Number(cu.points));
+      check(`points: the ${till.customers.length} customers' balances are the till's`, wrong.length === 0, JSON.stringify(wrong.map((cu) => ({ name: cu.name, till: cu.points, server: bal.get(cu.id) ?? null }))));
+      const flagged = (await c.query(`select count(*)::int as n from receipt_reviews v join receipts r on r.id = v.receipt_id where r.tenant_id = $1 and v.reason = 'points'`, [tid])).rows[0].n;
+      check('points: nothing about them is flagged', flagged === 0, String(flagged));
+      const cards = (await c.query(`select id, card from customers where tenant_id = $1`, [tid])).rows;
+      const card = new Map(cards.map((x) => [x.id, x.card]));
+      const lost = till.customers.filter((cu) => (card.get(cu.id) ?? null) !== (cu.card ?? null));
+      check('points: every card is the till\'s', lost.length === 0, JSON.stringify(lost.map((cu) => ({ name: cu.name, till: cu.card, server: card.get(cu.id) ?? null }))));
+    }
     if (compare) check(`stock: the till's ${till.levels.length} figures are the server's`, off.length === 0, JSON.stringify(off.map((l) => ({ ...l, server: held.get(l.item_id + '|' + (l.variant_id ?? '')) ?? 0 }))));
     // the floor: every table the till holds is on the server where the till has it, and the ones it removed are
     // removed there (a plan changed on the tablet: floor.save, room.rename, room.remove)

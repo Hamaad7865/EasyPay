@@ -28,6 +28,15 @@ const KITCHEN = [
   ["off", "Never"],
 ] as const;
 
+// Loyalty points (0128): the percentage typed ("1", "2.5"), kept in basis
+// points from 1 to 10000 (0.01% to 100%). Anything else is refused.
+function loyaltyBp(f: FormData): number {
+  const raw = String(f.get("loyaltyPct") ?? "").trim().replace(",", ".");
+  const pct = Number(raw);
+  if (raw === "" || !Number.isFinite(pct) || pct < 0.01 || pct > 100) throw new Refused("Type the percentage back as a number from 0.01 to 100.");
+  return Math.round(pct * 100);
+}
+
 async function saveGeneral(f: FormData) {
   "use server";
   await act("settings.device", PATH, async (c, ctx) => {
@@ -38,6 +47,9 @@ async function saveGeneral(f: FormData) {
       dayCloseDetailed: on(f, "dayCloseDetailed"),
       drawerByNotes: on(f, "drawerByNotes"),
       lockMinutes: int(f, "lockMinutes", 0, 120, 0),
+      // loyalty points (0128), for both kinds of business: the percentage typed, kept in basis points
+      loyalty: on(f, "loyaltyOn") ? ("on" as const) : ("off" as const),
+      loyaltyBp: loyaltyBp(f),
       // a shop's form has no Service card: what those settings held is left as it is
       ...(ctx.mode === "retail"
         ? {
@@ -507,6 +519,26 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
               )}
             </Card>
           )}
+          <Card title="Loyalty points">
+            <div className="setting">
+              <div>
+                <strong>Loyalty points</strong>
+                <small>A customer named on a sale earns points on what they pay, and spends them on Pay with Use points: they come off the bill as a discount, before VAT. A point is worth Rs 1. Points never expire.</small>
+              </div>
+              <label className="check" style={{ margin: 0 }}>
+                <input type="checkbox" name="loyaltyOn" defaultChecked={s.loyalty === "on"} /> On
+              </label>
+            </div>
+            <div className="setting">
+              <div>
+                <strong>Percentage back</strong>
+                <small>Of what the customer pays, after discounts and with VAT. At 1%, a Rs 1,000 sale earns Rs 10 of points. Every till must be on the latest EasyPay before this is switched on.</small>
+              </div>
+              <label className="check" style={{ margin: 0 }}>
+                <input type="text" inputMode="decimal" name="loyaltyPct" defaultValue={String(s.loyaltyBp / 100)} style={{ width: 80 }} /> %
+              </label>
+            </div>
+          </Card>
           {shop && (
             <Card title="Customer accounts">
               {!accountsPaid ? (

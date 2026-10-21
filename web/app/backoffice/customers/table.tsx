@@ -11,6 +11,9 @@ export type Customer = {
   deposits: { id: string; number: string; words: string; late: boolean }[];
   // what they owe on account (0114); below nothing the shop owes them
   owes: number; owes_shown: string;
+  // loyalty points (0128): the balance (below nothing after a refund took back points already spent), the card, what moved them
+  points: number; points_shown: string; card: string | null;
+  history: { number: string; at: string; words: string }[];
 };
 type Action = (f: FormData) => Promise<void>;
 
@@ -25,10 +28,10 @@ const SEEN_SHOP = [...SEEN, ["deposit", "Have a deposit"], ["owes", "Owe money"]
 // The customers as one table: who they are, how to reach them, and what they
 // have ordered. The box finds one by name, phone, email or note as you type;
 // tapping a line opens it to change or remove them.
-export function CustomersTable({ rows, capped, start, save, remove, shop = false }: { rows: Customer[]; capped: boolean; start: Start; save: Action; remove: Action; shop?: boolean }) {
+export function CustomersTable({ rows, capped, start, save, remove, shop = false, loyal = false }: { rows: Customer[]; capped: boolean; start: Start; save: Action; remove: Action; shop?: boolean; loyal?: boolean }) {
   const t = useTable("/backoffice/customers", start);
   const seen = t.get("seen");
-  const hay = useMemo(() => new Map(rows.map((r) => [r.id, fold([r.name, r.phone ?? "", r.email ?? "", r.note ?? ""].join(" "))])), [rows]);
+  const hay = useMemo(() => new Map(rows.map((r) => [r.id, fold([r.name, r.phone ?? "", r.email ?? "", r.note ?? "", r.card ?? ""].join(" "))])), [rows]);
   // a phone number is found whatever spaces it was typed or stored with
   const digits = useMemo(() => new Map(rows.map((r) => [r.id, (r.phone ?? "").replace(/\D/g, "")])), [rows]);
   const typed = t.get("q").replace(/\D/g, "");
@@ -44,6 +47,7 @@ export function CustomersTable({ rows, capped, start, save, remove, shop = false
       orders: (a, b) => a.orders - b.orders || a.name.localeCompare(b.name),
       spent: (a, b) => a.spent - b.spent || a.name.localeCompare(b.name),
       owes: (a, b) => a.owes - b.owes || a.name.localeCompare(b.name),
+      points: (a, b) => a.points - b.points || a.name.localeCompare(b.name),
     },
   );
 
@@ -57,7 +61,7 @@ export function CustomersTable({ rows, capped, start, save, remove, shop = false
             {capped && " (the first of a longer list, by name)"}. Tap one to change their details.
           </p>
         </div>
-        <TableSearch t={t} placeholder="Search name, phone, email, note" label="Search customers" />
+        <TableSearch t={t} placeholder={loyal ? "Search name, phone, email, note, card" : "Search name, phone, email, note"} label="Search customers" />
       </div>
       <div className="table-filters">
         <Seg t={t} name="seen" label="Show" options={shop ? SEEN_SHOP : SEEN} />
@@ -75,10 +79,11 @@ export function CustomersTable({ rows, capped, start, save, remove, shop = false
               <SortTh t={t} k="spent" label="Spent" num />
               {shop && <th>Deposits</th>}
               {shop && <SortTh t={t} k="owes" label="Owes" num />}
+              {loyal && <SortTh t={t} k="points" label="Points" num />}
             </tr>
           </thead>
           <tbody>
-            {shown.length === 0 && <NoMatch t={t} cols={shop ? 9 : 7} what="customer" filters={["seen"]} />}
+            {shown.length === 0 && <NoMatch t={t} cols={(shop ? 9 : 7) + (loyal ? 1 : 0)} what="customer" filters={["seen"]} />}
             {shown.map((r) => {
               const on = t.isOpen(r.id);
               return [
@@ -119,10 +124,15 @@ export function CustomersTable({ rows, capped, start, save, remove, shop = false
                       )}
                     </td>
                   )}
+                  {loyal && (
+                    <td className="num">
+                      {r.points !== 0 ? <span className={r.points < 0 ? "neg" : "strong"}>{r.points_shown}</span> : <span className="muted">None</span>}
+                    </td>
+                  )}
                 </tr>,
                 on && (
                   <tr key={r.id + "-open"} className="open-body">
-                    <td colSpan={shop ? 9 : 7}>
+                    <td colSpan={(shop ? 9 : 7) + (loyal ? 1 : 0)}>
                       <div className="open-panel">
                         <form id={"c" + r.id} action={save} className="bo-toolbar" style={{ margin: 0 }}>
                           <input type="hidden" name="id" value={r.id} />
@@ -131,10 +141,27 @@ export function CustomersTable({ rows, capped, start, save, remove, shop = false
                           <input name="phone" defaultValue={r.phone ?? ""} maxLength={40} aria-label="Phone" placeholder="Phone" inputMode="tel" />
                           <input name="email" defaultValue={r.email ?? ""} maxLength={120} aria-label="Email" placeholder="Email" inputMode="email" />
                           <input name="note" defaultValue={r.note ?? ""} maxLength={200} aria-label="Note" placeholder="Note (allergies, what they like)" style={{ flex: "1 1 220px" }} />
+                          <input name="card" defaultValue={r.card ?? ""} maxLength={40} aria-label="Loyalty card" placeholder="Loyalty card" />
                           <Submit className="btn-sm">
                             Save
                           </Submit>
                         </form>
+                        {loyal && (
+                          <div className="muted" style={{ margin: "10px 0 0" }}>
+                            <strong>Points: {r.points_shown}</strong>
+                            {r.history.length === 0 ? (
+                              " · nothing earned or used yet"
+                            ) : (
+                              <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                                {r.history.map((h, i) => (
+                                  <li key={h.number + i}>
+                                    {h.at} · {h.number} · {h.words}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )}
                         <form action={remove} className="open-remove">
                           <input type="hidden" name="id" value={r.id} />
                           <Back t={t} />

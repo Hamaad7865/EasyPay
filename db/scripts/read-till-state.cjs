@@ -55,6 +55,11 @@ try {
   };
   // a shop's bills on account (0114), as the till worked them out; a build before them has none
   try { state.bills = all(`select id, customer_id, number, amount, paid, returned from account_bills where pulled = 0 order by id`); } catch { /* no such table */ }
+  // loyalty points (0128): each customer's balance as the till has it, and what each receipt made here earned and used
+  try {
+    state.customers = all(`select id, name, points, card from customers order by id`);
+    state.points = all(`select id, number, type, customer_id, points_earned, points_used from receipts where pulled = 0 and customer_id is not null order by id`);
+  } catch { /* a build before them */ }
   db.close();
   fs.writeFileSync(out, JSON.stringify(state, null, 1));
   console.log(`${out}: ${state.outbox.length} operations (${[...new Set(state.outbox.map((o) => o.type))].join(', ')}), ${state.receipts.length} receipts, ${state.payments.length} payments, ${state.levels.length} stock figures`);

@@ -16,11 +16,26 @@ function fields(f: FormData) {
   return [name, text(f, "phone", 40) || null, text(f, "email", 120) || null, text(f, "note", 200) || null] as const;
 }
 
+// The loyalty card (0128): as typed or scanned, an EasyPay card (EP and ten
+// digits) in capitals. Refused when another customer holds it: a scan must
+// find one person.
+async function cardOf(c: import("pg").PoolClient, tenant: string, f: FormData, id: string | null): Promise<string | null> {
+  let card = text(f, "card", 40).trim();
+  if (/^ep\d{10}$/i.test(card)) card = card.toUpperCase();
+  if (!card) return null;
+  const other = (
+    await c.query(`select name from customers where tenant_id = $1 and lower(card) = lower($2) and deleted_at is null and ($3::uuid is null or id <> $3::uuid) limit 1`, [tenant, card, id])
+  ).rows[0] as { name: string } | undefined;
+  if (other) throw new Refused(`Card ${card} is ${other.name}'s already.`);
+  return card;
+}
+
 async function addCustomer(f: FormData) {
   "use server";
   await act("backoffice.access", PATH, async (c, ctx) => {
     const [name, phone, email, note] = fields(f);
-    await c.query(`insert into customers (tenant_id, name, phone, email, note) values ($1, $2, $3, $4, $5)`, [ctx.tenantId, name, phone, email, note]);
+    const card = await cardOf(c, ctx.tenantId, f, null);
+    await c.query(`insert into customers (tenant_id, name, phone, email, note, card) values ($1, $2, $3, $4, $5, $6)`, [ctx.tenantId, name, phone, email, note, card]);
     return `${name} added. The tills have them after their next sync.`;
   });
 }
@@ -29,8 +44,10 @@ async function saveCustomer(f: FormData) {
   "use server";
   await act("backoffice.access", backTo(f, PATH), async (c, ctx) => {
     const [name, phone, email, note] = fields(f);
-    await c.query(`update customers set name = $3, phone = $4, email = $5, note = $6 where tenant_id = $1 and id = $2 and deleted_at is null`, [
-      ctx.tenantId, uuid(f, "id"), name, phone, email, note,
+    const id = uuid(f, "id");
+    const card = await cardOf(c, ctx.tenantId, f, id);
+    await c.query(`update customers set name = $3, phone = $4, email = $5, note = $6, card = $7 where tenant_id = $1 and id = $2 and deleted_at is null`, [
+      ctx.tenantId, id, name, phone, email, note, card,
     ]);
     return `${name} saved.`;
   });
@@ -51,6 +68,9 @@ type Row = {
   deposits: { id: string; number: string; status: string; collect_by: string; to_pay: string; owed: string; free: string; over: number }[];
   // what a shop's customer owes on account (0114), less what was paid over
   owes: string;
+  // loyalty points (0128): the balance, the card, and the last receipts that moved points
+  points: string; card: string | null;
+  history: { number: string; type: string; at: string; earned: string; used: string }[];
 };
 // Every customer comes down once and the table finds among them as you type.
 // A list longer than this is cut, and the table says so.
@@ -59,11 +79,24 @@ const MOST = 5000;
 export default async function CustomersPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await readTenant(ctx.tenantId, async (c) => ({
-    s: await loadSettings(c, ctx.tenantId),
+  const d = await readTenant(ctx.tenantId, async (c) => {
+    const s = await loadSettings(c, ctx.tenantId);
+    // a customer's points history (0128) only where points are kept or were
+    const loyal = s.loyalty === "on" || (await c.query(`select 1 from receipts where tenant_id = $1 and customer_id is not null limit 1`, [ctx.tenantId])).rowCount! > 0;
+    return {
+    s,
+    loyal,
     rows: (
       await c.query(
-        `select cu.id, cu.name, cu.phone, cu.email, cu.note,
+        `select cu.id, cu.name, cu.phone, cu.email, cu.note, cu.points, cu.card,
+                ${
+                  loyal
+                    ? `(select coalesce(jsonb_agg(jsonb_build_object('number', h.number, 'type', h.type, 'at', h.created_at, 'earned', h.points_earned, 'used', h.points_used) order by h.created_at desc), '[]'::jsonb)
+                         from (select r.number, r.type, r.created_at, r.points_earned, r.points_used from receipts r
+                                where r.tenant_id = cu.tenant_id and r.customer_id = cu.id and r.deleted_at is null and (r.points_earned <> 0 or r.points_used <> 0)
+                                order by r.created_at desc limit 50) h)`
+                    : `'[]'::jsonb`
+                } as history,
                 (select count(*)::int from tickets t where t.tenant_id = cu.tenant_id and t.customer_id = cu.id and t.deleted_at is null) as orders,
                 (select coalesce(sum(case when r.type = 'refund' then -r.total else r.total end), 0)
                    from receipts r join tickets t on t.tenant_id = r.tenant_id and t.id = r.ticket_id
@@ -87,7 +120,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: Se
         [ctx.tenantId],
       )
     ).rows as Row[],
-  }));
+    };
+  });
   const rows: Customer[] = d.rows.slice(0, MOST).map((r) => ({
     id: r.id,
     name: r.name,
@@ -111,6 +145,17 @@ export default async function CustomersPage({ searchParams }: { searchParams: Se
     })),
     owes: Number(r.owes),
     owes_shown: money(Math.abs(Number(r.owes)), d.s.decimals),
+    points: Number(r.points),
+    points_shown: (Number(r.points) < 0 ? "-" : "") + money(Math.abs(Number(r.points)), d.s.decimals),
+    card: r.card?.trim() || null,
+    // what each receipt did to the points, in words: a sale earns and uses, a refund takes back and gives back
+    history: r.history.map((h) => {
+      const e = Number(h.earned), u = Number(h.used);
+      const said = h.type === "refund"
+        ? [e < 0 ? `${money(-e, d.s.decimals)} taken back` : "", u < 0 ? `${money(-u, d.s.decimals)} given back` : ""]
+        : [e > 0 ? `${money(e, d.s.decimals)} earned` : "", u > 0 ? `${money(u, d.s.decimals)} used` : ""];
+      return { number: h.number, at: String(h.at).slice(0, 10), words: said.filter(Boolean).join(", ") };
+    }),
   }));
   const start = startOf(sp, "q", "seen", "sort", "open");
   return (
@@ -126,13 +171,14 @@ export default async function CustomersPage({ searchParams }: { searchParams: Se
           <input name="phone" placeholder="Phone" maxLength={40} />
           <input name="email" placeholder="Email" maxLength={120} />
           <input name="note" placeholder="Note (allergies, what they like)" maxLength={200} />
+          <input name="card" placeholder="Loyalty card (optional)" maxLength={40} />
           <Submit>Add</Submit>
         </form>
       </Card>
       {d.rows.length === 0 ? (
         <Empty icon={Contact} title="No customers yet">Add the first one above, or from the till.</Empty>
       ) : (
-        <CustomersTable key={startKey(sp, start)} rows={rows} capped={d.rows.length > MOST} start={start} save={saveCustomer} remove={removeCustomer} shop={ctx.mode === "retail"} />
+        <CustomersTable key={startKey(sp, start)} rows={rows} capped={d.rows.length > MOST} start={start} save={saveCustomer} remove={removeCustomer} shop={ctx.mode === "retail"} loyal={d.loyal} />
       )}
     </div>
   );

@@ -55,6 +55,10 @@ export type PosSettings = {
   // extra at all is has_feature on the server, not a setting.
   accounts: "on" | "off";
   accountDays: number;
+  // Loyalty points (migration 0128), for every business on every plan: off
+  // until switched on; what comes back, in basis points (100 is 1%).
+  loyalty: "on" | "off";
+  loyaltyBp: number;
   receipt: { header: string; footer: string; logo: string | null; showLogo: boolean };
   company: { name: string; brn: string; vat: string; address: string; phone: string };
   // The receipt's and the kitchen ticket's designs (Receipt design, lib/papers.ts), as kept:
@@ -89,6 +93,8 @@ export const DEFAULT_SETTINGS: PosSettings = {
   depositCustomer: "required",
   accounts: "on",
   accountDays: 30,
+  loyalty: "off",
+  loyaltyBp: 100,
   receipt: { header: "", footer: "Thank you. See you again soon.", logo: null, showLogo: true },
   company: { name: "", brn: "", vat: "", address: "", phone: "" },
   papers: {},
@@ -133,6 +139,8 @@ export function withDefaults(raw: unknown): PosSettings {
     depositCustomer: d.depositCustomer === "optional" ? "optional" : "required",
     accounts: d.accounts === "off" ? "off" : "on",
     accountDays: typeof d.accountDays === "number" && d.accountDays >= 1 && d.accountDays <= 365 ? Math.round(d.accountDays) : 30,
+    loyalty: d.loyalty === "on" ? "on" : "off",
+    loyaltyBp: typeof d.loyaltyBp === "number" && d.loyaltyBp >= 1 && d.loyaltyBp <= 10000 ? Math.round(d.loyaltyBp) : 100,
     receipt: {
       header: str(r.header, DEFAULT_SETTINGS.receipt.header),
       footer: str(r.footer, DEFAULT_SETTINGS.receipt.footer),
