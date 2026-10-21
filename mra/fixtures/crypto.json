@@ -1,0 +1,20 @@
+{
+  "about": "Fixed values for the MRA e-invoicing cryptography, worked out with the openssl command line, not by the code they test. A till that talks to the MRA itself is held to the same file.",
+  "hash": {
+    "dateTime": "20231019 14:54:51",
+    "totalAmtPaid": "1000",
+    "brn": "I2365XXXX",
+    "invoiceIdentifier": "AINV101",
+    "expected": "A78C2C5C5C3E33F1B4808D437F84BB303E0832D07A49912466EAF7137DF31EDC"
+  },
+  "aes": {
+    "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "plain": "[{\"invoiceIdentifier\":\"T1\",\"totalAmtPaid\":\"115.00\"}]",
+    "cipherBase64": "ldhp4a7JGmrD77Y19n/DAToEJmyE1NHmk+xhL0kT3Er5/2ID8VW0jlItZC1fDBXGD9Pf7FDLheXGTjXWYjd5mw=="
+  },
+  "unwrap": {
+    "ourKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "keyFromMra": "YwD4LZk0XAmYStGRny0EOmMA+C2ZNFwJmErRkZ8tBDqtLb+L1wEUrMtPbCNjjNzy",
+    "invoiceKeyBase64": "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo="
+  }
+}
