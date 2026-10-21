@@ -1470,9 +1470,10 @@ kept each paper and each picture on it. Everything below went to the MRA's **SAN
 On dev: all 19 records (`mra_records`) with their IRN and QR code or the MRA's reasons, none with a difference
 from its receipt; the till's status (connected, nothing waiting, 2 refused, counter 39); its counter and chains.
 
-Seen and to fix: while a client is still setting up, the till does not report its MRA status, so `/admin` says
-"Not connected" for a till that is (`MraSender.status` returns early unless training or live). The receipt shown
-on the till's screen has no QR code; only the paper has.
+Seen, and fixed the same night (`86ec951`, not yet seen on a tablet): the till now reports its MRA status from
+setting up on, so `/admin` no longer says "Not connected" for a till that is; the receipt shown on the till's screen
+has the MRA's QR code above its title, as the paper. Also fixed (`ef7f7d3`): the isolation suite's RLS rule asks for
+the touch trigger only of tables with a `server_seq` (the four from 0113/0114 have none, by design).
 
 Not covered: a real printer and a phone reading a printed QR code (the stand-in printer's picture is the MRA's
 QR, 160 dots, read back by zxing in `MraQrTest`); production; Test Drive (the owner's, from the till, next).
