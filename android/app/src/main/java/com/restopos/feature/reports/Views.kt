@@ -302,7 +302,7 @@ private fun Shifts(d: ReportData, vm: ReportsViewModel) {
                 color = when { diff == null || diff == 0L -> V.Text2; diff < 0 -> V.RedText; else -> V.AmberText },
                 under = listOfNotNull(
                     s.openedAt?.let { "Opened ${stamp(it, vm.zone())}" + (s.openedBy?.let { w -> " by $w" } ?: "") },
-                    "Closed ${stamp(s.close.closed_at, vm.zone())}" + (s.closedBy?.let { w -> " by $w" } ?: ""),
+                    "Closed ${stamp(s.close.closed_at, vm.zone())}" + (if (s.auto) " automatically" else s.closedBy?.let { w -> " by $w" } ?: ""),
                     s.counted?.let { "Counted ${Money.format(it)}" },
                 ).joinToString(" · "),
             ) { vm.openDay(s) }
@@ -345,7 +345,7 @@ private fun Tax(d: ReportData) {
 internal fun DaySheet(open: OpenDay, vm: ReportsViewModel) {
     val z = open.doc
     Sheet(onDismiss = { vm.closeDay() }, width = 560.dp, gap = 6.dp) {
-        SheetHead("Day closing No. ${z.number}", "${z.till} · closed ${stamp(z.to, vm.zone())}" + (z.closedBy?.let { " by $it" } ?: "")) { vm.closeDay() }
+        SheetHead("Day closing No. ${z.number}", "${z.till} · closed ${stamp(z.to, vm.zone())}" + (if (z.auto) " automatically" else z.closedBy?.let { " by $it" } ?: "")) { vm.closeDay() }
         Line("Receipts", z.sales.toString())
         Line("Sales", Money.format(z.gross))
         Line("Refunds", Money.format(-z.refunded), "${z.refunds}")
