@@ -1401,7 +1401,12 @@ which one, start it **with its window**, and say so before each step.
 8. **The line cut:** `adb -s <dev> shell svc wifi disable` and `svc data disable`. A sale prints
    `Not Yet Fiscalised`. Ten sales more. Then `svc wifi enable`: within a minute all eleven are fiscalised, in
    one request of 10 + 1 or 11. A reprint of the first has its QR. `mra_records` on dev shows them all.
-9. Cases 2, 5 and 6 with the debug broadcast: 2 and 6 fiscalised, and 5 refused with ERR0500.
+9. Cases 2, 5 and 6 with the debug broadcast: 2 and 6 fiscalised, and 5 refused with ERR0500. **Case 5 last**, here
+   and in the real Test Drive: its refused STD becomes the last link of the till's STD chain, so every STD after it
+   chains to an invoice the MRA refused. Unless `probe-chain` showed that the MRA ignores the hash, a Test Drive
+   that goes on after case 5 may fail and start again.
+   Before step 4, the till's counter and chains start after what `mra/sandbox.cjs` sent on the same test EBS
+   (`.claude/mra/state.json`), set on dev once its EBS MRA ID is typed: the MRA has seen counters up to there.
 10. Leave the emulator signed out, said in the report. The login stays in the emulator's Keystore. Tell the owner
     it is there, and that **Change login** or clearing the app removes it.
 

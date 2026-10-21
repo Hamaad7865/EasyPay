@@ -147,7 +147,8 @@ The page is only for a client whose `mra` is not `off`. It is read-only: nothing
 ## Phase 4: approval (piece 4)
 
 1. Test Drive, run from the till on the emulator (see the decision above). One failure restarts it; only the
-   last 500 invoices count.
+   last 500 invoices count. **Case 5 (the wrong TAN, refused on purpose) goes last**: the till chains each
+   invoice to the last it issued, so an STD after a refused one names it as its previous.
 2. PASS, then Confirm, pressed by the owner.
 3. EasyPay registered with the MRA as an EBS Solution Provider (FAQ 15), so it appears on the MRA's list of
    compliant systems.
