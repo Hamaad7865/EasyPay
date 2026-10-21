@@ -1056,6 +1056,16 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         // loyalty points, for every business (0128)
         word("loyalty", setOf("on", "off"))
         days("loyaltyBp", 1..10000)
+        // the time each till closes a day nobody closed (0133): "HH:MM", or null for off
+        if ("autoClose" in p) {
+            val v = p["autoClose"]
+            patch = if (v == null || v is JsonNull) JsonObject(patch + ("autoClose" to JsonNull))
+            else {
+                val s = p.str("autoClose")
+                if (s == null || AutoCloseRules.parse(s) == null) throw Refused("bad-value")
+                JsonObject(patch + ("autoClose" to JsonPrimitive(s)))
+            }
+        }
         if (patch.isNotEmpty()) mergeSettings(tenant, patch)
     }
 

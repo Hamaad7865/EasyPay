@@ -138,6 +138,12 @@ object OfficePayloads {
         approvedBy?.let { put("approved_by", it) }
     }
 
+    // The time each till closes a day nobody closed, "HH:MM", or null for off (server 0133).
+    fun autoCloseSave(at: String?, approvedBy: String?): JsonObject = buildJsonObject {
+        put("autoClose", at)
+        approvedBy?.let { put("approved_by", it) }
+    }
+
     // The minutes before an order for later is due that the tills ring; 0 is off (server 0111).
     fun dueReminderSave(minutes: Int, approvedBy: String?): JsonObject = buildJsonObject {
         put("dueReminderMinutes", minutes)

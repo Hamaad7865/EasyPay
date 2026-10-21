@@ -176,6 +176,14 @@ class BusinessViewModel @Inject constructor(db: TillDatabase, private val servic
         go("Saved. Every till of the business takes it.", {}) { by -> service.saveLoyalty(on.takeIf { changed[0] }, bp.takeIf { changed[1] }, by) }
     }
 
+    // the time each till closes a day nobody closed (0133): off, or a time
+    fun saveAutoClose(was: java.time.LocalTime?, on: Boolean, time: String) {
+        val at = if (!on) null else com.restopos.core.data.AutoCloseRules.parse(time.trim())
+            ?: run { Toaster.say("Type the time as HH:MM, from 00:00 to 23:59"); return }
+        if (at == was) { Toaster.say("Nothing was changed."); return }
+        go("Saved. Every till of the business takes it.", {}) { by -> service.saveAutoClose(at?.let { com.restopos.core.data.AutoCloseRules.format(it) }, by) }
+    }
+
     // another printer (a kitchen's, a bar's): the first one of a store is the receipt printer, the others print what is ticked for them
     fun addPrinter(id: String, name: String, kind: String, address: String, paper: Int, done: () -> Unit) {
         val p = com.restopos.core.data.PrinterForm.read(name, kind, address, paper).getOrElse { Toaster.say(it.message ?: "That is not a printer yet"); return }
@@ -602,6 +610,29 @@ internal fun LoyaltySettingsPage(vm: BusinessViewModel = hiltViewModel()) {
         }
     }
     Row { VBtn(if (busy) "Saving..." else "Save", bg = V.Blue, fg = Color.White, height = 52.dp, radius = 14.dp, weight = 800, enabled = !busy) { vm.saveLoyalty(st, on, pct) } }
+}
+
+// ---- Settings > Cash drawer: the day closing by itself (0133, every business) ----
+@Composable
+internal fun AutoClosePanel(vm: BusinessViewModel = hiltViewModel()) {
+    val st by vm.settings.collectAsState()
+    val busy by vm.busy.collectAsState()
+    var on by remember(st.autoClose) { mutableStateOf(st.autoClose != null) }
+    var time by remember(st.autoClose) { mutableStateOf(st.autoClose?.let { com.restopos.core.data.AutoCloseRules.format(it) } ?: "00:00") }
+    Note("A day nobody closed is closed by the till at this time, as of this time. The drawer is marked not counted, and orders still unpaid go on into the next day. Open past midnight? Pick an hour when you are closed, 05:00 say. The same for every till of the business.")
+    Panel {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Choice("Close the day automatically", listOf("on" to "On", "off" to "Off"), if (on) "on" else "off") { on = it == "on" }
+            if (on) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f)) {
+                    T("At", 15.sp, 700)
+                    T("HH:MM, on the tablet's clock.", 13.sp, 500, V.Text2)
+                }
+                Field(time, { v -> time = v.filter { it.isDigit() || it == ':' }.take(5) }, "00:00", Modifier.fillMaxWidth(0.25f), height = 50.dp, size = 17.sp)
+            }
+        }
+    }
+    Row { VBtn(if (busy) "Saving..." else "Save", bg = V.Blue, fg = Color.White, height = 52.dp, radius = 14.dp, weight = 800, enabled = !busy) { vm.saveAutoClose(st.autoClose, on, time) } }
 }
 
 // One setting with its choices as keys, the one picked lit.

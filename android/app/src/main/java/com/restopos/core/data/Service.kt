@@ -568,6 +568,21 @@ class ServiceRepository @Inject constructor(
         }, OfficePayloads.loyaltySave(on, bp, staff.approvedBy("settings.device", approver)))
     }
 
+    // The time each till closes a day nobody closed (server 0133): "HH:MM",
+    // or null for off. The same for every till of the business.
+    suspend fun saveAutoClose(at: String?, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("settings.device", "change the settings", approver)
+        ask("settings.save", { code ->
+            when (code) {
+                "bad-value" -> "Type the time as HH:MM, from 00:00 to 23:59."
+                "forbidden" -> "You are not allowed to change the settings. Ask a manager."
+                "unknown-op" -> "The server has to be updated before this can be changed from a till."
+                null -> "The server refused it."
+                else -> "The server refused it ($code)."
+            }
+        }, OfficePayloads.autoCloseSave(at, staff.approvedBy("settings.device", approver)))
+    }
+
     suspend fun saveDeposits(on: Boolean?, cancel: String?, days: Int?, overdue: String?, grace: Int?, customer: Boolean?, approver: StaffMember? = null): Result<Unit> = runCatching {
         staff.allow("settings.device", "change the deposit settings", approver)
         ask("settings.save", { code ->

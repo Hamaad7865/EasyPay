@@ -999,6 +999,9 @@ private fun CashPage(vm: SettingsViewModel, more: MoreViewModel, keys: CashKeys)
             }
         }
     }
+    // the day closing by itself (0133): here too, for a tablet that works on its own has no back office
+    Heading("Close the day automatically")
+    AutoClosePanel()
 }
 
 @Composable
