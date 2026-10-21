@@ -53,6 +53,9 @@ fun AuthScreen(
     // The tablet is to be a kitchen screen, not a till: offered when a tablet
     // is first set up, never when a till is being signed in again.
     onKitchen: (() -> Unit)? = null,
+    // The tablet is to face the customer and show the till's sale: offered
+    // where the kitchen screen is.
+    onDisplay: (() -> Unit)? = null,
     // The tablet was set up with a code, and is a till: offered where the
     // kitchen screen is, when a tablet is first set up.
     onCode: (() -> Unit)? = null,
@@ -228,6 +231,15 @@ fun AuthScreen(
                 ) {
                     QuietLink("Set up as a kitchen screen", enabled = !busy, onClick = onKitchen)
                     T("For a tablet in the kitchen: it shows the orders as they are sent. It needs no login.", 12.sp, 500, V.Text3, lines = 4, align = TextAlign.Center, height = 17.sp)
+                }
+                if (onDisplay != null) {
+                    Column(
+                        Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(12.dp)).background(V.Well).padding(horizontal = 12.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        QuietLink("Set up as a customer display", enabled = !busy, onClick = onDisplay)
+                        T("For a tablet that faces the customer: it shows the sale as it is rung up. It needs no login.", 12.sp, 500, V.Text3, lines = 4, align = TextAlign.Center, height = 17.sp)
+                    }
                 }
             }
             // A tablet that replaces one that broke: filled from the backup its owner saved. Offered only

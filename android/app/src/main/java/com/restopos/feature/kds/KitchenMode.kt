@@ -292,7 +292,7 @@ fun KitchenModeScreen(vm: KitchenModeViewModel = hiltViewModel(), onBecomeTill: 
 }
 
 // "ABCD 2345": a code read off one screen and typed on another, in two halves
-private fun spaced(code: String): String = if (code.length == 8) code.substring(0, 4) + " " + code.substring(4) else code
+internal fun spaced(code: String): String = if (code.length == 8) code.substring(0, 4) + " " + code.substring(4) else code
 
 // The address to type, alone: "Wi-Fi, 192.168.1.60" is what a till's start
 // screen says, and someone would type all of it. Null when the tablet is on
@@ -332,7 +332,7 @@ private fun Waiting(address: String, code: String, problem: String?, onSettings:
 }
 
 @Composable
-private fun Fact(label: String, value: String, modifier: Modifier, wide: Boolean = false) {
+internal fun Fact(label: String, value: String, modifier: Modifier, wide: Boolean = false) {
     Column(modifier.clip(RoundedCornerShape(14.dp)).background(V.Well).padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Caps(label, V.Text2)
         T(value, if (wide) 26.sp else 20.sp, 800, lines = 2, spacing = if (wide) 2.sp else 0.sp)
@@ -341,7 +341,7 @@ private fun Fact(label: String, value: String, modifier: Modifier, wide: Boolean
 
 // a question before something that cannot be taken back
 @Composable
-private fun Confirm(title: String, text: String, yes: String, onNo: () -> Unit, onYes: () -> Unit) {
+internal fun Confirm(title: String, text: String, yes: String, onNo: () -> Unit, onYes: () -> Unit) {
     Sheet(onNo, width = 480.dp) {
         SheetHead(title, null, onNo)
         T(text, 15.sp, 500, V.Text2, lines = 6, height = 21.sp)

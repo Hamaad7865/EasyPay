@@ -55,6 +55,7 @@ import com.restopos.core.network.AuthRequired
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.JsonElement
@@ -375,6 +376,21 @@ class SessionStore(private val context: Context) {
     suspend fun setPairCode(code: String) { store.edit { it[PAIR_CODE] = code } }
     suspend fun kitchenEpoch(): String = store.data.map { it[KITCHEN_EPOCH] }.first().orEmpty()
     suspend fun leaveKitchen() { store.edit { it.remove(MODE); it.remove(PAIR_CODE); it.remove(KITCHEN_EPOCH) } }
+
+    // ---- a tablet set up as a customer display (core/display) ----
+    // It faces the customer and shows the sale of the till it is paired
+    // with: no business, no login. It keeps that it is one and its pairing
+    // code (the kitchen screen's key: a tablet is one or the other). It
+    // starts light, the way a shop counter is; the switch is on the display.
+    suspend fun isDisplay(): Boolean = store.data.map { it[MODE] == "display" }.first()
+    suspend fun setDisplay(code: String) {
+        store.edit {
+            it[MODE] = "display"
+            if (it[PAIR_CODE] == null) it[PAIR_CODE] = code
+            if (it[LIGHT] == null) it[LIGHT] = true
+        }
+    }
+    suspend fun leaveDisplay() { store.edit { it.remove(MODE); it.remove(PAIR_CODE) } }
     suspend fun businessName(): String? = store.data.map { it[BUSINESS] }.first()
     suspend fun setBusinessName(name: String) { store.edit { it[BUSINESS] = name } }
 
@@ -384,6 +400,9 @@ class SessionStore(private val context: Context) {
     val needsSignIn: Flow<Boolean> = store.data.map { it[NEEDS_SIGN_IN] ?: false }
     suspend fun setNeedsSignIn(value: Boolean) { store.edit { it[NEEDS_SIGN_IN] = value } }
     suspend fun activeTicket(): String? = store.data.map { it[ACTIVE_TICKET] }.first()
+    // the order on the register, as it changes (the customer display follows it)
+    val activeTicketFlow: Flow<String?> = store.data.map { it[ACTIVE_TICKET] }.distinctUntilChanged()
+    val pendingDiscountFlow: Flow<String?> = store.data.map { it[PENDING_DISCOUNT] }.distinctUntilChanged()
     suspend fun setActiveTicket(id: String) { store.edit { it[ACTIVE_TICKET] = id } }
     suspend fun clearActiveTicket() { store.edit { it.remove(ACTIVE_TICKET) } }
     // The table a new order will be on: picked on the floor plan, used when

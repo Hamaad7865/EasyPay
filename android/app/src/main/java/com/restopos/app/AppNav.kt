@@ -28,8 +28,9 @@ import com.restopos.feature.start.StartScreen
 import com.restopos.feature.sync.RejectedScreen
 
 // Launch modes (spec 7/8): POS and KDS share this APK, chosen at device setup.
-// A tablet is a till (it signs in, then names itself) or a kitchen screen
-// (Routes.KDS: no login; it shows what the tills send it over the Wi-Fi).
+// A tablet is a till (it signs in, then names itself), a kitchen screen
+// (Routes.KDS: no login; it shows what the tills send it over the Wi-Fi), or
+// a customer display (Routes.DISPLAY: no login; it shows its till's sale).
 object Routes {
     const val AUTH = "auth"
     const val DEVICE = "device"
@@ -41,6 +42,7 @@ object Routes {
     const val REAUTH = "reauth"
     const val REJECTED = "rejected"
     const val KDS = "kds"
+    const val DISPLAY = "display"
     // the first-run set-up (server 0089): the wait after "Name this till", the
     // set-up as it follows it, and the set-up opened again later
     const val SETUP_WAIT = "setup-wait"
@@ -58,7 +60,7 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
     // A tablet set up as a kitchen screen is nothing else: it opens on the
     // kitchen display, has no login and never reaches the till's screens.
     val start by produceState<String?>(initialValue = null) {
-        value = if (session.isKitchen()) Routes.KDS else if (session.isSetUp()) Routes.START else Routes.AUTH
+        value = if (session.isKitchen()) Routes.KDS else if (session.isDisplay()) Routes.DISPLAY else if (session.isSetUp()) Routes.START else Routes.AUTH
     }
     val scope = rememberCoroutineScope()
     val startRoute = start ?: return
@@ -92,6 +94,13 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
                         nav.navigate(Routes.KDS) { popUpTo(0) { inclusive = true } }
                     }
                 },
+                onDisplay = {
+                    scope.launch {
+                        // as the kitchen screen: a debug build's code is always the same one
+                        session.setDisplay(if (BuildConfig.DEBUG) "DSPLY234" else PairCode.make())
+                        nav.navigate(Routes.DISPLAY) { popUpTo(0) { inclusive = true } }
+                    }
+                },
                 // Set up with its code, the tablet is a till already: named,
                 // in its store, with its key. What it opens on waits for its
                 // first pull, as after "Name this till".
@@ -104,6 +113,10 @@ fun AppNav(session: SessionStore, signedIn: () -> Boolean, pinsInUse: suspend ()
         // The kitchen screen: the whole of a kitchen tablet.
         composable(Routes.KDS) {
             KitchenModeScreen(onBecomeTill = { nav.navigate(Routes.AUTH) { popUpTo(0) { inclusive = true } } })
+        }
+        // The customer display: the whole of a tablet that faces the customer.
+        composable(Routes.DISPLAY) {
+            com.restopos.feature.display.DisplayModeScreen(onBecomeTill = { nav.navigate(Routes.AUTH) { popUpTo(0) { inclusive = true } } })
         }
         composable(Routes.DEVICE) {
             // A tablet just named holds nothing of its business yet. What it
