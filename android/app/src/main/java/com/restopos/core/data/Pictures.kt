@@ -88,7 +88,11 @@ class Pictures @Inject constructor(
         fun readTurned(context: android.content.Context, from: Uri, most: Int): Bitmap {
             val resolver = context.contentResolver
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            resolver.openInputStream(from)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: error("That picture could not be opened.")
+            // Asked for its size alone, Android hands back no picture, by design: only a file that
+            // cannot be opened is refused here. (Until 2026-10-21 that empty answer was taken for one,
+            // so a picture chosen from the tablet's photos was always refused.)
+            val stream = resolver.openInputStream(from) ?: error("That picture could not be opened.")
+            stream.use { BitmapFactory.decodeStream(it, null, bounds) }
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) error("That file is not a picture this tablet can read.")
             val opts = BitmapFactory.Options().apply { inSampleSize = sample(bounds.outWidth, bounds.outHeight, most) }
             val read = resolver.openInputStream(from)?.use { BitmapFactory.decodeStream(it, null, opts) } ?: error("That picture could not be read.")
