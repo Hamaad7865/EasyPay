@@ -223,11 +223,17 @@ jobs:
             printf 'keyPassword=%s\n' "$KEY_PASSWORD"
           } > android/local.properties
 
+      # The tests and the release are two runs, not one: in one run Gradle
+      # compiled the debug and release Kotlin side by side and ran out of
+      # memory at 2 GB (v0.9.21, "Not enough memory to run compilation").
+      # This machine has room for 4 GB; gradle.properties keeps 2 GB for the
+      # PCs the till is built on.
       - name: build the release
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleRelease
+          ./gradlew --no-daemon "-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8" :app:testDebugUnitTest
+          ./gradlew --no-daemon "-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8" :app:assembleRelease
 
       - name: it is signed, and by which key
         id: signed
