@@ -7,7 +7,6 @@ import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.TicketEntity
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.sync.SessionStore
-import com.restopos.core.ui.L
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -75,7 +74,11 @@ class DisplayFeed @Inject constructor(
 
     suspend fun now(at: Long = System.currentTimeMillis()): Picture {
         val settings = PosSettings.parse(db.ops().settings())
-        val base = Picture(lang = L.lang, decimals = settings.decimals, business = settings.companyName.ifBlank { session.businessName().orEmpty() })
+        // The till's language as it keeps it, never L's: this runs off the
+        // main thread, and a Compose state first made here is one the till's
+        // screen cannot read.
+        val lang = session.lang.first()
+        val base = Picture(lang = lang, decimals = settings.decimals, business = settings.companyName.ifBlank { session.businessName().orEmpty() })
         val sale = sale(base)
         if (sale != null) lastSale = sale
         val paid = held.value
@@ -96,24 +99,27 @@ class DisplayFeed @Inject constructor(
         val included = service.vatIncluded(lines, pct, discount)
         val paid = db.receipts().paidForTicket(t.id)
         val rung = lines.map { Pictures.Rung(it.line.qty, it.line.name_snapshot, it.detail, it.amount, it.line.unit_price, it.line.list_price) }
-        return Pictures.sale(title(t), rung, due, included, discount?.name, pct, paid, words(), base)
+        return Pictures.sale(title(t, base.lang), rung, due, included, discount?.name, pct, paid, words(base.lang), base)
     }
 
     // "Table 4", "Takeaway A-12", "Quick sale C-3"
-    private suspend fun title(t: TicketEntity): String {
+    private suspend fun title(t: TicketEntity, lang: String): String {
         t.table_id?.let { db.tables().table(it) }?.let { return tableLabel(it.name) }
         val type = t.dining_option_id?.let { id -> db.catalog().diningOptions().firstOrNull { it.id == id } }
-        val name = if (type == null || type.kind == "counter") L.quick else type.name
+        val name = if (type == null || type.kind == "counter") say(lang, "Quick sale", "Vente rapide", "Lavant rapid") else type.name
         return listOfNotNull(name, t.order_no).joinToString(" ")
     }
 
-    private fun words() = Pictures.Words(
-        subtotal = L.t("Subtotal", "Sous-total", "Sou-total"),
-        service = L.t("Service", "Service", "Servis"),
-        vatIncluded = L.t("VAT included", "TVA incluse", "TVA inkli"),
-        vat = L.t("VAT", "TVA", "TVA"),
-        rounding = L.t("Rounding", "Arrondi", "Larondisman"),
+    private fun words(lang: String) = Pictures.Words(
+        subtotal = say(lang, "Subtotal", "Sous-total", "Sou-total"),
+        service = say(lang, "Service", "Service", "Servis"),
+        vatIncluded = say(lang, "VAT included", "TVA incluse", "TVA inkli"),
+        vat = say(lang, "VAT", "TVA", "TVA"),
+        rounding = say(lang, "Rounding", "Arrondi", "Larondisman"),
     )
+
+    // L.t, for a language given rather than L's own
+    private fun say(lang: String, en: String, fr: String, kreol: String): String = when (lang) { "fr" -> fr; "mfe" -> kreol; else -> en }
 
     companion object {
         const val HOLD_MS = 20_000L
