@@ -441,4 +441,13 @@ object Migrations {
             db.execSQL("ALTER TABLE `receipts` ADD COLUMN `points_used` INTEGER NOT NULL DEFAULT 0")
         }
     }
+
+    // A customer display (server 0129) is a printer row of kind display: the
+    // till it faces and its message for between sales. Nothing else changes.
+    val V32_V33 = object : Migration(32, 33) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `printers` ADD COLUMN `device_id` TEXT")
+            db.execSQL("ALTER TABLE `printers` ADD COLUMN `message` TEXT")
+        }
+    }
 }

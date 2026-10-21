@@ -187,6 +187,19 @@ class RoutingTest {
         assertEquals("192.168.1.70:9400", Routing.line(counter.copy(address = "192.168.1.70:9400")))
     }
 
+    // A till shows its sale on the displays facing it, and on no other till's.
+    @Test
+    fun aTillShowsOnTheDisplaysFacingIt() {
+        val mine = printer("mine", kind = "display").copy(device_id = "till-1")
+        val off = printer("off", kind = "display", on = false).copy(device_id = "till-1")
+        val gone = printer("gone", kind = "display", removed = true).copy(device_id = "till-1")
+        val theirs = printer("theirs", kind = "display").copy(device_id = "till-2")
+        val all = listOf(cashier, mine, off, gone, theirs, screen("grill"))
+        assertEquals(listOf(mine), Routing.displays(all, "till-1"))
+        assertEquals(listOf(theirs), Routing.displays(all, "till-2"))
+        assertEquals(emptyList<PrinterEntity>(), Routing.displays(all, null))
+    }
+
     @Test
     fun whatPrintsNothing() {
         assertTrue(Routing.silent("screen"))

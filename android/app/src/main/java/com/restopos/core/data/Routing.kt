@@ -34,6 +34,10 @@ object Routing {
     // in a list of paper, never the receipt printer, never ticked.
     fun silent(kind: String): Boolean = kind == SCREEN || kind == DISPLAY
 
+    // The displays a till shows its sale on: those facing it, switched on.
+    fun displays(all: List<PrinterEntity>, device: String?): List<PrinterEntity> =
+        if (device == null) emptyList() else all.filter { it.kind == DISPLAY && it.is_active && it.deleted_at == null && it.device_id == device }
+
     // The one printer that does everything, when the restaurant is set up that
     // way and has a receipt printer. Set that way without one, the categories'
     // own printers are used: an order must not print nowhere because of a switch.

@@ -77,7 +77,7 @@ import androidx.room.RoomDatabase
         DepositEntity::class, DepositLineEntity::class, DepositPaymentEntity::class,
         AccountBillEntity::class, AccountPaymentEntity::class, AccountPaymentLineEntity::class,
     ],
-    version = 32,
+    version = 33,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
