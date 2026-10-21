@@ -67,24 +67,35 @@ business, every till.
 ### When a till closes its day
 
 The **cut-off** is the first moment at the set time after the day was opened (for
-a till with no PINs: after the first sale no closing covers). A till checks, and
-closes when it should:
+a till with no PINs: after the first sale no closing covers). Two questions are
+kept apart: **when** the till closes, and **what moment** the closing is dated.
 
-- **Nothing written down since the cut-off:** the day closes **as of the cut-off**.
-- **Something written down since the cut-off** (a sale, a refund, cash in or out,
-  a drawer count: what `usedSince` already looks at): it cannot be dated back,
-  since those would fall outside every day. The day closes **once 30 minutes go
-  by with nothing written down**, as of that moment.
+**When:** after the cut-off, once the till has been **quiet for 30 minutes**: no
+touch on the screen and no change to any order (the till already tracks touches
+for locking itself, `lockMinutes`). A bar busy at midnight with open tabs is
+never closed under the bartender, and a payment being taken is never raced.
+
+**Dated:** by what moved money, the things `usedSince` already looks at (a sale,
+a refund, cash in or out, a drawer count):
+
+- **Nothing of that since the cut-off:** dated **at the cut-off**.
+- **Something since the cut-off:** it cannot be dated back, since that would put
+  those outside every day. Dated **at the last such write plus 30 minutes**,
+  never later than the moment it closes. (Nothing was written in between, so the
+  figures are the same either way; this keeps the date fixed for the tests.)
+
+And:
+
+- Before the cut-off, nothing happens.
 - A till left off for several days gets **one** closing, as of the first cut-off.
   The next day starts when someone opens it.
-- Before the cut-off, nothing happens.
-- A day opened at 23:50 with the time at 00:00 follows the same rules: closed at
-  00:00 if nothing was sold, or 30 quiet minutes after its last sale.
-- Adding to an order that is not paid is not "written down": the order is carried
-  over, and it counts on the day it is paid.
+- A day opened at 23:50 with the time at 00:00 follows the same rules.
+- Adding to an order that is not paid does not move the date, only the moment it
+  closes: the order is carried over and counts on the day it is paid.
 
 These rules are one pure function, `AutoCloseRules.decide(openedAt, cutoffTime,
-zone, lastWrite, now) -> CloseAt(moment) | Wait`, held to unit tests.
+zone, lastMoneyWrite, lastActivity, now) -> CloseAt(moment) | Wait`, held to unit
+tests.
 
 ### When the till checks
 
@@ -96,19 +107,27 @@ only has to come before anyone can sell:
 - before a sign-in on the start screen;
 - in `PullWorker` as well, for tills that sync.
 
+Touches are known only while the app runs. After a restart, the last activity is
+the last order change or money write in the tablet's database.
+
 ### What the closing does
 
 What `closeDayAsked` does, with these differences:
 
-- **By nobody.** The ops carry no `employee_id`, so the server takes them as the
-  till's own login; the till and the back office show the closing as
-  "Automatically", not as that login's name.
+- **By nobody.** Both ops (`shift.close`, `day.close`) are written with
+  `employee_id = null` explicitly. `CashOps.op()` fills in whoever is signed in,
+  and a waiter signed in at midnight would be refused `forbidden`; a refused op
+  is set aside for good (`PushWorker`, dead-letter), so the server would never
+  get the closing. With null, the server takes the ops as the till's own login.
+  The till and the back office show the closing as "Automatically", not as that
+  login's name.
 - **The drawer was not counted.** `shift.close` must carry a count, so it carries
   what was expected (as a back-office close with no count does). `day.close`
   carries `totals.auto = true` and no `counted`. Everything that shows a closing
   reads `auto` and says **"Drawer not counted (closed automatically)"**, never a
   difference of zero: the Z, the till's Reports, the back office's Day closing
-  report and its CSV.
+  report and its CSV, and `web/lib/pos.ts` (Recent cash-ups and a till's Cash
+  flow tab, which show the closing's count through `variance`).
 - **Unpaid orders carry over** into the next day, as `closeUnclosed` already can.
   `totals.carried` is how many; the Z and the report say "N orders carried into
   the next day".
@@ -167,14 +186,19 @@ from the takeaway board.
 
 Tapping one says why and offers the way out, then comes back to where they were:
 
-| Came in by | Day open | Says | Offers |
-|---|---|---|---|
-| clocking in | no | The day is not open. | Open the day (count), if allowed |
-| Look only | no | You came in to look. Clock in to take orders. | Clock in, then Open the day if allowed |
-| Look only | yes | You came in to look. Clock in to take orders. | Clock in |
+| Till uses days | Came in by | Day open | Says | Offers |
+|---|---|---|---|---|
+| no (no PINs) | Open register | - | nothing: it sells, as today | - |
+| yes | clocking in | yes | nothing: it sells | - |
+| yes | clocking in | no | The day is not open. | Open the day (count), if allowed |
+| yes | Look only | no | You came in to look. Clock in to take orders. | Clock in, then Open the day if allowed |
+| yes | Look only | yes | You came in to look. Clock in to take orders. | Clock in |
 
-The rule is one function, `SellGate.why(dayOpen, clockedIn, mayOpen) -> null |
-Blocked(text, offer)`, held to unit tests. It is checked where the till writes
+A till with no PINs never has an open day (its sales are closed by
+`closeUnclosed`), so the gate must let it sell, or every such till would stop.
+
+The rule is one function, `SellGate.why(usesDays, dayOpen, clockedIn, mayOpen) ->
+null | Blocked(text, offer)`, held to unit tests. It is checked where the till writes
 (placing and paying orders, cash moves, the drawer, deposits, accounts, payment
 corrections), not only by hiding buttons, so no screen missed in the list can get
 past it.
@@ -194,9 +218,11 @@ row from then on. Guest QR ordering already stops while no day is open
 
 ## Checks
 
-- Till unit tests: `AutoCloseRules` (before the cut-off; idle since it; used after
-  it and quiet for 30 minutes; several days missed; a till with no PINs; a day
-  opened at 23:50) and `SellGate` (every row of the table).
+- Till unit tests: `AutoCloseRules` (before the cut-off; idle since it; paid after
+  it then quiet for 30 minutes; tabs open with drinks added after it and no
+  payment, which waits and is then dated at the cut-off; several days missed; a
+  till with no PINs; a day opened at 23:50), `SellGate` (every row of the table),
+  and the closing's ops carrying no employee while someone is signed in.
 - `db/tests`: a dev-safe suite for 0133 (a time saved, a bad one refused, null
   turns it off, other keys untouched).
 - Web: `lib` tests for the setting and the report's wording; type-check; build.
