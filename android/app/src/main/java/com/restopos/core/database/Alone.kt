@@ -106,6 +106,8 @@ interface AloneDao {
     @Upsert suspend fun putEmployeeStores(rows: List<EmployeeStoreEntity>)
     @Query("SELECT * FROM roles WHERE id = :id") suspend fun role(id: String): RoleEntity?
     @Query("SELECT id FROM stores WHERE deleted_at IS NULL") suspend fun storeIds(): List<String>
+    // the store of a till, for a customer display that faces it (0129)
+    @Query("SELECT store_id FROM pos_devices WHERE id = :id AND deleted_at IS NULL") suspend fun deviceStore(id: String): String?
     @Query("SELECT * FROM roles") suspend fun roles(): List<RoleEntity>
     @Upsert suspend fun putRole(row: RoleEntity)
     @Query("SELECT COUNT(*) FROM employees WHERE role_id = :role AND deleted_at IS NULL") suspend fun staffOn(role: String): Int

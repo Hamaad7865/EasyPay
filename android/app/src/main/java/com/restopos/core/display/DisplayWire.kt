@@ -79,4 +79,15 @@ object DisplayWire {
 
     // A display's address as it was typed: an IP, or IP:port.
     fun address(text: String?): Pair<String, Int>? = Wire.address(text, PORT)
+
+    // What is wrong with a display, in words for Settings, Printers; null when
+    // it answered. `reply` is null when nothing answered at all.
+    fun trouble(name: String, address: String?, reply: DisplayReply?): String? = when {
+        reply?.ok == true -> null
+        address(address) == null -> "$name has no address that can be reached. Type the one the display shows."
+        reply == null -> "$name is not answering. Check the display tablet is on, has EasyPay open, and is on the same Wi-Fi as this till."
+        reply.error == REFUSED -> "$name refused this till: its pairing code is not the one typed for it. Type the code the display shows."
+        reply.error == OTHER_VERSION -> "$name runs another version of EasyPay. Update this till and the display to the same one."
+        else -> "$name did not take the sale (${reply.error ?: "no reason given"})."
+    }
 }

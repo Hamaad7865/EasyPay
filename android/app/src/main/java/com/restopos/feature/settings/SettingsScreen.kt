@@ -160,6 +160,7 @@ class SettingsViewModel @Inject constructor(
     private val staff: StaffSession,
     private val approvals: Approvals,
     private val screenLink: com.restopos.core.kitchen.ScreenLink,
+    private val displayLink: com.restopos.core.display.DisplayLink,
     private val door: com.restopos.core.data.SetupDoor,
     private val backups: com.restopos.core.data.Backup,
     @ApplicationContext private val context: Context,
@@ -180,6 +181,18 @@ class SettingsViewModel @Inject constructor(
         if (_testing.value != null) return@launch
         _testing.value = id
         com.restopos.core.ui.Toaster.say(runCatching { screenLink.test(id) }.getOrElse { "That did not work: ${it.message}" })
+        _testing.value = null
+    }
+
+    // The customer displays facing this till (0129): tablets that face the
+    // customer and show this till's sale; and how each answered last.
+    private val _displays = MutableStateFlow<List<PrinterEntity>>(emptyList())
+    val displays: StateFlow<List<PrinterEntity>> = _displays
+    val displayStatus: StateFlow<Map<String, com.restopos.core.display.DisplayStatus>> = displayLink.status
+    fun testDisplay(id: String) = viewModelScope.launch {
+        if (_testing.value != null) return@launch
+        _testing.value = id
+        com.restopos.core.ui.Toaster.say(runCatching { displayLink.test(id) }.getOrElse { "That did not work: ${it.message}" })
         _testing.value = null
     }
 
@@ -379,6 +392,7 @@ class SettingsViewModel @Inject constructor(
             val ticked = categories.filter { c -> Routing.ids(c.printer_ids).contains(s.id) }.map { it.name }
             KitchenScreen(s, if (s.all_items) "Every item of every order" else if (ticked.isEmpty()) "Nothing yet: tick its categories in the back office, under Printers" else "Items of ${ticked.joinToString(", ")}")
         }
+        _displays.value = displayLink.displays()
         _orderTypes.value = db.catalog().diningOptions()
     }
 
@@ -1247,6 +1261,41 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
         }
         if (premium) Note("An order goes to its kitchen screens over the restaurant's own Wi-Fi the moment it is sent, with or without internet. One that a screen has not confirmed is sent again by itself until it has.")
     }
+    // The customer displays: tablets that face the customer and show this
+    // till's sale, for restaurants and shops, on every plan (0129).
+    val displays by vm.displays.collectAsState()
+    val displayStatus by vm.displayStatus.collectAsState()
+    var changing by remember { mutableStateOf<PrinterEntity?>(null) }
+    val alone = com.restopos.core.data.Journey.alone
+    if (displays.isNotEmpty() || alone) Heading("Customer displays")
+    displays.forEach { d ->
+        val st = displayStatus[d.id]
+        Panel {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(d.name, color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        when {
+                            st == null -> Tag("Not asked yet", Pos.Text3, dot = true)
+                            !st.answering -> Tag("Not answering", Pos.Pink, dot = true)
+                            else -> Tag("Answering", Pos.Ok, dot = true)
+                        }
+                    }
+                    Text("Customer display · ${d.address ?: "no address"}", Modifier.padding(top = 2.dp), color = Pos.Text3, fontSize = 13.sp)
+                    d.message?.takeIf { it.isNotBlank() }?.let { Text("Between sales: ${it.replace("\n", " / ")}", Modifier.padding(top = 2.dp), color = Pos.Text2, fontSize = 13.sp) }
+                    st?.trouble?.let { Text(it, Modifier.padding(top = 4.dp), color = Pos.Pink, fontSize = 13.sp) }
+                }
+                if (alone) Small("Change", enabled = testing == null) { changing = d }
+                Small(if (testing == d.id) "Asking…" else "Test", enabled = testing == null) { vm.testDisplay(d.id) }
+            }
+        }
+    }
+    // a tablet that works on its own adds its displays here; the others have them from the back office, under Printers
+    if (alone) AddDisplayKey()
+    if (displays.isNotEmpty() || alone) {
+        Note("A customer display shows the customer this till's sale as it is rung up, the change after Pay, and the business's name, logo and message between sales, over the shop's own Wi-Fi, with or without internet.")
+    }
+    changing?.let { d -> DisplaySheet(d.id, d) { changing = null } }
     // only a restaurant sends orders to a kitchen
     if (retail == false && orderTypes.isNotEmpty()) {
         Heading("When an order goes to the kitchen")
@@ -1444,6 +1493,7 @@ private const val ADDONS_HELP = "On Menu & stock, tap Add-ons. A group (Extras, 
 private const val RECEIPT_HELP = "In Settings, under Receipt: a note under the business's name and a note at the foot of every receipt and bill, and for a restaurant the service charge added to orders served at a table."
 private const val STAFF_HELP = "In Settings. Staff: tap Add staff and give them a name, a role and a PIN of 4 digits; tap someone to change their name or role, to give them a new PIN, or to switch them off, after which they can no longer sign in. Roles: tap a role and tick what it may do; the owner's role can do everything and cannot be changed, and a role staff still have cannot be removed. Discounts: a name, which prints on the receipt, a percentage of the bill or an amount off it, and whether it needs a manager. Each may need the owner's or a manager's PIN."
 
+private const val DISPLAY_HELP = "A second tablet can face the customer and show the sale as it is rung up: each line, the discounts, the VAT and the total, then the change after Pay, and between sales the business's name, logo and a message. On that tablet, install EasyPay and tap Set up as a customer display on its first screen: it needs no login, and shows its address and a pairing code. A business on the cloud adds it in the back office, under Printers, Customer displays, with that address and code and the till it faces; a tablet that works on its own adds it here, in Settings, Printers, Add a customer display. It works over the shop's own Wi-Fi, with or without internet. If Settings, Printers says it is not answering: check the display tablet is on, has EasyPay open, and is on the same Wi-Fi, and keep its address the same on the router, as for a printer."
 private val HELP = listOf(
     "Starting the day" to "Clock in: tap Clock in/out, pick your name and enter your PIN. Then open the day: someone allowed to taps their name on the start screen and counts the cash in the drawer, which opens for the count. The till sells from then on.",
     "Loyalty points" to "Switched on in Settings, Loyalty, with the percentage that comes back. A customer named on the order earns points on what they pay, and a point is worth Rs 1. On Pay, Use points shows their balance: tap it to take some or all of it off the bill, as a discount before VAT. Points are used before any payment is taken, and not on one check of a split check. A refund takes back its share of the points the sale earned and gives back its share of the points it used. A customer can have a loyalty card: on Customers, open them, tap New number (or scan a card bought with a barcode) and Save; open them again for Print card. Scanning the card on the order screen puts them on it.",
@@ -1479,6 +1529,7 @@ private val HELP = listOf(
     "A printer does not print" to "Settings, Printers. Check the printer says Connected and try a test print. A failed print has Try again next to it. An order still reaches the kitchen display when a kitchen printer does not answer.",
     "Letters cut off at the left of a receipt" to "It happens when a printer made for 80 mm rolls holds a 57 mm roll. Change the printer's paper to 57 in 80 mm: under This till, Set-up, Printer, tap Change, or in the back office under Printers. Then print a test page: its row of digits should start with 0, with paper to spare on both sides.",
     "Trying the till before opening" to "A tablet set up with its code before the business sells for real (Not yet) is being set up: an amber strip says so at the top of every screen, and everything it prints says TEST. Ring up whatever you like to try it. The day the business opens, the owner taps Go live on the strip, in Settings under This till, or on the start screen before the drawer is counted: what was rung up goes (orders, receipts, days, cash, clock-ins), what was set up stays (the menu, the staff, the tables, the printers, the stock), and receipts start again at 1. Each tablet goes live on its own. A tablet that is already live, for a business that has not sold for real yet, is put back to setting up by the owner at the foot of This till: Back to setting up, with the business's name typed; what earlier sales took off the shelf is not put back, so count the stock after Go live.",
+    "A customer display" to DISPLAY_HELP,
     "No internet" to "Keep selling. Everything is saved on the tablet and sent by itself when the connection is back. Printing does not need the internet, only the local network.",
 )
 
@@ -1562,6 +1613,7 @@ private val SHOP_HELP = listOf(
     "A printer does not print" to "Tap More on the top bar, then Printers. Check the printer says Connected and try a test print. A failed print has Try again next to it. A sale is recorded whether or not its receipt printed, and can be printed again once the printer answers. The cash drawer opens through the receipt printer, so it stays shut while that printer does not answer.",
     "Letters cut off at the left of a receipt" to "It happens when a printer made for 80 mm rolls holds a 57 mm roll. Change the printer's paper to 57 in 80 mm: under This till, Set-up, Printer, tap Change, or in the back office under Printers. Then print a test page: its row of digits should start with 0, with paper to spare on both sides.",
     "Trying the till before opening" to "A tablet set up with its code before the shop sells for real (Not yet) is being set up: an amber strip says so at the top of every screen, and everything it prints says TEST. Ring up whatever you like to try it. The day the shop opens, the owner taps Go live on the strip, under More on the top bar, then This till, or on the start screen before the drawer is counted: what was rung up goes (sales, receipts, refunds, days, cash, clock-ins, deposits), what was set up stays (the products, the staff, the printers, the stock with its deliveries and counts), what the sales took off the shelf goes back, and receipts start again at 1. Each tablet goes live on its own. A tablet that is already live, for a business that has not sold for real yet, is put back to setting up by the owner at the foot of This till: Back to setting up, with the business's name typed; what earlier sales took off the shelf is not put back, so count the stock after Go live.",
+    "A customer display" to DISPLAY_HELP,
     "No internet" to "Keep selling. Everything is saved on the tablet and sent by itself when the connection is back. What is left of each product, and the receipts of the shop's other tills, catch up then too. Printing does not need the internet, only the local network.",
 )
 

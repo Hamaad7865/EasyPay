@@ -46,6 +46,7 @@ class FakeAlone : AloneDao {
     val employeeStores = ArrayList<EmployeeStoreEntity>()
     val roles = LinkedHashMap<String, RoleEntity>()
     val stores = ArrayList<String>()
+    val devices = LinkedHashMap<String, String>() // a till, and its store
 
     private fun liveVariant(v: ItemVariantEntity) = v.deleted_at == null && items[v.item_id]?.deleted_at == null
     override suspend fun item(id: String) = items[id]
@@ -111,6 +112,7 @@ class FakeAlone : AloneDao {
     override suspend fun putTables(rows: List<TableEntity>) { rows.forEach { tables[it.id] = it } }
     override suspend fun printer(id: String) = printers[id]
     override suspend fun printers() = printers.values.filter { it.deleted_at == null }
+    override suspend fun deviceStore(id: String) = devices[id]
     override suspend fun putPrinter(row: PrinterEntity) { printers[row.id] = row }
     override suspend fun settings() = settings
     override suspend fun putSettings(row: SettingsEntity) { settings = row }
@@ -653,6 +655,36 @@ class LocalAnswersTest {
         // a 57 mm roll in a printer made for 80 mm (0127)
         assertEquals("done", ask("printer.save", p(400, "").replace("Counter", "Front").replace("\"paper_mm\":80", "\"paper_mm\":57")))
         assertEquals(57, dao.printers[id(400)]!!.paper_mm)
+    }
+
+    // A customer display added on a tablet that works alone (0129), as the server takes it.
+    @Test fun `a customer display, which prints nothing`() {
+        dao.devices["till-1"] = store
+        dao.devices["till-9"] = otherStore
+        val d = { n: Int, more: String -> """{"id":"${id(n)}","store_id":"$store","name":"Counter","kind":"display","address":"10.0.2.16","paper_mm":80,"pair_code":"dsply-234","device_id":"till-1","message":"  Hello  "$more}""" }
+        assertEquals("done", ask("printer.save", d(420, "")))
+        val row = dao.printers[id(420)]!!
+        assertEquals(listOf("display", "DSPLY234", "till-1", "Hello", false), listOf(row.kind, row.pair_code, row.device_id, row.message, row.is_receipt))
+        // a display is no store's first printer: the next printer still takes the receipts
+        assertEquals("done", ask("printer.save", """{"id":"${id(421)}","store_id":"$store","name":"Receipt","kind":"network","address":"192.168.1.50","paper_mm":80}"""))
+        assertTrue(dao.printers[id(421)]!!.is_receipt)
+        // changed: it stays a display; an empty message is none
+        assertEquals("done", ask("printer.save", d(420, "").replace("  Hello  ", "")))
+        assertNull(dao.printers[id(420)]!!.message)
+        assertEquals("bad-printer", ask("printer.save", d(420, "").replace("\"kind\":\"display\"", "\"kind\":\"network\"")))
+        assertEquals("bad-printer", ask("printer.save", d(421, "")))
+        assertEquals("bad-address", ask("printer.save", d(422, "").replace("dsply-234", "DSPLY23")))
+        assertEquals("bad-address", ask("printer.save", d(422, "").replace("10.0.2.16", "counter")))
+        assertEquals("bad-device", ask("printer.save", d(422, "").replace("till-1", "")))
+        assertEquals("bad-device", ask("printer.save", d(422, "").replace("till-1", "till-9")))
+        assertEquals("bad-device", ask("printer.save", d(422, "").replace("till-1", "till-0")))
+        assertNull(dao.printers[id(422)])
+        // a message is at most 120 characters
+        assertEquals("done", ask("printer.save", d(423, "").replace("  Hello  ", "y".repeat(130))))
+        assertEquals(120, dao.printers[id(423)]!!.message!!.length)
+        // a printer sent with a till and a message keeps neither
+        assertEquals("done", ask("printer.save", """{"id":"${id(424)}","store_id":"$store","name":"Bar","kind":"network","address":"192.168.1.51","paper_mm":80,"device_id":"till-1","message":"Hi"}"""))
+        assertEquals(listOf(null, null), dao.printers[id(424)]!!.let { listOf(it.device_id, it.message) })
     }
 
     @Test fun `the business's details go into the settings beside what is there`() {

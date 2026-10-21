@@ -182,6 +182,12 @@ class BusinessViewModel @Inject constructor(db: TillDatabase, private val servic
         go("${p.name} is added. Tick the categories that print on it: Menu, Categories.", done) { by -> service.savePrinter(id, p, null, by) }
     }
 
+    // a customer display (0129): added on this till, it faces this till
+    fun saveDisplay(id: String, name: String, address: String, code: String, first: String, second: String, done: () -> Unit) {
+        val d = com.restopos.core.data.PrinterForm.readDisplay(name, address, code, first, second).getOrElse { Toaster.say(it.message ?: "That is not a display yet"); return }
+        go("${d.name} is saved. This till shows its sale there within a few seconds.", done) { by -> service.saveDisplay(id, d, by) }
+    }
+
     fun removeDiscount(d: DiscountEntity, done: () -> Unit) = go("${d.name} is removed. Receipts it was given on keep it.", done) { by -> service.removeDiscount(d.id, by) }
 }
 
@@ -394,6 +400,57 @@ internal fun AddPrinterKey(vm: BusinessViewModel = hiltViewModel()) {
             VBtn("Cancel", height = 50.dp, enabled = !busy) { adding = null }
             VBtn(if (busy) "Saving…" else "Add printer", bg = V.Blue, fg = Color.White, height = 50.dp, weight = 800, enabled = !busy) {
                 vm.addPrinter(id, name, kind, address, paper) { adding = null }
+            }
+        }
+    }
+}
+
+// ---- Settings > Printers: a customer display (0129), on a tablet that works on its own ----
+@Composable
+internal fun AddDisplayKey() {
+    var adding by remember { mutableStateOf<String?>(null) }
+    Row { VBtn("Add a customer display", height = 48.dp, radius = 13.dp, icon = VI.Plus) { adding = Uuid7.next() } }
+    adding?.let { id -> DisplaySheet(id, null) { adding = null } }
+}
+
+// A display added on this till, or changed: its name, its address and code as
+// the display tablet shows them, and its two lines for between sales.
+@Composable
+internal fun DisplaySheet(id: String, was: com.restopos.core.database.PrinterEntity?, vm: BusinessViewModel = hiltViewModel(), onClose: () -> Unit) {
+    val busy by vm.busy.collectAsState()
+    val lines = was?.message.orEmpty().split('\n')
+    var name by remember(id) { mutableStateOf(was?.name ?: "") }
+    var address by remember(id) { mutableStateOf(was?.address ?: "") }
+    var code by remember(id) { mutableStateOf(was?.pair_code ?: "") }
+    var first by remember(id) { mutableStateOf(lines.getOrElse(0) { "" }) }
+    var second by remember(id) { mutableStateOf(lines.getOrElse(1) { "" }) }
+    Sheet(onDismiss = { if (!busy) onClose() }, width = 600.dp, pad = 22.dp, gap = 10.dp, top = true) {
+        SheetHead(
+            if (was == null) "A customer display" else was.name,
+            "A tablet that faces the customer and shows this till's sale. On that tablet, choose Set up as a customer display on EasyPay's first screen: it shows its address and pairing code.",
+        ) { if (!busy) onClose() }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Caps("Its name", V.Text2)
+                Field(name, { name = it.take(40) }, "Counter", Modifier.fillMaxWidth(), height = 50.dp, size = 16.sp)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Caps("Its address", V.Text2)
+                Field(address, { address = it.take(40) }, "192.168.1.70", Modifier.fillMaxWidth(), height = 50.dp, size = 16.sp)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Caps("Its pairing code", V.Text2)
+                Field(code, { code = it.take(9) }, "ABCD 2345", Modifier.fillMaxWidth(), height = 50.dp, size = 16.sp)
+            }
+        }
+        Caps("Between sales, under the name and logo", V.Text2)
+        Field(first, { first = it.take(60) }, "Ask about our lunch deal", Modifier.fillMaxWidth(), height = 50.dp, size = 16.sp)
+        Field(second, { second = it.take(60) }, "Open every day till 22:00", Modifier.fillMaxWidth(), height = 50.dp, size = 16.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f))
+            VBtn("Cancel", height = 50.dp, enabled = !busy) { onClose() }
+            VBtn(if (busy) "Saving…" else if (was == null) "Add display" else "Save display", bg = V.Blue, fg = Color.White, height = 50.dp, weight = 800, enabled = !busy) {
+                vm.saveDisplay(id, name, address, code, first, second) { onClose() }
             }
         }
     }

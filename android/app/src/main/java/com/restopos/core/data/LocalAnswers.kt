@@ -1,6 +1,7 @@
 package com.restopos.core.data
 
 import com.restopos.core.common.Uuid7
+import com.restopos.core.kitchen.PairCode
 import com.restopos.core.database.AloneDao
 import com.restopos.core.database.CategoryEntity
 import com.restopos.core.database.DeliveryEntity
@@ -493,7 +494,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         dao.putElements(dao.elements(store).filter { it.area == area }.map { it.copy(deleted_at = at) })
     }
 
-    // ---- push_printer_save (0089, 0088, 0127) ----
+    // ---- push_printer_save (0089, 0088, 0127, 0129) ----
     private suspend fun printerSave(p: JsonObject, tenant: String) {
         val id = p.id("id")
         val store = p.id("store_id")
@@ -502,20 +503,30 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         val kind = p.str("kind") ?: ""
         var address: String? = (p.str("address") ?: "").trim().take(40)
         val one = p["one_printer"]
-        if (kind !in setOf("network", "usb", "bluetooth") || PrinterForm.PAPERS.none { it.toLong() == paper } || (one != null && (one as? JsonPrimitive)?.booleanOrNull == null)) bad()
+        if (kind !in setOf("network", "usb", "bluetooth", Routing.DISPLAY) || PrinterForm.PAPERS.none { it.toLong() == paper } || (one != null && (one as? JsonPrimitive)?.booleanOrNull == null)) bad()
         if (name.isEmpty()) throw Refused("name-required")
-        if ((kind == "network" && !IP.matches(address!!)) || (kind == "bluetooth" && (address!!.isEmpty() || IP.matches(address)))) throw Refused("bad-address")
+        if ((kind in setOf("network", Routing.DISPLAY) && !IP.matches(address!!)) || (kind == "bluetooth" && (address!!.isEmpty() || IP.matches(address)))) throw Refused("bad-address")
         if (kind == "usb") address = null
+        // a customer display's (0129): its code as the display shows it, the till it faces, its message
+        val display = kind == Routing.DISPLAY
+        val code = if (display) PairCode.tidy(p.str("pair_code")) ?: throw Refused("bad-address") else null
+        val device = if (display) p.str("device_id")?.takeIf { it.isNotBlank() } ?: throw Refused("bad-device") else null
+        val message = if (display) (p.str("message") ?: "").trim().take(120).ifEmpty { null } else null
         if (store !in dao.storeIds()) throw Refused("bad-store")
+        if (device != null && dao.deviceStore(device) != store) throw Refused("bad-device")
         val was = dao.printer(id)
         if (was != null) {
-            if (was.deleted_at != null || was.kind == "screen" || was.store_id != store) throw Refused("bad-printer")
-            dao.putPrinter(was.copy(name = name, kind = kind, address = address, paper_mm = paper.toInt()))
+            // a display is not turned into a printer, nor a printer into a display
+            if (was.deleted_at != null || was.kind == Routing.SCREEN || was.store_id != store || (was.kind == Routing.DISPLAY) != display) throw Refused("bad-printer")
+            dao.putPrinter(was.copy(name = name, kind = kind, address = address, paper_mm = paper.toInt(), pair_code = code ?: was.pair_code, device_id = device, message = message))
         } else {
             val all = dao.printers()
-            // the first printer of a store is where its receipts come out
-            val first = all.none { it.store_id == store && it.kind != "screen" }
-            dao.putPrinter(PrinterEntity(id, tenant, store, name, kind, address, paper.toInt(), is_receipt = first, sort_order = (all.maxOfOrNull { it.sort_order } ?: -1) + 1))
+            // the first printer of a store is where its receipts come out; a display never is
+            val first = !display && all.none { it.store_id == store && !Routing.silent(it.kind) }
+            dao.putPrinter(PrinterEntity(
+                id, tenant, store, name, kind, address, paper.toInt(), is_receipt = first, sort_order = (all.maxOfOrNull { it.sort_order } ?: -1) + 1,
+                pair_code = code, device_id = device, message = message,
+            ))
         }
         if (one != null) mergeSettings(tenant, buildJsonObject { put("onePrinter", (one as JsonPrimitive).booleanOrNull ?: false) })
     }

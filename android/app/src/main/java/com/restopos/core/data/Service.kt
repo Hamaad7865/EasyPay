@@ -130,6 +130,22 @@ class ServiceRepository @Inject constructor(
         )
     }
 
+    // Of the VAT dueOf comes to, the part already inside the prices (the rest
+    // is added on top): the customer display says "VAT included" for it.
+    suspend fun vatIncluded(lines: List<LineInfo>, servicePct: Int, discount: DiscountPick? = null): Long {
+        val unpaid = lines.filter { !it.line.paid && it.line.voided_at == null }
+        val taxes = HashMap<String, MutableList<Calc.TaxRate>>()
+        unpaid.map { it.line.id }.chunked(800).forEach { ids ->
+            db.service().taxesOf(ids).filter { it.type == "included" }.forEach { taxes.getOrPut(it.line_id) { ArrayList() }.add(Calc.TaxRate(it.rate_bp, it.type)) }
+        }
+        if (taxes.isEmpty()) return 0
+        return Calc.totals(
+            unpaid.map { Calc.Line(it.amount, taxes[it.line.id].orEmpty()) },
+            listOfNotNull(discount?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) }),
+            servicePct,
+        ).tax
+    }
+
     // Every order in progress in this store, newest first.
     fun orders(store: String): Flow<List<OrderInfo>> = combine(
         db.tickets().openTickets(store), db.service().board(store), db.service().liveLines(store), db.tables().tables(store), db.ops().settingsFlow(),
@@ -407,6 +423,18 @@ class ServiceRepository @Inject constructor(
             put("id", id); put("store_id", store); put("name", p.name); put("kind", p.kind)
             put("address", p.address ?: ""); put("paper_mm", p.paper)
             onePrinter?.let { put("one_printer", it) }
+            staff.approvedBy("settings.device", approver)?.let { put("approved_by", it) }
+        })
+    }
+
+    // A customer display added or changed on this till (0129): it faces this till.
+    suspend fun saveDisplay(id: String, d: PrinterForm.Display, approver: StaffMember? = null): Result<Unit> = runCatching {
+        staff.allow("settings.device", "set this till up", approver)
+        val store = session.storeId() ?: error("This till is not set up for a store yet.")
+        val device = session.deviceId() ?: error("This till has no name yet.")
+        ask("printer.save", PrinterForm::refusedDisplay, buildJsonObject {
+            put("id", id); put("store_id", store); put("name", d.name); put("kind", PrinterForm.DISPLAY)
+            put("address", d.address); put("paper_mm", 80); put("pair_code", d.code); put("device_id", device); put("message", d.message ?: "")
             staff.approvedBy("settings.device", approver)?.let { put("approved_by", it) }
         })
     }

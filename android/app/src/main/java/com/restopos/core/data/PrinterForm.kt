@@ -78,6 +78,32 @@ object PrinterForm {
         else -> "Check that the printer is switched on, on the same network as the tablet, and that the address is the one on its self-test page."
     }
 
+    // ---- a customer display (0129), added on a tablet that works on its own ----
+    const val DISPLAY = "display"
+
+    // Its name, its address on the Wi-Fi and the code it shows, and its two
+    // lines for between sales (one line break, at most 120 characters).
+    class Display(val name: String, val address: String, val code: String, val message: String?)
+
+    fun readDisplay(name: String, address: String, code: String, first: String, second: String): Result<Display> = runCatching {
+        val called = name.trim().take(40)
+        require(called.isNotEmpty()) { "Give the display a name, for example Counter" }
+        val at = address.trim().take(40)
+        require(IP.matches(at)) { "Type the address the display shows, for example 192.168.1.70" }
+        val tidy = com.restopos.core.kitchen.PairCode.tidy(code)
+        require(tidy != null) { "Type the pairing code the display shows: eight letters and digits" }
+        val message = listOf(first, second).map { it.trim() }.filter { it.isNotEmpty() }.joinToString("\n").take(120).ifEmpty { null }
+        Display(called, at, tidy, message)
+    }
+
+    // The server's refusal of a display, in words.
+    fun refusedDisplay(code: String?): String = when (code) {
+        "bad-address" -> "Check the display's address and its pairing code: they were not taken."
+        "bad-device" -> "This till is not known for its store yet. Let it sync, then try again."
+        "bad-printer" -> "That display is no longer there. Close this and open it again."
+        else -> refused(code)
+    }
+
     // The server's refusal of printer.save (migration 0089), in words.
     fun refused(code: String?): String = when (code) {
         "name-required" -> "Give the printer a name"

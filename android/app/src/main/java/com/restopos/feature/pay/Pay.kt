@@ -204,6 +204,8 @@ class PayViewModel @Inject constructor(
     private val exchanges: Exchanges,
     private val creditNotes: CreditNotes,
     private val staff: StaffSession,
+    // the customer displays facing this till: told when a sale is paid, for its change
+    private val display: com.restopos.core.display.DisplayFeed,
 ) : ViewModel() {
     private val _ui = MutableStateFlow(PayUi())
     val ui: StateFlow<PayUi> = _ui
@@ -647,6 +649,7 @@ class PayViewModel @Inject constructor(
                     if (t?.stage == "ready") tickets.setStage(t.id, "done")
                     val customer = t?.customer_id?.let { db.customers().customer(it) }
                     val onAcc = with.filter { it.input.paymentTypeId == s.account?.typeId }.sumOf { it.input.amount }
+                    display.paid(earlierTotal + receipt.total, change)
                     _ui.value = _ui.value.copy(busy = false, done = PayDone(
                         receipt.id, earlierTotal + receipt.total, change,
                         with.filter { it.input.amount > 0 }.let { real -> if (real.size > 1) "${real.size} payments" else real.firstOrNull()?.type ?: "No charge" },
