@@ -154,3 +154,85 @@ test('test case 5 is one item, test cases 6 and 7 at least two', () => {
   assert.ok(inv.testCase6Lines().length >= 2);
   assert.ok(inv.testCase7Lines().length >= 2);
 });
+
+// ---- a real sale (the phase 2 plan, "How a sale becomes an invoice") ----
+
+test('a quantity in thousandths is written as a number', () => {
+  assert.equal(inv.qtyText(2000), '2');
+  assert.equal(inv.qtyText(250), '0.25');
+  assert.equal(inv.qtyText(1125), '1.125');
+});
+
+test('a negative amount keeps its sign', () => {
+  assert.equal(inv.money(-5), '-0.05');
+  assert.equal(inv.money(-11500), '-115.00');
+});
+
+// The till spreads an order discount over the lines and works the VAT out on
+// what is left of each (core/data/Calc). The MRA is told the same VAT.
+test('a line\'s part of the order discount comes off before its VAT', () => {
+  const i = inv.build({
+    counter: 1, identifier: 'EP-1', type: 'STD', previous: null, issuedAt: new Date(Date.UTC(2026, 9, 21, 8, 0, 0)), seller,
+    lines: [{ desc: 'Curry', code: '', taxCode: 'TC01', nature: 'GOODS', qtyMilli: 1000, base: 11500, share: 1150, vatBp: 1500 }],
+    payment: 'CASH',
+  });
+  const l = i.itemList[0];
+  assert.equal(l.vatAmt, '13.50'); // (10350 * 1500 + 5750) / 11500
+  assert.equal(l.amtWoVatCur, '90.00'); // 103.50 - 13.50
+  assert.equal(l.unitPrice, '100.00'); // 115.00 without its VAT
+  assert.equal(l.discount, '10.00');
+  assert.equal(l.totalPrice, '103.50');
+  assert.equal(i.totalAmtPaid, '103.50');
+});
+
+test('VAT on top is added to what the line charges', () => {
+  const i = inv.build({
+    counter: 1, identifier: 'EP-1', type: 'STD', previous: null, issuedAt: new Date(0), seller,
+    lines: [{ desc: 'Cake', code: '', taxCode: 'TC01', nature: 'GOODS', qtyMilli: 1000, base: 10000, vatBp: 1500, added: true }],
+    payment: 'CASH',
+  });
+  assert.equal(i.itemList[0].vatAmt, '15.00');
+  assert.equal(i.itemList[0].amtWoVatCur, '100.00');
+  assert.equal(i.itemList[0].unitPrice, '100.00');
+  assert.equal(i.invoiceTotal, '115.00');
+});
+
+test('a line sold by the kilo has a fraction for its quantity and a price for one kilo', () => {
+  const i = inv.build({
+    counter: 1, identifier: 'EP-1', type: 'STD', previous: null, issuedAt: new Date(0), seller,
+    lines: [{ desc: 'Prawns', code: '', taxCode: 'TC01', nature: 'GOODS', qtyMilli: 250, base: 20000, vatBp: 1500 }],
+    payment: 'CASH',
+  });
+  assert.equal(i.itemList[0].quantity, '0.25');
+  // VAT inside 200.00 is 26.09 (2609.19 rounded down), 173.91 without it, 695.64 a kilo
+  assert.equal(i.itemList[0].unitPrice, '695.64');
+  assert.equal(i.itemList[0].totalPrice, '200.00');
+});
+
+test('the cents of a discount the lines did not take are the invoice\'s own discount', () => {
+  const i = inv.build({
+    counter: 1, identifier: 'EP-1', type: 'STD', previous: null, issuedAt: new Date(0), seller,
+    lines: [
+      { desc: 'A', code: '', taxCode: 'TC03', nature: 'GOODS', qtyMilli: 1000, base: 100, share: 33 },
+      { desc: 'B', code: '', taxCode: 'TC03', nature: 'GOODS', qtyMilli: 1000, base: 200, share: 66 },
+    ],
+    discount: 1, payment: 'CASH',
+  });
+  assert.equal(i.discountTotalAmount, '0.01');
+  assert.equal(i.totalAmtPaid, '2.00'); // 300 - 100 off
+});
+
+test('the old form (whole quantities, prices with VAT) and the general form build the same bytes', () => {
+  const old = inv.build({ counter: 1, identifier: 'X', type: 'STD', previous: null, issuedAt: new Date(0), seller, lines: inv.testCase1Lines(), payment: 'CASH' });
+  const general = inv.build({ counter: 1, identifier: 'X', type: 'STD', previous: null, issuedAt: new Date(0), seller,
+    lines: inv.testCase1Lines().map(inv.general), payment: 'CASH' });
+  assert.equal(JSON.stringify(general), JSON.stringify(old));
+});
+
+// The till is held to fixtures/invoices.json; the file must say what this code builds.
+test('fixtures/invoices.json is what invoice.cjs builds today', () => {
+  const { made, FILE } = require('./fixtures/make-invoices.cjs');
+  const file = JSON.parse(require('node:fs').readFileSync(FILE, 'utf8'));
+  assert.deepEqual(file, made(), 'run  node mra/fixtures/make-invoices.cjs');
+  assert.ok(file.cases.length >= 11);
+});

@@ -145,6 +145,20 @@ test('sign-in and test cases 1 to 7 against a stand-in for the MRA', async (t) =
     assert.equal(i.invoiceRefIdentifier, '');
   }
 
+  // the owner's two probes (phase 2 plan, D2 and D3): a sale chained to an
+  // invoice the MRA never saw, and a real sale whose total is the till's
+  assert.match(await run(env, 'send', 'probe-chain'), /EPTSTD000022 fiscalised/);
+  const probe = received[20];
+  assert.notEqual(probe.previousNoteHash, '0');
+  assert.notEqual(probe.previousNoteHash, previousNoteHash({ dateTime: received[17].dateTimeInvoiceIssued, totalAmtPaid: received[17].totalAmtPaid, brn: 'C07012345', invoiceIdentifier: 'EPTSTD000019' }));
+  assert.match(await run(env, 'send', 'probe-mixed'), /EPTSTD000023 fiscalised/);
+  const mixed = received[21];
+  assert.equal(mixed.itemList.length, 5);
+  assert.equal(mixed.itemList[1].quantity, '0.25');
+  assert.equal(mixed.discountTotalAmount, '0.02');
+  assert.equal(mixed.totalAmtPaid, '547.10');
+  assert.equal(mixed.itemList[4].nature, 'SERVICES');
+
   // what it writes for anyone to read holds no password, token or key
   for (const f of fs.readdirSync(path.join(dir, 'out')).filter((f) => f.endsWith('.json'))) {
     const text = fs.readFileSync(path.join(dir, 'out', f), 'utf8');

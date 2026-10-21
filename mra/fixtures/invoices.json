@@ -1,0 +1,1068 @@
+{
+  "about": "Invoices built by mra/invoice.cjs from fixed inputs (a made-up seller). The till builds the same inputs and must give the same bytes. Made by node mra/fixtures/make-invoices.cjs.",
+  "cases": [
+    {
+      "name": "test case 1",
+      "input": {
+        "counter": 1,
+        "identifier": "MU-T1-000001",
+        "type": "STD",
+        "previous": null,
+        "issuedAt": 1792576800000,
+        "seller": {
+          "name": "Made Up Ltd",
+          "tradeName": "Made Up",
+          "tan": "12345678",
+          "brn": "C07000000",
+          "businessAddr": "Royal Road, Bel Air",
+          "businessPhoneNo": "+2302076000",
+          "vat": "VATR"
+        },
+        "lines": [
+          {
+            "desc": "Chicken curry",
+            "code": "TC1-A",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 11500,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          },
+          {
+            "desc": "Fried noodles",
+            "code": "TC1-B",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 2000,
+            "base": 46000,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          },
+          {
+            "desc": "Soft drink",
+            "code": "TC1-C",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 2000,
+            "base": 11500,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          },
+          {
+            "desc": "Bread",
+            "code": "TC1-D",
+            "taxCode": "TC03",
+            "nature": "GOODS",
+            "qtyMilli": 3000,
+            "base": 3750,
+            "share": 0,
+            "vatBp": 0,
+            "added": false
+          },
+          {
+            "desc": "Milk",
+            "code": "TC1-E",
+            "taxCode": "TC03",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 4000,
+            "share": 0,
+            "vatBp": 0,
+            "added": false
+          },
+          {
+            "desc": "Rice 1 kg",
+            "code": "TC1-F",
+            "taxCode": "TC03",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 2500,
+            "share": 0,
+            "vatBp": 0,
+            "added": false
+          }
+        ],
+        "payment": "CASH"
+      },
+      "expected": "{\"invoiceCounter\":\"1\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000001\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"0\",\"reasonStated\":\"\",\"totalVatAmount\":\"90.00\",\"totalAmtWoVatCur\":\"702.50\",\"totalAmtWoVatMur\":\"702.50\",\"invoiceTotal\":\"792.50\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"792.50\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-A\",\"itemDesc\":\"Chicken curry\",\"quantity\":\"1\",\"unitPrice\":\"100.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"2\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-B\",\"itemDesc\":\"Fried noodles\",\"quantity\":\"2\",\"unitPrice\":\"200.00\",\"discount\":\"0.00\",\"discountedValue\":\"400.00\",\"amtWoVatCur\":\"400.00\",\"amtWoVatMur\":\"400.00\",\"vatAmt\":\"60.00\",\"totalPrice\":\"460.00\"},{\"itemNo\":\"3\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-C\",\"itemDesc\":\"Soft drink\",\"quantity\":\"2\",\"unitPrice\":\"50.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"4\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-D\",\"itemDesc\":\"Bread\",\"quantity\":\"3\",\"unitPrice\":\"12.50\",\"discount\":\"0.00\",\"discountedValue\":\"37.50\",\"amtWoVatCur\":\"37.50\",\"amtWoVatMur\":\"37.50\",\"vatAmt\":\"0.00\",\"totalPrice\":\"37.50\"},{\"itemNo\":\"5\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-E\",\"itemDesc\":\"Milk\",\"quantity\":\"1\",\"unitPrice\":\"40.00\",\"discount\":\"0.00\",\"discountedValue\":\"40.00\",\"amtWoVatCur\":\"40.00\",\"amtWoVatMur\":\"40.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"40.00\"},{\"itemNo\":\"6\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-F\",\"itemDesc\":\"Rice 1 kg\",\"quantity\":\"1\",\"unitPrice\":\"25.00\",\"discount\":\"0.00\",\"discountedValue\":\"25.00\",\"amtWoVatCur\":\"25.00\",\"amtWoVatMur\":\"25.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"25.00\"}],\"salesTransactions\":\"CASH\"}"
+    },
+    {
+      "name": "chained to the first",
+      "input": {
+        "counter": 2,
+        "identifier": "MU-T1-000002",
+        "type": "STD",
+        "previous": {
+          "dateTime": "20261021 14:00:00",
+          "totalAmtPaid": "792.50",
+          "brn": "C07000000",
+          "invoiceIdentifier": "MU-T1-000001"
+        },
+        "issuedAt": 1792576860000,
+        "seller": {
+          "name": "Made Up Ltd",
+          "tradeName": "Made Up",
+          "tan": "12345678",
+          "brn": "C07000000",
+          "businessAddr": "Royal Road, Bel Air",
+          "businessPhoneNo": "+2302076000",
+          "vat": "VATR"
+        },
+        "lines": [
+          {
+            "desc": "Chicken curry",
+            "code": "TC1-A",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 11500,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          },
+          {
+            "desc": "Fried noodles",
+            "code": "TC1-B",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 2000,
+            "base": 46000,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          },
+          {
+            "desc": "Soft drink",
+            "code": "TC1-C",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 2000,
+            "base": 11500,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          },
+          {
+            "desc": "Bread",
+            "code": "TC1-D",
+            "taxCode": "TC03",
+            "nature": "GOODS",
+            "qtyMilli": 3000,
+            "base": 3750,
+            "share": 0,
+            "vatBp": 0,
+            "added": false
+          },
+          {
+            "desc": "Milk",
+            "code": "TC1-E",
+            "taxCode": "TC03",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 4000,
+            "share": 0,
+            "vatBp": 0,
+            "added": false
+          },
+          {
+            "desc": "Rice 1 kg",
+            "code": "TC1-F",
+            "taxCode": "TC03",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 2500,
+            "share": 0,
+            "vatBp": 0,
+            "added": false
+          }
+        ],
+        "payment": "CASH"
+      },
+      "expected": "{\"invoiceCounter\":\"2\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000002\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"9829F92648FD858096EA71E4EE001B19B255D74C16018366431CFAD877165EF6\",\"reasonStated\":\"\",\"totalVatAmount\":\"90.00\",\"totalAmtWoVatCur\":\"702.50\",\"totalAmtWoVatMur\":\"702.50\",\"invoiceTotal\":\"792.50\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"792.50\",\"dateTimeInvoiceIssued\":\"20261021 14:01:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-A\",\"itemDesc\":\"Chicken curry\",\"quantity\":\"1\",\"unitPrice\":\"100.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"2\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-B\",\"itemDesc\":\"Fried noodles\",\"quantity\":\"2\",\"unitPrice\":\"200.00\",\"discount\":\"0.00\",\"discountedValue\":\"400.00\",\"amtWoVatCur\":\"400.00\",\"amtWoVatMur\":\"400.00\",\"vatAmt\":\"60.00\",\"totalPrice\":\"460.00\"},{\"itemNo\":\"3\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-C\",\"itemDesc\":\"Soft drink\",\"quantity\":\"2\",\"unitPrice\":\"50.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"4\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-D\",\"itemDesc\":\"Bread\",\"quantity\":\"3\",\"unitPrice\":\"12.50\",\"discount\":\"0.00\",\"discountedValue\":\"37.50\",\"amtWoVatCur\":\"37.50\",\"amtWoVatMur\":\"37.50\",\"vatAmt\":\"0.00\",\"totalPrice\":\"37.50\"},{\"itemNo\":\"5\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-E\",\"itemDesc\":\"Milk\",\"quantity\":\"1\",\"unitPrice\":\"40.00\",\"discount\":\"0.00\",\"discountedValue\":\"40.00\",\"amtWoVatCur\":\"40.00\",\"amtWoVatMur\":\"40.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"40.00\"},{\"itemNo\":\"6\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-F\",\"itemDesc\":\"Rice 1 kg\",\"quantity\":\"1\",\"unitPrice\":\"25.00\",\"discount\":\"0.00\",\"discountedValue\":\"25.00\",\"amtWoVatCur\":\"25.00\",\"amtWoVatMur\":\"25.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"25.00\"}],\"salesTransactions\":\"CASH\"}"
+    },
+    {
+      "name": "a credit note",
+      "input": {
+        "counter": 3,
+        "identifier": "MU-T1-R000003",
+        "type": "CRN",
+        "previous": null,
+        "issuedAt": 1792576800000,
+        "seller": {
+          "name": "Made Up Ltd",
+          "tradeName": "Made Up",
+          "tan": "12345678",
+          "brn": "C07000000",
+          "businessAddr": "Royal Road, Bel Air",
+          "businessPhoneNo": "+2302076000",
+          "vat": "VATR"
+        },
+        "lines": [
+          {
+            "desc": "Soft drink",
+            "code": "TC1-C",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 5750,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          }
+        ],
+        "payment": "CASH",
+        "ref": "MU-T1-000002",
+        "reason": "Return of product"
+      },
+      "expected": "{\"invoiceCounter\":\"3\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"CRN\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-R000003\",\"invoiceRefIdentifier\":\"MU-T1-000002\",\"previousNoteHash\":\"0\",\"reasonStated\":\"Return of product\",\"totalVatAmount\":\"7.50\",\"totalAmtWoVatCur\":\"50.00\",\"totalAmtWoVatMur\":\"50.00\",\"invoiceTotal\":\"57.50\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"57.50\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-C\",\"itemDesc\":\"Soft drink\",\"quantity\":\"1\",\"unitPrice\":\"50.00\",\"discount\":\"0.00\",\"discountedValue\":\"50.00\",\"amtWoVatCur\":\"50.00\",\"amtWoVatMur\":\"50.00\",\"vatAmt\":\"7.50\",\"totalPrice\":\"57.50\"}],\"salesTransactions\":\"CASH\"}"
+    },
+    {
+      "name": "training",
+      "input": {
+        "counter": 4,
+        "identifier": "TRN00000004",
+        "type": "TRN",
+        "previous": null,
+        "issuedAt": 1792576800000,
+        "seller": {
+          "name": "Made Up Ltd",
+          "tradeName": "Made Up",
+          "tan": "12345678",
+          "brn": "C07000000",
+          "businessAddr": "Royal Road, Bel Air",
+          "businessPhoneNo": "+2302076000",
+          "vat": "VATR"
+        },
+        "lines": [
+          {
+            "desc": "Soft drink",
+            "code": "TC1-C",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 2000,
+            "base": 11500,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          },
+          {
+            "desc": "Rice 1 kg",
+            "code": "TC1-F",
+            "taxCode": "TC03",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 2500,
+            "share": 0,
+            "vatBp": 0,
+            "added": false
+          }
+        ],
+        "payment": "CASH"
+      },
+      "expected": "{\"invoiceCounter\":\"4\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"TRN\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"TRN00000004\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"0\",\"reasonStated\":\"\",\"totalVatAmount\":\"15.00\",\"totalAmtWoVatCur\":\"125.00\",\"totalAmtWoVatMur\":\"125.00\",\"invoiceTotal\":\"140.00\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"140.00\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-C\",\"itemDesc\":\"Soft drink\",\"quantity\":\"2\",\"unitPrice\":\"50.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"2\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-F\",\"itemDesc\":\"Rice 1 kg\",\"quantity\":\"1\",\"unitPrice\":\"25.00\",\"discount\":\"0.00\",\"discountedValue\":\"25.00\",\"amtWoVatCur\":\"25.00\",\"amtWoVatMur\":\"25.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"25.00\"}],\"salesTransactions\":\"CASH\"}"
+    },
+    {
+      "name": "not registered for VAT",
+      "input": {
+        "counter": 1,
+        "identifier": "MU-T1-000001",
+        "type": "STD",
+        "previous": null,
+        "issuedAt": 1792576800000,
+        "seller": {
+          "name": "Made Up Ltd",
+          "tradeName": "Made Up",
+          "tan": "12345678",
+          "brn": "C07000000",
+          "businessAddr": "Royal Road, Bel Air",
+          "businessPhoneNo": "+2302076000",
+          "vat": "NVTR"
+        },
+        "lines": [
+          {
+            "desc": "Chicken curry",
+            "code": "TC1-A",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 11500,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          },
+          {
+            "desc": "Fried noodles",
+            "code": "TC1-B",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 2000,
+            "base": 46000,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          },
+          {
+            "desc": "Soft drink",
+            "code": "TC1-C",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 2000,
+            "base": 11500,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          },
+          {
+            "desc": "Bread",
+            "code": "TC1-D",
+            "taxCode": "TC03",
+            "nature": "GOODS",
+            "qtyMilli": 3000,
+            "base": 3750,
+            "share": 0,
+            "vatBp": 0,
+            "added": false
+          },
+          {
+            "desc": "Milk",
+            "code": "TC1-E",
+            "taxCode": "TC03",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 4000,
+            "share": 0,
+            "vatBp": 0,
+            "added": false
+          },
+          {
+            "desc": "Rice 1 kg",
+            "code": "TC1-F",
+            "taxCode": "TC03",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 2500,
+            "share": 0,
+            "vatBp": 0,
+            "added": false
+          }
+        ],
+        "payment": "CASH"
+      },
+      "expected": "{\"invoiceCounter\":\"1\",\"transactionType\":\"B2C\",\"personType\":\"NVTR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000001\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"0\",\"reasonStated\":\"\",\"totalVatAmount\":\"0.00\",\"totalAmtWoVatCur\":\"792.50\",\"totalAmtWoVatMur\":\"792.50\",\"invoiceTotal\":\"792.50\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"792.50\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-A\",\"itemDesc\":\"Chicken curry\",\"quantity\":\"1\",\"unitPrice\":\"115.00\",\"discount\":\"0.00\",\"discountedValue\":\"115.00\",\"amtWoVatCur\":\"115.00\",\"amtWoVatMur\":\"115.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"2\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-B\",\"itemDesc\":\"Fried noodles\",\"quantity\":\"2\",\"unitPrice\":\"230.00\",\"discount\":\"0.00\",\"discountedValue\":\"460.00\",\"amtWoVatCur\":\"460.00\",\"amtWoVatMur\":\"460.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"460.00\"},{\"itemNo\":\"3\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-C\",\"itemDesc\":\"Soft drink\",\"quantity\":\"2\",\"unitPrice\":\"57.50\",\"discount\":\"0.00\",\"discountedValue\":\"115.00\",\"amtWoVatCur\":\"115.00\",\"amtWoVatMur\":\"115.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"4\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-D\",\"itemDesc\":\"Bread\",\"quantity\":\"3\",\"unitPrice\":\"12.50\",\"discount\":\"0.00\",\"discountedValue\":\"37.50\",\"amtWoVatCur\":\"37.50\",\"amtWoVatMur\":\"37.50\",\"vatAmt\":\"0.00\",\"totalPrice\":\"37.50\"},{\"itemNo\":\"5\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-E\",\"itemDesc\":\"Milk\",\"quantity\":\"1\",\"unitPrice\":\"40.00\",\"discount\":\"0.00\",\"discountedValue\":\"40.00\",\"amtWoVatCur\":\"40.00\",\"amtWoVatMur\":\"40.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"40.00\"},{\"itemNo\":\"6\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-F\",\"itemDesc\":\"Rice 1 kg\",\"quantity\":\"1\",\"unitPrice\":\"25.00\",\"discount\":\"0.00\",\"discountedValue\":\"25.00\",\"amtWoVatCur\":\"25.00\",\"amtWoVatMur\":\"25.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"25.00\"}],\"salesTransactions\":\"CASH\"}"
+    },
+    {
+      "name": "a discount over two lines, a cent left",
+      "input": {
+        "counter": 1,
+        "identifier": "MU-T1-000001",
+        "type": "STD",
+        "previous": null,
+        "issuedAt": 1792576800000,
+        "seller": {
+          "name": "Made Up Ltd",
+          "tradeName": "Made Up",
+          "tan": "12345678",
+          "brn": "C07000000",
+          "businessAddr": "Royal Road, Bel Air",
+          "businessPhoneNo": "+2302076000",
+          "vat": "VATR"
+        },
+        "lines": [
+          {
+            "desc": "A",
+            "code": "",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 10001,
+            "share": 3333,
+            "vatBp": 1500,
+            "added": false
+          },
+          {
+            "desc": "B",
+            "code": "",
+            "taxCode": "TC03",
+            "nature": "GOODS",
+            "qtyMilli": 2000,
+            "base": 20002,
+            "share": 6666,
+            "vatBp": 0,
+            "added": false
+          }
+        ],
+        "payment": "CASH",
+        "discount": 1
+      },
+      "expected": "{\"invoiceCounter\":\"1\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000001\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"0\",\"reasonStated\":\"\",\"totalVatAmount\":\"8.70\",\"totalAmtWoVatCur\":\"191.34\",\"totalAmtWoVatMur\":\"191.34\",\"invoiceTotal\":\"200.04\",\"discountTotalAmount\":\"0.01\",\"totalAmtPaid\":\"200.03\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"\",\"itemDesc\":\"A\",\"quantity\":\"1\",\"unitPrice\":\"86.97\",\"discount\":\"28.99\",\"discountedValue\":\"57.98\",\"amtWoVatCur\":\"57.98\",\"amtWoVatMur\":\"57.98\",\"vatAmt\":\"8.70\",\"totalPrice\":\"66.68\"},{\"itemNo\":\"2\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"\",\"itemDesc\":\"B\",\"quantity\":\"2\",\"unitPrice\":\"100.01\",\"discount\":\"66.66\",\"discountedValue\":\"133.36\",\"amtWoVatCur\":\"133.36\",\"amtWoVatMur\":\"133.36\",\"vatAmt\":\"0.00\",\"totalPrice\":\"133.36\"}],\"salesTransactions\":\"CASH\"}"
+    },
+    {
+      "name": "VAT on top",
+      "input": {
+        "counter": 1,
+        "identifier": "MU-T1-000001",
+        "type": "STD",
+        "previous": null,
+        "issuedAt": 1792576800000,
+        "seller": {
+          "name": "Made Up Ltd",
+          "tradeName": "Made Up",
+          "tan": "12345678",
+          "brn": "C07000000",
+          "businessAddr": "Royal Road, Bel Air",
+          "businessPhoneNo": "+2302076000",
+          "vat": "VATR"
+        },
+        "lines": [
+          {
+            "desc": "Cake",
+            "code": "CK",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 10000,
+            "share": 0,
+            "vatBp": 1500,
+            "added": true
+          }
+        ],
+        "payment": "CASH"
+      },
+      "expected": "{\"invoiceCounter\":\"1\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000001\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"0\",\"reasonStated\":\"\",\"totalVatAmount\":\"15.00\",\"totalAmtWoVatCur\":\"100.00\",\"totalAmtWoVatMur\":\"100.00\",\"invoiceTotal\":\"115.00\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"115.00\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"CK\",\"itemDesc\":\"Cake\",\"quantity\":\"1\",\"unitPrice\":\"100.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"}],\"salesTransactions\":\"CASH\"}"
+    },
+    {
+      "name": "by the kilo",
+      "input": {
+        "counter": 1,
+        "identifier": "MU-T1-000001",
+        "type": "STD",
+        "previous": null,
+        "issuedAt": 1792576800000,
+        "seller": {
+          "name": "Made Up Ltd",
+          "tradeName": "Made Up",
+          "tan": "12345678",
+          "brn": "C07000000",
+          "businessAddr": "Royal Road, Bel Air",
+          "businessPhoneNo": "+2302076000",
+          "vat": "VATR"
+        },
+        "lines": [
+          {
+            "desc": "Prawns",
+            "code": "",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 250,
+            "base": 20000,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          }
+        ],
+        "payment": "CASH"
+      },
+      "expected": "{\"invoiceCounter\":\"1\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000001\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"0\",\"reasonStated\":\"\",\"totalVatAmount\":\"26.09\",\"totalAmtWoVatCur\":\"173.91\",\"totalAmtWoVatMur\":\"173.91\",\"invoiceTotal\":\"200.00\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"200.00\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"\",\"itemDesc\":\"Prawns\",\"quantity\":\"0.25\",\"unitPrice\":\"695.64\",\"discount\":\"0.00\",\"discountedValue\":\"173.91\",\"amtWoVatCur\":\"173.91\",\"amtWoVatMur\":\"173.91\",\"vatAmt\":\"26.09\",\"totalPrice\":\"200.00\"}],\"salesTransactions\":\"CASH\"}"
+    },
+    {
+      "name": "service charge",
+      "input": {
+        "counter": 1,
+        "identifier": "MU-T1-000001",
+        "type": "STD",
+        "previous": null,
+        "issuedAt": 1792576800000,
+        "seller": {
+          "name": "Made Up Ltd",
+          "tradeName": "Made Up",
+          "tan": "12345678",
+          "brn": "C07000000",
+          "businessAddr": "Royal Road, Bel Air",
+          "businessPhoneNo": "+2302076000",
+          "vat": "VATR"
+        },
+        "lines": [
+          {
+            "desc": "Chicken curry",
+            "code": "TC1-A",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 11500,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          },
+          {
+            "desc": "Fried noodles",
+            "code": "TC1-B",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 2000,
+            "base": 46000,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          },
+          {
+            "desc": "Soft drink",
+            "code": "TC1-C",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 2000,
+            "base": 11500,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          },
+          {
+            "desc": "Bread",
+            "code": "TC1-D",
+            "taxCode": "TC03",
+            "nature": "GOODS",
+            "qtyMilli": 3000,
+            "base": 3750,
+            "share": 0,
+            "vatBp": 0,
+            "added": false
+          },
+          {
+            "desc": "Milk",
+            "code": "TC1-E",
+            "taxCode": "TC03",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 4000,
+            "share": 0,
+            "vatBp": 0,
+            "added": false
+          },
+          {
+            "desc": "Rice 1 kg",
+            "code": "TC1-F",
+            "taxCode": "TC03",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 2500,
+            "share": 0,
+            "vatBp": 0,
+            "added": false
+          },
+          {
+            "desc": "Service charge",
+            "code": "",
+            "taxCode": "TC03",
+            "nature": "SERVICES",
+            "qtyMilli": 1000,
+            "base": 3000,
+            "share": 0,
+            "vatBp": 0,
+            "added": false
+          }
+        ],
+        "payment": "CASH"
+      },
+      "expected": "{\"invoiceCounter\":\"1\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000001\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"0\",\"reasonStated\":\"\",\"totalVatAmount\":\"90.00\",\"totalAmtWoVatCur\":\"732.50\",\"totalAmtWoVatMur\":\"732.50\",\"invoiceTotal\":\"822.50\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"822.50\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-A\",\"itemDesc\":\"Chicken curry\",\"quantity\":\"1\",\"unitPrice\":\"100.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"2\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-B\",\"itemDesc\":\"Fried noodles\",\"quantity\":\"2\",\"unitPrice\":\"200.00\",\"discount\":\"0.00\",\"discountedValue\":\"400.00\",\"amtWoVatCur\":\"400.00\",\"amtWoVatMur\":\"400.00\",\"vatAmt\":\"60.00\",\"totalPrice\":\"460.00\"},{\"itemNo\":\"3\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-C\",\"itemDesc\":\"Soft drink\",\"quantity\":\"2\",\"unitPrice\":\"50.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"4\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-D\",\"itemDesc\":\"Bread\",\"quantity\":\"3\",\"unitPrice\":\"12.50\",\"discount\":\"0.00\",\"discountedValue\":\"37.50\",\"amtWoVatCur\":\"37.50\",\"amtWoVatMur\":\"37.50\",\"vatAmt\":\"0.00\",\"totalPrice\":\"37.50\"},{\"itemNo\":\"5\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-E\",\"itemDesc\":\"Milk\",\"quantity\":\"1\",\"unitPrice\":\"40.00\",\"discount\":\"0.00\",\"discountedValue\":\"40.00\",\"amtWoVatCur\":\"40.00\",\"amtWoVatMur\":\"40.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"40.00\"},{\"itemNo\":\"6\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-F\",\"itemDesc\":\"Rice 1 kg\",\"quantity\":\"1\",\"unitPrice\":\"25.00\",\"discount\":\"0.00\",\"discountedValue\":\"25.00\",\"amtWoVatCur\":\"25.00\",\"amtWoVatMur\":\"25.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"25.00\"},{\"itemNo\":\"7\",\"taxCode\":\"TC03\",\"nature\":\"SERVICES\",\"productCodeMra\":\"\",\"productCodeOwn\":\"\",\"itemDesc\":\"Service charge\",\"quantity\":\"1\",\"unitPrice\":\"30.00\",\"discount\":\"0.00\",\"discountedValue\":\"30.00\",\"amtWoVatCur\":\"30.00\",\"amtWoVatMur\":\"30.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"30.00\"}],\"salesTransactions\":\"CASH\"}"
+    },
+    {
+      "name": "escaping",
+      "input": {
+        "counter": 1,
+        "identifier": "MU-T1-000001",
+        "type": "STD",
+        "previous": null,
+        "issuedAt": 1792576800000,
+        "seller": {
+          "name": "Made Up Ltd",
+          "tradeName": "Made Up",
+          "tan": "12345678",
+          "brn": "C07000000",
+          "businessAddr": "Royal Road, Bel Air",
+          "businessPhoneNo": "+2302076000",
+          "vat": "VATR"
+        },
+        "lines": [
+          {
+            "desc": "Say \"hi\" \\ café\t€ \u0001",
+            "code": "",
+            "taxCode": "TC01",
+            "nature": "GOODS",
+            "qtyMilli": 1000,
+            "base": 11500,
+            "share": 0,
+            "vatBp": 1500,
+            "added": false
+          }
+        ],
+        "payment": "CASH",
+        "cashier": "Zoë"
+      },
+      "expected": "{\"invoiceCounter\":\"1\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000001\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"0\",\"reasonStated\":\"\",\"totalVatAmount\":\"15.00\",\"totalAmtWoVatCur\":\"100.00\",\"totalAmtWoVatMur\":\"100.00\",\"invoiceTotal\":\"115.00\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"115.00\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"Zoë\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"\",\"itemDesc\":\"Say \\\"hi\\\" \\\\ café\\t€ \\u0001\",\"quantity\":\"1\",\"unitPrice\":\"100.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"}],\"salesTransactions\":\"CASH\"}"
+    },
+    {
+      "name": "ten in one request",
+      "input": [
+        {
+          "counter": 10,
+          "identifier": "MU-T1-000010",
+          "type": "STD",
+          "previous": null,
+          "issuedAt": 1792576800000,
+          "seller": {
+            "name": "Made Up Ltd",
+            "tradeName": "Made Up",
+            "tan": "12345678",
+            "brn": "C07000000",
+            "businessAddr": "Royal Road, Bel Air",
+            "businessPhoneNo": "+2302076000",
+            "vat": "VATR"
+          },
+          "lines": [
+            {
+              "desc": "Chicken curry",
+              "code": "TC1-A",
+              "taxCode": "TC01",
+              "nature": "GOODS",
+              "qtyMilli": 1000,
+              "base": 11500,
+              "share": 0,
+              "vatBp": 1500,
+              "added": false
+            },
+            {
+              "desc": "Bread",
+              "code": "TC1-D",
+              "taxCode": "TC03",
+              "nature": "GOODS",
+              "qtyMilli": 3000,
+              "base": 3750,
+              "share": 0,
+              "vatBp": 0,
+              "added": false
+            }
+          ],
+          "payment": "CASH"
+        },
+        {
+          "counter": 11,
+          "identifier": "MU-T1-000011",
+          "type": "STD",
+          "previous": {
+            "dateTime": "20261021 14:00:00",
+            "totalAmtPaid": "152.50",
+            "brn": "C07000000",
+            "invoiceIdentifier": "MU-T1-000010"
+          },
+          "issuedAt": 1792576800000,
+          "seller": {
+            "name": "Made Up Ltd",
+            "tradeName": "Made Up",
+            "tan": "12345678",
+            "brn": "C07000000",
+            "businessAddr": "Royal Road, Bel Air",
+            "businessPhoneNo": "+2302076000",
+            "vat": "VATR"
+          },
+          "lines": [
+            {
+              "desc": "Fried noodles",
+              "code": "TC1-B",
+              "taxCode": "TC01",
+              "nature": "GOODS",
+              "qtyMilli": 2000,
+              "base": 46000,
+              "share": 0,
+              "vatBp": 1500,
+              "added": false
+            },
+            {
+              "desc": "Milk",
+              "code": "TC1-E",
+              "taxCode": "TC03",
+              "nature": "GOODS",
+              "qtyMilli": 1000,
+              "base": 4000,
+              "share": 0,
+              "vatBp": 0,
+              "added": false
+            }
+          ],
+          "payment": "CASH"
+        },
+        {
+          "counter": 12,
+          "identifier": "MU-T1-000012",
+          "type": "STD",
+          "previous": {
+            "dateTime": "20261021 14:00:00",
+            "totalAmtPaid": "500.00",
+            "brn": "C07000000",
+            "invoiceIdentifier": "MU-T1-000011"
+          },
+          "issuedAt": 1792576800000,
+          "seller": {
+            "name": "Made Up Ltd",
+            "tradeName": "Made Up",
+            "tan": "12345678",
+            "brn": "C07000000",
+            "businessAddr": "Royal Road, Bel Air",
+            "businessPhoneNo": "+2302076000",
+            "vat": "VATR"
+          },
+          "lines": [
+            {
+              "desc": "Soft drink",
+              "code": "TC1-C",
+              "taxCode": "TC01",
+              "nature": "GOODS",
+              "qtyMilli": 2000,
+              "base": 11500,
+              "share": 0,
+              "vatBp": 1500,
+              "added": false
+            },
+            {
+              "desc": "Rice 1 kg",
+              "code": "TC1-F",
+              "taxCode": "TC03",
+              "nature": "GOODS",
+              "qtyMilli": 1000,
+              "base": 2500,
+              "share": 0,
+              "vatBp": 0,
+              "added": false
+            }
+          ],
+          "payment": "CASH"
+        },
+        {
+          "counter": 13,
+          "identifier": "MU-T1-000013",
+          "type": "STD",
+          "previous": {
+            "dateTime": "20261021 14:00:00",
+            "totalAmtPaid": "140.00",
+            "brn": "C07000000",
+            "invoiceIdentifier": "MU-T1-000012"
+          },
+          "issuedAt": 1792576800000,
+          "seller": {
+            "name": "Made Up Ltd",
+            "tradeName": "Made Up",
+            "tan": "12345678",
+            "brn": "C07000000",
+            "businessAddr": "Royal Road, Bel Air",
+            "businessPhoneNo": "+2302076000",
+            "vat": "VATR"
+          },
+          "lines": [
+            {
+              "desc": "Chicken curry",
+              "code": "TC1-A",
+              "taxCode": "TC01",
+              "nature": "GOODS",
+              "qtyMilli": 1000,
+              "base": 11500,
+              "share": 0,
+              "vatBp": 1500,
+              "added": false
+            },
+            {
+              "desc": "Bread",
+              "code": "TC1-D",
+              "taxCode": "TC03",
+              "nature": "GOODS",
+              "qtyMilli": 3000,
+              "base": 3750,
+              "share": 0,
+              "vatBp": 0,
+              "added": false
+            }
+          ],
+          "payment": "CASH"
+        },
+        {
+          "counter": 14,
+          "identifier": "MU-T1-000014",
+          "type": "STD",
+          "previous": {
+            "dateTime": "20261021 14:00:00",
+            "totalAmtPaid": "152.50",
+            "brn": "C07000000",
+            "invoiceIdentifier": "MU-T1-000013"
+          },
+          "issuedAt": 1792576800000,
+          "seller": {
+            "name": "Made Up Ltd",
+            "tradeName": "Made Up",
+            "tan": "12345678",
+            "brn": "C07000000",
+            "businessAddr": "Royal Road, Bel Air",
+            "businessPhoneNo": "+2302076000",
+            "vat": "VATR"
+          },
+          "lines": [
+            {
+              "desc": "Fried noodles",
+              "code": "TC1-B",
+              "taxCode": "TC01",
+              "nature": "GOODS",
+              "qtyMilli": 2000,
+              "base": 46000,
+              "share": 0,
+              "vatBp": 1500,
+              "added": false
+            },
+            {
+              "desc": "Milk",
+              "code": "TC1-E",
+              "taxCode": "TC03",
+              "nature": "GOODS",
+              "qtyMilli": 1000,
+              "base": 4000,
+              "share": 0,
+              "vatBp": 0,
+              "added": false
+            }
+          ],
+          "payment": "CASH"
+        },
+        {
+          "counter": 15,
+          "identifier": "MU-T1-000015",
+          "type": "STD",
+          "previous": {
+            "dateTime": "20261021 14:00:00",
+            "totalAmtPaid": "500.00",
+            "brn": "C07000000",
+            "invoiceIdentifier": "MU-T1-000014"
+          },
+          "issuedAt": 1792576800000,
+          "seller": {
+            "name": "Made Up Ltd",
+            "tradeName": "Made Up",
+            "tan": "12345678",
+            "brn": "C07000000",
+            "businessAddr": "Royal Road, Bel Air",
+            "businessPhoneNo": "+2302076000",
+            "vat": "VATR"
+          },
+          "lines": [
+            {
+              "desc": "Soft drink",
+              "code": "TC1-C",
+              "taxCode": "TC01",
+              "nature": "GOODS",
+              "qtyMilli": 2000,
+              "base": 11500,
+              "share": 0,
+              "vatBp": 1500,
+              "added": false
+            },
+            {
+              "desc": "Rice 1 kg",
+              "code": "TC1-F",
+              "taxCode": "TC03",
+              "nature": "GOODS",
+              "qtyMilli": 1000,
+              "base": 2500,
+              "share": 0,
+              "vatBp": 0,
+              "added": false
+            }
+          ],
+          "payment": "CASH"
+        },
+        {
+          "counter": 16,
+          "identifier": "MU-T1-000016",
+          "type": "STD",
+          "previous": {
+            "dateTime": "20261021 14:00:00",
+            "totalAmtPaid": "140.00",
+            "brn": "C07000000",
+            "invoiceIdentifier": "MU-T1-000015"
+          },
+          "issuedAt": 1792576800000,
+          "seller": {
+            "name": "Made Up Ltd",
+            "tradeName": "Made Up",
+            "tan": "12345678",
+            "brn": "C07000000",
+            "businessAddr": "Royal Road, Bel Air",
+            "businessPhoneNo": "+2302076000",
+            "vat": "VATR"
+          },
+          "lines": [
+            {
+              "desc": "Chicken curry",
+              "code": "TC1-A",
+              "taxCode": "TC01",
+              "nature": "GOODS",
+              "qtyMilli": 1000,
+              "base": 11500,
+              "share": 0,
+              "vatBp": 1500,
+              "added": false
+            },
+            {
+              "desc": "Bread",
+              "code": "TC1-D",
+              "taxCode": "TC03",
+              "nature": "GOODS",
+              "qtyMilli": 3000,
+              "base": 3750,
+              "share": 0,
+              "vatBp": 0,
+              "added": false
+            }
+          ],
+          "payment": "CASH"
+        },
+        {
+          "counter": 17,
+          "identifier": "MU-T1-000017",
+          "type": "STD",
+          "previous": {
+            "dateTime": "20261021 14:00:00",
+            "totalAmtPaid": "152.50",
+            "brn": "C07000000",
+            "invoiceIdentifier": "MU-T1-000016"
+          },
+          "issuedAt": 1792576800000,
+          "seller": {
+            "name": "Made Up Ltd",
+            "tradeName": "Made Up",
+            "tan": "12345678",
+            "brn": "C07000000",
+            "businessAddr": "Royal Road, Bel Air",
+            "businessPhoneNo": "+2302076000",
+            "vat": "VATR"
+          },
+          "lines": [
+            {
+              "desc": "Fried noodles",
+              "code": "TC1-B",
+              "taxCode": "TC01",
+              "nature": "GOODS",
+              "qtyMilli": 2000,
+              "base": 46000,
+              "share": 0,
+              "vatBp": 1500,
+              "added": false
+            },
+            {
+              "desc": "Milk",
+              "code": "TC1-E",
+              "taxCode": "TC03",
+              "nature": "GOODS",
+              "qtyMilli": 1000,
+              "base": 4000,
+              "share": 0,
+              "vatBp": 0,
+              "added": false
+            }
+          ],
+          "payment": "CASH"
+        },
+        {
+          "counter": 18,
+          "identifier": "MU-T1-000018",
+          "type": "STD",
+          "previous": {
+            "dateTime": "20261021 14:00:00",
+            "totalAmtPaid": "500.00",
+            "brn": "C07000000",
+            "invoiceIdentifier": "MU-T1-000017"
+          },
+          "issuedAt": 1792576800000,
+          "seller": {
+            "name": "Made Up Ltd",
+            "tradeName": "Made Up",
+            "tan": "12345678",
+            "brn": "C07000000",
+            "businessAddr": "Royal Road, Bel Air",
+            "businessPhoneNo": "+2302076000",
+            "vat": "VATR"
+          },
+          "lines": [
+            {
+              "desc": "Soft drink",
+              "code": "TC1-C",
+              "taxCode": "TC01",
+              "nature": "GOODS",
+              "qtyMilli": 2000,
+              "base": 11500,
+              "share": 0,
+              "vatBp": 1500,
+              "added": false
+            },
+            {
+              "desc": "Rice 1 kg",
+              "code": "TC1-F",
+              "taxCode": "TC03",
+              "nature": "GOODS",
+              "qtyMilli": 1000,
+              "base": 2500,
+              "share": 0,
+              "vatBp": 0,
+              "added": false
+            }
+          ],
+          "payment": "CASH"
+        },
+        {
+          "counter": 19,
+          "identifier": "MU-T1-000019",
+          "type": "STD",
+          "previous": {
+            "dateTime": "20261021 14:00:00",
+            "totalAmtPaid": "140.00",
+            "brn": "C07000000",
+            "invoiceIdentifier": "MU-T1-000018"
+          },
+          "issuedAt": 1792576800000,
+          "seller": {
+            "name": "Made Up Ltd",
+            "tradeName": "Made Up",
+            "tan": "12345678",
+            "brn": "C07000000",
+            "businessAddr": "Royal Road, Bel Air",
+            "businessPhoneNo": "+2302076000",
+            "vat": "VATR"
+          },
+          "lines": [
+            {
+              "desc": "Chicken curry",
+              "code": "TC1-A",
+              "taxCode": "TC01",
+              "nature": "GOODS",
+              "qtyMilli": 1000,
+              "base": 11500,
+              "share": 0,
+              "vatBp": 1500,
+              "added": false
+            },
+            {
+              "desc": "Bread",
+              "code": "TC1-D",
+              "taxCode": "TC03",
+              "nature": "GOODS",
+              "qtyMilli": 3000,
+              "base": 3750,
+              "share": 0,
+              "vatBp": 0,
+              "added": false
+            }
+          ],
+          "payment": "CASH"
+        }
+      ],
+      "expected": "[{\"invoiceCounter\":\"10\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000010\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"0\",\"reasonStated\":\"\",\"totalVatAmount\":\"15.00\",\"totalAmtWoVatCur\":\"137.50\",\"totalAmtWoVatMur\":\"137.50\",\"invoiceTotal\":\"152.50\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"152.50\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-A\",\"itemDesc\":\"Chicken curry\",\"quantity\":\"1\",\"unitPrice\":\"100.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"2\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-D\",\"itemDesc\":\"Bread\",\"quantity\":\"3\",\"unitPrice\":\"12.50\",\"discount\":\"0.00\",\"discountedValue\":\"37.50\",\"amtWoVatCur\":\"37.50\",\"amtWoVatMur\":\"37.50\",\"vatAmt\":\"0.00\",\"totalPrice\":\"37.50\"}],\"salesTransactions\":\"CASH\"},{\"invoiceCounter\":\"11\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000011\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"F9862191756E91D9BA65B287E2851602A2C1C2652C0C34EC12EA4B5D73B437BD\",\"reasonStated\":\"\",\"totalVatAmount\":\"60.00\",\"totalAmtWoVatCur\":\"440.00\",\"totalAmtWoVatMur\":\"440.00\",\"invoiceTotal\":\"500.00\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"500.00\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-B\",\"itemDesc\":\"Fried noodles\",\"quantity\":\"2\",\"unitPrice\":\"200.00\",\"discount\":\"0.00\",\"discountedValue\":\"400.00\",\"amtWoVatCur\":\"400.00\",\"amtWoVatMur\":\"400.00\",\"vatAmt\":\"60.00\",\"totalPrice\":\"460.00\"},{\"itemNo\":\"2\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-E\",\"itemDesc\":\"Milk\",\"quantity\":\"1\",\"unitPrice\":\"40.00\",\"discount\":\"0.00\",\"discountedValue\":\"40.00\",\"amtWoVatCur\":\"40.00\",\"amtWoVatMur\":\"40.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"40.00\"}],\"salesTransactions\":\"CASH\"},{\"invoiceCounter\":\"12\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000012\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"17063CD11DD577B7814A488DE62638C6D8B97E02B78F9F376559757AD2CB9D91\",\"reasonStated\":\"\",\"totalVatAmount\":\"15.00\",\"totalAmtWoVatCur\":\"125.00\",\"totalAmtWoVatMur\":\"125.00\",\"invoiceTotal\":\"140.00\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"140.00\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-C\",\"itemDesc\":\"Soft drink\",\"quantity\":\"2\",\"unitPrice\":\"50.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"2\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-F\",\"itemDesc\":\"Rice 1 kg\",\"quantity\":\"1\",\"unitPrice\":\"25.00\",\"discount\":\"0.00\",\"discountedValue\":\"25.00\",\"amtWoVatCur\":\"25.00\",\"amtWoVatMur\":\"25.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"25.00\"}],\"salesTransactions\":\"CASH\"},{\"invoiceCounter\":\"13\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000013\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"ECD23C11600D9102372A987C61372262B990FB3095E19715655219A3CCD7671B\",\"reasonStated\":\"\",\"totalVatAmount\":\"15.00\",\"totalAmtWoVatCur\":\"137.50\",\"totalAmtWoVatMur\":\"137.50\",\"invoiceTotal\":\"152.50\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"152.50\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-A\",\"itemDesc\":\"Chicken curry\",\"quantity\":\"1\",\"unitPrice\":\"100.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"2\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-D\",\"itemDesc\":\"Bread\",\"quantity\":\"3\",\"unitPrice\":\"12.50\",\"discount\":\"0.00\",\"discountedValue\":\"37.50\",\"amtWoVatCur\":\"37.50\",\"amtWoVatMur\":\"37.50\",\"vatAmt\":\"0.00\",\"totalPrice\":\"37.50\"}],\"salesTransactions\":\"CASH\"},{\"invoiceCounter\":\"14\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000014\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"7C2CBC409531B62DB615B720936CA835C05E00AE06B7D9E0081077DD48686012\",\"reasonStated\":\"\",\"totalVatAmount\":\"60.00\",\"totalAmtWoVatCur\":\"440.00\",\"totalAmtWoVatMur\":\"440.00\",\"invoiceTotal\":\"500.00\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"500.00\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-B\",\"itemDesc\":\"Fried noodles\",\"quantity\":\"2\",\"unitPrice\":\"200.00\",\"discount\":\"0.00\",\"discountedValue\":\"400.00\",\"amtWoVatCur\":\"400.00\",\"amtWoVatMur\":\"400.00\",\"vatAmt\":\"60.00\",\"totalPrice\":\"460.00\"},{\"itemNo\":\"2\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-E\",\"itemDesc\":\"Milk\",\"quantity\":\"1\",\"unitPrice\":\"40.00\",\"discount\":\"0.00\",\"discountedValue\":\"40.00\",\"amtWoVatCur\":\"40.00\",\"amtWoVatMur\":\"40.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"40.00\"}],\"salesTransactions\":\"CASH\"},{\"invoiceCounter\":\"15\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000015\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"45E42C11A47D8730B0DCAB7E60DE14B6F3EA1B3AB2B127AEBB95AB66C38E1E6B\",\"reasonStated\":\"\",\"totalVatAmount\":\"15.00\",\"totalAmtWoVatCur\":\"125.00\",\"totalAmtWoVatMur\":\"125.00\",\"invoiceTotal\":\"140.00\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"140.00\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-C\",\"itemDesc\":\"Soft drink\",\"quantity\":\"2\",\"unitPrice\":\"50.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"2\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-F\",\"itemDesc\":\"Rice 1 kg\",\"quantity\":\"1\",\"unitPrice\":\"25.00\",\"discount\":\"0.00\",\"discountedValue\":\"25.00\",\"amtWoVatCur\":\"25.00\",\"amtWoVatMur\":\"25.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"25.00\"}],\"salesTransactions\":\"CASH\"},{\"invoiceCounter\":\"16\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000016\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"C42BA23CDAEF90EF48EEE9A881AE7E2977D6BFA8BEEACF808F0B559A41230CAA\",\"reasonStated\":\"\",\"totalVatAmount\":\"15.00\",\"totalAmtWoVatCur\":\"137.50\",\"totalAmtWoVatMur\":\"137.50\",\"invoiceTotal\":\"152.50\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"152.50\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-A\",\"itemDesc\":\"Chicken curry\",\"quantity\":\"1\",\"unitPrice\":\"100.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"2\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-D\",\"itemDesc\":\"Bread\",\"quantity\":\"3\",\"unitPrice\":\"12.50\",\"discount\":\"0.00\",\"discountedValue\":\"37.50\",\"amtWoVatCur\":\"37.50\",\"amtWoVatMur\":\"37.50\",\"vatAmt\":\"0.00\",\"totalPrice\":\"37.50\"}],\"salesTransactions\":\"CASH\"},{\"invoiceCounter\":\"17\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000017\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"E1DEFD64DE35D5439DA85EFF24B42B69972D5476FA172F4915DF4704AE2E2BBA\",\"reasonStated\":\"\",\"totalVatAmount\":\"60.00\",\"totalAmtWoVatCur\":\"440.00\",\"totalAmtWoVatMur\":\"440.00\",\"invoiceTotal\":\"500.00\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"500.00\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-B\",\"itemDesc\":\"Fried noodles\",\"quantity\":\"2\",\"unitPrice\":\"200.00\",\"discount\":\"0.00\",\"discountedValue\":\"400.00\",\"amtWoVatCur\":\"400.00\",\"amtWoVatMur\":\"400.00\",\"vatAmt\":\"60.00\",\"totalPrice\":\"460.00\"},{\"itemNo\":\"2\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-E\",\"itemDesc\":\"Milk\",\"quantity\":\"1\",\"unitPrice\":\"40.00\",\"discount\":\"0.00\",\"discountedValue\":\"40.00\",\"amtWoVatCur\":\"40.00\",\"amtWoVatMur\":\"40.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"40.00\"}],\"salesTransactions\":\"CASH\"},{\"invoiceCounter\":\"18\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000018\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"6048BC9E96BE6BF8E60EE21AFBC37EB5E4EE4AC86A23BE27C97B8C836A41F43C\",\"reasonStated\":\"\",\"totalVatAmount\":\"15.00\",\"totalAmtWoVatCur\":\"125.00\",\"totalAmtWoVatMur\":\"125.00\",\"invoiceTotal\":\"140.00\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"140.00\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-C\",\"itemDesc\":\"Soft drink\",\"quantity\":\"2\",\"unitPrice\":\"50.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"2\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-F\",\"itemDesc\":\"Rice 1 kg\",\"quantity\":\"1\",\"unitPrice\":\"25.00\",\"discount\":\"0.00\",\"discountedValue\":\"25.00\",\"amtWoVatCur\":\"25.00\",\"amtWoVatMur\":\"25.00\",\"vatAmt\":\"0.00\",\"totalPrice\":\"25.00\"}],\"salesTransactions\":\"CASH\"},{\"invoiceCounter\":\"19\",\"transactionType\":\"B2C\",\"personType\":\"VATR\",\"invoiceTypeDesc\":\"STD\",\"currency\":\"MUR\",\"invoiceIdentifier\":\"MU-T1-000019\",\"invoiceRefIdentifier\":\"\",\"previousNoteHash\":\"FD1B48F04D5790A7AF93992CCDBEDC9CCE559935D3695A67AE4B2DB34EA58F56\",\"reasonStated\":\"\",\"totalVatAmount\":\"15.00\",\"totalAmtWoVatCur\":\"137.50\",\"totalAmtWoVatMur\":\"137.50\",\"invoiceTotal\":\"152.50\",\"discountTotalAmount\":\"0.00\",\"totalAmtPaid\":\"152.50\",\"dateTimeInvoiceIssued\":\"20261021 14:00:00\",\"seller\":{\"name\":\"Made Up Ltd\",\"tradeName\":\"Made Up\",\"tan\":\"12345678\",\"brn\":\"C07000000\",\"businessAddr\":\"Royal Road, Bel Air\",\"businessPhoneNo\":\"+2302076000\",\"ebsCounterNo\":\"1\",\"cashierID\":\"\"},\"buyer\":{\"name\":\"\",\"tan\":\"\",\"brn\":\"\",\"businessAddr\":\"\",\"buyerType\":\"NVTR\",\"nic\":\"\"},\"itemList\":[{\"itemNo\":\"1\",\"taxCode\":\"TC01\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-A\",\"itemDesc\":\"Chicken curry\",\"quantity\":\"1\",\"unitPrice\":\"100.00\",\"discount\":\"0.00\",\"discountedValue\":\"100.00\",\"amtWoVatCur\":\"100.00\",\"amtWoVatMur\":\"100.00\",\"vatAmt\":\"15.00\",\"totalPrice\":\"115.00\"},{\"itemNo\":\"2\",\"taxCode\":\"TC03\",\"nature\":\"GOODS\",\"productCodeMra\":\"\",\"productCodeOwn\":\"TC1-D\",\"itemDesc\":\"Bread\",\"quantity\":\"3\",\"unitPrice\":\"12.50\",\"discount\":\"0.00\",\"discountedValue\":\"37.50\",\"amtWoVatCur\":\"37.50\",\"amtWoVatMur\":\"37.50\",\"vatAmt\":\"0.00\",\"totalPrice\":\"37.50\"}],\"salesTransactions\":\"CASH\"}]"
+    }
+  ]
+}

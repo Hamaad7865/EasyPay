@@ -11,6 +11,10 @@
 //   node mra/sandbox.cjs send case5     an invoice with a TAN not the seller's, to be refused (test case 5)
 //   node mra/sandbox.cjs send case6     a pro forma (test case 6)
 //   node mra/sandbox.cjs send case7     a training invoice (test case 7)
+//   node mra/sandbox.cjs send probe-chain   a sale chained to an invoice the MRA never saw:
+//                                           does it check previousNoteHash? (phase 2 plan, D2)
+//   node mra/sandbox.cjs send probe-mixed   a real sale: a discount spread over the lines, a kilo
+//                                           line, VAT on top, an add-on, service charge (D3)
 //   node mra/sandbox.cjs forget         after an unanswered send has been checked on the portal
 //
 // It reads .claude/mra/sandbox.env and the MRA public key named there, keeps
@@ -113,6 +117,9 @@ const CASES = {
   case5: { type: 'STD', lines: inv.testCase5Lines, refused: true },
   case6: { type: 'PRF', lines: inv.testCase6Lines },
   case7: { type: 'TRN', lines: inv.testCase7Lines },
+  // the owner's two tests before the till is built (docs/superpowers/plans/2026-10-21-mra-phase-2-till.md)
+  'probe-chain': { type: 'STD', lines: inv.testCase5Lines, chainTo: 'EPTSTD999999' },
+  'probe-mixed': { type: 'STD', lines: () => inv.probeMixed().lines, discount: inv.probeMixed().discount },
 };
 
 async function sendCase(name) {
@@ -134,9 +141,11 @@ async function sendCase(name) {
   // each invoice chained to the one before it, the first to the last of its kind fiscalised
   const invoices = [];
   let previous = state.last[which.type] || null;
+  // probe-chain: the invoice before it is one the MRA never saw, of Rs 1.00, dated now
+  if (which.chainTo) previous = { dateTime: inv.mraDateTime(new Date()), totalAmtPaid: '1.00', brn: c.seller.brn, invoiceIdentifier: which.chainTo };
   for (let i = 0; i < (which.count || 1); i++) {
     const identifier = `EPT${which.type}${String(state.number + 1 + i).padStart(6, '0')}`;
-    const invoice = inv.build({ counter: state.counter + 1 + i, identifier, type: which.type, previous, issuedAt: new Date(), seller, lines: which.lines(i), payment: 'CASH', ref, reason: which.reason });
+    const invoice = inv.build({ counter: state.counter + 1 + i, identifier, type: which.type, previous, issuedAt: new Date(), seller, lines: which.lines(i), payment: 'CASH', ref, reason: which.reason, discount: which.discount || 0 });
     invoices.push(invoice);
     previous = inv.chained(invoice);
   }
@@ -181,7 +190,8 @@ async function sendCase(name) {
     const ok = mine && mine.status === 'SUCCESS';
     const why = [...a.errors, ...(mine ? mine.errors : [])].join('; ') || 'no reason given';
     if (which.refused) console.log(ok ? `${identifier} was fiscalised, but test case 5 expects a refusal` : `${identifier} refused, as test case 5 expects: ${why}`);
-    else console.log(ok ? `${identifier} fiscalised. IRN ${mine.irn}. QR code saved in .claude/mra/out/qr-${identifier}.png` : `${identifier} not fiscalised (${a.status}): ${why}`);
+    else console.log((ok ? `${identifier} fiscalised. IRN ${mine.irn}. QR code saved in .claude/mra/out/qr-${identifier}.png` : `${identifier} not fiscalised (${a.status}): ${why}`)
+      + (mine && mine.warnings.length ? `\nWarnings: ${mine.warnings.join('; ')}` : ''));
   }
 }
 
