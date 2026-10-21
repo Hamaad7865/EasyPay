@@ -205,3 +205,95 @@ their three new columns, with no change to it.
     rest, exchange, scan a printed card;
   - its queue replayed on dev, where the server's balances must equal the tablet's;
   - a restaurant: a table's order with a customer and a split bill.
+
+## 11. Decisions that were mine
+
+The owner approved the design above; these were decided while building it and were not put to them.
+
+- **Where Use points is offered.** Only on a whole bill, before any payment is taken. It is not offered on one
+  check of a split check, on an exchange's new sale, or on a deposit's collection (whose deposit is taken as a
+  payment when Pay opens). Equal or by-amount splits work: the points come off first, and the shares split what
+  is left.
+- **Service charge.** A restaurant's service charge is worked out after discounts, as it always was, so points
+  lower it too. Points are earned on the receipt's total, which includes the service charge and the rounding.
+- **Whole rupees.** A business that shows no decimals earns whole rupees only (Rs 1.50 earned is Rs 1), and the
+  most it can use is rounded down to whole rupees.
+- **Exchanges.** An exchange's new sale takes the original sale's customer when loyalty is on, so a
+  like-for-like swap leaves the balance where it was. The exchange's refund slip prints no balance: the new
+  sale's receipt, printed after it, has the balance after both.
+- **Who the receipt names.** `receipts.customer_id` is written only on a receipt that earned or used points. A
+  sale with a customer and no points keeps its customer on the order only, as before.
+- **Older tills.** A till on an earlier build sends no points: a sale it rings up earns nothing, and a refund it
+  makes takes nothing back. **Every till of a business should be on this build before loyalty is switched on**,
+  which the back office's Loyalty card says.
+- **Cards.**
+  - A card is any text up to 40 characters, scanned or typed; New number makes `EP` and ten digits.
+  - The server never refuses a card another customer holds (two tills apart could give one number); the tablet
+    and the back office refuse it.
+  - A scan looks for a product first and a card after.
+  - On a restaurant's order screen, a card puts the customer on the order that is open. That screen always has
+    one.
+- **The tablet's balance** is the server's from each pull, except while that customer's sale or refund waits to
+  go up, and always on a tablet that works alone.
+
+## 12. What was built and run (2026-10-21)
+
+Commits on `restopos` (not pushed, no tag):
+- `ba42152` the server (0128) and its suite;
+- `570a284` the tablet;
+- `1a258d2` the back office and the replay scripts;
+- `2ee5211` the fix below;
+- `8aae460` the exchange and slip changes.
+
+Run:
+
+- `db/tests/loyalty.test.cjs`: 55 checks on dev, in a transaction rolled back. One of them was written after the
+  replay below found its fault.
+- Run after it, one at a time: `accounts` (61), `credit-notes` (37), `deposits` (82), `retail-till` (49),
+  `retail-till-replay` (90), `till-office` (119, now with the loyalty settings sample), `refund-shares` (17),
+  `refund-snapshots` (18), `review-reasons` (25), `seats-customers` (16), `split-check` (12), `setting-up` (51),
+  `receipt-accept` (8), `vat-included` (4) and `delete-client` (13) all pass. `fk-setnull` fails on three
+  foreign keys of promotions and credit notes (0109, 0110), none of 0128's.
+- The tablet's 720 unit tests. The receipt with points is held by `points-58.json`, which the back office's
+  preview (`papers.test.mjs`) prints the same way.
+- The back office type-checks clean. Its pages were not seen signed in.
+- On `easypay_claude_size` (5598), with its window open:
+  - The debug build installed over the made-up restaurant left on 18 October: Room 31 went to 32 in place, both
+    receipts were kept, and nothing crashed.
+  - Then the made-up shop on the offline plan:
+    - Settings > Loyalty switched on (1%), and the customer Anjali made with a card from New number.
+    - Three mugs (Rs 960, cash) earned 9.60.
+    - A postcard set (Rs 150) used Rs 5 of points on Pay's sheet. The bill came to Rs 145, VAT fell from 19.57
+      to 18.91, it was paid by card and earned 1.45, leaving a balance of 6.05.
+    - One mug refunded took back 3.20.
+    - One mug exchanged for a scarf: the refund half took back 3.20, and the new sale (Rs 590, Rs 270 in cash)
+      earned 5.90.
+    - The last mug refunded settled the remaining 3.20.
+    - The postcard sale refunded gave back 5.00 and took back 1.45.
+    - Anjali's card printed (Code 128 and the number). A scan of it on Sell (`DEMO_SCAN`) put her on the sale,
+      and the gift wrapping (Rs 50) used all her 5.90 and earned 0.44.
+    - Every paper was read off the stand-in printer: Points earned, taken back, given back and the balance were
+      right each time.
+  - The tablet's queue was replayed on dev (`read-till-state` and `replay-demo-outbox`, which now compare
+    points): 26 operations taken. Every receipt's points, the balance, the card and the stock were the tablet's.
+  - **The first replay found a fault**, now fixed: a sale earning points while the balance was below zero was
+    flagged "overspent" with nothing used. The exchange's refund half had taken Anjali to −0.35 a moment before.
+    The same run showed an exchange's new sale starting with no customer (fixed in `8aae460`).
+  - After `8aae460`, installed over the same shop: the scarf exchanged for two mugs. The new sale named Anjali by
+    itself, the refund slip took back 5.90 and printed no balance, the receipt earned 6.40 (balance 0.94), and
+    Use points was not offered. The shop's whole queue (32 operations, 10 receipts with points) replayed: REPLAY
+    PASS.
+  - Then the made-up restaurant on the offline plan:
+    - Loyalty switched on from the side menu's Settings, and Ravi made with a card.
+    - Table 1 (two scarves, Rs 1,180): a scan of his card on the order screen put him on the order, and the sale
+      earned 11.80.
+    - Table 2 (a jacket, Rs 2,950): his card scanned, Use points took off all 11.80, and the bill was split
+      equally between two guests (Rs 1,469.10 each, in cash). One receipt with two payments earned 29.38.
+    - Its queue (16 operations) replayed: REPLAY PASS.
+    - Not run in the restaurant: a split check, where each check is its own receipt (proved on the server, L9).
+
+Not seen:
+- a real printer, a real scanner, or a real tablet;
+- the back office pages behind a sign-in;
+- two connected tablets spending one balance (proved on the server only, L3);
+- a Premium tablet's pull keeping a waiting balance (read in the code, not run).
