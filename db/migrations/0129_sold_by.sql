@@ -1,0 +1,433 @@
+-- 0129: how a shop's product is sold, set by the shop itself (spec
+-- docs/superpowers/specs/2026-10-21-sold-by-the-kilo-design.md).
+-- The till sells by the kilo (items.sold_by = 'weight', 0004) but nothing set it.
+-- - item_holds_stock: whether a product holds stock, in one place.
+-- - push_item_save (live = 0112) reads sold_by: each or weight; not sent, the
+--   unit stays (a till built before this sends none). By the kilo and a price
+--   typed at the sale exclude each other, judged on the unit after the save.
+--   A change of unit is refused (unit-has-stock) while the product counts stock
+--   (after the save) and holds some.
+-- - catalog_import (live = 0081) reads sold_by (each, weight, open: a price typed
+--   at the sale) and count_stock on a row; a row without them imports as before.
+--   New problems: bad-sold-by, bad-count-stock, stock-not-counted,
+--   open-price-not-here, unit-has-stock; price-missing is not raised for open.
+
+create or replace function item_holds_stock(p_tenant uuid, p_item uuid) returns boolean
+language sql stable set search_path = public as $fn$
+  select exists (select 1 from stock_levels where tenant_id = p_tenant and item_id = p_item and qty <> 0)
+      or exists (select 1 from items where tenant_id = p_tenant and id = p_item and coalesce(stock_qty, 0) <> 0)
+$fn$;
+
+CREATE OR REPLACE FUNCTION public.push_item_save(p_tenant uuid, p_emp uuid, p jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_id uuid; v_name text; v_price bigint; v_open boolean; v_cat uuid; v_code text; v_avail boolean;
+  v_was record; v_tax uuid; v_shop boolean; v_appr uuid;
+  v_track boolean;
+  -- the fuller sheet (0094)
+  v_new_tax uuid; v_sup uuid; v_store uuid; v_cost bigint; v_point int; v_qty int;
+  v_reorder boolean; v_may_cost boolean;
+  -- how it is sold (0129): each or weight; null when the till does not say
+  v_sold text; v_unit text;
+begin
+  begin
+    v_id := (p->>'id')::uuid;
+    v_price := coalesce((p->>'price')::bigint, 0);
+    v_cat := nullif(p->>'category_id', '')::uuid;
+    v_open := coalesce((p->>'open_price')::boolean, false);
+    v_avail := coalesce((p->>'available')::boolean, true);
+    -- whether its stock is counted (0087); a till that does not say leaves it as it is
+    v_track := (p->>'track_stock')::boolean;
+    -- how it is sold (0129); a till that does not say leaves it as it is
+    v_sold := nullif(btrim(p->>'sold_by'), '');
+  exception when others then
+    raise exception 'bad-payload';
+  end;
+  -- What the fuller sheet of a till carries (0094). A key that is not there
+  -- changes nothing: a till built before this sends none of them.
+  begin
+    v_new_tax := nullif(p->>'tax_id', '')::uuid;
+    v_sup := nullif(p->>'supplier_id', '')::uuid;
+    v_store := nullif(p->>'store_id', '')::uuid;
+    v_cost := (p->>'cost')::bigint;
+    v_point := (p->>'reorder_point')::int;
+    v_qty := (p->>'reorder_qty')::int;
+  exception when others then
+    raise exception 'bad-payload';
+  end;
+  if v_cost < 0 or v_cost > 100000000 then raise exception 'bad-payload'; end if;
+  if v_sold is not null and v_sold not in ('each', 'weight') then raise exception 'bad-payload'; end if;
+  if v_point < 0 or v_qty < 0 then raise exception 'bad-quantity'; end if;
+  v_name := left(btrim(coalesce(p->>'name', '')), 80);
+  v_code := nullif(regexp_replace(coalesce(p->>'barcode', ''), '\s+', '', 'g'), '');
+  -- Rs 1,000,000 for one item is a slip of the finger, not a price
+  if v_id is null or v_price < 0 or v_price > 100000000 or length(coalesce(v_code, '')) > 64 then raise exception 'bad-payload'; end if;
+  if v_name = '' then raise exception 'name-required'; end if;
+  if not may(p_emp, p, 'items.edit') then raise exception 'forbidden'; end if;
+  -- one whose price is typed at the sale has none of its own
+  if v_open then v_price := 0; end if;
+  if v_cat is not null and not exists (select 1 from categories where tenant_id = p_tenant and id = v_cat and deleted_at is null) then
+    raise exception 'bad-category';
+  end if;
+  if v_new_tax is not null and not exists (select 1 from taxes where tenant_id = p_tenant and id = v_new_tax and deleted_at is null) then
+    raise exception 'bad-tax';
+  end if;
+  if v_sup is not null and not exists (select 1 from suppliers where tenant_id = p_tenant and id = v_sup and deleted_at is null) then
+    raise exception 'unknown-supplier';
+  end if;
+  -- a reorder level is one store's: the till names its own
+  v_reorder := p ? 'reorder_point' or p ? 'reorder_qty';
+  if v_reorder and (v_store is null or not exists (select 1 from stores where tenant_id = p_tenant and id = v_store and deleted_at is null)) then
+    raise exception 'bad-store';
+  end if;
+  -- a cost is written only for someone who may see cost, or with the word of
+  -- someone who may: a sheet that does not show it must not wipe it
+  v_may_cost := p ? 'cost' and may(p_emp, p, 'costs.view');
+  -- the approver is named only when it was the approval that allowed it
+  if not has_perm(p_emp, 'items.edit') then
+    begin v_appr := nullif(p->>'approved_by', '')::uuid; exception when others then v_appr := null; end;
+  end if;
+
+  select id, deleted_at, sold_by, track_stock into v_was from items where id = v_id and tenant_id = p_tenant for update;
+  if found then
+    if v_was.deleted_at is not null then raise exception 'bad-item'; end if;
+    -- its unit after this save (0129): what the till sends, or what it was
+    v_unit := coalesce(v_sold, v_was.sold_by);
+    if v_open and (v_unit = 'weight'
+        or exists (select 1 from item_variants where tenant_id = p_tenant and item_id = v_id and deleted_at is null)) then
+      raise exception 'open-price-not-here';
+    end if;
+    -- a kilo is not a piece: a product that counts stock and holds some keeps
+    -- its unit until it is counted to zero, or no longer counted (0129)
+    if v_unit <> v_was.sold_by and coalesce(v_track, v_was.track_stock) and not v_open
+       and item_holds_stock(p_tenant, v_id) then
+      raise exception 'unit-has-stock';
+    end if;
+    -- a change of price is written down with who made it, as one from item.set_price is
+    perform set_config('app.price_by', p_emp::text, true);
+    perform set_config('app.price_approver', coalesce(v_appr::text, ''), true);
+    update items set name = v_name, price = v_price, open_price = v_open, category_id = v_cat, barcode = v_code, is_available = v_avail,
+        sold_by = v_unit,
+        -- one whose price is typed at the sale is a service, and has no stock to count
+        track_stock = case when v_track is null then track_stock else v_track and not v_open end,
+        sku = case when p ? 'sku' then nullif(left(btrim(p->>'sku'), 60), '') else sku end,
+        brand = case when p ? 'brand' then nullif(left(btrim(p->>'brand'), 60), '') else brand end,
+        supplier_id = case when p ? 'supplier_id' then v_sup else supplier_id end,
+        supplier_code = case when p ? 'supplier_code' then nullif(left(btrim(p->>'supplier_code'), 60), '') else supplier_code end,
+        cost = case when v_may_cost then v_cost else cost end
+      where id = v_id and tenant_id = p_tenant;
+    perform set_config('app.price_by', '', true);
+    perform set_config('app.price_approver', '', true);
+    -- one tax per item: the others are taken off, the chosen one put (back) on
+    if v_new_tax is not null then
+      update item_taxes set deleted_at = now() where tenant_id = p_tenant and item_id = v_id and tax_id <> v_new_tax and deleted_at is null;
+      insert into item_taxes (tenant_id, item_id, tax_id) values (p_tenant, v_id, v_new_tax)
+        on conflict (item_id, tax_id) do update set deleted_at = null;
+    end if;
+    if v_reorder then perform stock_set_reorder(p_tenant, v_store, v_id, v_point, v_qty); end if;
+    -- the add-on groups it carries (0096), when the sheet says
+    if p ? 'groups' then perform item_set_groups(p_tenant, v_id, p->'groups'); end if;
+    -- what it is made of (0112), when the sheet says
+    if p ? 'parts' then perform item_set_parts(p_tenant, v_id, p->'parts'); end if;
+    return jsonb_build_object('item_id', v_id, 'created', false);
+  end if;
+
+  if v_open and v_sold = 'weight' then raise exception 'open-price-not-here'; end if;
+  select business_type = 'retail' into v_shop from tenants where id = p_tenant;
+  v_shop := coalesce(v_shop, false);
+  -- an id that is another client's item stops here on the primary key, and is answered 'conflict'
+  insert into items (id, tenant_id, category_id, name, price, open_price, is_available, barcode, track_stock, sku, brand, supplier_id, supplier_code, cost, sold_by)
+    values (v_id, p_tenant, v_cat, v_name, v_price, v_open, v_avail, v_code, coalesce(v_track, v_shop) and not v_open,
+            nullif(left(btrim(p->>'sku'), 60), ''), nullif(left(btrim(p->>'brand'), 60), ''), v_sup,
+            nullif(left(btrim(p->>'supplier_code'), 60), ''), case when v_may_cost then v_cost end, coalesce(v_sold, 'each'));
+  -- the tax the sheet named, or the usual one
+  v_tax := v_new_tax;
+  if v_tax is null then
+    select id into v_tax from taxes where tenant_id = p_tenant and deleted_at is null order by is_default desc, created_at, id limit 1;
+  end if;
+  if v_tax is not null then
+    insert into item_taxes (tenant_id, item_id, tax_id) values (p_tenant, v_id, v_tax)
+      on conflict (item_id, tax_id) do update set deleted_at = null;
+  end if;
+  if v_shop then perform barcodes_auto(p_tenant, v_id); end if;
+  if v_reorder then perform stock_set_reorder(p_tenant, v_store, v_id, v_point, v_qty); end if;
+  if p ? 'groups' then perform item_set_groups(p_tenant, v_id, p->'groups'); end if;
+    -- what it is made of (0112), when the sheet says
+    if p ? 'parts' then perform item_set_parts(p_tenant, v_id, p->'parts'); end if;
+  return jsonb_build_object('item_id', v_id, 'created', true);
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.catalog_import(p_tenant uuid, p_store uuid, p_emp uuid, p_rows jsonb, p_dry boolean)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_batch uuid := gen_random_uuid();
+  v_zero constant uuid := '00000000-0000-0000-0000-000000000000';
+  v_item uuid; v_cat uuid; v_sup uuid; v_var uuid; v_tax uuid;
+  v_rows int; v_good int;
+  v_products int := 0; v_lines int := 0; v_new_products int := 0; v_new_lines int := 0;
+  v_stock_set int := 0; v_stock_skipped int := 0;
+  v_problems jsonb;
+  v_new_cats jsonb; v_back_cats jsonb; v_new_sups jsonb;
+  p record; r record;
+begin
+  if p_rows is null or jsonb_typeof(p_rows) <> 'array' then raise exception 'bad-rows'; end if;
+  if jsonb_array_length(p_rows) > 5000 then raise exception 'too-many-rows'; end if;
+
+  drop table if exists _imp;
+  create temp table _imp on commit drop as
+    select coalesce((x.r->>'n')::int, x.ord::int) as n,
+           x.ord::int as ord,
+           nullif(btrim(x.r->>'name'), '') as name,
+           nullif(btrim(x.r->>'category'), '') as category,
+           nullif(btrim(x.r->>'brand'), '') as brand,
+           nullif(btrim(x.r->>'supplier'), '') as supplier,
+           nullif(btrim(x.r->>'supplier_code'), '') as supplier_code,
+           nullif(btrim(x.r->>'sku'), '') as sku,
+           nullif(regexp_replace(coalesce(x.r->>'barcode', ''), '\s', '', 'g'), '') as barcode,
+           nullif(btrim(x.r->>'tax'), '') as tax,
+           nullif(btrim(x.r->>'o1'), '') as o1, nullif(btrim(x.r->>'v1'), '') as v1,
+           nullif(btrim(x.r->>'o2'), '') as o2, nullif(btrim(x.r->>'v2'), '') as v2,
+           nullif(btrim(x.r->>'o3'), '') as o3, nullif(btrim(x.r->>'v3'), '') as v3,
+           (x.r->>'price')::bigint as price,
+           (x.r->>'cost')::bigint as cost,
+           (x.r->>'reorder')::int as reorder,
+           (x.r->>'order_qty')::int as order_qty,
+           (x.r->>'stock')::int as stock,
+           -- how it is sold and whether it counts stock (0129); not said: as before
+           nullif(lower(btrim(x.r->>'sold_by')), '') as sold_by,
+           case when jsonb_typeof(x.r->'count_stock') = 'boolean' then (x.r->>'count_stock')::boolean end as count_stock,
+           x.r ? 'count_stock' and jsonb_typeof(x.r->'count_stock') not in ('boolean', 'null') as count_bad,
+           nullif(btrim(x.r->>'bad'), '') as why,
+           null::text[] as names, null::text[] as vals,
+           null::uuid as item_id, null::uuid as variant_id, null::uuid as tax_id
+      from jsonb_array_elements(p_rows) with ordinality as x(r, ord);
+  update _imp set names = array_remove(array[o1, o2, o3], null), vals = array_remove(array[v1, v2, v3], null);
+  -- The checks below look, for every row, at the other rows of its product and
+  -- at the rows with its barcode or its SKU. Without these that is every row
+  -- against every row: 18 seconds for a file of 5,000 (0081).
+  create index on _imp (lower(name));
+  create index on _imp (barcode);
+  create index on _imp (lower(sku));
+  analyze _imp;
+
+  -- the row on its own
+  update _imp set why = 'name-missing' where why is null and name is null;
+  update _imp set why = 'bad-options' where why is null and (
+       (o1 is null) <> (v1 is null) or (o2 is null) <> (v2 is null) or (o3 is null) <> (v3 is null)
+    or (o1 is null and (o2 is not null or o3 is not null)) or (o2 is null and o3 is not null)
+    or (select count(distinct lower(x)) from unnest(names) x) <> coalesce(array_length(names, 1), 0));
+  update _imp set why = 'bad-sold-by' where why is null and sold_by is not null and sold_by not in ('each', 'weight', 'open');
+  update _imp set why = 'bad-count-stock' where why is null and count_bad;
+  -- one whose price is typed at the sale needs none in the file (0129)
+  update _imp set why = 'price-missing' where why is null and ((price is null and sold_by is distinct from 'open') or price < 0);
+  update _imp set why = 'bad-number' where why is null
+     and (cost < 0 or reorder < 0 or order_qty < 0 or stock < 0);
+  -- an opening stock for a product that counts none
+  update _imp set why = 'stock-not-counted' where why is null and coalesce(stock, 0) > 0 and (sold_by = 'open' or count_stock = false);
+  -- a price typed at the sale is not for a product with variants
+  update _imp set why = 'open-price-not-here' where why is null and sold_by = 'open' and coalesce(array_length(vals, 1), 0) > 0;
+  update _imp i set tax_id = (select t.id from taxes t where t.tenant_id = p_tenant and t.deleted_at is null and lower(t.name) = lower(i.tax) limit 1)
+   where i.tax is not null;
+  update _imp set why = 'tax-unknown' where why is null and tax is not null and tax_id is null;
+
+  -- the rows of one product, against each other
+  update _imp i set why = 'options-differ' where why is null and exists (
+    select 1 from _imp o where lower(o.name) = lower(i.name) and o.ord <> i.ord
+       and lower(o.names::text) <> lower(i.names::text));
+  update _imp i set why = 'duplicate-line' where why is null and exists (
+    select 1 from _imp o where lower(o.name) = lower(i.name) and o.ord <> i.ord
+       and lower(o.vals::text) = lower(i.vals::text));
+
+  -- against what the shop already has
+  update _imp i set item_id = (select x.id from items x
+     where x.tenant_id = p_tenant and x.deleted_at is null and lower(x.name) = lower(i.name) order by x.created_at limit 1)
+   where i.name is not null;
+  update _imp i set variant_id = (select v.id from item_variants v
+     where v.tenant_id = p_tenant and v.item_id = i.item_id and v.deleted_at is null
+       and lower(v.option_values::text) = lower(i.vals::text) limit 1)
+   where i.item_id is not null and coalesce(array_length(i.vals, 1), 0) > 0;
+  -- a product that has variants keeps their number of options; a simple one is not given lines by a file while it holds stock
+  update _imp i set why = 'options-differ' where why is null and i.item_id is not null and exists (
+    select 1 from item_variants v where v.tenant_id = p_tenant and v.item_id = i.item_id and v.deleted_at is null)
+    and coalesce(array_length(i.names, 1), 0) <> (select coalesce(array_length(x.option_names, 1), 0) from items x where x.id = i.item_id);
+  update _imp i set why = 'has-stock' where why is null and i.item_id is not null and coalesce(array_length(i.vals, 1), 0) > 0
+    and not exists (select 1 from item_variants v where v.tenant_id = p_tenant and v.item_id = i.item_id and v.deleted_at is null)
+    and (exists (select 1 from items x where x.id = i.item_id and coalesce(x.stock_qty, 0) <> 0)
+      or exists (select 1 from stock_levels l where l.tenant_id = p_tenant and l.item_id = i.item_id and l.qty <> 0));
+
+  -- how an existing product is sold (0129): at the sale is not for one with variants, and
+  -- a kilo is not a piece while it counts stock and holds some
+  update _imp i set why = 'open-price-not-here' where why is null and i.item_id is not null and i.sold_by = 'open'
+    and exists (select 1 from item_variants v where v.tenant_id = p_tenant and v.item_id = i.item_id and v.deleted_at is null);
+  update _imp i set why = 'unit-has-stock' where why is null and i.item_id is not null and i.sold_by in ('each', 'weight')
+    and exists (select 1 from items x where x.id = i.item_id and x.sold_by <> i.sold_by and coalesce(i.count_stock, x.track_stock))
+    and item_holds_stock(p_tenant, i.item_id);
+
+  -- codes: one line each, in the file and in the shop
+  update _imp i set why = 'barcode-twice' where why is null and barcode is not null
+     and (select count(*) from _imp o where o.barcode = i.barcode) > 1;
+  update _imp i set why = 'sku-twice' where why is null and sku is not null
+     and (select count(*) from _imp o where lower(o.sku) = lower(i.sku)) > 1;
+  update _imp i set why = 'barcode-taken' where why is null and barcode is not null and (
+       exists (select 1 from items x where x.tenant_id = p_tenant and x.deleted_at is null and x.barcode = i.barcode
+                 and not (i.variant_id is null and coalesce(array_length(i.vals, 1), 0) = 0 and x.id = coalesce(i.item_id, v_zero)))
+    or exists (select 1 from item_variants v join items x on x.id = v.item_id and x.deleted_at is null
+                where v.tenant_id = p_tenant and v.deleted_at is null and v.barcode = i.barcode and v.id <> coalesce(i.variant_id, v_zero)));
+  update _imp i set why = 'sku-taken' where why is null and sku is not null and (
+       exists (select 1 from items x where x.tenant_id = p_tenant and x.deleted_at is null and lower(x.sku) = lower(i.sku)
+                 and not (i.variant_id is null and coalesce(array_length(i.vals, 1), 0) = 0 and x.id = coalesce(i.item_id, v_zero)))
+    or exists (select 1 from item_variants v join items x on x.id = v.item_id and x.deleted_at is null
+                where v.tenant_id = p_tenant and v.deleted_at is null and lower(v.sku) = lower(i.sku) and v.id <> coalesce(i.variant_id, v_zero)));
+  update _imp i set why = 'too-many-variants' where why is null and coalesce(array_length(i.vals, 1), 0) > 0
+     and (select count(*) from _imp o where lower(o.name) = lower(i.name) and o.variant_id is null)
+       + coalesce((select count(*) from item_variants v where v.tenant_id = p_tenant and v.item_id = i.item_id and v.deleted_at is null), 0) > 200;
+
+  -- a product arrives whole or not at all
+  update _imp i set why = 'product-has-problems' where why is null and exists (
+    select 1 from _imp o where lower(o.name) = lower(i.name) and o.why is not null);
+
+  select count(*), count(*) filter (where why is null) into v_rows, v_good from _imp;
+  select coalesce(jsonb_agg(jsonb_build_object('n', q.n, 'name', q.name, 'why', q.why) order by q.ord), '[]'::jsonb) into v_problems
+    from (select n, ord, name, why from _imp where why is not null order by ord) q;
+  select count(distinct lower(name)), count(distinct lower(name)) filter (where item_id is null),
+         count(*), count(*) filter (where (coalesce(array_length(vals, 1), 0) > 0 and variant_id is null) or (coalesce(array_length(vals, 1), 0) = 0 and item_id is null))
+    into v_products, v_new_products, v_lines, v_new_lines
+    from _imp where why is null;
+
+  -- What the file would add besides products (0081): the categories and the
+  -- suppliers it names that the shop does not have, and the categories it
+  -- would bring back (a category that was removed keeps its name, so a file
+  -- that names it gets it back). Worked out as the import below makes them:
+  -- from the first row of each product that is going in, names compared
+  -- without regard to case, each written the way the first product to name it
+  -- writes it.
+  with firsts as (
+    select distinct on (lower(name)) lower(name) as key, category, supplier from _imp where why is null order by lower(name), ord
+  ), cats as (
+    select distinct on (lower(category)) category as name from firsts where category is not null order by lower(category), key
+  ), sups as (
+    select distinct on (lower(supplier)) supplier as name from firsts where supplier is not null order by lower(supplier), key
+  )
+  select coalesce((select jsonb_agg(x.name order by lower(x.name)) from cats x
+            where not exists (select 1 from categories k where k.tenant_id = p_tenant and lower(k.name) = lower(x.name))), '[]'::jsonb),
+         coalesce((select jsonb_agg(x.name order by lower(x.name)) from cats x
+            where exists (select 1 from categories k where k.tenant_id = p_tenant and lower(k.name) = lower(x.name))
+              and not exists (select 1 from categories k where k.tenant_id = p_tenant and lower(k.name) = lower(x.name) and k.deleted_at is null)), '[]'::jsonb),
+         coalesce((select jsonb_agg(x.name order by lower(x.name)) from sups x
+            where not exists (select 1 from suppliers s where s.tenant_id = p_tenant and lower(s.name) = lower(x.name) and s.deleted_at is null)), '[]'::jsonb)
+    into v_new_cats, v_back_cats, v_new_sups;
+
+  if p_dry then
+    return jsonb_build_object('dry', true, 'rows', v_rows, 'good', v_good, 'products', v_products, 'new_products', v_new_products,
+      'lines', v_lines, 'new_lines', v_new_lines, 'problems', v_problems,
+      'new_categories', v_new_cats, 'revived_categories', v_back_cats, 'new_suppliers', v_new_sups);
+  end if;
+
+  -- the products, each from its first row
+  for p in
+    select distinct on (lower(name)) lower(name) as key, name, category, brand, supplier, supplier_code, tax_id, price, cost, sku, barcode,
+           item_id, names, coalesce(array_length(vals, 1), 0) > 0 as has_lines, sold_by, count_stock
+      from _imp where why is null order by lower(name), ord
+  loop
+    v_cat := null; v_sup := null;
+    if p.category is not null then
+      select id into v_cat from categories where tenant_id = p_tenant and lower(name) = lower(p.category) order by deleted_at nulls first limit 1;
+      if v_cat is null then
+        insert into categories (tenant_id, name, sort_order)
+          values (p_tenant, p.category, (select coalesce(max(sort_order), -1) + 1 from categories where tenant_id = p_tenant))
+          returning id into v_cat;
+      else
+        update categories set deleted_at = null where id = v_cat and deleted_at is not null;
+      end if;
+    end if;
+    if p.supplier is not null then
+      select id into v_sup from suppliers where tenant_id = p_tenant and lower(name) = lower(p.supplier) and deleted_at is null limit 1;
+      if v_sup is null then
+        insert into suppliers (tenant_id, name) values (p_tenant, p.supplier) returning id into v_sup;
+      end if;
+    end if;
+
+    v_item := p.item_id;
+    if v_item is null then
+      insert into items (tenant_id, name, price, cost, category_id, brand, supplier_id, supplier_code, track_stock, is_available, sku, barcode,
+                         sold_by, open_price)
+        values (p_tenant, p.name, case when p.sold_by = 'open' then 0 else p.price end, p.cost, v_cat, p.brand, v_sup, p.supplier_code,
+                case when p.sold_by = 'open' then false else coalesce(p.count_stock, true) end, true,
+                case when p.has_lines then null else p.sku end, case when p.has_lines then null else p.barcode end,
+                case when p.sold_by = 'weight' then 'weight' else 'each' end, p.sold_by is not distinct from 'open')
+        returning id into v_item;
+    else
+      -- a product with lines keeps its own price and cost: the file prices its lines, and a line
+      -- the file does not name must not follow whichever row happened to come first
+      update items set price = case when p.has_lines then price when p.sold_by = 'open' then 0 else p.price end,
+             -- how it is sold and whether it counts stock: only when the file says (0129)
+             sold_by = case when p.sold_by is null then sold_by when p.sold_by = 'weight' then 'weight' else 'each' end,
+             open_price = case when p.sold_by is null then open_price else p.sold_by = 'open' end,
+             track_stock = case when p.sold_by = 'open' then false when p.count_stock is not null then p.count_stock else track_stock end,
+             cost = case when p.has_lines then cost else coalesce(p.cost, cost) end, category_id = coalesce(v_cat, category_id),
+             brand = coalesce(p.brand, brand), supplier_id = coalesce(v_sup, supplier_id), supplier_code = coalesce(p.supplier_code, supplier_code)
+       where tenant_id = p_tenant and id = v_item;
+      if not p.has_lines then
+        update items set sku = coalesce(p.sku, sku), barcode = coalesce(p.barcode, barcode) where tenant_id = p_tenant and id = v_item;
+      end if;
+    end if;
+    -- its one tax: the one the file names, or for a new product the shop's usual one
+    v_tax := coalesce(p.tax_id, case when p.item_id is null then
+      (select id from taxes where tenant_id = p_tenant and deleted_at is null order by is_default desc, rate_bp desc, name limit 1) end);
+    if v_tax is not null then
+      update item_taxes set deleted_at = now() where tenant_id = p_tenant and item_id = v_item and tax_id <> v_tax and deleted_at is null;
+      insert into item_taxes (tenant_id, item_id, tax_id) values (p_tenant, v_item, v_tax)
+        on conflict (item_id, tax_id) do update set deleted_at = null;
+    end if;
+    if p.has_lines then
+      update items set option_names = p.names where tenant_id = p_tenant and id = v_item and coalesce(array_length(option_names, 1), 0) = 0;
+    end if;
+
+    -- its lines
+    for r in select * from _imp where why is null and lower(name) = p.key order by ord loop
+      v_var := r.variant_id;
+      if p.has_lines then
+        if v_var is null then
+          insert into item_variants (tenant_id, item_id, name, price, cost, option_values, sku, barcode)
+            values (p_tenant, v_item, array_to_string(r.vals, ' / '), r.price, r.cost, r.vals, r.sku, r.barcode)
+            returning id into v_var;
+        else
+          update item_variants set price = r.price, cost = coalesce(r.cost, cost), sku = coalesce(r.sku, sku), barcode = coalesce(r.barcode, barcode)
+           where tenant_id = p_tenant and id = v_var;
+        end if;
+      end if;
+      if coalesce(r.stock, 0) > 0 then
+        -- opening stock is for a line that holds nothing and has never moved. Movements alone do
+        -- not say so: deleting all transactions removes them and leaves the quantities.
+        if exists (select 1 from stock_movements m where m.tenant_id = p_tenant and m.item_id = v_item
+                     and coalesce(m.variant_id, v_zero) = coalesce(v_var, v_zero))
+           or exists (select 1 from stock_levels l where l.tenant_id = p_tenant and l.item_id = v_item
+                        and coalesce(l.variant_id, v_zero) = coalesce(v_var, v_zero) and l.qty <> 0)
+           or (v_var is null and exists (select 1 from items x where x.tenant_id = p_tenant and x.id = v_item and coalesce(x.stock_qty, 0) <> 0)) then
+          v_stock_skipped := v_stock_skipped + 1;
+        else
+          perform stock_move(p_tenant, p_store, v_item, v_var, r.stock, 'opening', r.cost, 'import', v_batch, p_emp, 'Imported');
+          v_stock_set := v_stock_set + 1;
+        end if;
+      end if;
+    end loop;
+
+    -- the reorder level, on every line of it, when the file gives one
+    select max(reorder) as point, max(order_qty) as qty into r from _imp where why is null and lower(name) = p.key;
+    if r.point is not null or r.qty is not null then
+      perform stock_set_reorder(p_tenant, p_store, v_item, r.point, r.qty);
+    end if;
+  end loop;
+
+  return jsonb_build_object('dry', false, 'rows', v_rows, 'good', v_good, 'products', v_products, 'new_products', v_new_products,
+    'lines', v_lines, 'new_lines', v_new_lines, 'stock_set', v_stock_set, 'stock_skipped', v_stock_skipped, 'problems', v_problems,
+    'new_categories', v_new_cats, 'revived_categories', v_back_cats, 'new_suppliers', v_new_sups);
+end $function$
+;
