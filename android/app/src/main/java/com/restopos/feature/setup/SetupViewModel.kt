@@ -145,7 +145,7 @@ class SetupViewModel @Inject constructor(
     // made or changed here, by id, laid over the stored ones until the pull has them
     private val newPrinters = MutableStateFlow<Map<String, PrinterEntity>>(emptyMap())
     private val printersNow: Flow<List<PrinterEntity>> = combine(store.flatMapLatest { db.ops().printersFlow(it) }, newPrinters) { all, mine ->
-        val stored = all.filter { it.kind != "screen" } // a kitchen screen prints nothing
+        val stored = all.filter { !com.restopos.core.data.Routing.silent(it.kind) } // a kitchen screen or a customer display prints nothing
         (stored.map { p -> mine[p.id]?.copy(is_receipt = p.is_receipt, is_active = p.is_active) ?: p } + mine.values.filter { m -> stored.none { it.id == m.id } })
             .sortedByDescending { it.is_receipt }
     }

@@ -113,12 +113,13 @@ object Wire {
     fun decodeMark(text: String): WireMark? = runCatching { json.decodeFromString(WireMark.serializer(), text) }.getOrNull()
 
     // A screen's address as the back office keeps it: an IP, or IP:port.
-    fun address(text: String?): Pair<String, Int>? {
+    // `port` when it names none: a kitchen screen's, or a customer display's.
+    fun address(text: String?, port: Int = PORT): Pair<String, Int>? {
         val t = text?.trim().orEmpty()
         if (t.isEmpty()) return null
-        if (!t.contains(':')) return t to PORT
+        if (!t.contains(':')) return t to port
         val host = t.substringBefore(':')
-        val port = t.substringAfter(':').toIntOrNull() ?: return null
-        return if (host.isEmpty() || port !in 1..65535) null else host to port
+        val typed = t.substringAfter(':').toIntOrNull() ?: return null
+        return if (host.isEmpty() || typed !in 1..65535) null else host to typed
     }
 }

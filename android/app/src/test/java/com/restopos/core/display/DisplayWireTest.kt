@@ -1,0 +1,67 @@
+package com.restopos.core.display
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+// What a till and a customer display say to each other: nothing from a
+// stranger, nothing changed on the way, and a newer build still understood.
+class DisplayWireTest {
+    private val code = "DSPLY234"
+    private val picture = Picture(Picture.SALE, "Sale", listOf(PicLine("2", "Burger", "Egg", 24000)), total = 24000)
+    private val req = DisplayRequest(till = "t-1", tillName = "Till 1", display = "Counter", picture = picture, logoHash = "abc", now = 5)
+
+    private fun lines(text: String): Pair<String, String> = text.trimEnd('\n').split('\n').let { it[0] to it[1] }
+
+    @Test
+    fun aSignedRequestIsRead() {
+        val (first, second) = lines(DisplayWire.encode(req, code))
+        assertEquals(req, DisplayWire.decode(first, second, code))
+    }
+
+    @Test
+    fun anotherCodeOrAChangedRequestIsNotRead() {
+        val (first, second) = lines(DisplayWire.encode(req, code))
+        assertNull(DisplayWire.decode(first, second, "KTCHN234"))
+        assertNull(DisplayWire.decode(first.replace("Burger", "Cake"), second, code))
+        assertNull(DisplayWire.decode("not json", com.restopos.core.kitchen.Wire.sign(code, "not json"), code))
+    }
+
+    @Test
+    fun aReplyGoesThereAndBack() {
+        val reply = DisplayReply(ok = false, error = DisplayWire.OTHER_VERSION, build = 33, logoHash = "f00")
+        assertEquals(reply, DisplayWire.decodeReply(DisplayWire.encode(reply).trimEnd('\n')))
+        assertNull(DisplayWire.decodeReply("nonsense"))
+    }
+
+    @Test
+    fun aNewerBuildIsStillUnderstood() {
+        // a key this build does not know, as a later build may send
+        val line = """{"v":1,"till":"t-1","tillName":"Till 1","display":"Counter","picture":{"state":"idle","shine":true},"later":42}"""
+        val read = DisplayWire.decode(line, com.restopos.core.kitchen.Wire.sign(code, line), code)
+        assertNotNull(read)
+        assertEquals(Picture.IDLE, read!!.picture.state)
+    }
+
+    @Test
+    fun aLogoIsComparedByItsHash() {
+        assertEquals("", DisplayWire.hash(null))
+        assertEquals("", DisplayWire.hash(""))
+        val a = DisplayWire.hash("data:image/png;base64,AAAA")
+        assertEquals(16, a.length)
+        assertEquals(a, DisplayWire.hash("data:image/png;base64,AAAA"))
+        assertNotEquals(a, DisplayWire.hash("data:image/png;base64,AAAB"))
+    }
+
+    @Test
+    fun anAddressWithoutAPortIsTheDisplays() {
+        assertEquals("10.0.2.5" to 9311, DisplayWire.address("10.0.2.5"))
+        assertEquals("10.0.2.5" to 9400, DisplayWire.address(" 10.0.2.5:9400 "))
+        assertNull(DisplayWire.address(""))
+        assertNull(DisplayWire.address("10.0.2.5:x"))
+        // the kitchen screen's own default is unchanged
+        assertEquals("10.0.2.5" to 9310, com.restopos.core.kitchen.Wire.address("10.0.2.5"))
+    }
+}

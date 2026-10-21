@@ -106,7 +106,7 @@ class MenuViewModel @Inject constructor(
     val rows: StateFlow<List<MenuRow>> = combine(cat, query) { c, q -> c to q.trim() }
         .flatMapLatest { (c, q) -> combine(db.service().items(c, q), db.service().itemGroups(), cats) { items, groups, cats -> Triple(items, groups, cats) } }
         .map { (items, groups, cats) ->
-            val printers = (session.storeId()?.let { db.ops().printers(it) } ?: emptyList()).filter { !it.is_receipt }.associate { it.id to it.name }
+            val printers = (session.storeId()?.let { db.ops().printers(it) } ?: emptyList()).filter { !it.is_receipt && it.kind != com.restopos.core.data.Routing.DISPLAY }.associate { it.id to it.name }
             val byId = cats.associateBy { it.id }
             val index = cats.mapIndexed { i, c -> c.id to i }.toMap()
             val options = groups.associate { it.item_id to (it.names ?: "") }
@@ -130,7 +130,7 @@ class MenuViewModel @Inject constructor(
     // This store's printers, for the ticks of where a category's orders print (server 0098); a kitchen screen is not one.
     val printers: StateFlow<List<com.restopos.core.database.PrinterEntity>> = flow { emit(session.storeId()) }
         .flatMapLatest { st -> if (st == null) emptyFlow() else db.ops().printersFlow(st) }
-        .map { rows -> rows.filter { it.kind != "screen" && it.deleted_at == null } }
+        .map { rows -> rows.filter { !com.restopos.core.data.Routing.silent(it.kind) && it.deleted_at == null } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // The add-on groups, made and changed from this till (server 0096).

@@ -168,6 +168,32 @@ class RoutingTest {
         assertEquals(listOf("curry", "beer", "platter", "gift card"), Routing.nowhere(order, emptyList(), onePrinter = true))
     }
 
+    // ---- customer displays (server 0129): a tablet that faces the customer ----
+
+    // A display sits among the printers too. It is never paper: not a
+    // ticket's printer, not the receipt printer, not where one printer for
+    // everything prints, and it is called at its own port.
+    @Test
+    fun aDisplayNeverPrints() {
+        val counter = printer("counter", receipt = true, kind = "display", address = "192.168.1.70")
+        val all = listOf(counter, cashier, kitchen)
+        assertEquals(listOf(cashier, kitchen), Routing.paper(all))
+        assertEquals(cashier, Routing.single(all, onePrinter = true))
+        val t = Routing.tickets(listOf("steak" to listOf("counter", "kitchen")), all, onePrinter = false)
+        assertEquals(setOf("kitchen"), t.keys)
+        assertEquals(emptyList<PrinterEntity>(), Routing.screens(all).filter { it.id == "counter" })
+        assertEquals(listOf(kitchen), Routing.stations(listOf(listOf("counter", "kitchen")), all, false))
+        assertEquals("192.168.1.70:9311", Routing.line(counter))
+        assertEquals("192.168.1.70:9400", Routing.line(counter.copy(address = "192.168.1.70:9400")))
+    }
+
+    @Test
+    fun whatPrintsNothing() {
+        assertTrue(Routing.silent("screen"))
+        assertTrue(Routing.silent("display"))
+        listOf("network", "usb", "bluetooth").forEach { assertEquals(false, Routing.silent(it)) }
+    }
+
     // ---- kitchen screens (server 0086): a tablet that shows the orders ----
 
     private fun screen(id: String, all: Boolean = false, on: Boolean = true) = PrinterEntity(

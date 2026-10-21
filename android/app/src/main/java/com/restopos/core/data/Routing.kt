@@ -25,8 +25,14 @@ object Routing {
     // one, and is not one: a tablet that shows the orders. Everything below
     // that prints works on the paper alone, whatever list it is handed, so a
     // screen can never be sent a printer's bytes.
-    fun paper(all: List<PrinterEntity>): List<PrinterEntity> = all.filter { it.kind != SCREEN }
+    fun paper(all: List<PrinterEntity>): List<PrinterEntity> = all.filter { !silent(it.kind) }
     fun screens(all: List<PrinterEntity>): List<PrinterEntity> = all.filter { it.kind == SCREEN }
+
+    // A customer display (server 0129) is kept with the printers too, and is
+    // neither a printer nor a kitchen screen: a tablet that faces the
+    // customer and shows one till's sale. A kind that prints nothing is never
+    // in a list of paper, never the receipt printer, never ticked.
+    fun silent(kind: String): Boolean = kind == SCREEN || kind == DISPLAY
 
     // The one printer that does everything, when the restaurant is set up that
     // way and has a receipt printer. Set that way without one, the categories'
@@ -133,10 +139,11 @@ object Routing {
         // a Bluetooth printer by the name or address it is looked for by (an address has colons of its own)
         else if (p.kind == "bluetooth") "bluetooth:" + p.address?.trim().orEmpty().lowercase()
         else {
-            val port = if (p.kind == SCREEN) 9310 else 9100
+            val port = when (p.kind) { SCREEN -> 9310; DISPLAY -> 9311; else -> 9100 }
             val address = p.address?.trim().orEmpty().lowercase()
             address.substringBefore(':') + ":" + (address.substringAfter(':', port.toString()).toIntOrNull() ?: port)
         }
 
     const val SCREEN = "screen"
+    const val DISPLAY = "display"
 }
