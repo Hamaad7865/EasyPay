@@ -224,19 +224,6 @@ class DisplayModeViewModel @Inject constructor(
     }
 }
 
-// The display's own words, in the till's language (the picture says which).
-private object W {
-    val total get() = L.t("Total", "Total", "Total")
-    val paid get() = L.t("Paid", "Payé", "Peye")
-    val left get() = L.t("Left to pay", "Reste à payer", "Reste pou peye")
-    val change get() = L.t("Your change", "Votre monnaie", "Ou lamonnen")
-    val thanks get() = L.t("Thank you", "Merci", "Mersi")
-    val welcome get() = L.t("Welcome", "Bienvenue", "Byenveni")
-}
-
-// "Rs 1,250.00" with the decimals the business shows
-private fun money(cents: Long, places: Int): String = (if (cents < 0) "-" else "") + "Rs " + Money.plain(Math.abs(cents), places)
-
 @Composable
 fun DisplayModeScreen(vm: DisplayModeViewModel = hiltViewModel(), onBecomeTill: () -> Unit) {
     val shown by vm.shown.collectAsState()
@@ -250,18 +237,10 @@ fun DisplayModeScreen(vm: DisplayModeViewModel = hiltViewModel(), onBecomeTill: 
     var asking by remember { mutableStateOf<String?>(null) }
     // A display is the tablet's one purpose: Back does not leave it.
     BackHandler {}
-    // the words follow the till's language
-    val lang = shown?.lang
-    LaunchedEffect(lang) { if (lang != null) L.lang = lang }
 
     Box(Modifier.fillMaxSize().background(V.Bg).systemBarsPadding()) {
         val p = shown
-        when {
-            p == null -> Waiting(address, code, problem)
-            p.state == Picture.SALE -> Sale(p)
-            p.state == Picture.PAID -> Paid(p, logo)
-            else -> Idle(p, logo)
-        }
+        if (p == null) Waiting(address, code, problem) else CustomerScreen(p, logo)
         if (p != null) problem?.let { T(it, 14.sp, 600, V.RedText, Modifier.align(Alignment.TopCenter).fillMaxWidth().background(V.RedWash).padding(horizontal = 24.dp, vertical = 10.dp), lines = 3) }
         Box(Modifier.align(Alignment.BottomEnd).padding(14.dp)) { IconKey(VI.Gear, 40.dp, onClick = { settings = true }) }
         ToastHost()
@@ -303,115 +282,6 @@ fun DisplayModeScreen(vm: DisplayModeViewModel = hiltViewModel(), onBecomeTill: 
             "Use this tablet as a till instead?", "It stops being a customer display and opens on the sign-in screen.",
             "Yes, make it a till", onNo = { asking = null },
         ) { asking = null; settings = false; vm.becomeTill(onBecomeTill) }
-    }
-}
-
-// Between sales: the business, its logo and the display's message.
-@Composable
-private fun Idle(p: Picture, logo: ImageBitmap?) {
-    Column(Modifier.fillMaxSize().padding(40.dp), verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
-        Logo(logo, 180)
-        if (p.business.isNotBlank()) T(p.business, 44.sp, 800, lines = 2, align = TextAlign.Center, spacing = (-0.8).sp, height = 50.sp)
-        else if (logo == null) Wordmark()
-        val message = p.message.lines().map { it.trim() }.filter { it.isNotEmpty() }
-        if (message.isEmpty()) T(W.welcome, 24.sp, 600, V.Text2)
-        else message.forEach { T(it, 24.sp, 600, V.Text2, lines = 2, align = TextAlign.Center, height = 31.sp) }
-    }
-}
-
-@Composable
-private fun Logo(logo: ImageBitmap?, most: Int) {
-    if (logo == null) return
-    Image(logo, null, Modifier.heightIn(max = most.dp).widthIn(max = (most * 2).dp), contentScale = ContentScale.Fit)
-}
-
-// The sale as it is rung up: the lines, then what they come to. On a tablet
-// on its side the lines are on the left and the figures on the right; held
-// upright, the figures are under the lines.
-@Composable
-private fun Sale(p: Picture) {
-    BoxWithConstraints(Modifier.fillMaxSize().padding(24.dp)) {
-        val wide = maxWidth > maxHeight * 1.1f
-        if (wide) Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-            Lines(p, Modifier.weight(1.35f).fillMaxHeight())
-            Figures(p, Modifier.weight(1f).fillMaxHeight(), wide = true)
-        } else Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            Lines(p, Modifier.weight(1f).fillMaxWidth())
-            Figures(p, Modifier.fillMaxWidth(), wide = false)
-        }
-    }
-}
-
-@Composable
-private fun Lines(p: Picture, modifier: Modifier) {
-    val list = rememberLazyListState()
-    // the newest line is always in view
-    LaunchedEffect(p.lines.size) { if (p.lines.isNotEmpty()) list.animateScrollToItem(p.lines.size - 1) }
-    Column(modifier.clip(RoundedCornerShape(22.dp)).background(V.Panel).border(1.dp, V.Stroke, RoundedCornerShape(22.dp)).padding(horizontal = 26.dp, vertical = 20.dp)) {
-        if (p.title.isNotBlank()) T(p.title, 17.sp, 700, V.Text2, Modifier.padding(bottom = 10.dp))
-        LazyColumn(Modifier.fillMaxSize(), state = list) {
-            itemsIndexed(p.lines) { i, l ->
-                if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(V.RowLine))
-                LineRow(l, p.decimals)
-            }
-        }
-    }
-}
-
-@Composable
-private fun LineRow(l: PicLine, places: Int) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        T(l.qty, 22.sp, 800, modifier = Modifier.width(52.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            T(l.name, 22.sp, 700, lines = 2, height = 28.sp)
-            if (l.detail.isNotBlank()) T(l.detail, 16.sp, 500, V.Text2, lines = 3, height = 21.sp)
-        }
-        T(money(l.amount, places), 22.sp, 700)
-    }
-}
-
-@Composable
-private fun Figures(p: Picture, modifier: Modifier, wide: Boolean) {
-    Column(
-        modifier.clip(RoundedCornerShape(22.dp)).background(V.Panel).border(1.dp, V.Stroke, RoundedCornerShape(22.dp)).padding(horizontal = 26.dp, vertical = 22.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        p.sums.forEach { s -> Figure(s.label, money(s.amount, p.decimals)) }
-        if (wide) Spacer(Modifier.weight(1f))
-        Box(Modifier.fillMaxWidth().height(1.dp).background(V.Stroke))
-        if (p.paid > 0) {
-            Figure(W.total, money(p.total, p.decimals))
-            Figure(W.paid, money(p.paid, p.decimals))
-            Big(W.left, money(p.left, p.decimals))
-        } else Big(W.total, money(p.total, p.decimals))
-    }
-}
-
-@Composable
-private fun Figure(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        T(label, 19.sp, 600, V.Text2, Modifier.weight(1f), lines = 2)
-        T(value, 19.sp, 700)
-    }
-}
-
-@Composable
-private fun ColumnScope.Big(label: String, value: String) {
-    T(label, 20.sp, 700, V.Text2)
-    T(value, 52.sp, 800, spacing = (-1).sp, modifier = Modifier.align(Alignment.End))
-}
-
-// The sale just paid: the change, large, and thanks.
-@Composable
-private fun Paid(p: Picture, logo: ImageBitmap?) {
-    Column(Modifier.fillMaxSize().padding(40.dp), verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
-        Logo(logo, 90)
-        T("${W.total} ${money(p.total, p.decimals)}  ·  ${W.paid} ${money(p.paid, p.decimals)}", 22.sp, 600, V.Text2, lines = 2, align = TextAlign.Center)
-        if (p.change > 0) {
-            T(W.change, 26.sp, 700, V.Text2, Modifier.padding(top = 10.dp))
-            T(money(p.change, p.decimals), 88.sp, 800, V.GreenText, spacing = (-2).sp)
-        }
-        T(W.thanks, 40.sp, 800, modifier = Modifier.padding(top = 10.dp))
     }
 }
 

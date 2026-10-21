@@ -7,7 +7,8 @@ import com.restopos.core.data.Calc
 // reads the order from its database and hands it here.
 object Pictures {
     // The till's words for the figures under the lines, in its language:
-    // filled by the feed from L, plain strings here.
+    // filled by the feed from L, plain strings here. (Version 1 displays
+    // read these as `sums`; version 2 draws its own block from the figures.)
     data class Words(
         val subtotal: String = "Subtotal",
         val service: String = "Service",
@@ -16,34 +17,62 @@ object Pictures {
         val rounding: String = "Rounding",
     )
 
+    // One line as it was rung up: how many (in thousandths), what, its
+    // add-ons and note, what it comes to, and the price of one as charged
+    // and as listed (a shop's line discount charges less than the list).
+    data class Rung(val qty: Int, val name: String, val detail: String, val amount: Long, val unit: Long, val listed: Long?)
+
     // An order being rung up. `totals` is what is still to pay on it, as the
     // order screen works it out (ServiceRepository.dueOf); `vatIncluded` the
     // part of `totals.tax` already inside the prices (the rest is added on
     // top); `paidSoFar` what was paid on it already (a split bill). An order
     // with no lines is nothing to show: the idle screen.
+    //
+    // The figures block always adds up:
+    //   gross − discount + VAT added + service + rounding − paid = left
+    // gross is every line at its listed price; discount is everything taken
+    // off, the lines' discounts and the order's together.
     fun sale(
-        title: String, lines: List<PicLine>, totals: Calc.Totals, vatIncluded: Long, discountName: String?,
+        title: String, rung: List<Rung>, totals: Calc.Totals, vatIncluded: Long, discountName: String?,
         servicePct: Int, paidSoFar: Long, words: Words = Words(), base: Picture = Picture(),
     ): Picture {
-        if (lines.isEmpty()) return idleOf(base)
+        if (rung.isEmpty()) return idleOf(base)
+        val lines = rung.map { r ->
+            // a price raised above the list is no discount: it shows at what it is charged
+            val listed = r.listed?.takeIf { it > r.unit } ?: r.unit
+            val off = if (listed > r.unit && listed > 0) (((listed - r.unit) * 100 + listed / 2) / listed).toInt() else 0
+            PicLine(qty(r.qty), r.name, r.detail, r.amount, price = listed, off = off)
+        }
+        // the line at its listed price: what it comes to, and what its discount took off
+        val gross = rung.sumOf { r -> r.amount + Calc.lineAmount(r.listed?.takeIf { it > r.unit } ?: r.unit, r.qty) - Calc.lineAmount(r.unit, r.qty) }
+        val added = totals.tax - vatIncluded
+        val discount = gross + added + totals.service + totals.rounding - paidSoFar - totals.total
         val sums = ArrayList<PicSum>()
         sums += PicSum(words.subtotal, totals.subtotal)
         if (totals.discount > 0) sums += PicSum(discountName?.takeIf { it.isNotBlank() } ?: "Discount", -totals.discount)
         if (totals.service > 0) sums += PicSum("${words.service} ${pct(servicePct)}", totals.service)
-        val added = totals.tax - vatIncluded
         if (vatIncluded > 0) sums += PicSum(words.vatIncluded, vatIncluded)
         if (added > 0) sums += PicSum(words.vat, added)
         if (totals.rounding != 0L) sums += PicSum(words.rounding, totals.rounding)
         return base.copy(
             state = Picture.SALE, title = title, lines = lines, sums = sums,
             total = totals.total + paidSoFar, paid = paidSoFar, left = totals.total, change = 0,
+            gross = gross, discount = discount, vat = totals.tax, vatAdded = added, service = totals.service, rounding = totals.rounding,
+            quantity = rung.sumOf { (it.qty + 500) / 1000 }.coerceAtLeast(0),
         )
     }
 
-    // The sale just paid: its total, what was handed over (the total and the
-    // change), and the change.
-    fun paid(total: Long, change: Long, base: Picture = Picture()): Picture =
-        idleOf(base).copy(state = Picture.PAID, total = total, paid = total + change.coerceAtLeast(0), change = change.coerceAtLeast(0))
+    // The sale just paid: its lines and figures as they stood (`sale`, the
+    // last picture of it), what was handed over, and the change. Without the
+    // sale's picture, the total alone.
+    fun paid(total: Long, change: Long, sale: Picture? = null, base: Picture = Picture()): Picture {
+        val c = change.coerceAtLeast(0)
+        val from = sale?.takeIf { it.state == Picture.SALE } ?: idleOf(base).copy(gross = total)
+        return from.copy(
+            state = Picture.PAID, total = total, paid = total + c, left = 0, change = c,
+            lang = base.lang, decimals = base.decimals, business = base.business, message = base.message,
+        )
+    }
 
     // Between sales: what the business is, and nothing of the last sale.
     fun idleOf(p: Picture): Picture = Picture(lang = p.lang, decimals = p.decimals, business = p.business, message = p.message)

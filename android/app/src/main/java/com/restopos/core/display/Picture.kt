@@ -15,8 +15,11 @@ import kotlinx.serialization.Serializable
 // business shows them (Money.decimals), `lang` in which words (L.lang).
 
 // One line of the order: "2", "Burger", "Egg", 24000.
+// `price` is the listed price of one and `off` the whole percent a line
+// discount took off it (version 2's table: Price, Disc%); a till before them
+// sends neither, a display before them reads past them.
 @Serializable
-data class PicLine(val qty: String, val name: String, val detail: String = "", val amount: Long)
+data class PicLine(val qty: String, val name: String, val detail: String = "", val amount: Long, val price: Long = 0, val off: Int = 0)
 
 // One figure under the lines, with its words in the till's language:
 // "Subtotal", the discount by its name (taken off, so less than nothing),
@@ -41,6 +44,18 @@ data class Picture(
     val business: String = "",
     // the display's own two lines for between sales, set where it was added
     val message: String = "",
+    // Version 2's figures block, which always adds up:
+    //   gross − discount + vatAdded + service + rounding − paid = left
+    // gross: every line at its listed price; discount: all taken off, the
+    // lines' and the order's; vat: all of it, vatAdded the part on top of
+    // the prices; quantity: how many items.
+    val gross: Long = 0,
+    val discount: Long = 0,
+    val vat: Long = 0,
+    val vatAdded: Long = 0,
+    val service: Long = 0,
+    val rounding: Long = 0,
+    val quantity: Int = 0,
 ) {
     companion object {
         const val IDLE = "idle"

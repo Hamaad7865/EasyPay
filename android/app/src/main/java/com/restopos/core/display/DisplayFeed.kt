@@ -38,6 +38,8 @@ class DisplayFeed @Inject constructor(
 ) {
     // the paid picture, and until when it stays
     private val held = MutableStateFlow<Pair<Picture, Long>?>(null)
+    // the last picture of the sale on the register, which the paid picture keeps
+    @Volatile private var lastSale: Picture? = null
 
     // Something the displays show may have changed: the order on the
     // register, its lines, its discount, or a sale paid. The link sends the
@@ -50,13 +52,14 @@ class DisplayFeed @Inject constructor(
 
     // Pay: a sale has just been paid in full.
     fun paid(total: Long, change: Long, at: Long = System.currentTimeMillis()) {
-        held.value = Pictures.paid(total, change) to at + HOLD_MS
+        held.value = Pictures.paid(total, change, lastSale) to at + HOLD_MS
     }
 
     suspend fun now(at: Long = System.currentTimeMillis()): Picture {
         val settings = PosSettings.parse(db.ops().settings())
         val base = Picture(lang = L.lang, decimals = settings.decimals, business = settings.companyName.ifBlank { session.businessName().orEmpty() })
         val sale = sale(base)
+        if (sale != null) lastSale = sale
         val paid = held.value
         if (paid != null && sale == null && at < paid.second) {
             return paid.first.copy(lang = base.lang, decimals = base.decimals, business = base.business)
@@ -74,8 +77,8 @@ class DisplayFeed @Inject constructor(
         val due = service.dueOf(lines, pct, discount)
         val included = service.vatIncluded(lines, pct, discount)
         val paid = db.receipts().paidForTicket(t.id)
-        val shown = lines.map { PicLine(Pictures.qty(it.line.qty), it.line.name_snapshot, it.detail, it.amount) }
-        return Pictures.sale(title(t), shown, due, included, discount?.name, pct, paid, words(), base)
+        val rung = lines.map { Pictures.Rung(it.line.qty, it.line.name_snapshot, it.detail, it.amount, it.line.unit_price, it.line.list_price) }
+        return Pictures.sale(title(t), rung, due, included, discount?.name, pct, paid, words(), base)
     }
 
     // "Table 4", "Takeaway A-12", "Quick sale C-3"
