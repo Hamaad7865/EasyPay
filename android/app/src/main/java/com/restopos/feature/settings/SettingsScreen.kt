@@ -123,6 +123,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -212,9 +213,19 @@ class SettingsViewModel @Inject constructor(
     fun setPole(p: com.restopos.core.sync.SessionStore.Pole) = viewModelScope.launch { session.setPole(p) }
     fun testPole() = viewModelScope.launch { com.restopos.core.ui.Toaster.say(poleDisplay.test()) }
 
-    // the second screens Android offers for it now, by name
-    fun secondScreens(): List<String> =
-        runCatching { context.getSystemService(android.hardware.display.DisplayManager::class.java).getDisplays(android.hardware.display.DisplayManager.DISPLAY_CATEGORY_PRESENTATION).map { it.name } }.getOrDefault(emptyList())
+    // the second screens Android offers for it, by name, as they are plugged in and out
+    val secondScreens: StateFlow<List<String>> = kotlinx.coroutines.flow.callbackFlow {
+        val dm = context.getSystemService(android.hardware.display.DisplayManager::class.java)
+        fun names() = runCatching { dm.getDisplays(android.hardware.display.DisplayManager.DISPLAY_CATEGORY_PRESENTATION).map { it.name } }.getOrDefault(emptyList())
+        trySend(names())
+        val listener = object : android.hardware.display.DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) { trySend(names()) }
+            override fun onDisplayRemoved(displayId: Int) { trySend(names()) }
+            override fun onDisplayChanged(displayId: Int) {}
+        }
+        dm.registerDisplayListener(listener, android.os.Handler(android.os.Looper.getMainLooper()))
+        awaitClose { dm.unregisterDisplayListener(listener) }
+    }.held(emptyList())
 
     // ---- the scanners added on this tablet (Settings, Scanners) ----
     // A scanner that types what it reads (USB, or Bluetooth as a keyboard)
@@ -1360,7 +1371,7 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
     Panel {
         var first by remember(cableMessage) { mutableStateOf(cableMessage.lines().getOrElse(0) { "" }) }
         var second by remember(cableMessage) { mutableStateOf(cableMessage.lines().getOrElse(1) { "" }) }
-        val screens = remember(cableOn) { vm.secondScreens() }
+        val screens by vm.secondScreens.collectAsState()
         val change = "change how this till is set up"
         Toggle(
             "Show it on a second screen",

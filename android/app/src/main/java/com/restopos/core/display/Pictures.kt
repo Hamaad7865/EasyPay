@@ -28,10 +28,12 @@ object Pictures {
     // top); `paidSoFar` what was paid on it already (a split bill). An order
     // with no lines is nothing to show: the idle screen.
     //
-    // The figures block always adds up:
-    //   gross − discount + VAT added + service + rounding − paid = left
-    // gross is every line at its listed price; discount is everything taken
-    // off, the lines' discounts and the order's together.
+    // The figures block: gross is every line at its listed price; discount is
+    // everything taken off, the lines' discounts and the order's together.
+    // While nothing is paid yet they add up exactly:
+    //   gross − discount + VAT added + service + rounding = left
+    // On a split bill part paid, `left` is what dueOf says of the lines still
+    // to pay, and the earlier receipts held their own service and VAT.
     fun sale(
         title: String, rung: List<Rung>, totals: Calc.Totals, vatIncluded: Long, discountName: String?,
         servicePct: Int, paidSoFar: Long, words: Words = Words(), base: Picture = Picture(),
@@ -43,10 +45,11 @@ object Pictures {
             val off = if (listed > r.unit && listed > 0) (((listed - r.unit) * 100 + listed / 2) / listed).toInt() else 0
             PicLine(qty(r.qty), r.name, r.detail, r.amount, price = listed, off = off)
         }
-        // the line at its listed price: what it comes to, and what its discount took off
-        val gross = rung.sumOf { r -> r.amount + Calc.lineAmount(r.listed?.takeIf { it > r.unit } ?: r.unit, r.qty) - Calc.lineAmount(r.unit, r.qty) }
+        // what each line's discount took off its listed price, and the line at that price
+        val lineOff = rung.sumOf { r -> Calc.lineAmount(r.listed?.takeIf { it > r.unit } ?: r.unit, r.qty) - Calc.lineAmount(r.unit, r.qty) }
+        val gross = rung.sumOf { it.amount } + lineOff
         val added = totals.tax - vatIncluded
-        val discount = gross + added + totals.service + totals.rounding - paidSoFar - totals.total
+        val discount = lineOff + totals.discount
         val sums = ArrayList<PicSum>()
         sums += PicSum(words.subtotal, totals.subtotal)
         if (totals.discount > 0) sums += PicSum(discountName?.takeIf { it.isNotBlank() } ?: "Discount", -totals.discount)
@@ -67,7 +70,8 @@ object Pictures {
     // sale's picture, the total alone.
     fun paid(total: Long, change: Long, sale: Picture? = null, base: Picture = Picture()): Picture {
         val c = change.coerceAtLeast(0)
-        val from = sale?.takeIf { it.state == Picture.SALE } ?: idleOf(base).copy(gross = total)
+        // the sale's lines only when they are this sale's (the same total): never another customer's
+        val from = sale?.takeIf { it.state == Picture.SALE && it.total == total } ?: idleOf(base).copy(gross = total)
         return from.copy(
             state = Picture.PAID, total = total, paid = total + c, left = 0, change = c,
             lang = base.lang, decimals = base.decimals, business = base.business, message = base.message,

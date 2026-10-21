@@ -90,6 +90,14 @@ object DisplayWire {
         return d.joinToString("") { "%02x".format(it) }.take(16)
     }
 
+    // A logo and a picture are never sent in one request: each fits a line
+    // (MAX_LOGO, DisplayPictures.MAX_BYTES), both together may not. The logo
+    // goes first; the picture on the next exchange.
+    fun parcel(logo: String?, poster: Poster?): Pair<String?, Poster?> = if (logo != null && poster != null) logo to null else logo to poster
+
+    // the longest logo sent, as a data URL
+    const val MAX_LOGO = 150_000
+
     // A picture's hash, as for a logo
     fun hash(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }.take(16)

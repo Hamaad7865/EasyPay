@@ -74,4 +74,21 @@ class DisplayWireTest {
         // the kitchen screen's own default is unchanged
         assertEquals("10.0.2.5" to 9310, com.restopos.core.kitchen.Wire.address("10.0.2.5"))
     }
+
+    // A logo at its largest and a picture at its largest each fit the line a
+    // display takes, alone; together they would not, and are never sent so.
+    @Test
+    fun aLogoAndAPictureEachFitAndTravelApart() {
+        val logo = "data:image/png;base64," + "A".repeat(DisplayWire.MAX_LOGO - 22)
+        val poster = Poster("0123456789abcdef", java.util.Base64.getEncoder().encodeToString(ByteArray(DisplayPictures.MAX_BYTES)))
+        // the request's first line, as the display reads it
+        fun line(r: DisplayRequest) = DisplayWire.encode(r, code).lineSequence().first()
+        val limit = com.restopos.core.kitchen.ScreenServer.MAX_LINE
+        assertEquals(true, line(req.copy(logo = logo)).toByteArray().size < limit)
+        assertEquals(true, line(req.copy(poster = poster, posters = listOf(poster.hash))).toByteArray().size < limit)
+        assertEquals(true, line(req.copy(logo = logo, poster = poster)).toByteArray().size > limit)
+        assertEquals(logo to null, DisplayWire.parcel(logo, poster))
+        assertEquals(null to poster, DisplayWire.parcel(null, poster))
+        assertEquals(logo to null, DisplayWire.parcel(logo, null))
+    }
 }

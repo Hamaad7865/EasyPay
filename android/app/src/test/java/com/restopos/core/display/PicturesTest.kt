@@ -17,7 +17,7 @@ class PicturesTest {
     private fun included(lines: List<Calc.Line>, discounts: List<Calc.Discount> = emptyList(), service: Int = 0): Long =
         Calc.totals(lines.map { l -> l.copy(taxes = l.taxes.filter { it.type == "included" }) }, discounts, service).tax
 
-    // gross − discount + VAT added + service + rounding − paid = left
+    // while nothing is paid yet: gross − discount + VAT added + service + rounding = left
     private fun addsUp(p: Picture) = assertEquals(p.left, p.gross - p.discount + p.vatAdded + p.service + p.rounding - p.paid)
 
     @Test
@@ -113,7 +113,19 @@ class PicturesTest {
         assertEquals(24000, p.paid)
         assertEquals(5000, p.left)
         assertEquals(29000, p.total)
-        addsUp(p)
+        assertEquals(0, p.discount)
+    }
+
+    // A table with a service charge, half paid: the discount is still what was
+    // taken off (nothing), never a figure made to balance the block.
+    @Test
+    fun aSplitBillWithServiceShowsNoDiscountOfItsOwn() {
+        val unpaid = listOf(Calc.Line(5000, vat15on))
+        val t = Calc.totals(unpaid, emptyList(), 1000)
+        val p = Pictures.sale("Table 4", listOf(burgers, cola), t, 0, null, 1000, paidSoFar = 30360)
+        assertEquals(0, p.discount)
+        assertEquals(t.total, p.left)
+        assertEquals(t.service, p.service)
     }
 
     @Test
@@ -145,6 +157,16 @@ class PicturesTest {
         assertEquals(21000, p.change)
         assertEquals(0, p.left)
         assertEquals("Star Grill", p.business)
+    }
+
+    // a sale paid before its picture caught up: not the last customer's lines beside this one's change
+    @Test
+    fun paidKeepsTheSaleOnlyWhenItIsThisSale() {
+        val t = Calc.totals(listOf(Calc.Line(5000, emptyList())), emptyList())
+        val earlier = Pictures.sale("Sale", listOf(cola), t, 0, null, 0, 0, base = base)
+        val p = Pictures.paid(29000, 1000, earlier, base)
+        assertEquals(emptyList<PicLine>(), p.lines)
+        assertEquals(29000, p.total)
     }
 
     @Test

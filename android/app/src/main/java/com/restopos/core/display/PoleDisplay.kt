@@ -16,7 +16,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -59,14 +63,21 @@ class PoleDisplay @Inject constructor(
     fun start() {
         if (job?.isActive == true) return
         job = scope.launch {
-            val picture = feed.live().stateIn(this, SharingStarted.Eagerly, null)
-            while (isActive) {
-                val pole = session.pole.first()
-                if (!pole.on) {
+            // the picture is worked out only while the display is switched on: a till without one pays nothing for it
+            session.pole.map { it.on }.distinctUntilChanged().collectLatest { on ->
+                if (!on) {
                     turn.withLock { close() }
                     _status.value = null
-                } else if (System.currentTimeMillis() >= testUntil) picture.value?.let { show(pole, PoleText.bytes(PoleText.lines(it), pole.commands)) }
-                delay(400)
+                    return@collectLatest
+                }
+                coroutineScope {
+                    val picture = feed.live().stateIn(this, SharingStarted.Eagerly, null)
+                    while (isActive) {
+                        val pole = session.pole.first()
+                        if (pole.on && System.currentTimeMillis() >= testUntil) picture.value?.let { show(pole, PoleText.bytes(PoleText.lines(it), pole.commands)) }
+                        delay(400)
+                    }
+                }
             }
         }
     }

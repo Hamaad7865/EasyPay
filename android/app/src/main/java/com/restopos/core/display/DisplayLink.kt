@@ -96,7 +96,7 @@ class DisplayLink @Inject constructor(
     private suspend fun send(d: PrinterEntity, picture: Picture): DisplayReply? = turns.getOrPut(d.id) { Mutex() }.withLock {
         val at = DisplayWire.address(d.address)
         val reply = if (at == null) null else {
-            val logo = PosSettings.parse(db.ops().settings()).logo?.takeIf { it.length <= MAX_LOGO }
+            val logo = PosSettings.parse(db.ops().settings()).logo?.takeIf { it.length <= DisplayWire.MAX_LOGO }
             val hash = DisplayWire.hash(logo)
             val device = session.deviceId()
             val till = device?.let { db.catalog().device(it) }
@@ -104,13 +104,18 @@ class DisplayLink @Inject constructor(
             val shelf = posters.all(d.id)
             val lacking = shelf.firstOrNull { it.hash !in holdsPosters[d.id].orEmpty() && it.hash !in notKept[d.id].orEmpty() }
             if (lacking == null) sentPoster.remove(d.id) else sentPoster[d.id] = lacking.hash
+            // the logo only to a display that holds another one ("" for none); never with a picture in the same request
+            val (sendLogo, sendPoster) = DisplayWire.parcel(
+                if (holds[d.id] != hash) logo.orEmpty() else null,
+                lacking?.let { Poster(it.hash, java.util.Base64.getEncoder().encodeToString(it.jpeg)) },
+            )
+            if (sendPoster == null) sentPoster.remove(d.id)
             val request = DisplayRequest(
                 till = device.orEmpty(), tillName = till?.name ?: "Till", display = d.name,
                 picture = picture.copy(message = d.message.orEmpty()),
-                // the logo only to a display that holds another one ("" for none)
-                logo = if (holds[d.id] != hash) logo.orEmpty() else null, logoHash = hash, now = System.currentTimeMillis(),
+                logo = sendLogo, logoHash = hash, now = System.currentTimeMillis(),
                 posters = shelf.map { it.hash },
-                poster = lacking?.let { Poster(it.hash, java.util.Base64.getEncoder().encodeToString(it.jpeg)) },
+                poster = sendPoster,
             )
             val payload = DisplayWire.encode(request, d.pair_code.orEmpty())
             withContext(Dispatchers.IO) { runCatching { ScreenClient.exchange(at.first, at.second, payload) }.getOrNull() }?.let { DisplayWire.decodeReply(it) }
@@ -148,7 +153,5 @@ class DisplayLink @Inject constructor(
         // with no display facing this till, how long before it looks again
         const val LOOK_AGAIN = 15_000L
         const val GATHER_MS = 120L
-        // a logo larger than this is not sent (a display takes a line of at most 256 KB)
-        const val MAX_LOGO = 150_000
     }
 }
