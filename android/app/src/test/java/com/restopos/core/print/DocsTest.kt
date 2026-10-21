@@ -365,6 +365,31 @@ class DocsTest {
         assertTrue(all.any { it.startsWith("Signature") })
     }
 
+    // A day the till closed by itself (AutoClose): nobody closed it and nobody
+    // counted, so the Z says so in place of a count and a difference, and how
+    // many unpaid orders went on into the next day.
+    @Test
+    fun aDayClosedAutomaticallySaysTheDrawerWasNotCounted() {
+        val z = ZDoc(
+            9, "T1", 1_790_000_000_000, 1_790_000_300_000, null, 6, 250000, 0, 0, 0, 32609,
+            listOf(DocAmount("Cash", 250000, 6)), emptyList(), emptyList(), 0, 0, emptyList(), "S1-T1-000113", "S1-T1-000118",
+            openedAt = 1_790_000_000_000, openedBy = "Asha", float = 100000, cashTaken = 250000, expected = 350000, auto = true, carried = 2,
+        )
+        val all = read(Docs.z(z, shop, Paper(48, 3, true), 2, detailed = true)).lines
+        assertTrue(all.any { it.startsWith("Closed by") && it.endsWith("Automatically") })
+        assertTrue(all.any { it.startsWith("Orders carried over") && it.endsWith("2") })
+        assertTrue(all.any { it.startsWith("Expected in drawer") && it.endsWith("3,500.00") })
+        assertTrue(all.any { it.startsWith("NOT COUNTED") })
+        assertFalse(all.any { it.startsWith("COUNTED") })
+        assertFalse(all.any { it.startsWith("Difference") || it.startsWith("SHORT") || it.startsWith("OVER") })
+        assertFalse(all.any { it.startsWith("Signature") })
+        // a till with no days: no drawer, but who closed it and what was carried
+        val noDays = read(Docs.z(z.copy(openedAt = null, float = null, cashTaken = null, expected = null), shop, Paper(48, 3, true), 2, detailed = true)).lines
+        assertFalse(noDays.any { it.contains("CASH DRAWER") })
+        assertTrue(noDays.any { it.startsWith("Closed by") && it.endsWith("Automatically") })
+        assertTrue(noDays.any { it.startsWith("Orders carried over") })
+    }
+
     // The day so far, from the drawer's side, is the X report; once the day
     // is closed the same figures are its cash drawer report.
     @Test

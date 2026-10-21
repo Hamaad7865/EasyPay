@@ -281,6 +281,11 @@ data class ZDoc(
     val deposits: DepositFigures = DepositFigures(),
     // a shop's customer accounts (0114); nothing prints while there were none
     val accounts: AccountFigures = AccountFigures(),
+    // closed by the till itself at the time the business set (AutoClose):
+    // nobody closed it and nobody counted the drawer
+    val auto: Boolean = false,
+    // orders still unpaid when it closed, which went on into the next day
+    val carried: Int = 0,
 )
 
 // Who the restaurant is on paper, and the notes around the receipt.
@@ -605,7 +610,7 @@ object Docs {
         }
         p.row("From", d.from?.let { stamp(it) } ?: "first sale")
         p.row("To", stamp(d.to))
-        d.closedBy?.let { p.row("Closed by", it) }
+        if (d.auto) p.row("Closed by", "Automatically") else d.closedBy?.let { p.row("Closed by", it) }
         if (d.firstNumber != null && d.lastNumber != null) { p.row("First bill", d.firstNumber); p.row("Last bill", d.lastNumber) }
         p.rule()
         p.row("Receipts", d.sales.toString())
@@ -621,6 +626,7 @@ object Docs {
             p.row("No-shows, unpaid (${d.noShows.size})", n(d.noShows.sumOf { it.amount }))
             if (detailed) d.noShows.forEach { p.row("  ${it.name}", n(it.amount)) }
         }
+        if (d.carried > 0) p.row("Orders carried over", d.carried.toString())
         p.rule()
         p.bold(true).line("BY PAYMENT METHOD").bold(false)
         d.payments.forEach { p.row("${it.name} (${it.count})", n(it.amount)) }
@@ -644,8 +650,8 @@ object Docs {
         p.row("Cash in", n(d.cashIn))
         p.row("Cash out", off(d.cashOut, decimals))
         d.moves.forEach { m -> p.row("  ${if (m.type == "in") "In" else "Out"}: ${m.reason ?: ""}${m.user?.let { " ($it)" } ?: ""}", n(m.amount)) }
-        // the drawer, counted to close the day
-        if (d.expected != null && d.counted != null) {
+        // the drawer, counted to close the day; or not, when the day closed by itself
+        if (d.expected != null && (d.counted != null || d.auto)) {
             p.rule()
             p.bold(true).line("CASH DRAWER").bold(false)
             d.float?.let { p.row("Opening float", n(it)) }
@@ -653,11 +659,16 @@ object Docs {
             if (d.deposits.cash != 0L) p.row("Deposit cash", n(d.deposits.cash))
             if (d.accounts.cash != 0L) p.row("Account payments cash", n(d.accounts.cash))
             p.row("Expected in drawer", n(d.expected))
-            p.bold(true).row("COUNTED", "Rs " + n(d.counted)).bold(false)
-            val diff = d.counted - d.expected
-            p.bold(true).row(if (diff == 0L) "Difference" else if (diff < 0) "SHORT" else "OVER", n(diff)).bold(false)
-            p.feed(2)
-            p.line("Signature: " + "_".repeat((paper.columns - 11).coerceAtLeast(4)))
+            if (d.counted == null) {
+                p.bold(true).line("NOT COUNTED").bold(false)
+                p.line("The day closed by itself.")
+            } else {
+                p.bold(true).row("COUNTED", "Rs " + n(d.counted)).bold(false)
+                val diff = d.counted - d.expected
+                p.bold(true).row(if (diff == 0L) "Difference" else if (diff < 0) "SHORT" else "OVER", n(diff)).bold(false)
+                p.feed(2)
+                p.line("Signature: " + "_".repeat((paper.columns - 11).coerceAtLeast(4)))
+            }
         }
         p.end(paper)
         return p.bytes()
