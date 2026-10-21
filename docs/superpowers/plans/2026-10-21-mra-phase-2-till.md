@@ -29,7 +29,9 @@ guide v1.3 and data structure v1.3.4 (in `.claude/mra/`, private).
 
 **D1. How the till gets the MRA's public key and address.** The till seals the login with the MRA's public key,
 the `.crt` from the portal. It is in `.claude/mra/`, and nothing from there is committed. The guide also warns
-that the certificate gets renewed, and the production address is not known yet (question 2 to the MRA).
+that the certificate gets renewed. (The MRA is not asked anything: the owner, 2026-10-21. The live address is
+the guide's own, `vfisc.mra.mu`, unless the portal shows another when a client's EBS goes live; the field below
+covers a change.)
 
 - **(a) From our server (recommended).** `/admin` gets one field for the MRA address and the certificate, for
   every client. The tills receive both with their settings. A new certificate needs no app update. Nothing is
@@ -1433,17 +1435,23 @@ Not covered by this run, and said so:
 
 - a real printer (the stand-in printer gives text, not the QR's dots);
 - a phone reading the printed QR (the zxing test stands in);
-- production, whose address and certificate are unknown.
+- production: the first live client's first invoice must come back `environment: LIVE` (the TEST-or-LIVE check
+  of 0.9.24 says so on the till and in `/admin`).
 
 ---
 
-## Questions this plan adds for the MRA
+## Open points, settled without asking the MRA
 
-8. Does the MRA check `previousNoteHash` against what it holds, and what happens to the invoices after one it
-   refused?
-9. May `quantity` have decimals (0.250 kg), and is `unitPrice` checked against quantity x price?
-10. Is a service charge TC03 or TC06, and how is cash rounding shown?
-11. May the same `invoiceIdentifier` appear for a TRN and later an STD of the same EBS?
+The owner, 2026-10-21: "No we wont email MRA because many companies did it without interacting with them". What
+this plan had listed as questions is settled by what the sandbox answered and by our own choices:
+
+8. The hash chain: the sandbox fiscalised an invoice chained to one it never saw (probe-chain), so the till chains
+   to the last invoice it issued. Case 5 still goes last in Test Drive, as a precaution.
+9. Quantities with decimals (0.25 kg), with `unitPrice` the price of one: fiscalised with no warning (probe-mixed,
+   and S1-T1-000008 from the till).
+10. A service charge is an exempt SERVICES line, TC03 (fiscalised in probe-mixed); the owner's accountant may say
+    TC06. Cash rounding is left out of the invoice.
+11. Training identifiers are `TRN` + the counter, so a TRN never shares a number with a later STD.
 
 ---
 
