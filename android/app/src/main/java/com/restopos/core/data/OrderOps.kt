@@ -75,8 +75,20 @@ class OrderOps @Inject constructor(
     private val kitchen: Kitchen,
     private val service: ServiceRepository,
     private val screens: com.restopos.core.kitchen.ScreenLink,
+    private val mra: com.restopos.core.mra.MraIssuer,
+    private val mraSender: com.restopos.core.mra.MraSender,
     @ApplicationContext private val context: Context,
 ) {
+    // What a receipt says of the MRA as it prints now: its QR code, or Not Yet
+    // Fiscalised; nothing for one that never went to the MRA.
+    private suspend fun fiscalOf(receiptId: String) = com.restopos.core.mra.MraQrPng.fiscal(db.mra().byReceipt(receiptId))
+
+    // A Premium MRA client's paper waits for the MRA, about 10 seconds at most
+    // (the guide's 9.1), so that it prints with its QR code.
+    private suspend fun waitForMra(receiptId: String) {
+        val e = db.mra().byReceipt(receiptId) ?: return
+        if (e.status == "waiting" || e.status == "unsure") runCatching { mraSender.sendNow() }
+    }
     private fun op(type: String, payload: JsonObject) = OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
 
     // Send: what the kitchen has not had yet goes onto the kitchen display as
@@ -172,8 +184,10 @@ class OrderOps @Inject constructor(
                 val types = db.ops().allPaymentTypes().associateBy { it.id }
                 val drawer = db.receipts().payments(refund.id).any { types[it.payment_type_id]?.opens_drawer == true }
                 val slip = docs.decode(refund.doc)
+                // the credit note goes to the MRA before its new sale, as it was issued
+                waitForMra(refund.id)
                 if (slip != null && printing.receiptPrinter() != null) {
-                    docs.print(slip, drawer).onFailure { printing.report(it.message ?: "The refund slip did not print") }
+                    docs.print(slip.copy(fiscal = fiscalOf(refund.id)), drawer).onFailure { printing.report(it.message ?: "The refund slip did not print") }
                 }
                 paid(sale, false)
                 // the credit note, after the receipt: the customer leaves with both
@@ -197,7 +211,8 @@ class OrderOps @Inject constructor(
     private suspend fun paid(r: ReceiptEntity, perGuest: Boolean) {
         val types = db.ops().allPaymentTypes().associateBy { it.id }
         val drawer = db.receipts().payments(r.id).any { types[it.payment_type_id]?.opens_drawer == true }
-        val doc = docs.decode(r.doc ?: db.ops().receipt(r.id)?.doc)
+        waitForMra(r.id)
+        val doc = docs.decode(r.doc ?: db.ops().receipt(r.id)?.doc)?.copy(fiscal = fiscalOf(r.id))
         if (doc != null && printing.receiptPrinter() != null) {
             if (perGuest && doc.payments.size >= 2) {
                 doc.payments.forEachIndexed { i, pay ->
@@ -269,7 +284,8 @@ class OrderOps @Inject constructor(
     suspend fun reprint(receiptId: String, approver: StaffMember? = null): Result<Unit> = runCatching {
         staff.allow("receipts.reprint", "print a receipt again", approver)
         val r = db.ops().receipt(receiptId) ?: error("That receipt is not on this tablet")
-        docs.print(marked(r, docFor(r), reprint = true)).getOrThrow()
+        // with its QR code, when the MRA answered since it was first printed
+        docs.print(marked(r, docFor(r), reprint = true).copy(fiscal = fiscalOf(r.id))).getOrThrow()
     }
 
     // What a receipt says about itself when it is printed again or looked at
@@ -289,7 +305,7 @@ class OrderOps @Inject constructor(
     // permission: it is the same sale, still on the screen.
     suspend fun printCopy(receiptId: String): Result<Unit> = runCatching {
         val r = db.ops().receipt(receiptId) ?: error("That receipt is not on this tablet")
-        docs.print(docFor(r)).getOrThrow()
+        docs.print(docFor(r).copy(fiscal = fiscalOf(r.id))).getOrThrow()
     }
 
     // The receipt as plain text, to send by e-mail or message.
@@ -533,6 +549,21 @@ class OrderOps @Inject constructor(
             service_charge = parts?.svc ?: orig.service_charge, rounding = parts?.rnd ?: orig.rounding, total = amount, device_time = now, doc = docs.encode(doc),
             customer_id = if (pointsMoved) orig.customer_id else null, points_earned = -pointsTaken, points_used = -pointsBack,
         )
+        // A Premium MRA client's refund is made into its credit note here (a
+        // training one into a training invoice), before anything is written.
+        // A refund of the whole sale is the sale's own lines again.
+        val whole = back != null && shares != null && back.size == shares.size && back.all { (s, q) -> (done[s.line.id] ?: 0) == 0 && q == s.line.qty }
+        val invoice = mra.refund(
+            settings, device, storeRow, id, number, now, orig.id, orig.number, orig.discount_total, orig.service_charge, sold,
+            back?.map { (s, q) -> Triple(s.line.id, q, RefundCalc.parts(s, done[s.line.id] ?: 0, q)) }, whole || back == null, reason,
+            listOfNotNull(
+                if (offBill > 0) "account" to offBill else null, if (toExchange > 0) "exchange" to toExchange else null,
+                if (toNote > 0) "credit_note" to toNote else null, if (rest > 0) type.kind to rest else null,
+            ),
+            staff.current.value?.employee?.name,
+        )
+        if (invoice is com.restopos.core.mra.MraIssuer.Refused) error(invoice.why)
+        val issued = invoice as? com.restopos.core.mra.MraIssuer.Ready
         // a tablet that is setting up writes down what comes back on the shelf, for Go live
         val trial = db.tryingOut(session)
         db.withTransaction {
@@ -560,7 +591,8 @@ class OrderOps @Inject constructor(
             if (note != null && noteType != null) {
                 db.notes().upsert(listOf(CreditNoteEntity(note.id, tenant, store, deviceId, noteNumber, toNote, toNote, id, note.customerId, note.validTo, issued_by = staff.id(), created_at = now)))
             }
-            db.catalog().upsertDevices(listOf(device.copy(last_receipt_seq = seq)))
+            db.catalog().upsertDevices(listOf((issued?.device ?: device).copy(last_receipt_seq = seq)))
+            issued?.let { db.mra().insert(it.entity) }
             db.outbox().enqueue(op("refund.create", buildJsonObject {
                 put("id", id); put("refund_of", orig.id); put("store_id", store); put("device_id", deviceId)
                 put("number", number); put("device_seq", seq); put("reason", reason.trim())
@@ -586,10 +618,22 @@ class OrderOps @Inject constructor(
                     put("customer_id", orig.customer_id!!); put("taken", pointsTaken); put("back", pointsBack)
                 })
             }))
+            issued?.let { db.outbox().enqueue(op("mra.record", com.restopos.core.mra.MraIssue.record(it.entity))) }
         }
         if (!quiet) {
             pushNow(context)
-            docs.print(doc, openDrawer = type.opens_drawer && (rest > 0 || offBill == 0L)).onFailure { printing.report(it.message ?: "The refund slip did not print") }
+            val drawer = type.opens_drawer && (rest > 0 || offBill == 0L)
+            if (issued == null) {
+                docs.print(doc, openDrawer = drawer).onFailure { printing.report(it.message ?: "The refund slip did not print") }
+            } else {
+                // a credit note waits for the MRA, up to about 10 seconds: behind, not holding the screen
+                printing.scope.launch {
+                    runCatching {
+                        waitForMra(id)
+                        docs.print(doc.copy(fiscal = fiscalOf(id)), openDrawer = drawer).onFailure { printing.report(it.message ?: "The refund slip did not print") }
+                    }
+                }
+            }
         }
         refund
     }

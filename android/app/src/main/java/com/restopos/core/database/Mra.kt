@@ -43,6 +43,9 @@ data class MraInvoiceEntity(
     val response_id: String? = null,
 )
 
+// a document's identifier and where it stands
+data class MraIdStatus(val identifier: String, val status: String)
+
 // What waits, and what went wrong, for Settings, MRA and the banner.
 data class MraCounts(val waiting: Int, val check: Int, val refused: Int, val oldestWaiting: Long?, val lastFiscalised: Long?)
 
@@ -57,6 +60,8 @@ interface MraDao {
     // what is still to send, oldest first
     @Query("SELECT * FROM mra_invoices WHERE status IN ('waiting', 'unsure') ORDER BY counter LIMIT :limit")
     suspend fun waiting(limit: Int): List<MraInvoiceEntity>
+
+    @Query("SELECT identifier, status FROM mra_invoices WHERE identifier IN (:ids)") suspend fun statusOf(ids: List<String>): List<MraIdStatus>
 
     // the last of a type this till issued, for the next one's hash
     @Query("SELECT * FROM mra_invoices WHERE type = :type ORDER BY counter DESC LIMIT 1") suspend fun lastOfType(type: String): MraInvoiceEntity?

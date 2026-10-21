@@ -97,6 +97,17 @@ data class AccountDoc(
     val balance: Long,
 )
 
+// What a Premium MRA client's paper says of the MRA (its guide 8.1.13, 8.1.14):
+// the QR code it sent back, made 2 x 2 cm (core/mra/MraQr), or "Not Yet
+// Fiscalised" until it has answered; and whether it went as a training
+// invoice. Never kept with the receipt: read again each time it prints, so a
+// reprint after a late answer has the QR code.
+sealed interface Fiscal {
+    val training: Boolean
+    class Qr(val r: Raster, override val training: Boolean) : Fiscal
+    data class NotYet(override val training: Boolean) : Fiscal
+}
+
 @Serializable
 data class ReceiptDoc(
     val kind: String = "receipt", // receipt | bill | refund
@@ -144,6 +155,7 @@ data class ReceiptDoc(
     val pointsTaken: Long? = null,
     val pointsBack: Long? = null,
     val pointsBalance: Long? = null,
+    @kotlinx.serialization.Transient val fiscal: Fiscal? = null,
 )
 
 @Serializable

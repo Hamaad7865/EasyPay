@@ -97,6 +97,8 @@ private fun what(type: String): String = when (type) {
     "account.pay" -> "Payment on a customer account"
     "drawer.count" -> "Drawer count"
     "timeclock.punch" -> "Clock in or out"
+    "mra.record" -> "What was sent to the MRA"
+    "mra.status" -> "This till's connection to the MRA"
     else -> type
 }
 
@@ -124,6 +126,9 @@ private fun why(code: String?): String = when (code) {
     "bad-store" -> "This till's store is not known to the server."
     "bad-payload" -> "The server did not understand it. Check that the till is up to date."
     "not-premium" -> "Bookings and the kitchen screen are Premium, and this business is not Premium on the server. Ask EasyPay."
+    "mra-no-correction" -> "This business sends its sales to the MRA, which holds how each was paid: a payment type is not corrected. Refund the sale and ring it up again."
+    "bad-mra-record" -> "The server did not take this till's MRA record: the till may not be this business's on the server. What was sent to the MRA stands."
+    "mra-record-fixed" -> "The server already holds this invoice to the MRA as it was first sent, and keeps it so."
     "unknown-op" -> "The server is older than this till and does not know this kind of change yet. Contact EasyPay."
     "error", null -> "The server could not process it."
     else -> code

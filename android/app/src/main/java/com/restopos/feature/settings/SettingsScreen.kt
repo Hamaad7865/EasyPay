@@ -299,6 +299,8 @@ class SettingsViewModel @Inject constructor(
     val retail: StateFlow<Boolean?> = db.ops().settingsFlow().map<String?, Boolean?> { PosSettings.parse(it).retail }.held(null)
     // the restaurant's plan carries the kitchen display and bookings (server 0085)
     val premium: StateFlow<Boolean> = db.ops().settingsFlow().map { PosSettings.parse(it).premium }.held(false)
+    // the business is on the MRA, or moving to it: Settings shows MRA
+    val mra: StateFlow<Boolean> = db.ops().settingsFlow().map { PosSettings.parse(it).mra != "off" }.held(false)
     // guests order from the code on their table: the back office's switch is on (core/guest)
     val tableOrdering: StateFlow<Boolean> = db.ops().settingsFlow().map { PosSettings.parse(it).tableOrdering }.held(false)
 
@@ -521,8 +523,14 @@ private enum class Page(val label: String) {
     Till("This till"), Notices("Notifications"), Cash("Cash drawer"), Reports("Reports"), Payments("Payments"),
     // what the business is set up with, as its back office sets it (server 0094 on)
     Taxes("Taxes"), Discounts("Discounts"), Staff("Staff"), Roles("Roles"), Receipt("Receipt"), Deposits("Deposits"), Accounts("Accounts"), Loyalty("Loyalty"),
-    Printers("Printers"), Labels("Label printer"), Scanners("Scanners"), Display("Display"), Support("Support"), Help("Help"),
+    Printers("Printers"), Labels("Label printer"), Scanners("Scanners"), Display("Display"),
+    // a Premium MRA client's: the till's own MRA login (server 0132)
+    Mra("MRA"),
+    Support("Support"), Help("Help"),
 }
+
+// a stamped page: the MRA's e-invoice
+private const val MRA_ICON = "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h4"
 
 // a scanner's frame with a barcode in it, as on the scan key
 private const val SCAN_ICON = "M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 9v6M11 9v6M13.500 9v6M16 9v6"
@@ -554,6 +562,7 @@ private fun icon(p: Page): String = when (p) {
     Page.Labels -> VI.Tag
     Page.Scanners -> SCAN_ICON
     Page.Display -> VI.Sun
+    Page.Mra -> MRA_ICON
     Page.Support -> VI.Help
     Page.Help -> VI.Orders
 }
@@ -659,7 +668,8 @@ fun SettingsScreen(
 
     Box(Modifier.fillMaxSize().background(V.Bg)) {
         Row(Modifier.fillMaxSize()) {
-            Menu(page, lock, standing.isNotEmpty() || notices.isNotEmpty(), printerTrouble, shop, onPick = { page = it }, onLock = onLock)
+            val mraShown by vm.mra.collectAsState()
+            Menu(page, lock, standing.isNotEmpty() || notices.isNotEmpty(), printerTrouble, shop, mraShown, onPick = { page = it }, onLock = onLock)
             // each page starts at its own top
             key(page) {
                 Column(
@@ -688,6 +698,8 @@ fun SettingsScreen(
                             Page.Labels -> LabelPrinterPage()
                             Page.Scanners -> ScannersPage(vm, retail == true)
                             Page.Display -> DisplayPage(vm, retail)
+                            // managers only: those who may set the till up
+                            Page.Mra -> MraSettingsPage(vm.can("settings.device"), { then -> vm.guard("settings.device", "change the MRA login", then) })
                             Page.Support -> SupportPage(vm, shop, network, onSignIn, onRejected, onSignOut)
                             // which business this is, is read in a moment: no help is shown for the wrong one meanwhile
                             Page.Help -> retail?.let { shop ->
@@ -715,7 +727,7 @@ fun SettingsScreen(
 // The side list: every page of Settings, and the way out at its foot. A dot
 // says a page has something that wants looking at.
 @Composable
-private fun Menu(page: Page, lock: String, waiting: Boolean, printerTrouble: Boolean, shop: Boolean, onPick: (Page) -> Unit, onLock: () -> Unit) {
+private fun Menu(page: Page, lock: String, waiting: Boolean, printerTrouble: Boolean, shop: Boolean, mra: Boolean, onPick: (Page) -> Unit, onLock: () -> Unit) {
     Column(
         Modifier.width(250.dp).fillMaxHeight().background(V.Header)
             .drawBehind { drawRect(V.HeaderLine, Offset(size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height)) }
@@ -724,7 +736,7 @@ private fun Menu(page: Page, lock: String, waiting: Boolean, printerTrouble: Boo
         T("Settings", 22.sp, 800, spacing = (-0.4).sp, modifier = Modifier.padding(start = 10.dp, bottom = 14.dp))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             // labels and deposits are a shop's: a restaurant's till has no label printer
-            Page.entries.filter { shop || (it != Page.Labels && it != Page.Deposits && it != Page.Accounts) }.forEach { p ->
+            Page.entries.filter { (shop || (it != Page.Labels && it != Page.Deposits && it != Page.Accounts)) && (mra || it != Page.Mra) }.forEach { p ->
                 val on = p == page
                 val bg by animateColorAsState(if (on) V.Key else Color.Transparent, tween(140), label = "page")
                 Row(
@@ -1741,7 +1753,7 @@ private fun HelpPage(shop: Boolean, premium: Boolean, ordering: Boolean) {
 
 // the small heading over a group of things: QUICK ACTIONS, STATUS
 @Composable
-private fun Heading(text: String, modifier: Modifier = Modifier) {
+internal fun Heading(text: String, modifier: Modifier = Modifier) {
     Caps(text, V.Text3, modifier.padding(top = 12.dp, bottom = 2.dp), 11.sp)
 }
 
@@ -1859,7 +1871,7 @@ private fun Seg(options: List<String>, selected: Int, onPick: (Int) -> Unit) {
 
 // A page someone may not open, with the way in: someone who may, and their PIN.
 @Composable
-private fun Locked(text: String, onAsk: () -> Unit) {
+internal fun Locked(text: String, onAsk: () -> Unit) {
     Panel {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(text, Modifier.weight(1f).padding(end = 12.dp), color = V.Text, fontSize = 14.sp)

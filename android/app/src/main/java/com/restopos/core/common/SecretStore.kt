@@ -18,8 +18,10 @@ import javax.crypto.spec.GCMParameterSpec
 // If the Keystore cannot be used on a device, nothing is written at all: the
 // secrets stay in memory, and the user signs in again after a restart. Sales
 // saved on the tablet are not affected by that (see the sign-in-again path).
-class SecretStore(context: Context) {
-    private val prefs = context.getSharedPreferences("secrets", Context.MODE_PRIVATE)
+// file: its own file for another set of secrets, under the same Keystore key
+// (the MRA login, core/mra/MraLogin), so that clearing one leaves the other.
+class SecretStore(context: Context, file: String = "secrets") {
+    private val prefs = context.getSharedPreferences(file, Context.MODE_PRIVATE)
     private val memory = ConcurrentHashMap<String, String>()
     private val key: SecretKey? = runCatching { loadOrCreateKey() }.getOrNull()
 

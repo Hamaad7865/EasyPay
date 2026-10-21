@@ -256,9 +256,12 @@ object SyncScheduler {
             .setConstraints(online)
             .build()
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.KEEP, req)
+        // and the till's MRA work, which does nothing on a till that is not on the MRA
+        com.restopos.core.mra.MraWork.start(context)
     }
 
     fun stop(context: Context) {
+        com.restopos.core.mra.MraWork.stop(context)
         WorkManager.getInstance(context).cancelUniqueWork(NOW)
         WorkManager.getInstance(context).cancelUniqueWork(PERIODIC)
         WorkManager.getInstance(context).cancelUniqueWork(PUSH_WORK)

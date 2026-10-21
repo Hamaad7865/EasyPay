@@ -96,6 +96,12 @@ internal object PaperWalk {
         "waiter" to d.waiter, "guests" to d.covers?.toString(), "order_type" to d.dining, "station" to d.station, "pickup" to d.pickup,
     )
 
+    private fun fiscal(f: Fiscal?): List<Out> = when (f) {
+        null -> emptyList()
+        is Fiscal.Qr -> listOfNotNull(Out.Picture(f.r), if (f.training) Out.Line("TRAINING") else null)
+        is Fiscal.NotYet -> listOfNotNull(Out.Line("Not Yet Fiscalised"), if (f.training) Out.Line("TRAINING") else null)
+    }
+
     // The receipt's blocks (with the bill, a refund and a guest's share).
     fun receipt(b: Block, d: ReceiptDoc, shop: Shop, decimals: Int, logo: Raster?): List<Out> {
         val n = { c: Long -> Docs.num(c, decimals) }
@@ -107,7 +113,8 @@ internal object PaperWalk {
             "brn" -> if (shop.brn.isNotBlank()) listOf(Out.Line("BRN: ${shop.brn}")) else emptyList()
             "vat" -> if (shop.vat.isNotBlank()) listOf(Out.Line("VAT: ${shop.vat}")) else emptyList()
             "header" -> words(shop.header)
-            "title" -> listOfNotNull(
+            // the MRA's QR code, or the words in its place, at the top of what the customer gets
+            "title" -> fiscal(d.fiscal) + listOfNotNull(
                 Out.Line(when (d.kind) { "bill" -> "BILL"; "refund" -> "REFUND"; else -> "RECEIPT" }),
                 if (d.reprint) Out.Line("COPY") else null,
                 if (d.refunded > 0) Out.Line(if (d.refundedAll) "*** REFUNDED ***" else "*** PARTLY REFUNDED: ${n(d.refunded)} ***") else null,

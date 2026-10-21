@@ -209,6 +209,8 @@ class ShellViewModel @Inject constructor(
     private val guestBook: com.restopos.core.guest.GuestBook,
     private val requests: com.restopos.core.data.TillRequests,
     private val dueReminders: com.restopos.core.data.DueReminders,
+    private val mraLogin: com.restopos.core.mra.MraLogin,
+    private val mraSender: com.restopos.core.mra.MraSender,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     val screen = MutableStateFlow(Screen.Floor)
@@ -232,6 +234,16 @@ class ShellViewModel @Inject constructor(
     // (PosSettings.premium).
     val premium: StateFlow<Boolean> = db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).premium }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    // What the strip under the top bar says of the MRA (a Premium MRA client's
+    // till): a refused login, no login, a request the MRA refuses, invoices
+    // waiting over an hour. Asked again every minute, for the hour.
+    val mraSay: StateFlow<com.restopos.core.mra.MraBanner.Say?> = kotlinx.coroutines.flow.combine(
+        db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).mraOn },
+        mraLogin.state, mraSender.problem, db.mra().counts(),
+        kotlinx.coroutines.flow.flow { while (true) { emit(System.currentTimeMillis()); kotlinx.coroutines.delay(60_000) } },
+    ) { on, login, problem, counts, now ->
+        com.restopos.core.mra.MraBanner.say(on, login.username != null, login.refused, problem, counts, now)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     init {
         // a screen the other kind of business has gives way to this one's own
         viewModelScope.launch {
@@ -528,6 +540,7 @@ fun MainShell(
     LaunchedEffect(lang) { L.lang = lang }
     val clockAhead by shell.clockAhead.collectAsState()
     val updateRequired by shell.updateRequired.collectAsState()
+    val mraSay by shell.mraSay.collectAsState()
     // Left alone for the minutes set in the back office, the till goes back to
     // its start screen, where a name and its PIN open it again. The order on
     // the register is kept. The kitchen display is read, not touched, so it
@@ -692,6 +705,7 @@ fun MainShell(
                 }
             }
             SyncNotices(needsSignIn, pending, rejected, onSignIn, onRejected, clockAhead, updateRequired)
+            mraSay?.let { say -> MraStrip(say) { shell.go(Screen.Settings) } }
             if (settingUp) SettingUpStrip { shell.go(Screen.Settings) }
             // Where the till goes once a sale is paid in full: from the payment
             // screen's last card, or straight from Fast on the sell or order screen.
@@ -935,6 +949,20 @@ private fun SettingUpStrip(onGoLive: () -> Unit) {
     Row(Modifier.fillMaxWidth().background(V.AmberWash).padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         T("Setting up. What is rung up here is for trying, and goes when the business goes live.", 13.sp, 600, V.AmberText, Modifier.weight(1f), lines = 2)
         VBtn("Go live", height = 34.dp, radius = 10.dp, size = 14.sp, onClick = onGoLive)
+    }
+}
+
+// What the till needs someone to know about the MRA (MraBanner), in a strip
+// under the top bar: red when nothing can go, amber when it waits. Settings
+// opens on a tap; MRA is in its menu.
+@Composable
+private fun MraStrip(say: com.restopos.core.mra.MraBanner.Say, onOpen: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().background(if (say.red) V.RedWash else V.AmberWash).padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        T(say.text, 13.sp, 600, if (say.red) V.RedText else V.AmberText, Modifier.weight(1f), lines = 2)
+        VBtn("Settings", height = 38.dp, radius = 10.dp, size = 14.sp, onClick = onOpen)
     }
 }
 

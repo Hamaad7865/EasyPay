@@ -74,6 +74,7 @@ class TicketRepository @Inject constructor(
     private val staff: StaffSession,
     private val docs: DocBuilder,
     private val screenKick: com.restopos.core.kitchen.ScreenKick,
+    private val mra: com.restopos.core.mra.MraIssuer,
     @ApplicationContext private val context: Context,
 ) {
     private suspend fun ctx(): Triple<String, String, String> {
@@ -819,6 +820,15 @@ class TicketRepository @Inject constructor(
             }
         }
         val lineArr = buildJsonArray { payLines.forEach { add(it.id) } }
+        // A Premium MRA client's sale is made into its invoice here, before
+        // anything is written: its counter, number and hash fixed now, the
+        // invoice never built again. What the MRA cannot take stops the payment.
+        val invoice = mra.sale(
+            settings, device, storeRow, receiptId, number, now, payLines.map { it.id }, totals,
+            payments.map { (types[it.paymentTypeId]?.kind ?: "other") to it.amount }, staff.current.value?.employee?.name,
+        )
+        if (invoice is com.restopos.core.mra.MraIssuer.Refused) error(invoice.why)
+        val issued = invoice as? com.restopos.core.mra.MraIssuer.Ready
         // a tablet that is setting up writes down what the sale takes off the shelf, for Go live
         val trial = db.tryingOut(session)
         db.withTransaction {
@@ -880,7 +890,9 @@ class TicketRepository @Inject constructor(
             // what was sold leaves this till's copy of the shelf at once; the server's figure comes back with the next sync
             db.moveStock(store, payLines.mapNotNull { l -> (l.qty - (held[l.id] ?: 0)).takeIf { it > 0 }?.let { l to -it } }, noted = if (trial) "sale" else null)
             if (closing) db.tickets().setStatus(t.id, "paid")
-            db.catalog().upsertDevices(listOf(device.copy(last_receipt_seq = seq)))
+            // the till with its MRA counter and chain moved on, when the sale went to the MRA
+            db.catalog().upsertDevices(listOf((issued?.device ?: device).copy(last_receipt_seq = seq)))
+            issued?.let { db.mra().insert(it.entity) }
             db.outbox().enqueue(op("receipt.create", buildJsonObject {
                 put("id", receiptId); put("ticket_id", t.id); put("store_id", store)
                 put("device_id", deviceId); put("number", number); put("device_seq", seq)
@@ -894,6 +906,8 @@ class TicketRepository @Inject constructor(
                 if (discounts.isNotEmpty() && !staff.can("sale.apply_discount")) approver?.let { put("approved_by", it) }
                 if (pointsMoved) put("points", buildJsonObject { put("customer_id", customer!!.id); put("earned", earned) })
             }))
+            // after its receipt: the server compares the two (0132)
+            issued?.let { db.outbox().enqueue(op("mra.record", com.restopos.core.mra.MraIssue.record(it.entity))) }
         }
         session.setPeriodSeq(daySeq)
         if (closing) session.clearActiveTicket()
