@@ -1444,3 +1444,35 @@ Not covered by this run, and said so:
 9. May `quantity` have decimals (0.250 kg), and is `unitPrice` checked against quantity x price?
 10. Is a service charge TC03 or TC06, and how is cash rounding shown?
 11. May the same `invoiceIdentifier` appear for a TRN and later an STD of the same EBS?
+
+---
+
+## The run on the emulator, 2026-10-21 (20:30 to 20:52 Mauritius)
+
+Till 0.9.23 (build 35, debug) on `easypay_claude_size` with its window open, the owner watching. The owner's
+dev client Testing sheik (a shop) on Premium MRA, Till 1 with the test EBS's MRA ID, the sandbox login typed by
+the owner, the till's counter started after the sandbox script's 20. A stand-in printer on this PC (port 9101)
+kept each paper and each picture on it. Everything below went to the MRA's **SANDBOX**.
+
+| | Document | The MRA's answer |
+|---|---|---|
+| Training | TRN00000021 | refused, ERR0600 "Invalid seller BRN": the client's BRN had been saved over in `/admin`; put back |
+| Training | TRN00000022 (Rs 100) | fiscalised in 0.47 s; the receipt printed the QR code 2 x 2 cm above RECEIPT, with TRAINING |
+| Live | S1-T1-000005 (the owner's) | fiscalised |
+| Live, test case 1 | S1-T1-000006, the six items, Rs 792.50 | fiscalised, no warnings, QR printed |
+| Live, test case 3 | S1-T1-R000007, one soft drink back, naming S1-T1-000006 | fiscalised; the slip printed its QR code |
+| Live, mixed | S1-T1-000008: 0.25 kg prawns, a cake with VAT on top, a burger, 10 % off, Rs 373.50 | fiscalised, no warnings; VAT 48.72 as the receipt |
+| Line cut, test case 4 | S1-T1-000009 to 000018, each one item with VAT and one without | all waited; the papers printed "Not Yet Fiscalised" where the QR goes; within 5 s of the line coming back all 10 went in **one request** and were fiscalised; a reprint has the QR |
+| Test case 2 | S1-T1-DRN000037 on S1-T1-000018 (debug action) | fiscalised |
+| Test case 6 | S1-T1-PRF000038 (debug action) | fiscalised |
+| Test case 5, last | S1-T1-STD000039, a TAN not the seller's (debug action) | refused, ERR0500, as the case expects |
+
+On dev: all 19 records (`mra_records`) with their IRN and QR code or the MRA's reasons, none with a difference
+from its receipt; the till's status (connected, nothing waiting, 2 refused, counter 39); its counter and chains.
+
+Seen and to fix: while a client is still setting up, the till does not report its MRA status, so `/admin` says
+"Not connected" for a till that is (`MraSender.status` returns early unless training or live). The receipt shown
+on the till's screen has no QR code; only the paper has.
+
+Not covered: a real printer and a phone reading a printed QR code (the stand-in printer's picture is the MRA's
+QR, 160 dots, read back by zxing in `MraQrTest`); production; Test Drive (the owner's, from the till, next).
