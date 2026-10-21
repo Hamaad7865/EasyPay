@@ -542,8 +542,10 @@ begin
         v_pflags := v_pflags || jsonb_build_object('why', 'over-earned', 'till', p->'points'->>'earned', 'total', v_total);
         v_earn := least(greatest(v_earn, 0), greatest(v_total, 0));
       end if;
-      -- two tills apart spending the same points: the balance goes below zero
-      if v_pts > v_pbal then
+      -- two tills apart spending the same points: the balance goes below zero.
+      -- A sale that uses none is never this, whatever the balance (an
+      -- exchange's refund half may have just taken it below zero).
+      if v_pts > 0 and v_pts > v_pbal then
         v_pflags := v_pflags || jsonb_build_object('why', 'overspent', 'used', v_pts, 'balance', v_pbal);
       end if;
     end if;

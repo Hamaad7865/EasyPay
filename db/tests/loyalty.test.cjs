@@ -132,6 +132,11 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
       want[anjali] += 50 - 5000;
       await same('L3 the balance goes below zero', anjali);
       check('L3 it is below zero', (await bal(anjali)) < 0);
+      // a sale that uses no points is not overspent, whatever the balance
+      const e = await sale(1, [{ payment_type_id: cash, amount: 10000, tendered: 10000, change: 0 }], { extra: { points: { customer_id: anjali, earned: 100 } } });
+      check('L3 a sale earning points while the balance is below zero, using none: nothing flagged', tag(e.out[3]) === 'applied' && (await reviews(e.rc)).length === 0, JSON.stringify(await reviews(e.rc)));
+      want[anjali] += 100;
+      await same('L3 after it', anjali);
     }
 
     // ---- L4 the customer ----
