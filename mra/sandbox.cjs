@@ -5,6 +5,8 @@
 //   node mra/sandbox.cjs check          what is filled in and the certificate; sends nothing
 //   node mra/sandbox.cjs sign-in        asks the MRA for a token
 //   node mra/sandbox.cjs send case1     sends one invoice of the MRA's test case 1
+//   node mra/sandbox.cjs send case2     a debit note on the last invoice fiscalised (test case 2)
+//   node mra/sandbox.cjs send case3     a credit note on the last invoice fiscalised (test case 3)
 //   node mra/sandbox.cjs forget         after an unanswered send has been checked on the portal
 //
 // It reads .claude/mra/sandbox.env and the MRA public key named there, keeps
@@ -90,7 +92,12 @@ async function signIn() {
   console.log(s.ok ? `Signed in. The token lasts until ${s.expiryDate} (Mauritius time).` : `Refused (HTTP ${r.httpStatus}): ${(s.errors || []).join('; ')}`);
 }
 
-const CASES = { case1: { type: 'STD', lines: inv.testCase1Lines } };
+// A note (DRN, CRN) corrects the last standard invoice the MRA fiscalised.
+const CASES = {
+  case1: { type: 'STD', lines: inv.testCase1Lines },
+  case2: { type: 'DRN', lines: inv.testCase2Lines, reason: 'Item served and left off the invoice' },
+  case3: { type: 'CRN', lines: inv.testCase3Lines, reason: 'Return of product' },
+};
 
 async function sendCase(name) {
   const which = CASES[name];
@@ -101,9 +108,11 @@ async function sendCase(name) {
   if (!session || session.expiresAt - Date.now() < 10 * 60_000) { console.log('Sign in first:  node mra/sandbox.cjs sign-in'); return; }
   const state = readJson('state.json', { counter: 0, number: 0, last: {}, unsure: null });
   if (state.unsure) { console.log(`${state.unsure.identifier} got no answer. Check on the portal (EBS Testing, Download) whether it was fiscalised, then  node mra/sandbox.cjs forget`); return; }
+  const ref = which.reason ? state.last.STD && state.last.STD.invoiceIdentifier : '';
+  if (which.reason && !ref) { console.log('A note corrects an invoice the MRA fiscalised: none yet. Send case1 first.'); return; }
 
   const identifier = `EPT${which.type}${String(state.number + 1).padStart(6, '0')}`;
-  const invoice = inv.build({ counter: state.counter + 1, identifier, type: which.type, previous: state.last[which.type] || null, issuedAt: new Date(), seller: c.seller, lines: which.lines(), payment: 'CASH' });
+  const invoice = inv.build({ counter: state.counter + 1, identifier, type: which.type, previous: state.last[which.type] || null, issuedAt: new Date(), seller: c.seller, lines: which.lines(), payment: 'CASH', ref, reason: which.reason });
   fs.mkdirSync(OUT, { recursive: true });
   fs.writeFileSync(path.join(OUT, `invoice-${identifier}.json`), JSON.stringify([invoice], null, 2));
   // written down before it goes: a send with no answer must not be repeated unknowingly
@@ -144,4 +153,4 @@ function forget() {
 }
 
 const [cmd, arg] = process.argv.slice(2);
-({ check, 'sign-in': signIn, send: () => sendCase(arg), forget }[cmd] || (() => console.log('node mra/sandbox.cjs check | sign-in | send case1 | forget')))();
+({ check, 'sign-in': signIn, send: () => sendCase(arg), forget }[cmd] || (() => console.log('node mra/sandbox.cjs check | sign-in | send case1|case2|case3 | forget')))();

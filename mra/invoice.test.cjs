@@ -107,3 +107,34 @@ test('test case 1 is a standard invoice of 6 items, 3 with VAT and 3 without', (
   assert.equal(i.itemList.length, 6);
   assert.equal(i.itemList.filter((l) => l.vatAmt !== '0.00').length, 3);
 });
+
+// A credit or debit note names the invoice it corrects and why (the data
+// structure: both mandatory for CRN and DRN); a standard invoice has neither.
+test('a credit or debit note carries the invoice it corrects and the reason', () => {
+  const at = new Date(Date.UTC(2026, 9, 21, 8, 0, 0));
+  const line = [{ desc: 'Soft drink', qty: 1, unitPrice: 5750, taxCode: 'TC01', vatBp: 1500, nature: 'GOODS' }];
+  const crn = inv.build({ counter: 4, identifier: 'EP-4', type: 'CRN', previous: null, issuedAt: at, seller, lines: line, payment: 'CASH', ref: 'EP-1', reason: 'Returned' });
+  assert.equal(crn.invoiceTypeDesc, 'CRN');
+  assert.equal(crn.invoiceRefIdentifier, 'EP-1');
+  assert.equal(crn.reasonStated, 'Returned');
+  assert.equal(crn.totalAmtPaid, '57.50');
+  const std = inv.build({ counter: 1, identifier: 'EP-1', type: 'STD', previous: null, issuedAt: at, seller, lines: line, payment: 'CASH' });
+  assert.equal(std.invoiceRefIdentifier, '');
+  assert.equal(std.reasonStated, '');
+});
+
+test('a credit or debit note without the invoice it corrects, or without a reason, is not built', () => {
+  const base = { counter: 1, identifier: 'EP-1', previous: null, issuedAt: new Date(), seller, payment: 'CASH',
+    lines: [{ desc: 'Tea', qty: 1, unitPrice: 2300, taxCode: 'TC01', vatBp: 1500, nature: 'GOODS' }] };
+  assert.throws(() => inv.build({ ...base, type: 'DRN', reason: 'Undercharged' }), /invoice it corrects/);
+  assert.throws(() => inv.build({ ...base, type: 'CRN', ref: 'EP-0' }), /reason/);
+});
+
+// The MRA's test cases 2 and 3: one note of one item each, on an item of test case 1.
+test('test cases 2 and 3 are one item each, taken from test case 1', () => {
+  const names = inv.testCase1Lines().map((l) => l.desc);
+  for (const lines of [inv.testCase2Lines(), inv.testCase3Lines()]) {
+    assert.equal(lines.length, 1);
+    assert.ok(names.includes(lines[0].desc), lines[0].desc);
+  }
+});

@@ -1,6 +1,6 @@
 // The owner's command (sandbox.cjs) run whole against a stand-in for the MRA
 // on this computer, with its own key and certificate: sign-in, sending test
-// case 1, the QR code kept, the hash going from one invoice to the next, a
+// cases 1 to 3, the QR code kept, the hash going from one invoice to the next, a
 // send with no answer stopping the next, and nothing secret in what it writes.
 //   node --test mra/*.test.cjs
 const test = require('node:test');
@@ -16,7 +16,7 @@ const PASSWORD = 'pass-for-the-stand-in-only';
 const SCRIPT = path.join(__dirname, 'sandbox.cjs');
 const run = (env, ...args) => new Promise((resolve) => execFile(process.execPath, [SCRIPT, ...args], { env: { ...process.env, ...env } }, (err, stdout) => resolve(stdout)));
 
-test('sign-in and test case 1 against a stand-in for the MRA', async (t) => {
+test('sign-in and test cases 1 to 3 against a stand-in for the MRA', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mra-sandbox-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   try {
@@ -58,6 +58,8 @@ test('sign-in and test case 1 against a stand-in for the MRA', async (t) => {
 
   assert.match(await run(env, 'send', 'case1'), /Sign in first/);
   assert.match(await run(env, 'sign-in'), /Signed in/);
+  // a note corrects an invoice that was fiscalised: none yet
+  assert.match(await run(env, 'send', 'case2'), /Send case1 first/);
   assert.match(await run(env, 'send', 'case1'), /EPTSTD000001 fiscalised\. IRN irn-1/);
   assert.match(await run(env, 'send', 'case1'), /EPTSTD000002 fiscalised/);
 
@@ -76,6 +78,22 @@ test('sign-in and test case 1 against a stand-in for the MRA', async (t) => {
   assert.equal(received.length, 2);
   assert.match(await run(env, 'forget'), /let go of/);
   assert.match(await run(env, 'send', 'case1'), /EPTSTD000004 fiscalised/);
+
+  // test cases 2 and 3: a debit note and a credit note of one item, each on the
+  // last invoice fiscalised, each kind with its own hash chain
+  assert.match(await run(env, 'send', 'case2'), /EPTDRN000005 fiscalised/);
+  assert.match(await run(env, 'send', 'case3'), /EPTCRN000006 fiscalised/);
+  assert.match(await run(env, 'send', 'case2'), /EPTDRN000007 fiscalised/);
+  const [drn, crn, drn2] = received.slice(3);
+  assert.equal(drn.invoiceTypeDesc, 'DRN');
+  assert.equal(crn.invoiceTypeDesc, 'CRN');
+  for (const n of [drn, crn]) {
+    assert.equal(n.invoiceRefIdentifier, 'EPTSTD000004');
+    assert.equal(n.previousNoteHash, '0');
+    assert.ok(n.reasonStated.length > 0 && n.reasonStated.length <= 100);
+    assert.equal(n.itemList.length, 1);
+  }
+  assert.equal(drn2.previousNoteHash, previousNoteHash({ dateTime: drn.dateTimeInvoiceIssued, totalAmtPaid: drn.totalAmtPaid, brn: 'C07012345', invoiceIdentifier: 'EPTDRN000005' }));
 
   // what it writes for anyone to read holds no password, token or key
   for (const f of fs.readdirSync(path.join(dir, 'out')).filter((f) => f.endsWith('.json'))) {

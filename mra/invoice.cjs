@@ -26,8 +26,14 @@ const vatIncluded = (gross, bp) => (bp > 0 ? Math.floor((gross * bp + Math.floor
 
 // One invoice. `lines`: { desc, qty (whole), unitPrice (cents, VAT included),
 // taxCode (TC01..TC07), vatBp, nature (GOODS|SERVICES), code? }. `previous`:
-// what chained() gave for the last invoice of this type, or null.
-function build({ counter, identifier, type, previous, issuedAt, seller, lines, payment, discount = 0, transaction = 'B2C', counterNo = '1', cashier = '' }) {
+// what chained() gave for the last invoice of this type, or null. A credit or
+// debit note (CRN, DRN) names the invoice it corrects (`ref`, its identifier)
+// and why (`reason`, up to 100 characters): both mandatory for those two.
+function build({ counter, identifier, type, previous, issuedAt, seller, lines, payment, discount = 0, transaction = 'B2C', counterNo = '1', cashier = '', ref = '', reason = '' }) {
+  if (type === 'CRN' || type === 'DRN') {
+    if (!ref) throw new Error(`A ${type} names the invoice it corrects.`);
+    if (!reason) throw new Error(`A ${type} gives its reason.`);
+  }
   const vatRegistered = seller.vat !== 'NVTR';
   let vat = 0, ex = 0;
   const itemList = lines.map((l, i) => {
@@ -60,9 +66,9 @@ function build({ counter, identifier, type, previous, issuedAt, seller, lines, p
     invoiceTypeDesc: type,
     currency: 'MUR',
     invoiceIdentifier: identifier,
-    invoiceRefIdentifier: '',
+    invoiceRefIdentifier: ref,
     previousNoteHash: previousNoteHash(previous),
-    reasonStated: '',
+    reasonStated: reason.slice(0, 100),
     totalVatAmount: money(vat),
     totalAmtWoVatCur: money(ex),
     totalAmtWoVatMur: money(ex),
@@ -104,4 +110,9 @@ const testCase1Lines = () => [
   { desc: 'Rice 1 kg', qty: 1, unitPrice: 2500, taxCode: 'TC03', vatBp: 0, nature: 'GOODS', code: 'TC1-F' },
 ];
 
-module.exports = { money, mraDateTime, vatIncluded, build, chained, testCase1Lines };
+// Test case 2, a debit note of 1 item: a curry served and left off the invoice.
+const testCase2Lines = () => [testCase1Lines()[0]];
+// Test case 3, a credit note of 1 item: one soft drink brought back.
+const testCase3Lines = () => [{ ...testCase1Lines()[2], qty: 1 }];
+
+module.exports = { money, mraDateTime, vatIncluded, build, chained, testCase1Lines, testCase2Lines, testCase3Lines };
