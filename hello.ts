@@ -137,6 +137,24 @@ async function tooOldForShop(req: Request, tenantId: string): Promise<boolean> {
 }
 const SHOP_TOO_OLD = { error: "This till must be updated before it can sync: this business is a shop, and this build has no shop screens.", min: SHOP_MIN_TILL };
 
+// A Premium MRA client's till, in training or live, must be build 34 or later
+// (migration 0132): the first that sends each sale to the MRA. An older build
+// would sell without it. Answered as the shop's: 426, the till keeps selling
+// and keeps its outbox, and syncs again once it is updated.
+const MRA_MIN_TILL = 34;
+async function tooOldForMra(req: Request, tenantId: string): Promise<boolean> {
+  const v = Number(req.headers.get("x-till-version") ?? "0");
+  if (Number.isInteger(v) && v >= MRA_MIN_TILL) return false;
+  try {
+    const r = await pool.query(`select mra from tenants where id = $1::uuid`, [tenantId]);
+    return r.rows[0]?.mra === "training" || r.rows[0]?.mra === "live";
+  } catch (err) {
+    console.error("mra not read:", (err as Error).message);
+    return false;
+  }
+}
+const MRA_TOO_OLD = { error: "This till must be updated before it can sync: this business sends its sales to the MRA, and this build does not.", min: MRA_MIN_TILL };
+
 const SUSPENDED = { error: "This account is suspended. Sales already made still sync; contact EasyPay to reactivate." };
 function suspended(auth: Authed): boolean {
   return auth.status !== "active";
@@ -556,6 +574,7 @@ app.post("/sync/push", async (c) => {
     return res as Response;
   }
   if (await tooOldForShop(c.req.raw, auth.tenantId)) return c.json(SHOP_TOO_OLD, 426);
+  if (await tooOldForMra(c.req.raw, auth.tenantId)) return c.json(MRA_TOO_OLD, 426);
   const body: { ops?: unknown } = await c.req.json<{ ops?: unknown }>().catch((): { ops?: unknown } => ({}));
   if (!Array.isArray(body.ops) || body.ops.length < 1 || body.ops.length > 200) {
     return c.json({ error: "ops must be an array of 1..200" }, 400);
@@ -580,6 +599,7 @@ app.get("/sync/pull", async (c) => {
     return res as Response;
   }
   if (await tooOldForShop(c.req.raw, auth.tenantId)) return c.json(SHOP_TOO_OLD, 426);
+  if (await tooOldForMra(c.req.raw, auth.tenantId)) return c.json(MRA_TOO_OLD, 426);
   const storeId = c.req.query("storeId") ?? "";
   const cursor = Number(c.req.query("cursor") ?? "0");
   const limit = Number(c.req.query("limit") ?? "200");

@@ -29,5 +29,13 @@
                 <action android:name="com.restopos.app.DEMO_UPDATE" />
             </intent-filter>
         </receiver>
+        <!-- The MRA's Test Drive cases a till has no screen for (2, 5, 6),
+             sent through the till's own MRA code. The command is at the top
+             of MraCases. -->
+        <receiver android:name="com.restopos.debug.MraCases" android:exported="true">
+            <intent-filter>
+                <action android:name="com.restopos.app.MRA_CASE" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
