@@ -151,9 +151,11 @@ office product page (`1ab459e`), the tablet's sheet and offline answer (`7fcb409
   kilo, 17 typed at the sale, 31 services not counted, 15 goods counted).
 
 **Not run:**
-- The sheet on an emulator, and a kilo sale on a tablet: emulator 5598 closed during the
-  first build (memory about 0.5 GB free with the loyalty session running); the owner
-  wants to watch a test run. Selling by the kilo itself is older code (`RetailViewModel.put`).
+- The sheet on an emulator, and a kilo sale on a tablet: the loyalty session was using
+  emulator 5598 and shut it down for its own build; with about 0.5 GB of memory free no
+  other emulator was started, and the owner wants to watch a test run. Selling by the
+  kilo itself is older code (`RetailViewModel.put`).
+- After the rebase on the loyalty work: the whole unit suite and the debug APK again.
 - The back office page in a browser (needs a sign-in to a dev shop).
 - An offline tablet's queue replayed against dev: covered by the same payloads in the
   server suite and `LocalAnswersTest`, not by a real tablet's outbox.
