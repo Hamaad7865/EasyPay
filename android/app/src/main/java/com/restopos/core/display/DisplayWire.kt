@@ -19,6 +19,11 @@ import java.security.MessageDigest
 // `display` is the display's name where it was added ("Counter"). `logo` is
 // the business's logo (a data URL, as on the receipts), sent only when the
 // display said it holds another one; "" means the business has none.
+//
+// `posters` is the hashes of the pictures the display shows in turn, in
+// their order (picked on the till); `poster` one of them that the display
+// said it lacks, sent whole, one per exchange. A till before them sends
+// neither, and its display shows no pictures.
 @Serializable
 data class DisplayRequest(
     val v: Int = DisplayWire.VERSION,
@@ -29,7 +34,13 @@ data class DisplayRequest(
     val logo: String? = null,
     val logoHash: String = "",
     val now: Long = 0,
+    val posters: List<String> = emptyList(),
+    val poster: Poster? = null,
 )
+
+// One picture whole: its hash and its JPEG in base64.
+@Serializable
+data class Poster(val hash: String, val jpeg: String)
 
 // `error` when not ok: "refused" (not signed with this display's code) or
 // "version" (the two ends speak different versions; `build` says the
@@ -41,6 +52,8 @@ data class DisplayReply(
     val v: Int = DisplayWire.VERSION,
     val build: Int = 0,
     val logoHash: String = "",
+    // the hashes of the pictures it holds, of those it was told of
+    val posters: List<String> = emptyList(),
 )
 
 object DisplayWire {
@@ -76,6 +89,10 @@ object DisplayWire {
         val d = MessageDigest.getInstance("SHA-256").digest(logo.toByteArray(Charsets.UTF_8))
         return d.joinToString("") { "%02x".format(it) }.take(16)
     }
+
+    // A picture's hash, as for a logo
+    fun hash(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }.take(16)
 
     // A display's address as it was typed: an IP, or IP:port.
     fun address(text: String?): Pair<String, Int>? = Wire.address(text, PORT)

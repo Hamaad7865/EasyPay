@@ -42,6 +42,7 @@ class DisplayLink @Inject constructor(
     private val db: TillDatabase,
     private val session: SessionStore,
     private val feed: DisplayFeed,
+    private val posters: DisplayPictures,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
@@ -49,6 +50,13 @@ class DisplayLink @Inject constructor(
     val status: StateFlow<Map<String, DisplayStatus>> = _status
     // the logo each display said it holds, by the hash both ends compare
     private val holds = ConcurrentHashMap<String, String>()
+    // the picture last sent to each display whole
+    private val sentPoster = ConcurrentHashMap<String, String>()
+    // the pictures each display said it holds, and the displays still owed one
+    private val holdsPosters = ConcurrentHashMap<String, Set<String>>()
+    private val owed = ConcurrentHashMap.newKeySet<String>()
+    // pictures a display was sent and did not keep (one too old to keep pictures): not sent it again
+    private val notKept = ConcurrentHashMap<String, Set<String>>()
     // one exchange at a time with each display
     private val turns = ConcurrentHashMap<String, Mutex>()
 
@@ -74,6 +82,8 @@ class DisplayLink @Inject constructor(
                     val picture = feed.now()
                     coroutineScope { all.map { d -> async { send(d, picture) } }.awaitAll() }
                     wait = if (picture.state == Picture.IDLE) IDLE_MS else BUSY_MS
+                    // a display still owed pictures is sent the next one at once
+                    if (owed.isNotEmpty()) wait = GATHER_MS
                 }
             }
             // until the next picture is due, or the register changed; a few
@@ -90,16 +100,34 @@ class DisplayLink @Inject constructor(
             val hash = DisplayWire.hash(logo)
             val device = session.deviceId()
             val till = device?.let { db.catalog().device(it) }
+            // its pictures in their order, and the first it does not hold, whole
+            val shelf = posters.all(d.id)
+            val lacking = shelf.firstOrNull { it.hash !in holdsPosters[d.id].orEmpty() && it.hash !in notKept[d.id].orEmpty() }
+            if (lacking == null) sentPoster.remove(d.id) else sentPoster[d.id] = lacking.hash
             val request = DisplayRequest(
                 till = device.orEmpty(), tillName = till?.name ?: "Till", display = d.name,
                 picture = picture.copy(message = d.message.orEmpty()),
                 // the logo only to a display that holds another one ("" for none)
                 logo = if (holds[d.id] != hash) logo.orEmpty() else null, logoHash = hash, now = System.currentTimeMillis(),
+                posters = shelf.map { it.hash },
+                poster = lacking?.let { Poster(it.hash, java.util.Base64.getEncoder().encodeToString(it.jpeg)) },
             )
             val payload = DisplayWire.encode(request, d.pair_code.orEmpty())
             withContext(Dispatchers.IO) { runCatching { ScreenClient.exchange(at.first, at.second, payload) }.getOrNull() }?.let { DisplayWire.decodeReply(it) }
         }
-        if (reply?.ok == true) holds[d.id] = reply.logoHash else holds.remove(d.id)
+        if (reply?.ok == true) {
+            holds[d.id] = reply.logoHash
+            holdsPosters[d.id] = reply.posters.toSet()
+            sentPoster[d.id]?.takeIf { it !in reply.posters }?.let { h -> notKept[d.id] = notKept[d.id].orEmpty() + h }
+            // more to send while it lacks one it has been told of and could keep
+            val all = posters.all(d.id).map { it.hash }
+            if (all.any { it !in reply.posters && it !in notKept[d.id].orEmpty() }) owed += d.id else owed -= d.id
+        } else {
+            holds.remove(d.id)
+            holdsPosters.remove(d.id)
+            notKept.remove(d.id)
+            owed -= d.id
+        }
         val was = _status.value[d.id]
         val now = DisplayStatus(reply?.ok == true, DisplayWire.trouble(d.name, d.address, reply), if (reply?.ok == true) System.currentTimeMillis() else was?.heardAt)
         _status.value = _status.value + (d.id to now)

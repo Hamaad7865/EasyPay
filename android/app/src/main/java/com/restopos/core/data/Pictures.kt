@@ -59,17 +59,7 @@ class Pictures @Inject constructor(
     // A picture picked on the tablet, or the photograph its camera has just
     // written to a file of the till's own: read, turned the way it was taken,
     // made small, kept.
-    fun choose(item: String, from: Uri) = keep(item) {
-        val resolver = context.contentResolver
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(from)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: error("That picture could not be opened.")
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) error("That file is not a picture this tablet can read.")
-        // read at a fraction of its size when it is far larger than a card needs: a whole photograph does not fit a small tablet's memory
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample(bounds.outWidth, bounds.outHeight, MOST) }
-        val read = resolver.openInputStream(from)?.use { BitmapFactory.decodeStream(it, null, opts) } ?: error("That picture could not be read.")
-        val turn = runCatching { resolver.openInputStream(from)?.use { ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL) } }.getOrNull()
-        turned(read, when (turn) { ExifInterface.ORIENTATION_ROTATE_90 -> 90f; ExifInterface.ORIENTATION_ROTATE_180 -> 180f; ExifInterface.ORIENTATION_ROTATE_270 -> 270f; else -> 0f })
-    }
+    fun choose(item: String, from: Uri) = keep(item) { readTurned(context, from, MOST) }
 
     fun remove(item: String) = scope.launch { runCatching { db.pictures().drop(item) } }
 
@@ -82,8 +72,6 @@ class Pictures @Inject constructor(
         }.onFailure { Toaster.say(it.message?.takeIf { m -> m.length < 120 } ?: "That picture could not be used. Try another.") }
     }
 
-    private fun turned(b: Bitmap, degrees: Float): Bitmap =
-        if (degrees == 0f) b else Bitmap.createBitmap(b, 0, 0, b.width, b.height, Matrix().apply { postRotate(degrees) }, true)
     private fun small(b: Bitmap): Bitmap {
         val (w, h) = fit(b.width, b.height, MOST)
         return if (w == b.width && h == b.height) b else Bitmap.createScaledBitmap(b, w, h, true)
@@ -92,6 +80,22 @@ class Pictures @Inject constructor(
     companion object {
         // the long side of a kept picture, in pixels: twice a card's width on the sharpest tablet the till is drawn for
         const val MOST = 640
+
+        // A picture chosen on the tablet, read at a fraction of its size when
+        // it is far larger than `most` needs (a whole photograph does not fit
+        // a small tablet's memory), and turned the way it was taken. Also the
+        // customer display's pictures (core/display/DisplayPictures).
+        fun readTurned(context: android.content.Context, from: Uri, most: Int): Bitmap {
+            val resolver = context.contentResolver
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            resolver.openInputStream(from)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: error("That picture could not be opened.")
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) error("That file is not a picture this tablet can read.")
+            val opts = BitmapFactory.Options().apply { inSampleSize = sample(bounds.outWidth, bounds.outHeight, most) }
+            val read = resolver.openInputStream(from)?.use { BitmapFactory.decodeStream(it, null, opts) } ?: error("That picture could not be read.")
+            val turn = runCatching { resolver.openInputStream(from)?.use { ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL) } }.getOrNull()
+            val degrees = when (turn) { ExifInterface.ORIENTATION_ROTATE_90 -> 90f; ExifInterface.ORIENTATION_ROTATE_180 -> 180f; ExifInterface.ORIENTATION_ROTATE_270 -> 270f; else -> 0f }
+            return if (degrees == 0f) read else Bitmap.createBitmap(read, 0, 0, read.width, read.height, Matrix().apply { postRotate(degrees) }, true)
+        }
 
         // The size a picture is kept at: its own shape, its long side MOST at
         // most. One that is smaller already is left as it is.

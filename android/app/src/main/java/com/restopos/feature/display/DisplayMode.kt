@@ -110,9 +110,18 @@ class DisplayModeViewModel @Inject constructor(
 ) : ViewModel() {
     // the logo, kept so that it is there after a restart before any till has spoken
     private val logoFile = File(context.filesDir, "display_logo.txt")
+    // the pictures it shows in turn, as files named by their hash
+    private val posterDir = File(context.filesDir, "display_posters")
+    private val shelf = object : DisplayBook.PosterShelf {
+        override suspend fun have(): Set<String> = withContext(Dispatchers.IO) { posterDir.listFiles()?.map { it.nameWithoutExtension }?.toSet().orEmpty() }
+        override suspend fun put(hash: String, jpeg: ByteArray) { withContext(Dispatchers.IO) { posterDir.mkdirs(); File(posterDir, "$hash.jpg").writeBytes(jpeg) } }
+        override suspend fun keepOnly(hashes: Set<String>) { withContext(Dispatchers.IO) { posterDir.listFiles()?.filter { it.nameWithoutExtension !in hashes }?.forEach { it.delete() } } }
+    }
     private val book = DisplayBook(code = { session.pairCode() }, build = BuildConfig.VERSION_CODE, keepLogo = { logo, _ ->
         withContext(Dispatchers.IO) { runCatching { if (logo == null) logoFile.delete() else logoFile.writeText(logo) } }
-    })
+    }, shelf = shelf)
+    // decoded once each, by hash
+    private val decoded = HashMap<String, ImageBitmap>()
     private val server = ScreenServer(DisplayWire.PORT) { first, second -> book.answer(first, second) }
 
     val problem = MutableStateFlow<String?>(null)
@@ -126,11 +135,18 @@ class DisplayModeViewModel @Inject constructor(
     val shown: StateFlow<Picture?> = combine(book.held, tick) { _, now -> book.shown(now) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val logo: StateFlow<ImageBitmap?> = book.logo.map { decodePicture(it) }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val pictures: StateFlow<List<ImageBitmap>> = book.posters.map { hashes ->
+        withContext(Dispatchers.IO) {
+            decoded.keys.retainAll(hashes.toSet())
+            hashes.mapNotNull { h -> decoded[h] ?: runCatching { android.graphics.BitmapFactory.decodeFile(File(posterDir, "$h.jpg").path)?.asImageBitmap() }.getOrNull()?.also { decoded[h] = it } }
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     init {
         viewModelScope.launch {
             val kept = withContext(Dispatchers.IO) { runCatching { logoFile.takeIf { it.exists() }?.readText() }.getOrNull() }
             if (kept != null && book.logo.value == null) book.restore(kept)
+            book.restorePosters()
         }
         listen()
         // the clock the idle screen goes by, and the address, which a router may change
@@ -221,6 +237,7 @@ class DisplayModeViewModel @Inject constructor(
 fun DisplayModeScreen(vm: DisplayModeViewModel = hiltViewModel(), onBecomeTill: () -> Unit) {
     val shown by vm.shown.collectAsState()
     val logo by vm.logo.collectAsState()
+    val pictures by vm.pictures.collectAsState()
     val address by vm.address.collectAsState()
     val code by vm.code.collectAsState()
     val problem by vm.problem.collectAsState()
@@ -233,7 +250,7 @@ fun DisplayModeScreen(vm: DisplayModeViewModel = hiltViewModel(), onBecomeTill: 
 
     Box(Modifier.fillMaxSize().background(V.Bg).systemBarsPadding()) {
         val p = shown
-        if (p == null) Waiting(address, code, problem) else CustomerScreen(p, logo, light = light)
+        if (p == null) Waiting(address, code, problem) else CustomerScreen(p, logo, pictures, light = light)
         if (p != null) problem?.let { T(it, 14.sp, 600, V.RedText, Modifier.align(Alignment.TopCenter).fillMaxWidth().background(V.RedWash).padding(horizontal = 24.dp, vertical = 10.dp), lines = 3) }
         Box(Modifier.align(Alignment.BottomEnd).padding(14.dp)) { IconKey(VI.Gear, 40.dp, onClick = { settings = true }) }
         ToastHost()

@@ -14,13 +14,22 @@ class DisplayBookTest {
     private val code = "DSPLY234"
     private var now = 1_000_000L
     private val kept = ArrayList<Pair<String?, String>>()
-    private val book = DisplayBook(code = { code }, build = 33, clock = { now }, keepLogo = { l, h -> kept += l to h })
+    private val shelf = DisplayBook.MemoryPosters()
+    private val book = DisplayBook(code = { code }, build = 33, clock = { now }, keepLogo = { l, h -> kept += l to h }, shelf = shelf)
+    private val jpegA = byteArrayOf(1, 2, 3, 4)
+    private val jpegB = byteArrayOf(5, 6, 7)
+    private val a = DisplayWire.hash(jpegA)
+    private val b = DisplayWire.hash(jpegB)
+    private fun whole(jpeg: ByteArray) = Poster(DisplayWire.hash(jpeg), java.util.Base64.getEncoder().encodeToString(jpeg))
 
     private val sale = Picture(Picture.SALE, "Sale", listOf(PicLine("1", "Cola", amount = 5000)), total = 5000, business = "Star Grill", message = "Hello")
     private val logo = "data:image/png;base64,AAAA"
 
-    private fun ask(picture: Picture = sale, till: String = "t-1", with: String = code, v: Int = DisplayWire.VERSION, logo: String? = null): DisplayReply = runBlocking {
-        val out = DisplayWire.encode(DisplayRequest(v = v, till = till, tillName = "Till $till", display = "Counter", picture = picture, logo = logo), with)
+    private fun ask(
+        picture: Picture = sale, till: String = "t-1", with: String = code, v: Int = DisplayWire.VERSION, logo: String? = null,
+        posters: List<String> = emptyList(), poster: Poster? = null,
+    ): DisplayReply = runBlocking {
+        val out = DisplayWire.encode(DisplayRequest(v = v, till = till, tillName = "Till $till", display = "Counter", picture = picture, logo = logo, posters = posters, poster = poster), with)
         val (first, second) = out.trimEnd('\n').split('\n')
         DisplayWire.decodeReply(book.answer(first, second).trimEnd('\n'))!!
     }
@@ -97,9 +106,42 @@ class DisplayBookTest {
     @Test
     fun forgetLeavesNothing() {
         ask(logo = logo)
-        book.forget()
+        runBlocking { book.forget() }
         assertNull(book.shown())
         assertNull(book.logo.value)
         assertEquals("", ask().logoHash)
+    }
+
+    // The pictures shown in turn: told of by hash, sent whole one at a time,
+    // kept only when they are what their hash says, and in the till's order.
+    @Test
+    fun picturesArriveOneAtATimeAndInTheTillsOrder() {
+        var r = ask(posters = listOf(a, b))
+        assertEquals(emptyList<String>(), r.posters)
+        r = ask(posters = listOf(a, b), poster = whole(jpegB))
+        assertEquals(listOf(b), r.posters)
+        r = ask(posters = listOf(a, b), poster = whole(jpegA))
+        assertEquals(listOf(a, b), r.posters)
+        assertEquals(listOf(a, b), book.posters.value)
+    }
+
+    @Test
+    fun aPictureThatIsNotWhatItsHashSaysIsNotKept() {
+        val r = ask(posters = listOf(a), poster = Poster(a, java.util.Base64.getEncoder().encodeToString(jpegB)))
+        assertEquals(emptyList<String>(), r.posters)
+        // nor one the till did not name
+        assertEquals(emptyList<String>(), ask(posters = listOf(a), poster = whole(jpegB)).posters)
+    }
+
+    @Test
+    fun aPictureTakenOffOnTheTillGoesFromTheDisplay() {
+        ask(posters = listOf(a, b), poster = whole(jpegA))
+        ask(posters = listOf(a, b), poster = whole(jpegB))
+        val r = ask(posters = listOf(b))
+        assertEquals(listOf(b), r.posters)
+        assertEquals(setOf(b), shelf.held.keys)
+        // a till that sends none (one built before them): none shown
+        ask()
+        assertEquals(emptyList<String>(), book.posters.value)
     }
 }

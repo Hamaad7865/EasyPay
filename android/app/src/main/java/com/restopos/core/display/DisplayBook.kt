@@ -21,7 +21,28 @@ class DisplayBook(
     private val clock: () -> Long = System::currentTimeMillis,
     // the logo as it is now (null for none) and its hash, kept by the tablet so that it is there after a restart
     private val keepLogo: suspend (String?, String) -> Unit = { _, _ -> },
+    // where the pictures shown in turn are kept, by hash (files on the tablet)
+    private val shelf: PosterShelf = MemoryPosters(),
 ) {
+    // Where a display keeps the pictures it shows in turn.
+    interface PosterShelf {
+        suspend fun have(): Set<String>
+        suspend fun put(hash: String, jpeg: ByteArray)
+        // takes away every one not named
+        suspend fun keepOnly(hashes: Set<String>)
+    }
+
+    class MemoryPosters : PosterShelf {
+        val held = LinkedHashMap<String, ByteArray>()
+        override suspend fun have() = held.keys.toSet()
+        override suspend fun put(hash: String, jpeg: ByteArray) { held[hash] = jpeg }
+        override suspend fun keepOnly(hashes: Set<String>) { held.keys.retainAll(hashes) }
+    }
+
+    // the pictures to show in turn, by hash, in the till's order: those it holds
+    private val _posters = MutableStateFlow<List<String>>(emptyList())
+    val posters: StateFlow<List<String>> = _posters
+
     data class Held(val picture: Picture, val at: Long, val till: String, val tillName: String)
 
     private val _held = MutableStateFlow<Held?>(null)
@@ -52,8 +73,16 @@ class DisplayBook(
                 keepLogo(logo, hash)
             }
         }
+        // a picture it lacked, whole: kept only when it is what its hash says
+        req.poster?.let { p ->
+            val jpeg = runCatching { java.util.Base64.getDecoder().decode(p.jpeg) }.getOrNull()
+            if (jpeg != null && p.hash in req.posters && DisplayWire.hash(jpeg) == p.hash) shelf.put(p.hash, jpeg)
+        }
+        shelf.keepOnly(req.posters.toSet())
+        val have = shelf.have()
+        _posters.value = req.posters.filter { it in have }
         _held.value = Held(req.picture, clock(), req.till, req.tillName)
-        DisplayWire.encode(DisplayReply(true, build = build, logoHash = logoHash))
+        DisplayWire.encode(DisplayReply(true, build = build, logoHash = logoHash, posters = _posters.value))
     }
 
     // What the screen shows now: the latest picture, or the idle screen of the
@@ -64,11 +93,16 @@ class DisplayBook(
         return if (now - h.at >= SILENT_MS) Pictures.idleOf(h.picture) else h.picture
     }
 
+    // The pictures it kept, put back when it starts (in no order yet: the till's next word gives it).
+    suspend fun restorePosters() { _posters.value = shelf.have().toList() }
+
     // The tablet stops being a display, or its code changes: nothing it was sent is kept.
-    fun forget() {
+    suspend fun forget() {
         _held.value = null
         _logo.value = null
         logoHash = ""
+        shelf.keepOnly(emptySet())
+        _posters.value = emptyList()
     }
 
     companion object {

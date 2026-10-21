@@ -450,4 +450,13 @@ object Migrations {
             db.execSQL("ALTER TABLE `printers` ADD COLUMN `message` TEXT")
         }
     }
+
+    // A customer display's pictures, shown in turn, picked on this till (no
+    // server table: they are this tablet's). A new table; nothing else changes.
+    val V33_V34 = object : Migration(33, 34) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `display_pictures` (`id` TEXT NOT NULL, `owner` TEXT NOT NULL, `jpeg` BLOB NOT NULL, `hash` TEXT NOT NULL, `sort_order` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_display_pictures_owner` ON `display_pictures` (`owner`)")
+        }
+    }
 }

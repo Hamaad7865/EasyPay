@@ -50,6 +50,7 @@ import androidx.room.RoomDatabase
 // row the deposit whose cash it is.
 @Database(
     entities = [
+        DisplayPictureEntity::class,
         StoreEntity::class, CategoryEntity::class, ItemEntity::class,
         ModifierGroupEntity::class, ModifierEntity::class, TaxEntity::class,
         DiningOptionEntity::class, PaymentTypeEntity::class, DeviceEntity::class,
@@ -77,7 +78,7 @@ import androidx.room.RoomDatabase
         DepositEntity::class, DepositLineEntity::class, DepositPaymentEntity::class,
         AccountBillEntity::class, AccountPaymentEntity::class, AccountPaymentLineEntity::class,
     ],
-    version = 33,
+    version = 34,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
@@ -97,6 +98,7 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun log(): TillLogDao
     abstract fun alone(): AloneDao
     abstract fun pictures(): PictureDao
+    abstract fun displayPictures(): DisplayPictureDao
     abstract fun notes(): CreditNoteDao
     abstract fun promotions(): PromotionDao
     abstract fun deposits(): DepositDao

@@ -1279,6 +1279,8 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
     val displays by vm.displays.collectAsState()
     val displayStatus by vm.displayStatus.collectAsState()
     var changing by remember { mutableStateOf<PrinterEntity?>(null) }
+    // whose pictures are being picked: a display's row id, or the cable screen's, with its name
+    var picturing by remember { mutableStateOf<Pair<String, String>?>(null) }
     val alone = com.restopos.core.data.Journey.alone
     if (displays.isNotEmpty() || alone) Heading("Customer displays")
     displays.forEach { d ->
@@ -1298,6 +1300,7 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
                     d.message?.takeIf { it.isNotBlank() }?.let { Text("Between sales: ${it.replace("\n", " / ")}", Modifier.padding(top = 2.dp), color = Pos.Text2, fontSize = 13.sp) }
                     st?.trouble?.let { Text(it, Modifier.padding(top = 4.dp), color = Pos.Pink, fontSize = 13.sp) }
                 }
+                Small("Pictures") { picturing = d.id to d.name }
                 if (alone) Small("Change", enabled = testing == null) { changing = d }
                 Small(if (testing == d.id) "Asking…" else "Test", enabled = testing == null) { vm.testDisplay(d.id) }
             }
@@ -1309,6 +1312,7 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
         Note("A customer display shows the customer this till's sale as it is rung up, the change after Pay, and the business's name, logo and message between sales, over the shop's own Wi-Fi, with or without internet.")
     }
     changing?.let { d -> DisplaySheet(d.id, d) { changing = null } }
+    picturing?.let { (owner, name) -> DisplayPicturesSheet(owner, name) { picturing = null } }
     // The customer display on a second screen by cable: this tablet's own.
     val cableOn by vm.cableOn.collectAsState()
     val cableMessage by vm.cableMessage.collectAsState()
@@ -1331,7 +1335,10 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
             Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 com.restopos.core.ui.Field(first, { first = it.take(60) }, "Ask about our lunch deal", Modifier.fillMaxWidth(), height = 50.dp, size = 16.sp)
                 com.restopos.core.ui.Field(second, { second = it.take(60) }, "Open every day till 22:00", Modifier.fillMaxWidth(), height = 50.dp, size = 16.sp)
-                Row { Small("Save the message") { vm.guard("settings.device", change) { vm.saveCable(true, first, second) } } }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Small("Save the message") { vm.guard("settings.device", change) { vm.saveCable(true, first, second) } }
+                    Small("Pictures") { picturing = com.restopos.core.display.DisplayPictures.CABLE to "the second screen" }
+                }
             }
         }
     }

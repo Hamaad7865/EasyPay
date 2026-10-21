@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -34,6 +35,7 @@ class CableDisplay(
     private val activity: ComponentActivity,
     private val feed: DisplayFeed,
     private val session: SessionStore,
+    private val posters: com.restopos.core.display.DisplayPictures,
 ) : DisplayManager.DisplayListener {
     private val displays = activity.getSystemService(DisplayManager::class.java)
     private var on = false
@@ -86,7 +88,12 @@ class CableDisplay(
                     val message by session.cableMessage.collectAsState("")
                     val logoData by feed.logo.collectAsState(null)
                     val logo = remember(logoData) { decodePicture(logoData) }
-                    picture?.let { CustomerScreen(it.copy(message = message), logo) }
+                    val rowsFlow = remember { posters.of(com.restopos.core.display.DisplayPictures.CABLE) }
+                    val rows by rowsFlow.collectAsState(emptyList())
+                    val pictures = remember(rows.map { it.hash }) {
+                        rows.mapNotNull { r -> runCatching { android.graphics.BitmapFactory.decodeByteArray(r.jpeg, 0, r.jpeg.size)?.asImageBitmap() }.getOrNull() }
+                    }
+                    picture?.let { CustomerScreen(it.copy(message = message), logo, pictures) }
                 }
             })
         }
