@@ -97,3 +97,54 @@ A till built before this reads a `display` row as a network printer (`Routing.li
 ## 10. Building beside the loyalty work
 
 The loyalty session is changing the same till in the main folder (migration 0128, Room 32). This work is done in its own worktree (`claude/customer-display`) and put on `restopos` by fast-forward after a rebase. The migration is 0130 and Room is 33. The parts that touch nothing of loyalty's go first (the wire, the display's mode, the picture and their tests); Room 33, `LocalAnswers` and Pay's one call come once loyalty's Room 32 is committed. Committed on `restopos`, not pushed, no tag, no version raised (the release does that).
+
+## 11. Version 2, asked the same day (2026-10-21, afternoon)
+
+After seeing version 1 on two emulators, the owner sent a photo of a shop's customer display (a table of lines with Price and Disc%, a block of Total, Discount, VAT, Payment, Balance and Total quantity, the shop's name on top and the date at the foot, the logo and a poster on the right) and wrote that a display is sometimes connected by cable. Their answers (taps):
+
+| Question | Answer |
+|---|---|
+| Layout | **Like the photo**, restaurants and shops alike |
+| The right-hand side | **Several pictures, in turn** |
+| Where the pictures are chosen | **On the till** (Settings, Printers, the display) |
+| Cable displays | **A second screen Android sees** (HDMI or USB-C monitor, a terminal with a built-in customer screen) **and a 2-line pole display** |
+| The pole display connects by | **USB** |
+
+**This changes two earlier answers:** pictures are now wanted (section 1 said words only: that meant product pictures, and still does; these are the shop's own posters), and the idle screen shows them too.
+
+### 11.1 The table layout
+
+- Head: the business's name. Foot: today's date, in the till's language.
+- Lines as a table: Description (with add-ons beneath) · Qty · Price (the listed price of one) · Disc% · Amount. Disc% is what a shop's line discount took off its listed price (`ticket_lines.list_price` against `unit_price`), whole percent, 0 when none; a restaurant's lines always show 0, it has no line discount.
+- The block under the lines, every figure the receipt has:
+  - **Total**: the lines at their listed price, before any discount (Σ qty × list price + add-ons).
+  - **Discount**: all that was taken off, the lines' discounts and the order's discount together.
+  - **Service** and **Rounding**: shown only when not zero, or the block would not add up for a restaurant.
+  - **VAT**: included or added, as now ("VAT included" when the prices hold it).
+  - **Payment**: what was paid on it so far (a split bill); after Pay, what was handed over.
+  - **Balance**: what is left to pay (Total − Discount + added VAT + Service + Rounding − Payment), large. After Pay it is the change, labelled **Change**, large and green.
+  - **Total quantity**: the number of items.
+  These are held to add up in the unit tests.
+- Right-hand side: the logo, then the pictures in turn. Without pictures, the logo alone.
+
+The message carries the new figures as fields with defaults, so `DisplayWire.VERSION` stays 1 and a display on version 1 still reads a newer till.
+
+### 11.2 Pictures in turn
+
+- Up to 5, picked on the till from the tablet's photos (Settings, Printers, the display, Pictures), each shrunk to at most 1280 px and kept as JPEG in the till's database (Room, as product pictures are, so a backup carries them), per display.
+- Shown on the right during a sale and filling the idle screen between sales, 8 seconds each.
+- Sent to a Wi-Fi display by hash, one picture per exchange, only those it says it lacks (a line holds at most 256 KB). A cable screen draws them straight from the till.
+
+### 11.3 A second screen on a cable
+
+- The till shows the customer display on any second screen Android itself sees (Android's Presentation): an HDMI or USB-C monitor, or a terminal with its own customer screen. Same drawing as the Wi-Fi display (one stateless screen fed the picture, the logo and the pictures), fed straight from the till's DisplayFeed, no wire, no pairing.
+- Switched on in Settings, Printers ("Show the customer display on a second screen"), with its message and pictures, kept on that tablet like the label printer. **My decision:** a cable screen and a pole display belong to the tablet they are plugged into, so they are tablet settings, not back-office rows: no migration, 0130 unchanged.
+
+### 11.4 A 2-line pole display (USB)
+
+- Text only, 2 lines of 20: during a sale the last line rung up and its amount, then "TOTAL Rs …"; after Pay "CHANGE Rs …"; between sales the message. ASCII only (French accents taken off).
+- Driven like a printer, from the till, over USB. The commands are the common Epson-style set; the USB side depends on the chip in the display (USB-serial: Prolific, CH340, FTDI, or USB CDC). **Waiting on the owner:** the display's make and model (or its USB ids, which the till can list), and whether to add the `usb-serial-for-android` library (published on JitPack, not on Maven Central where the till's libraries come from): theirs to say, as ZXing was. Built last; its first real test is the owner's device.
+
+### 11.5 Order and testing
+
+Built in the order it can be tested: the table layout (unit tests, the emulators), the cable screen (an emulator's simulated second screen), the pictures (the emulators), the pole display last (unit tests of the bytes it sends; the device itself is the owner's).
