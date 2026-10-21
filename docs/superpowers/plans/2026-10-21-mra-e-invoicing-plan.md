@@ -87,6 +87,11 @@ What it taught:
   invoices. Fiscalising at the moment of payment is fast enough. Each answer said `environment: TEST`.
 - The QR code comes back as a PNG of about 570 bytes.
 - The VAT status was left empty and sent as VATR. The MRA did not object.
+- **Two more, for the till (2026-10-21, 19:58):**
+  - an invoice chained to one the MRA never saw was fiscalised: the sandbox does not check `previousNoteHash`
+    against what it holds (EPTSTD000019);
+  - a real sale was fiscalised with no warnings: an order discount spread over the lines, a kilo quantity (0.25),
+    VAT on top, an add-on in a line, a service charge as an exempt SERVICES line (EPTSTD000020).
 
 ## Phase 2: the till signs in and sends (piece 3)
 

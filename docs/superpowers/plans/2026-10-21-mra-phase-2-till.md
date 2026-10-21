@@ -48,6 +48,11 @@ never saw.
 
 This is a sandbox send, like the seven cases. It does not touch the EBS on the portal.
 
+**Answered 2026-10-21 (19:58 Mauritius), by the owner's run:** `probe-chain` (EPTSTD000019) chained to an invoice
+the MRA never saw (EPTSTD999999), neither to the last one fiscalised nor to `0`, and was **fiscalised with no
+warnings**. The sandbox does not check `previousNoteHash` against what it holds, so the till chains to the last
+invoice it issued, as built. Test Drive or production may be stricter: case 5 still goes last.
+
 **D3. One more sandbox test: a real sale.** The sandbox only saw whole quantities, prices with VAT inside, no
 discount and one cash payment. A real sale has more. `send probe-mixed` sends one invoice with:
 
@@ -58,6 +63,11 @@ discount and one cash payment. A real sale has more. `send probe-mixed` sends on
 - a service charge line.
 
 If the MRA refuses or warns, the rules in the table below change before the till is built.
+
+**Answered 2026-10-21 (19:58):** `probe-mixed` (EPTSTD000020) was **fiscalised with no warnings**, built by the rules
+below: the Rs 50 discount spread over four lines with 0.02 left for the invoice's own discount, 0.25 kg, VAT on top
+(Cake: 90.66 + 13.60), an add-on in a line (Burger (Egg)), and a service charge line TC03 SERVICES; Rs 547.10 paid,
+Calc's figure. The rules stand as they are.
 
 ### Choices I made, to confirm or change
 
