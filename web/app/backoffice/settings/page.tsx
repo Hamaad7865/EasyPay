@@ -47,9 +47,9 @@ async function saveGeneral(f: FormData) {
       dayCloseDetailed: on(f, "dayCloseDetailed"),
       drawerByNotes: on(f, "drawerByNotes"),
       lockMinutes: int(f, "lockMinutes", 0, 120, 0),
-      // loyalty points (0128), for both kinds of business: the percentage typed, kept in basis points
-      loyalty: on(f, "loyaltyOn") ? ("on" as const) : ("off" as const),
-      loyaltyBp: loyaltyBp(f),
+      // loyalty points (0128), for both kinds of business: the percentage typed, kept in basis points.
+      // A form without the card (a page opened before it existed) leaves what was saved as it is.
+      ...(f.has("loyaltyPct") ? { loyalty: on(f, "loyaltyOn") ? ("on" as const) : ("off" as const), loyaltyBp: loyaltyBp(f) } : {}),
       // a shop's form has no Service card: what those settings held is left as it is
       ...(ctx.mode === "retail"
         ? {

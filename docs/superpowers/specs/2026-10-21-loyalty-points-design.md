@@ -256,7 +256,16 @@ Run:
   foreign keys of promotions and credit notes (0109, 0110), none of 0128's.
 - The tablet's 720 unit tests. The receipt with points is held by `points-58.json`, which the back office's
   preview (`papers.test.mjs`) prints the same way.
-- The back office type-checks clean. Its pages were not seen signed in.
+- The back office type-checks clean.
+  - `shop-pages` (116), `pos-pages` (126), `backoffice-saves` (75) and `retail-till-replay` (90) pass after the
+    change. Their pages draw with loyalty off.
+  - The customers page's points history query was run as `app_user` on dev, in a transaction rolled back: a
+    sale and its refund for one customer came back.
+  - POS settings changes the loyalty settings only when the form has the card, so a page opened before the
+    deploy leaves them as they were.
+  - The pages were not seen signed in.
+  - The customers page reads each customer's last 50 point receipts when the page loads, wherever the
+    business keeps points: one subquery per customer, through the index on `receipts (tenant_id, customer_id)`.
 - On `easypay_claude_size` (5598), with its window open:
   - The debug build installed over the made-up restaurant left on 18 October: Room 31 went to 32 in place, both
     receipts were kept, and nothing crashed.
