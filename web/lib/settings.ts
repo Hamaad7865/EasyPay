@@ -59,6 +59,9 @@ export type PosSettings = {
   // until switched on; what comes back, in basis points (100 is 1%).
   loyalty: "on" | "off";
   loyaltyBp: number;
+  // The time each till closes a day nobody closed, "HH:MM" on the tablet's
+  // clock (migration 0133); null is off.
+  autoClose: string | null;
   receipt: { header: string; footer: string; logo: string | null; showLogo: boolean };
   company: { name: string; brn: string; vat: string; address: string; phone: string };
   // The receipt's and the kitchen ticket's designs (Receipt design, lib/papers.ts), as kept:
@@ -99,10 +102,14 @@ export const DEFAULT_SETTINGS: PosSettings = {
   accountDays: 30,
   loyalty: "off",
   loyaltyBp: 100,
+  autoClose: null,
   receipt: { header: "", footer: "Thank you. See you again soon.", logo: null, showLogo: true },
   company: { name: "", brn: "", vat: "", address: "", phone: "" },
   papers: {},
 };
+
+// The time a day closes by itself (0133): hours and minutes, 00:00 to 23:59, as the server takes it.
+export const AUTO_CLOSE_TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
 type Loose = Record<string, unknown>;
 const obj = (v: unknown): Loose => (v && typeof v === "object" && !Array.isArray(v) ? (v as Loose) : {});
@@ -145,6 +152,7 @@ export function withDefaults(raw: unknown): PosSettings {
     accountDays: typeof d.accountDays === "number" && d.accountDays >= 1 && d.accountDays <= 365 ? Math.round(d.accountDays) : 30,
     loyalty: d.loyalty === "on" ? "on" : "off",
     loyaltyBp: typeof d.loyaltyBp === "number" && d.loyaltyBp >= 1 && d.loyaltyBp <= 10000 ? Math.round(d.loyaltyBp) : 100,
+    autoClose: typeof d.autoClose === "string" && AUTO_CLOSE_TIME.test(d.autoClose) ? d.autoClose : null,
     receipt: {
       header: str(r.header, DEFAULT_SETTINGS.receipt.header),
       footer: str(r.footer, DEFAULT_SETTINGS.receipt.footer),

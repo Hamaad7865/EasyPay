@@ -27,6 +27,7 @@ type Drawer = {
 };
 type Close = {
   id: string; number: number; from_time: string | null; closed_at: string; closed_by: string | null; till: string | null;
+  auto: boolean; carried: number;
   totals: { sales: number; refunds: number; gross: number; refunded: number; discounts: number; changed: number; tax: number };
   payments: { name: string | null; amount: number; n: number }[];
   notes: { issued: number; redeemed: number };
@@ -84,6 +85,8 @@ const given = (shop: boolean) => `
                    'changed', coalesce(sum(${SIGN} * ${lineOffSql(shop, "r", "override", "r.tenant_id")}), 0)`;
 const closedSql = (shop: boolean) => `
   select dc.id, dc.number, dc.from_time, dc.closed_at, e.name as closed_by, d.name as till,
+         -- closed by the till itself (0133), and the unpaid orders it carried into the next day
+         dc.totals->>'auto' = 'true' as auto, coalesce((dc.totals->>'carried')::int, 0) as carried,
          (select json_build_object('sales', count(*) filter (where r.type = 'sale'), 'refunds', count(*) filter (where r.type = 'refund'),
                    'gross', coalesce(sum(r.total) filter (where r.type = 'sale'), 0),
                    'refunded', coalesce(sum(r.total) filter (where r.type = 'refund'), 0),
@@ -315,7 +318,7 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
                 <h2>Closing no. {z.number} <span className="muted" style={{ fontWeight: 400 }}>· {z.till ?? "Till"}</span></h2>
                 <p>
                   {z.drawers.length === 1 ? `Opened ${at(last.opened_at)}${last.opened_by ? ` by ${last.opened_by}` : ""}` : z.from_time ? `From ${at(z.from_time)}` : "From the first sale"}
-                  {`, closed ${at(z.closed_at)}`}{z.closed_by ? ` by ${z.closed_by}` : ""}
+                  {`, closed ${at(z.closed_at)}`}{z.auto ? ", automatically" : z.closed_by ? ` by ${z.closed_by}` : ""}
                 </p>
               </div>
               <span className="row-actions">
@@ -345,6 +348,7 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
                         </Fragment>
                       ))}
                     </>)}
+                    {z.carried > 0 && (<><dt>Orders carried to the next day</dt><dd>{z.carried}</dd></>)}
                   </dl>
                 </div>
                 <div>
@@ -369,7 +373,7 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
                           {z.drawers.length > 1 && (<><dt className="muted">{at(w.opened_at)} to {w.closed_at ? at(w.closed_at) : ""}</dt><dd className="muted" style={{ fontWeight: 400 }}>{w.opened_by ?? ""}</dd></>)}
                           <dt>Opening float</dt><dd>{m(w.float)}</dd>
                           <dt className="total">Expected in drawer</dt><dd className="total">{w.expected === null ? "" : m(w.expected)}</dd>
-                          <dt>Counted</dt><dd>{w.counted === null ? "" : m(w.counted)}</dd>
+                          <dt>Counted</dt><dd>{w.counted === null ? (z.auto ? "Not counted (closed automatically)" : "") : m(w.counted)}</dd>
                           {off !== null && (<><dt>Difference</dt><dd style={off < 0 ? { color: "var(--red)" } : undefined}>{signed(off)}</dd></>)}
                         </dl>
                       );

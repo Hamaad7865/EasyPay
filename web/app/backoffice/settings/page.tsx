@@ -2,7 +2,8 @@ import Link from "next/link";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, int, on, Refused, text, uuid } from "@/lib/action";
-import { loadSettings, money, saveSettings } from "@/lib/settings";
+import { AUTO_CLOSE_TIME, loadSettings, money, saveSettings } from "@/lib/settings";
+import { AUTO_CLOSE_BUILD } from "@/lib/pos";
 import { PREMIUM_ONLY, TABLE_ORDERING_LIVE } from "@/lib/plan";
 import { Card, Flash, one, PageHead, type Search } from "../ui";
 import { Submit, Wait } from "../busy";
@@ -37,6 +38,14 @@ function loyaltyBp(f: FormData): number {
   return Math.round(pct * 100);
 }
 
+// The day closing by itself (0133): off, or the time typed as HH:MM.
+function autoClose(f: FormData): string | null {
+  if (!on(f, "autoCloseOn")) return null;
+  const t = String(f.get("autoCloseAt") ?? "").trim();
+  if (!AUTO_CLOSE_TIME.test(t)) throw new Refused("Type the time the day closes as HH:MM, from 00:00 to 23:59.");
+  return t;
+}
+
 async function saveGeneral(f: FormData) {
   "use server";
   await act("settings.device", PATH, async (c, ctx) => {
@@ -47,6 +56,8 @@ async function saveGeneral(f: FormData) {
       dayCloseDetailed: on(f, "dayCloseDetailed"),
       drawerByNotes: on(f, "drawerByNotes"),
       lockMinutes: int(f, "lockMinutes", 0, 120, 0),
+      // the time each till closes a day nobody closed (0133); a form from before the setting leaves it as it is
+      ...(f.has("autoCloseAt") ? { autoClose: autoClose(f) } : {}),
       // loyalty points (0128), for both kinds of business: the percentage typed, kept in basis points.
       // A form without the card (a page opened before it existed) leaves what was saved as it is.
       ...(f.has("loyaltyPct") ? { loyalty: on(f, "loyaltyOn") ? ("on" as const) : ("off" as const), loyaltyBp: loyaltyBp(f) } : {}),
@@ -223,6 +234,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
         [ctx.tenantId],
       )
     ).rows as { id: string; name: string; kind: string; needs_table: boolean; kitchen: string; is_default: boolean }[],
+    // the tills on a build that does not close its day by itself (0133): known, active and older
+    oldTills: (
+      await c.query(
+        `select d.name from pos_devices d join device_activity a on a.tenant_id = d.tenant_id and a.device_id = d.id
+          where d.tenant_id = $1 and d.deleted_at is null and a.till_version is not null and a.till_version < $2 order by d.name`,
+        [ctx.tenantId, AUTO_CLOSE_BUILD],
+      )
+    ).rows.map((r) => r.name as string),
     barcodes: shop
       ? ((await c.query(`select barcode_settings($1) as r`, [ctx.tenantId])).rows[0].r as {
           prefix: string; auto: boolean; next: string | null; left: number; made: number; without: number;
@@ -313,6 +332,23 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
             </div>
           </Card>
           <Card title="Closing the day">
+            <div className="setting">
+              <div>
+                <strong>Close the day automatically</strong>
+                <small>
+                  A day nobody closed is closed by the till at this time, as of this time. The drawer is marked not counted, and
+                  orders still unpaid go on into the next day. Open past midnight? Pick an hour when you are closed, 05:00 say.
+                  {data.oldTills.length > 0 && ` Not on ${data.oldTills.join(", ")} until ${data.oldTills.length === 1 ? "it is" : "they are"} updated.`}
+                </small>
+              </div>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <label className="check" style={{ margin: 0 }}>
+                  <input type="checkbox" name="autoCloseOn" defaultChecked={s.autoClose !== null} />
+                  On, at
+                </label>
+                <input type="time" name="autoCloseAt" defaultValue={s.autoClose ?? "00:00"} className="narrow" aria-label="Close the day at" />
+              </div>
+            </div>
             <div className="setting">
               <div>
                 <strong>Count the drawer by notes and coins</strong>

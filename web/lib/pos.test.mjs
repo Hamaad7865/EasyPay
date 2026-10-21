@@ -3,7 +3,7 @@
 // expected, the timeline by day, the payments in and out, an event in words.
 // Usage: node web/lib/pos.test.mjs   (Node runs the .ts file itself)
 import assert from "node:assert/strict";
-import { REQUEST_BUILD, askEnded, askSays, byDay, eventDetail, movedTo, refusal, splitMoves, tabOf, takesRequests, variance } from "./pos.ts";
+import { AUTO_CLOSE_BUILD, REQUEST_BUILD, askEnded, askSays, byDay, eventDetail, movedTo, refusal, splitMoves, tabOf, takesRequests, variance } from "./pos.ts";
 
 let failures = 0;
 function check(name, fn) {
@@ -138,6 +138,15 @@ check("what the database refuses is put into words", () => {
   // anything else is not shown as it came
   assert.equal(refusal("relation \"x\" does not exist"), "That could not be asked. Nothing was changed.");
   assert.equal(refusal(undefined), "That could not be asked. Nothing was changed.");
+});
+
+check("a day that closed by itself says so, with no count", () => {
+  const m = (v) => "Rs " + v;
+  const e = { at: "2026-01-02T00:00:00Z", kind: "close", device_id: TILL, till: "T1", code: "T1", who: null, ref: "42", words: "auto", amount: null, extra: null, late: 0 };
+  assert.equal(eventDetail(e, m), "Day closing no. 42, closed automatically. Drawer not counted");
+  // a day closed by someone, counted, is as before
+  assert.equal(eventDetail({ ...e, words: null, amount: "1000", extra: "1000" }, m), "Day closing no. 42. Counted Rs 1000, expected Rs 1000, balanced");
+  assert.equal(AUTO_CLOSE_BUILD, 35);
 });
 
 if (failures) {

@@ -137,7 +137,7 @@ export function eventDetail(e: Event, m: (v: string | number | null) => string):
     case "cash_drawer": return "With no sale";
     case "count": return counted();
     case "open": return `Opening float ${m(e.amount)}`;
-    case "close": return `Day closing no. ${e.ref}` + (e.amount !== null && e.extra !== null ? `. ${counted()}` : "");
+    case "close": return `Day closing no. ${e.ref}` + (e.words === "auto" ? ", closed automatically. Drawer not counted" : e.amount !== null && e.extra !== null ? `. ${counted()}` : "");
     case "crash": return (e.words ?? "") + (e.ref ? ` (version ${e.ref})` : "");
     default: return "";
   }
@@ -262,7 +262,9 @@ export const ACTIVITY = `
            extract(epoch from sh.created_at - sh.opened_at)::int
       from shifts sh where sh.tenant_id = $1 and sh.deleted_at is null
     union all
-    select dc.closed_at, 'close', dc.device_id, dc.closed_by, dc.number::text, null, sh.counted_cash, sh.expected_cash,
+    select dc.closed_at, 'close', dc.device_id, dc.closed_by, dc.number::text,
+           -- closed by the till itself (0133): said so, with no count
+           case when dc.totals->>'auto' = 'true' then 'auto' end, sh.counted_cash, sh.expected_cash,
            extract(epoch from dc.created_at - dc.closed_at)::int
       from day_closes dc
       left join shifts sh on sh.tenant_id = dc.tenant_id and sh.device_id = dc.device_id and sh.closed_at = dc.closed_at and sh.deleted_at is null
@@ -360,7 +362,7 @@ export type Taken = { name: string; kind: string; amount: string };
 // counted and what was expected. A day still open says what moved its drawer
 // so far. $1 tenant, $2 the till, $3 how many.
 export const DAYS = `
-  select sh.id, sh.opened_at, sh.closed_at, ob.name as opened_by, cb.name as closed_by, sh.opening_float, sh.expected_cash, sh.counted_cash,
+  select sh.id, sh.opened_at, sh.closed_at, ob.name as opened_by, coalesce(cb.name, case when sh.closed_at is not null and sh.closed_by is null and sh.counted_cash is null then 'Automatically' end) as closed_by, sh.opening_float, sh.expected_cash, sh.counted_cash,
          case when sh.closed_at is null then ${CASH_TAKEN()} end as cash_taken,
          case when sh.closed_at is null then ${MOVED("in")} end as cash_in,
          case when sh.closed_at is null then ${MOVED("out")} end as cash_out
@@ -381,7 +383,7 @@ export type TillDay = {
 // against what was expected, and what did not go in the drawer at all, by
 // payment method. $1 tenant, $2 the till, $3 the date, $4 the timezone.
 export const CLOSURES = `
-  select sh.id, sh.opened_at, sh.closed_at, sh.opening_float, sh.expected_cash, sh.counted_cash, ob.name as opened_by, cb.name as closed_by,
+  select sh.id, sh.opened_at, sh.closed_at, sh.opening_float, sh.expected_cash, sh.counted_cash, ob.name as opened_by, coalesce(cb.name, case when sh.closed_at is not null and sh.closed_by is null and sh.counted_cash is null then 'Automatically' end) as closed_by,
          ${CASH_TAKEN()} as cash_taken, ${MOVED("in")} as cash_in, ${MOVED("out")} as cash_out,
          (select dc.number from day_closes dc where dc.tenant_id = sh.tenant_id and dc.device_id = sh.device_id and dc.closed_at = sh.closed_at and dc.deleted_at is null limit 1) as close_no,
          coalesce((select jsonb_agg(jsonb_build_object('name', q.name, 'amount', q.amount) order by q.sort_order, q.name)
@@ -465,6 +467,10 @@ export const SET_ACTIVE = `
 
 // The first build of the till that carries requests out (till_request_build()).
 export const REQUEST_BUILD = 12;
+
+// The first build of the till that closes a day nobody closed by itself, at
+// the time POS settings set (0133). Older tills leave the day open.
+export const AUTO_CLOSE_BUILD = 35;
 export const takesRequests = (t: { till_version: number | null; off: boolean }) => !t.off && t.till_version !== null && t.till_version >= REQUEST_BUILD;
 
 // What was asked of the tills, newest first. $1 tenant, $2 a till or null for
