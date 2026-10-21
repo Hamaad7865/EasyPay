@@ -48,6 +48,8 @@ function readEnv() {
 // MRA_AREA_CODE, MRA_SELLER_VAT and MRA_SELLER_PHONE may be left empty: with no area
 // code the MRA is asked without one; with no VAT status the seller is VATR, as the
 // MRA's test cases 1 and 4 need items with VAT
+// learnt from the MRA itself on 2026-10-21
+const NO_AREA = 'No area code: sign-in works without it, but the MRA refuses invoices without it (ERR0020). Fill MRA_AREA_CODE: on the portal, Register/Update User Profile, or the Register/Update EBS page.';
 const NEEDED = ['MRA_EBS_ID', 'MRA_USERNAME', 'MRA_PASSWORD', 'MRA_PUBLIC_KEY', 'MRA_SELLER_NAME', 'MRA_SELLER_TRADE_NAME', 'MRA_SELLER_TAN', 'MRA_SELLER_BRN', 'MRA_SELLER_ADDRESS'];
 
 const readJson = (f, fallback) => { try { return JSON.parse(fs.readFileSync(at(f), 'utf8')); } catch { return fallback; } };
@@ -76,7 +78,7 @@ function check() {
   if (!c) return;
   const cert = new crypto.X509Certificate(fs.readFileSync(at(env.MRA_PUBLIC_KEY)));
   console.log(`Everything needed is filled in. The MRA certificate is valid from ${cert.validFrom} to ${cert.validTo}.`);
-  if (!env.MRA_AREA_CODE) console.log('No area code: the MRA is asked without one. If sign-in is refused for it, fill MRA_AREA_CODE.');
+  if (!env.MRA_AREA_CODE) console.log(NO_AREA);
   if (!env.MRA_SELLER_VAT) console.log('MRA_SELLER_VAT is empty: sent as VATR (VAT-registered).');
   const s = readJson('session.json', null);
   console.log(s && s.expiresAt > Date.now() ? `Signed in until ${s.expiryDate} (Mauritius time).` : 'Not signed in yet: run  node mra/sandbox.cjs sign-in');
@@ -118,6 +120,8 @@ async function sendCase(name) {
   if (!which) { console.log('Known: ' + Object.keys(CASES).join(', ')); return; }
   const c = ready(readEnv());
   if (!c) return;
+  // sign-in takes no area code, but a transmission without one is refused (ERR0020)
+  if (!c.who.areaCode) { console.log(NO_AREA); return; }
   const session = readJson('session.json', null);
   if (!session || session.expiresAt - Date.now() < 10 * 60_000) { console.log('Sign in first:  node mra/sandbox.cjs sign-in'); return; }
   const state = readJson('state.json', { counter: 0, number: 0, last: {}, unsure: null });
@@ -153,11 +157,15 @@ async function sendCase(name) {
     return;
   }
   const a = r.json ? api.readTransmit(r.json) : { status: `HTTP ${r.httpStatus}`, errors: [r.text], invoices: [] };
-  // answered: every number sent is used, fiscalised or refused; the chain goes on
-  // from the last one fiscalised (a refused invoice is not the MRA's previous one)
+  // answered for its invoices: every number sent is used, fiscalised or refused;
+  // the chain goes on from the last one fiscalised (a refused invoice is not the
+  // MRA's previous one). A request refused as a whole (ERR0020, a missing header)
+  // answers for none: the MRA never saw them, and their numbers are used next time.
   state.unsure = null;
-  state.counter += invoices.length;
-  state.number += invoices.length;
+  if (a.invoices.length > 0) {
+    state.counter += invoices.length;
+    state.number += invoices.length;
+  }
   const results = invoices.map((invoice) => {
     const mine = a.invoices.find((x) => x.identifier === invoice.invoiceIdentifier) || null;
     if (mine && mine.status === 'SUCCESS') {

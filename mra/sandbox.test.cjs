@@ -31,6 +31,7 @@ test('sign-in and test cases 1 to 7 against a stand-in for the MRA', async (t) =
   const received = [];
   let silent = false;
   let requests = 0;
+  let refuseHeaders = false;
   const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; });
@@ -47,6 +48,8 @@ test('sign-in and test cases 1 to 7 against a stand-in for the MRA', async (t) =
         return answer({ responseId: 'TK1', requestId: b.requestId, status: 'SUCCESS', token: 'stand-in-token', key: aesEncrypt(Buffer.from(login.encryptKey, 'base64'), invoiceKey.toString('base64')), expiryDate: '20991231 23:59:59' });
       }
       if (silent) return; // never answers: the script must give up and not send again
+      // the MRA's answer when a header is missing (seen 2026-10-21 with no area code)
+      if (refuseHeaders) { res.writeHead(400, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ status: 'ERROR', errorMessages: [{ code: 'ERR0020', description: 'Missing request headers' }] })); }
       assert.equal(req.headers.token, 'stand-in-token');
       const list = JSON.parse(aesDecrypt(invoiceKey, b.encryptedInvoice));
       requests += 1;
@@ -67,6 +70,10 @@ test('sign-in and test cases 1 to 7 against a stand-in for the MRA', async (t) =
   assert.match(await run(env, 'sign-in'), /Signed in/);
   // a note corrects an invoice that was fiscalised: none yet
   assert.match(await run(env, 'send', 'case2'), /Send case1 first/);
+  // a request refused as a whole answers for no invoice: its number is not used
+  refuseHeaders = true;
+  assert.match(await run(env, 'send', 'case1'), /EPTSTD000001 not fiscalised \(ERROR\): ERR0020/);
+  refuseHeaders = false;
   assert.match(await run(env, 'send', 'case1'), /EPTSTD000001 fiscalised\. IRN irn-1/);
   assert.match(await run(env, 'send', 'case1'), /EPTSTD000002 fiscalised/);
 
@@ -157,10 +164,12 @@ test('forget after an unanswered batch skips every number in it', async (t) => {
   assert.equal(st.unsure, null);
 });
 
-// The owner left the area code and the VAT status empty: check still passes,
-// says what will be sent instead, and the invoices go as VAT-registered (the
-// MRA's test cases 1 and 4 need items with VAT).
-test('the area code and the VAT status may be left empty', async (t) => {
+// The owner left the area code and the VAT status empty: check still passes and
+// says what that means. Sign-in works with no area code but the MRA refuses an
+// invoice without one (ERR0020, seen 2026-10-21), so send stops before asking it.
+// With no VAT status the invoices go as VAT-registered (the MRA's test cases 1
+// and 4 need items with VAT).
+test('with no area code, sign-in is allowed and sending is not; the VAT status may be left empty', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mra-optional-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   try {
@@ -172,6 +181,9 @@ test('the area code and the VAT status may be left empty', async (t) => {
   ].join('\n'));
   const out = await run({ MRA_DIR: dir }, 'check');
   assert.match(out, /Everything needed is filled in/);
-  assert.match(out, /No area code: the MRA is asked without one/);
+  assert.match(out, /No area code: sign-in works without it, but the MRA refuses invoices without it/);
+  // and send stops before asking the MRA
+  assert.match(await run({ MRA_DIR: dir }, 'send', 'case1'), /Fill MRA_AREA_CODE/);
+  assert.ok(!fs.existsSync(path.join(dir, 'state.json')));
   assert.match(out, /MRA_SELLER_VAT is empty: sent as VATR/);
 });
