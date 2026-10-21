@@ -16,6 +16,7 @@ piece list in its section 12.
 | Piece 1: the plan, the checklist, the fields | Live (0116, 0118). Premium MRA in `/admin`, `tenants.mra` (`off`, `setting_up`), the checklist, legal name, TAN, goods or services, tax codes, and each till's EBS MRA ID typed in `/admin`. Nothing is sent. |
 | Piece 2: the connection | Code on `restopos`, not pushed (from `1d19b75`): `mra/` (sign-in, encryption, the invoice, the hash chain) and `node mra/sandbox.cjs` with all seven MRA test cases, 31 tests against a stand-in for the MRA. **All seven passed against the MRA's sandbox on 2026-10-21** (phase 1, below). |
 | EasyPay's test EBS | Registered on the developer portal: EasyPayPos, Bel Air, **SANDBOX**. |
+| Phase 2: the till | **Built, not yet run on a tablet** (2026-10-21, `d64064e`..`400eb88`): till 0.9.23 (build 35), Room 35, migration 0132 (on dev only), `/admin` training and live and the MRA connection. The plan, task by task: `2026-10-21-mra-phase-2-till.md`. Waiting: the owner's two sandbox probes (`send probe-chain`, `send probe-mixed`) and the run on the emulator with the owner. |
 
 ## Decided
 
@@ -88,6 +89,9 @@ What it taught:
 - The VAT status was left empty and sent as VATR. The MRA did not object.
 
 ## Phase 2: the till signs in and sends (piece 3)
+
+**Built 2026-10-21, as `2026-10-21-mra-phase-2-till.md` says, with the owner's D1 (the MRA's address and key from
+our server) and its twelve choices.** Not yet seen on a tablet; the "Done when" below is still to be shown.
 
 1. **The MRA part in Kotlin:** sign-in, encryption, the invoice, the hash. Held to `mra/fixtures/crypto.json`
    and to invoices the script had fiscalised, so the till sends byte for byte what the MRA accepted.
