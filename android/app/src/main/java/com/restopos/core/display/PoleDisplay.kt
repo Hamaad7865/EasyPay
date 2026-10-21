@@ -47,6 +47,8 @@ class PoleDisplay @Inject constructor(
     private var opened: SessionStore.Pole? = null
     private var shown: ByteArray? = null
     private var asked = false
+    // with nothing open, when the display was last looked for: every 3 seconds, not every turn
+    private var lookedAt = 0L
     // the test lines stay this long before the sale comes back
     @Volatile private var testUntil = 0L
 
@@ -81,6 +83,8 @@ class PoleDisplay @Inject constructor(
         // set another way (another speed, other commands): opened afresh
         if (opened != null && opened != pole) close()
         if (!again && port != null && shown?.contentEquals(bytes) == true) return@withLock
+        if (port == null && !again && System.currentTimeMillis() - lookedAt < LOOK_EVERY) return@withLock
+        if (port == null) lookedAt = System.currentTimeMillis()
         val p = port ?: open(pole) ?: return@withLock
         runCatching { p.write(bytes, 1000) }
             .onSuccess {
@@ -144,5 +148,6 @@ class PoleDisplay @Inject constructor(
 
     private companion object {
         const val PERMISSION = "com.restopos.app.USB_POLE_PERMISSION"
+        const val LOOK_EVERY = 3_000L
     }
 }
