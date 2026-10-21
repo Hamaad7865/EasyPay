@@ -257,11 +257,16 @@ class ShellViewModel @Inject constructor(
     // till): a refused login, no login, a request the MRA refuses, invoices
     // waiting over an hour. Asked again every minute, for the hour.
     val mraSay: StateFlow<com.restopos.core.mra.MraBanner.Say?> = kotlinx.coroutines.flow.combine(
-        db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).mraOn },
-        mraLogin.state, mraSender.problem, db.mra().counts(),
+        db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).mra },
+        mraLogin.state,
+        kotlinx.coroutines.flow.combine(mraSender.problem, mraSender.environment) { p, e -> p to e },
+        db.mra().counts(),
         kotlinx.coroutines.flow.flow { while (true) { emit(System.currentTimeMillis()); kotlinx.coroutines.delay(60_000) } },
-    ) { on, login, problem, counts, now ->
-        com.restopos.core.mra.MraBanner.say(on, login.username != null, login.refused, problem, counts, now)
+    ) { mode, login, said, counts, now ->
+        com.restopos.core.mra.MraBanner.say(
+            mode == "training" || mode == "live", login.username != null, login.refused, said.first, counts, now,
+            testAtMra = com.restopos.core.mra.MraBanner.testAtMra(mode, said.second),
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     init {
         // a screen the other kind of business has gives way to this one's own

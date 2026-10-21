@@ -71,6 +71,7 @@ class MraViewModel @Inject constructor(
     val settings: StateFlow<PosSettings> = db.ops().settingsFlow().map { PosSettings.parse(it) }.stateIn(viewModelScope, SharingStarted.Eagerly, PosSettings())
     val state: StateFlow<MraLogin.State> = login.state
     val problem: StateFlow<String?> = sender.problem
+    val environment: StateFlow<String?> = sender.environment
     val counts: StateFlow<MraCounts?> = db.mra().counts().stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val problems: StateFlow<List<MraInvoiceEntity>> = db.mra().problems().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val device = MutableStateFlow<DeviceEntity?>(null)
@@ -116,6 +117,7 @@ internal fun MraSettingsPage(can: Boolean, guard: (then: () -> Unit) -> Unit, vm
     val counts by vm.counts.collectAsState()
     val problems by vm.problems.collectAsState()
     val problem by vm.problem.collectAsState()
+    val environment by vm.environment.collectAsState()
     val busy by vm.busy.collectAsState()
     val said by vm.said.collectAsState()
     var changing by remember { mutableStateOf(false) }
@@ -184,6 +186,14 @@ internal fun MraSettingsPage(can: Boolean, guard: (then: () -> Unit) -> Unit, vm
             c?.lastFiscalised?.let { T("Last fiscalised ${MraViewModel.hm(it)}.", 13.sp, 500, V.Text2) }
             T("MRA counter: ${device?.mra_counter ?: 0}.", 13.sp, 500, V.Text2)
             problem?.let { T("The MRA refuses this till's invoices: $it", 13.sp, 600, V.RedText, lines = 3) }
+            // the MRA said whether it counted them; a business live with us must be LIVE there too
+            environment?.let { env ->
+                if (com.restopos.core.mra.MraBanner.testAtMra(st.mra, env)) {
+                    T("The MRA answers this till as TEST: its sales are fiscalised but do not count. Its EBS is not live with the MRA yet: the business registers it on the MRA's portal.", 13.sp, 600, V.RedText, lines = 4)
+                } else {
+                    T("The MRA counts this till's invoices as $env.", 13.sp, 500, V.Text2)
+                }
+            }
         }
     }
     if (problems.isNotEmpty()) {

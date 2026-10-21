@@ -1,4 +1,4 @@
-import { checklistWords, MRA_MOVES, MRA_STATE_WORDS, tillConnected, type ChecklistLine, type MraState, type TillMraStatus } from "@/lib/mra";
+import { checklistWords, MRA_MOVES, MRA_STATE_WORDS, testAtMra, tillConnected, type ChecklistLine, type MraState, type TillMraStatus } from "@/lib/mra";
 import { Submit } from "../../../backoffice/busy";
 import { ConfirmSubmit } from "../../confirm";
 
@@ -102,6 +102,14 @@ export function MraPanel({
                 <span className={tillConnected(t.mra_status) ? "badge green" : "badge amber"}>
                   {tillConnected(t.mra_status) ? "Connected" : t.mra_status?.refused ? "Login refused" : "Not connected"}
                 </span>
+                {testAtMra(state, t.mra_status) && (
+                  <>
+                    {" "}
+                    <span className="badge red" title="The MRA answers this till as TEST: its sales do not count until its EBS is live on the MRA's side.">
+                      Counted as TEST by the MRA
+                    </span>
+                  </>
+                )}
                 <input name={"mra_" + t.id} defaultValue={t.mra_ebs_id ?? ""} maxLength={64} autoComplete="off" spellCheck={false} />
               </label>
             ))}

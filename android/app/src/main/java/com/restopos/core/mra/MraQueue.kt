@@ -35,8 +35,9 @@ object MraQueue {
     }
 
     sealed interface Read
-    // the MRA answered for these invoices (by identifier)
-    data class Answered(val each: Map<String, MraApi.Fiscal>, val responseId: String?) : Read
+    // the MRA answered for these invoices (by identifier), and said whether it
+    // counted them: TEST (its sandbox, a Test Drive) or LIVE
+    data class Answered(val each: Map<String, MraApi.Fiscal>, val responseId: String?, val environment: String? = null) : Read
     // the MRA refused the request as a whole: it answered for none of them
     data class RefusedWhole(val errors: List<String>, val token: Boolean) : Read
     // the request never reached the MRA
@@ -56,7 +57,7 @@ object MraQueue {
                 if (out.http >= 500 || out.http == 0) NoAnswer else RefusedWhole(listOf("HTTP ${out.http}"), out.http == 401)
             } else {
                 val t = MraApi.readTransmit(body)
-                if (t.invoices.isNotEmpty()) Answered(t.invoices.associateBy { it.identifier }, t.responseId)
+                if (t.invoices.isNotEmpty()) Answered(t.invoices.associateBy { it.identifier }, t.responseId, t.environment?.trim()?.uppercase()?.ifEmpty { null })
                 else {
                     val errors = t.errors.ifEmpty { (body["errors"] as? JsonArray)?.map { it.toString().trim('"') } ?: listOf("${t.status} HTTP ${out.http}") }
                     RefusedWhole(errors, out.http == 401 || errors.any { it.contains("token", ignoreCase = true) })

@@ -42,6 +42,13 @@ class MraQueueTest {
         assertEquals("R1", r.responseId)
     }
 
+    // every answer says whether the MRA counted it: TEST (sandbox, Test Drive) or LIVE
+    @Test fun theAnswerSaysTestOrLive() {
+        val r = MraQueue.read(MraHttp.Out.Answered(200, """{"status":"SUCCESS","environment":"TEST","fiscalisedInvoices":[{"invoiceIdentifier":"S-T1-1","status":"SUCCESS"}]}"""))
+        assertEquals("TEST", (r as MraQueue.Answered).environment)
+        assertEquals(null, (MraQueue.read(MraHttp.Out.Answered(200, """{"status":"SUCCESS","fiscalisedInvoices":[{"invoiceIdentifier":"S-T1-1","status":"SUCCESS"}]}""")) as MraQueue.Answered).environment)
+    }
+
     // ERR0020 (seen in the sandbox): the MRA saw none of them
     @Test fun aRequestRefusedWhole() {
         val r = MraQueue.read(MraHttp.Out.Answered(400, """{"status":"ERROR","errorMessages":[{"code":"ERR0020","description":"Missing request headers"}]}"""))

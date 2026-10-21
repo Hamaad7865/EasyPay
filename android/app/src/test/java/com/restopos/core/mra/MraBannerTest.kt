@@ -20,6 +20,16 @@ class MraBannerTest {
         assertTrue(s.red); assertTrue(s.text.startsWith("The MRA refused this till's login")); assertTrue(s.text.endsWith("Settings, MRA."))
     }
 
+    // a client live with EasyPay whose till the MRA still answers as TEST: its sales do not count
+    @Test fun liveWithUsButTestAtTheMraIsRed() {
+        val s = MraBanner.say(true, true, null, null, counts(), now, mu, testAtMra = true)!!
+        assertTrue(s.red); assertTrue(s.text, s.text.contains("TEST")); assertTrue(s.text.endsWith("Settings, MRA."))
+        assertTrue(MraBanner.testAtMra("live", "TEST"))
+        assertTrue(!MraBanner.testAtMra("training", "TEST"))
+        assertTrue(!MraBanner.testAtMra("live", "LIVE"))
+        assertTrue(!MraBanner.testAtMra("live", null))
+    }
+
     @Test fun aTillWithNoLoginIsRed() = assertTrue(MraBanner.say(true, false, null, null, counts(), now, mu)!!.red)
 
     @Test fun aRequestRefusedWholeSaysWhy() =

@@ -44,6 +44,12 @@ class MraSender @Inject constructor(
     private val _problem = MutableStateFlow<String?>(null)
     val problem: StateFlow<String?> = _problem
 
+    // what the MRA said of the last invoices it answered for: TEST (its sandbox,
+    // a Test Drive) or LIVE. Kept across restarts; nothing secret.
+    private val kept = context.getSharedPreferences("mra_state", Context.MODE_PRIVATE)
+    private val _environment = MutableStateFlow(kept.getString(ENVIRONMENT, null))
+    val environment: StateFlow<String?> = _environment
+
     sealed interface Connect
     data class Connected(val until: Long?) : Connect
     data class NotConnected(val why: String) : Connect
@@ -147,6 +153,7 @@ class MraSender @Inject constructor(
             when (val read = MraQueue.read(http.post(req, timeoutMs))) {
                 is MraQueue.Answered -> {
                     _problem.value = null
+                    read.environment?.let { if (it != _environment.value) { _environment.value = it; kept.edit().putString(ENVIRONMENT, it).apply() } }
                     batch.forEach { e ->
                         val f = read.each[e.identifier] ?: return@forEach // not answered for: stays as it went, unsure
                         db.mra().answer(e.id, MraQueue.status(f), f.irn, f.qr, list(f.errors), list(f.warnings), System.currentTimeMillis(), read.responseId)
@@ -198,6 +205,8 @@ class MraSender @Inject constructor(
             put("refused", st.refused)
             put("problem", _problem.value)
             put("check", c.check); put("refused_invoices", c.refused)
+            // TEST or LIVE, as the MRA last said: /admin flags a live client's till still counted as TEST
+            put("environment", _environment.value)
         }
         val full = buildJsonObject {
             core.forEach { (k, v) -> put(k, v) }
@@ -224,5 +233,6 @@ class MraSender @Inject constructor(
         const val SIGN_IN_MS = 15_000L
         const val HOUR_MS = 3_600_000L
         const val UNSURE_WAIT_MS = 120_000L
+        const val ENVIRONMENT = "environment"
     }
 }

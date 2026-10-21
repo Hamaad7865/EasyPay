@@ -2,7 +2,7 @@
 // (web/lib/mra.ts, migration 0116).
 // Usage: node web/lib/mra.test.mjs   (Node runs the .ts file itself)
 import assert from "node:assert/strict";
-import { asMra, checklistWords, isMraCode, MRA_CODES, MRA_MOVES, mraNotice, onMra, suggestCode, tillConnected } from "./mra.ts";
+import { asMra, checklistWords, isMraCode, MRA_CODES, MRA_MOVES, mraNotice, onMra, suggestCode, testAtMra, tillConnected } from "./mra.ts";
 
 let failures = 0;
 function check(name, fn) {
@@ -96,6 +96,15 @@ check("the tills' login line counts the tills connected", () => {
   assert.match(by({ connected: 1, total: 2 }).login.detail, /^1 of 2 tills connected/);
   assert.equal(by({ connected: 0, total: 0 }).login.ok, false);
   assert.equal(by(undefined).login.ok, false);
+});
+
+// a client live with us whose till the MRA still answers as TEST: its sales do not count
+check("a live client's till the MRA counts as TEST is flagged", () => {
+  assert.equal(testAtMra("live", { environment: "TEST" }), true);
+  assert.equal(testAtMra("live", { environment: "LIVE" }), false);
+  assert.equal(testAtMra("training", { environment: "TEST" }), false);
+  assert.equal(testAtMra("live", null), false);
+  assert.equal(testAtMra("live", { connected: true }), false);
 });
 
 console.log(failures ? `${failures} FAILED` : "ALL PASS");

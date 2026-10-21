@@ -35,8 +35,12 @@ export function mraNotice(s: MraState): string {
 
 // What a till last said of its connection to the MRA (pos_devices.mra_status,
 // 0132): connected, unless the MRA refused its login.
-export type TillMraStatus = { connected?: boolean; refused?: string | null } | null | undefined;
+export type TillMraStatus = { connected?: boolean; refused?: string | null; environment?: string | null } | null | undefined;
 export const tillConnected = (s: TillMraStatus): boolean => !!s && s.connected === true && !s.refused;
+// A client live with us whose till the MRA still answers as TEST (its sandbox,
+// a Test Drive): the MRA does not count its sales. The till says what the MRA
+// last answered (pos_devices.mra_status.environment).
+export const testAtMra = (state: MraState, s: TillMraStatus): boolean => state === "live" && !!s && s.environment === "TEST";
 
 // The MRA's tax codes, one on every line it is sent (the Standard e-Invoice Template).
 export const MRA_CODES = [
