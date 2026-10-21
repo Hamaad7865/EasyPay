@@ -604,6 +604,9 @@ class CashOps @Inject constructor(
             }.toString(), employee_id = null))
             db.outbox().enqueue(dayCloseOp(row, z, null).copy(employee_id = null))
         }
+        // whoever was signed in was clocked out with the day: they stay, in to
+        // look only, and the strip offers to clock them in before the day opens
+        staff.current.value?.let { who -> if (who.employee.id in leaving) staff.signIn(who.copy(clockedInAt = null), lookOnly = true) }
         session.dayClosed()
         pushNow(context)
         printing.scope.launch { runCatching { printZ(z) } }

@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -32,11 +32,16 @@ class SellCheck @Inject constructor(
     private val closing = MutableStateFlow(false)
     fun closing(on: Boolean) { closing.value = on }
 
+    // The store and the till, read again at every sign-in: a tablet set up
+    // (or signed in to another business) since the app started has them now.
+    private val storeId = staff.current.map { session.storeId() }.distinctUntilChanged()
+    private val deviceId = staff.current.map { session.deviceId() }.distinctUntilChanged()
+
     // whether anyone here has a PIN: until then the till has no days (StartScreen)
-    private val usesDays: StateFlow<Boolean?> = flow { emit(session.storeId()) }
+    private val usesDays: StateFlow<Boolean?> = storeId
         .flatMapLatest { s -> if (s == null) flowOf(false) else db.staff().staff(s).map { list -> list.any { it.pin_hash != null } } }
         .stateIn(scope, SharingStarted.Eagerly, null)
-    private val dayOpen = flow { emit(session.deviceId()) }
+    private val dayOpen = deviceId
         .flatMapLatest { d -> if (d == null) flowOf(false) else db.staff().openShiftFlow(d).map { it != null } }
 
     // what the strip says, or null while the till sells
