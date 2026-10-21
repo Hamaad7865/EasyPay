@@ -96,6 +96,12 @@ class Exchanges @Inject constructor(
         // exchange is cancelled).
         sales.open()
         val ticket = tickets.ensureTicket()
+        // Loyalty points (0128): the refund half takes back what the goods
+        // earned, so the new sale is the same customer's and earns its own: a
+        // like-for-like swap leaves their points where they were.
+        if (settings.loyalty && ticket.customer_id == null) {
+            db.tickets().ticket(orig.ticket_id)?.customer_id?.let { tickets.setCustomer(it) }
+        }
         val draft = ExchangeDraft(
             ticket.id, receiptId, orig.number, picks, restock, reason.trim().ifBlank { "Exchange" }, approver, credit,
             picks?.count { it.value > 0 } ?: db.receipts().lines(receiptId).size,

@@ -524,7 +524,8 @@ class OrderOps @Inject constructor(
             // the points the sale earned are not this paper's; what the refund moved is
             pointsEarned = null,
             pointsTaken = pointsTaken.takeIf { it > 0 }, pointsBack = pointsBack.takeIf { it > 0 },
-            pointsBalance = pointsOf?.let { it.points + pointsBack - pointsTaken },
+            // an exchange's slip says none: its new sale's receipt, printed after it, has the balance after both
+            pointsBalance = pointsOf?.takeIf { toExchange == 0L }?.let { it.points + pointsBack - pointsTaken },
         )
         val refund = ReceiptEntity(
             id, tenant, store, deviceId, orig.ticket_id, number, type = "refund", refund_of = orig.id,

@@ -199,7 +199,7 @@ fun CustomerPicker(current: String?, vm: CustomersViewModel = hiltViewModel(), w
             Column(Modifier.width(460.dp)) {
                 OutlinedTextField(
                     typed, { typed = it.take(60); vm.search(typed) }, Modifier.fillMaxWidth(),
-                    placeholder = { Text("Search by name, phone or email") }, singleLine = true,
+                    placeholder = { Text(if (loyal) "Search by name, phone, email or card" else "Search by name, phone or email") }, singleLine = true,
                 )
                 message?.let { Text(it, Modifier.padding(top = 6.dp), color = Pos.Pink, fontSize = 13.sp) }
                 LazyColumn(Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(max = 300.dp)) {
