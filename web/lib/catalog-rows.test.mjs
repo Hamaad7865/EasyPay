@@ -137,6 +137,40 @@ await check("an Excel workbook gives the rows its CSV twin gives", async () => {
   assert.equal(fromExcel.rows[3].n, 6);
 });
 
+// ---- how it is sold, and whether it counts stock (0129) ----
+await check("Sold by and Count stock are read from their headers and their words", () => {
+  const { rows, mapping } = read(
+    "Name,Price,Sold by,Count stock\n" +
+    "Ironing,110,kg,non\n" +
+    "Wash,230,Au kilo,\n" +
+    "Bag,155,Piece,oui\n" +
+    "Robe,A DETERMINER,At the sale,\n" +
+    "Chemise,,à déterminer,No\n" +
+    "Towel,90,,yes\n",
+  );
+  assert.deepEqual(mapping, ["name", "price", "sold_by", "count_stock"]);
+  assert.deepEqual(rows.map((r) => [r.name, r.sold_by, r.count_stock, r.price, r.bad]), [
+    ["Ironing", "weight", false, 11000, undefined],
+    ["Wash", "weight", undefined, 23000, undefined],
+    ["Bag", "each", true, 15500, undefined],
+    // a price typed at the sale needs none: what the cell says is not read
+    ["Robe", "open", undefined, undefined, undefined],
+    ["Chemise", "open", false, undefined, undefined],
+    ["Towel", undefined, true, 9000, undefined],
+  ]);
+});
+await check("a word Sold by or Count stock does not know is the row's problem", () => {
+  const { rows } = read("Name,Price,Sold by,Count stock\nMilk,40,litre,yes\nRice,50,kg,maybe\nBread,20,,\n");
+  assert.deepEqual(rows.map((r) => r.bad), ["bad-sold-by", "bad-count-stock", undefined]);
+});
+await check("a price that is not a number is still a problem when the price is not typed at the sale", () => {
+  const { rows } = read("Name,Price,Sold by\nRobe,A DETERMINER,kilo\nShirt,A DETERMINER,\n");
+  assert.deepEqual(rows.map((r) => r.bad), ["price-missing", "price-missing"]);
+});
+await check("other headers for them", () => {
+  assert.deepEqual(autoMap(["Item", "Prix", "Unit", "Track stock"]), ["name", "price", "sold_by", "count_stock"]);
+});
+
 console.log(failures === 0 ? "CATALOG ROWS PASS" : `CATALOG ROWS FAIL (${failures})`);
 // the exit code is set and node is left to end by itself: process.exit() here has crashed node on Windows while it was closing down, after every check had passed
 process.exitCode = failures ? 1 : 0;

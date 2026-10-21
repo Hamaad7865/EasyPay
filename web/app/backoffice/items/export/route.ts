@@ -11,8 +11,10 @@ export const dynamic = "force-dynamic";
 
 const HEAD = [
   "Name", "Category", "Brand", "Supplier", "Supplier code", "Option 1", "Value 1", "Option 2", "Value 2", "Option 3", "Value 3",
-  "SKU", "Barcode", "Price", "Cost", "Tax", "Reorder at", "Order quantity", "Opening stock",
+  "SKU", "Barcode", "Price", "Cost", "Tax", "Reorder at", "Order quantity", "Opening stock", "Sold by", "Count stock",
 ];
+// how a product is sold, in the words the importer reads back (0129)
+const way = (r: Row) => (r.open_price ? "at the sale" : r.sold_by === "weight" ? "kilo" : "each");
 const cell = (v: unknown) => {
   const s = v === null || v === undefined ? "" : String(v);
   return /[",;\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -24,6 +26,7 @@ type Row = {
   name: string; category: string | null; brand: string | null; supplier: string | null; supplier_code: string | null;
   option_names: string[]; option_values: string[] | null; sku: string | null; barcode: string | null;
   price: string; cost: string | null; tax: string | null; reorder_point: number | null; reorder_qty: number | null; qty: number;
+  sold_by: string; open_price: boolean; track_stock: boolean;
 };
 
 export async function GET(req: Request) {
@@ -50,7 +53,8 @@ export async function GET(req: Request) {
                     (select t.name from item_taxes it join taxes t on t.tenant_id = it.tenant_id and t.id = it.tax_id
                       where it.tenant_id = i.tenant_id and it.item_id = i.id and it.deleted_at is null limit 1) as tax,
                     l.reorder_point, l.reorder_qty,
-                    coalesce(l.qty, case when v.id is null then i.stock_qty end, 0)::int as qty
+                    coalesce(l.qty, case when v.id is null then i.stock_qty end, 0)::int as qty,
+                    i.sold_by, i.open_price, i.track_stock
                from items i
                left join item_variants v on v.tenant_id = i.tenant_id and v.item_id = i.id and v.deleted_at is null
                left join categories c on c.tenant_id = i.tenant_id and c.id = i.category_id
@@ -70,7 +74,8 @@ export async function GET(req: Request) {
     const pair = (n: number) => (vals[n] ? [r.option_names[n] ?? "", vals[n]] : ["", ""]);
     lines.push(
       [r.name, r.category, r.brand, r.supplier, r.supplier_code, ...pair(0), ...pair(1), ...pair(2), r.sku, r.barcode,
-        rupees(r.price), costs ? rupees(r.cost) : "", r.tax, units(r.reorder_point), units(r.reorder_qty), units(Math.max(0, r.qty))]
+        r.open_price ? "" : rupees(r.price), costs ? rupees(r.cost) : "", r.tax, units(r.reorder_point), units(r.reorder_qty), units(Math.max(0, r.qty)),
+        way(r), r.track_stock ? "yes" : "no"]
         .map(cell)
         .join(","),
     );

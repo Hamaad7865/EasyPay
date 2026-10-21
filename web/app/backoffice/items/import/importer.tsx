@@ -24,6 +24,12 @@ const WHY: Record<string, string> = {
   "sku-taken": "Another product already has this SKU.",
   "too-many-variants": "That would make more than 200 lines for one product.",
   "product-has-problems": "Another row of this product has a problem, so the whole product waits.",
+  // how it is sold, and whether it counts stock (0129)
+  "bad-sold-by": "Sold by says each, kilo, or at the sale (for a price typed at the till). This row says something else.",
+  "bad-count-stock": "Count stock says yes or no. This row says something else.",
+  "open-price-not-here": "A product with variants has prices of its own: its price cannot be typed at the sale.",
+  "unit-has-stock": "This product counts stock and holds some, so it cannot change between each and by the kilo. Count it to zero first, or say no under Count stock.",
+  "stock-not-counted": "This row gives an opening stock to a product that counts none (its price is typed at the sale, or Count stock says no).",
 };
 // the problems that are about one cell, and which kind of column that cell is in: it can be emptied there
 const CLEARS: Record<string, Target> = { "barcode-twice": "barcode", "barcode-taken": "barcode", "sku-twice": "sku", "sku-taken": "sku" };

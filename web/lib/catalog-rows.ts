@@ -16,6 +16,8 @@ export type CatalogRow = {
   o1?: string; v1?: string; o2?: string; v2?: string; o3?: string; v3?: string;
   sku?: string; barcode?: string; tax?: string;
   price?: number | null; cost?: number | null; reorder?: number | null; order_qty?: number | null; stock?: number | null;
+  // how it is sold (0129): each, by the kilo, or its price typed at the sale; and whether it counts stock
+  sold_by?: "each" | "weight" | "open"; count_stock?: boolean;
   bad?: string;
 };
 
@@ -43,6 +45,8 @@ export const FIELDS: { key: Target; label: string; required?: boolean; pair?: bo
   { key: "stock", label: "Opening stock", words: ["openingstock", "stock", "quantity", "qty", "instock", "onhand", "units", "pcs", "quantite", "qte"] },
   { key: "reorder", label: "Reorder at", words: ["reorderat", "reorderlevel", "reorder", "reorderpoint", "minimum", "minstock", "seuil"] },
   { key: "order_qty", label: "Order quantity", words: ["orderquantity", "orderqty", "reorderquantity", "reorderqty"] },
+  { key: "sold_by", label: "Sold by (each, kilo or at the sale)", words: ["soldby", "sellby", "unit", "uom", "unite", "vendupar", "venteau"] },
+  { key: "count_stock", label: "Count stock (yes or no)", words: ["countstock", "trackstock", "countedinstock", "stocked", "counted", "suivistock", "gererstock"] },
   { key: "option", label: "A variant option, named after this column", words: ["size", "sizes", "colour", "color", "taille", "couleur", "pointure"] },
   { key: "o1", label: "Option 1: its name", pair: true, words: ["option1", "option1name"] },
   { key: "v1", label: "Option 1: its value", pair: true, words: ["value1", "option1value"] },
@@ -56,6 +60,15 @@ export const REQUIRED: Target[] = FIELDS.filter((f) => f.required).map((f) => f.
 export const MOST_OPTIONS = 3;
 
 const MONEY = new Set<Target>(["price", "cost"]);
+// What a Sold by or a Count stock cell says, read as a header is (letters and
+// digits, lower case, no accents): "Au kilo" is aukilo, "À déterminer" adeterminer.
+const SOLD: Record<string, "each" | "weight" | "open"> = Object.fromEntries([
+  ...["each", "piece", "pieces", "pc", "pcs", "unit", "units", "item", "items", "unite", "fixed", "fixedprice"].map((w) => [w, "each"]),
+  ...["kilo", "kilos", "kg", "kgs", "kilogram", "kilograms", "kilogramme", "kilogrammes", "weight", "byweight", "bythekilo", "perkg", "perkilo", "aukilo", "aupoids", "poids"].map((w) => [w, "weight"]),
+  ...["atthesale", "atthetill", "typed", "typedatthesale", "typedatthetill", "open", "openprice", "variable", "adeterminer"].map((w) => [w, "open"]),
+]);
+const YES = new Set(["yes", "y", "true", "1", "oui", "o", "x"]);
+const NO = new Set(["no", "n", "false", "0", "non"]);
 const QTY = new Set<Target>(["reorder", "order_qty", "stock"]);
 
 // a header as it is compared: its letters and digits, lower case, without accents
@@ -121,6 +134,8 @@ export function toCatalogRows(
     if (empty(line)) return;
     const r: Record<string, unknown> = { n: at + i + 2 };
     const named: [string, string][] = [];
+    // the row's problems in the order of its columns: the first is the one it is told
+    const bads: string[] = [];
     keys.forEach((k, col) => {
       const raw = String(line[col] ?? "").trim();
       if (!k || raw === "") return;
@@ -128,16 +143,28 @@ export function toCatalogRows(
       else if (MONEY.has(k)) {
         // "Rs 1,290.00" as well as "1290"
         const cents = money(raw.replace(/^rs\.?\s*/i, ""));
-        if (cents === null) r.bad = r.bad ?? (k === "price" ? "price-missing" : "bad-number");
+        if (cents === null) bads.push(k === "price" ? "price-missing" : "bad-number");
         else r[k] = cents;
       } else if (QTY.has(k)) {
         // "1,200" is twelve hundred; "2,5" is not a number here (it would be read as 25 or as 2.5, and which is a guess)
         const tidy = raw.replace(/\s/g, "");
         const v = Number(/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(tidy) ? tidy.replace(/,/g, "") : tidy);
-        if (!Number.isFinite(v) || v < 0) r.bad = r.bad ?? "bad-number";
+        if (!Number.isFinite(v) || v < 0) bads.push("bad-number");
         else r[k] = Math.round(v * 1000);
+      } else if (k === "sold_by") {
+        const way = SOLD[headerKey(raw)];
+        if (way) r.sold_by = way;
+        else bads.push("bad-sold-by");
+      } else if (k === "count_stock") {
+        const w = headerKey(raw);
+        if (YES.has(w)) r.count_stock = true;
+        else if (NO.has(w)) r.count_stock = false;
+        else bads.push("bad-count-stock");
       } else r[k] = raw.slice(0, 120);
     });
+    // one whose price is typed at the sale needs none: whatever its price cell says ("A déterminer") is not read
+    const told = r.sold_by === "open" ? bads.filter((b) => b !== "price-missing") : bads;
+    if (told.length) r.bad = told[0];
     // options named after their columns take the places the file's own Option columns left free, in the order of the columns
     for (const [name, value] of named) {
       const slot = ([1, 2, 3] as const).find((s) => r["o" + s] === undefined && r["v" + s] === undefined);
