@@ -88,7 +88,7 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
       // that shows everything goes by no ticks, so it is not offered
       await c.query(
         `select id, case when kind = 'screen' then name || ' (screen)' else name end as name
-           from printers where tenant_id = $1 and deleted_at is null and not (kind = 'screen' and all_items) order by sort_order, name`,
+           from printers where tenant_id = $1 and deleted_at is null and not (kind = 'screen' and all_items) and kind <> 'display' order by sort_order, name`,
         [ctx.tenantId],
       )
     ).rows as { id: string; name: string }[],

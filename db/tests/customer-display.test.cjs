@@ -12,6 +12,8 @@
 // Runs in ONE transaction that is rolled back: it leaves nothing behind.
 // Usage: node db/tests/customer-display.test.cjs
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { Client } = require('pg');
 const devguard = require('./require-dev.cjs');
 
@@ -21,6 +23,18 @@ function check(name, cond, extra) {
   if (!cond) failures++;
 }
 const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
+
+// a module of web/lib, compiled from the TypeScript it lives in
+function lib(name) {
+  const web = path.join(__dirname, '..', '..', 'web');
+  const ts = require(path.join(web, 'node_modules', 'typescript'));
+  const js = ts.transpileModule(fs.readFileSync(path.join(web, 'lib', name + '.ts'), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const mod = { exports: {} };
+  new Function('require', 'module', 'exports', js)(require, mod, mod.exports);
+  return mod.exports;
+}
 
 (async () => {
   const c = new Client({ connectionString: devguard.envMap().DATABASE_URL_UNPOOLED, ssl: { require: true } });
@@ -144,6 +158,33 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     const sent = failed(pulled) ? [] : (pulled.changes.printers || []).filter((x) => x.id === disp);
     check('P9 a pull hands the display with its till and its message', sent.length === 1 && sent[0].kind === 'display' && sent[0].device_id === kioskTill && sent[0].message === null && sent[0].pair_code === 'DSPLY234',
       failed(pulled) ? said(pulled) : JSON.stringify(sent[0]));
+
+    // ---- the back office's own saves (web/lib/saves.ts, web/lib/printers.ts) ----
+    const saves = lib('saves');
+    const printers = lib('printers');
+    const office = (await one(`insert into stores (tenant_id, name, code) values ($1, 'Office', 'CD1D') returning id`, [tid])).id;
+    const officeTill = await device(tid, office, 'T4');
+    const form = (o) => ({ name: 'Front', kind: 'display', address: '192.168.1.80', paper: 80, feed: 3, cut: true, pair: 'DSPLY234', device: officeTill, message: 'Hello\nWelcome', ...o });
+    r = await asApp(tid, () => saves.addPrinter(c, tid, office, form({})));
+    const front = failed(r) ? null : (await one(`select id, is_receipt, device_id, message from printers where tenant_id = $1 and store_id = $2 and kind = 'display'`, [tid, office]));
+    check('B1 the back office adds a display, not as the store\'s receipt printer', !failed(r) && r.first === false && front && !front.is_receipt && front.device_id === officeTill && front.message === 'Hello\nWelcome', failed(r) ? said(r) : JSON.stringify(front));
+    r = await asApp(tid, () => saves.addPrinter(c, tid, office, { name: 'Cashier', kind: 'network', address: '192.168.1.50', paper: 80, feed: 3, cut: true }));
+    check('B1 the printer added after it takes the receipts', !failed(r) && r.first === true, failed(r) ? said(r) : JSON.stringify(r));
+    r = await asApp(tid, () => saves.setReceiptPrinter(c, tid, office, front.id));
+    check('B2 a display cannot be chosen to print receipts', r === 'screen', String(r));
+    r = await asApp(tid, () => saves.savePrinter(c, tid, front.id, form({ name: 'Front desk', message: null }), false));
+    const saved = await one(`select name, is_active, message, device_id, kind from printers where id = $1`, [front.id]);
+    check('B3 a display saved: renamed, switched off, its message cleared', r === true && saved.name === 'Front desk' && saved.is_active === false && saved.message === null && saved.kind === 'display', String(r) + ' ' + JSON.stringify(saved));
+    const cashier = (await one(`select id from printers where tenant_id = $1 and store_id = $2 and kind = 'network'`, [tid, office])).id;
+    r = await asApp(tid, () => saves.savePrinter(c, tid, cashier, form({}), true));
+    check('B4 a printer is not made a display', (r === false || r === 'receipt') && (await one(`select kind from printers where id = $1`, [cashier])).kind === 'network', failed(r) ? said(r) : String(r));
+    r = await asApp(tid, () => saves.savePrinter(c, tid, front.id, form({ kind: 'network', pair: null, device: null, message: null }), true));
+    check('B4 nor a display a printer', r === false && (await one(`select kind from printers where id = $1`, [front.id])).kind === 'display', failed(r) ? said(r) : String(r));
+    check('B5 two lines, trimmed, at most 120 characters', printers.displayMessage('  Hello ', ' Welcome ') === 'Hello\nWelcome' && printers.displayMessage('', '') === null
+      && printers.displayMessage('', 'Only') === 'Only' && printers.displayMessage('x'.repeat(80), 'y'.repeat(80)).length === 120);
+    check('B6 nothing that prints nothing is a printer', printers.silent('screen') && printers.silent('display') && !printers.silent('network') && !printers.silent('usb') && !printers.silent('bluetooth'));
+    const sharing = printers.displaysSharing([{ name: 'A', address: '10.0.0.5', kind: 'display' }, { name: 'B', address: '10.0.0.5:9311', kind: 'display' }, { name: 'C', address: '10.0.0.6', kind: 'display' }, { name: 'K', address: '10.0.0.5', kind: 'screen' }]);
+    check('B7 two displays at one address are named, once', sharing.length === 1 && sharing[0].startsWith('A and B are at the same address (10.0.0.5:9311)'), JSON.stringify(sharing));
   } catch (e) {
     console.log('FAIL the suite stopped: ' + (e.stack || e));
     failures++;

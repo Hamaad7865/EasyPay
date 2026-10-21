@@ -85,8 +85,10 @@ async function tableOf(c: PoolClient, tenantId: string, store: string, table: st
 // code its tablet shows (`pair`) and may show every item (`all`); otherwise
 // it shows the categories ticked for it. A printer has neither.
 export type PrinterForm = {
-  name: string; kind: "network" | "usb" | "bluetooth" | "screen"; address: string | null; paper: number; feed: number; cut: boolean;
+  name: string; kind: "network" | "usb" | "bluetooth" | "screen" | "display"; address: string | null; paper: number; feed: number; cut: boolean;
   pair?: string | null; all?: boolean;
+  // a customer display's (0129): the till it faces and its message
+  device?: string | null; message?: string | null;
 };
 
 // A printer added to one of the restaurant's stores. The first printer of a
@@ -99,13 +101,17 @@ export async function addPrinter(c: PoolClient, tenantId: string, store: string,
   const st = await c.query(`select id from stores where tenant_id = $1 and id = $2 and deleted_at is null`, [tenantId, store]);
   if (st.rowCount !== 1) return null;
   const screen = v.kind === "screen";
+  // a kitchen screen or a customer display prints nothing (0129): never a store's first printer
+  const silent = screen || v.kind === "display";
+  const display = v.kind === "display";
   const first =
-    !screen &&
-    (await c.query(`select 1 from printers where tenant_id = $1 and store_id = $2 and deleted_at is null and kind <> 'screen' limit 1`, [tenantId, store])).rowCount === 0;
+    !silent &&
+    (await c.query(`select 1 from printers where tenant_id = $1 and store_id = $2 and deleted_at is null and kind not in ('screen', 'display') limit 1`, [tenantId, store])).rowCount === 0;
   await c.query(
-    `insert into printers (tenant_id, store_id, name, kind, address, paper_mm, is_receipt, feed_lines, cut, pair_code, all_items, sort_order)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, (select coalesce(max(sort_order), -1) + 1 from printers where tenant_id = $1))`,
-    [tenantId, store, v.name, v.kind, v.address, v.paper, first, v.feed, v.cut, screen ? (v.pair ?? null) : null, screen && v.all === true],
+    `insert into printers (tenant_id, store_id, name, kind, address, paper_mm, is_receipt, feed_lines, cut, pair_code, all_items, device_id, message, sort_order)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, (select coalesce(max(sort_order), -1) + 1 from printers where tenant_id = $1))`,
+    [tenantId, store, v.name, v.kind, v.address, v.paper, first, v.feed, v.cut, silent ? (v.pair ?? null) : null, screen && v.all === true,
+      display ? (v.device ?? null) : null, display ? (v.message ?? null) : null],
   );
   return { first };
 }
@@ -124,7 +130,7 @@ export async function setReceiptPrinter(
   if (receipt) {
     const own = await c.query(`select kind from printers where tenant_id = $1 and store_id = $2 and id = $3 and deleted_at is null`, [tenantId, store, receipt]);
     if (own.rowCount !== 1) return "no-printer";
-    if (own.rows[0].kind === "screen") return "screen";
+    if (own.rows[0].kind === "screen" || own.rows[0].kind === "display") return "screen";
   }
   await c.query(
     `update printers set is_receipt = coalesce(id = $2::uuid, false)
@@ -158,14 +164,18 @@ export async function saveChoice(c: PoolClient, tenantId: string, id: string, na
 // does not carry screens is refused by the database (not-premium, 0086).
 export async function savePrinter(c: PoolClient, tenantId: string, id: string, v: PrinterForm, active: boolean): Promise<boolean | "receipt"> {
   const screen = v.kind === "screen";
-  if (screen) {
+  const display = v.kind === "display";
+  if (screen || display) {
     const now = await c.query(`select is_receipt from printers where tenant_id = $1 and id = $2 and deleted_at is null`, [tenantId, id]);
     if (now.rows[0]?.is_receipt) return "receipt";
   }
+  // a display stays a display, and a printer or a kitchen screen is not made one (0129)
   const r = await c.query(
-    `update printers set name = $3, kind = $4, address = $5, paper_mm = $6, feed_lines = $7, cut = $8, is_active = $9, pair_code = $10, all_items = $11
-      where tenant_id = $1 and id = $2 and deleted_at is null`,
-    [tenantId, id, v.name, v.kind, v.address, v.paper, v.feed, v.cut, active, screen ? (v.pair ?? null) : null, screen && v.all === true],
+    `update printers set name = $3, kind = $4, address = $5, paper_mm = $6, feed_lines = $7, cut = $8, is_active = $9, pair_code = $10, all_items = $11,
+            device_id = $12, message = $13
+      where tenant_id = $1 and id = $2 and deleted_at is null and (kind = 'display') = ($4 = 'display')`,
+    [tenantId, id, v.name, v.kind, v.address, v.paper, v.feed, v.cut, active, screen || display ? (v.pair ?? null) : null, screen && v.all === true,
+      display ? (v.device ?? null) : null, display ? (v.message ?? null) : null],
   );
   return r.rowCount === 1;
 }

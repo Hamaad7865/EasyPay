@@ -10,9 +10,11 @@ export type PrinterRow = {
   id: string;
   store_id: string;
   name: string;
-  // "screen": a kitchen screen (0086), a tablet that shows the orders. It
-  // prints nothing, so the page hands this file its printers only.
-  kind: "network" | "usb" | "bluetooth" | "screen";
+  // "screen": a kitchen screen (0086), a tablet that shows the orders;
+  // "display": a customer display (0129), a tablet that faces the customer
+  // and shows one till's sale. Neither prints, so the page hands this file
+  // its printers only (silent, below).
+  kind: "network" | "usb" | "bluetooth" | "screen" | "display";
   address: string | null;
   paper_mm: number;
   is_receipt: boolean;
@@ -22,7 +24,37 @@ export type PrinterRow = {
   // a kitchen screen's: the code its tablet shows, and whether it shows every item
   pair_code?: string | null;
   all_items?: boolean;
+  // a customer display's: the till it faces, and its two lines for between sales
+  device_id?: string | null;
+  message?: string | null;
 };
+
+// A kind that prints nothing: a kitchen screen or a customer display. It is
+// never the receipt printer, never ticked for a category's orders, never in
+// a printer's warnings. The till has the same rule (Routing.silent).
+export function silent(kind: string): boolean {
+  return kind === "screen" || kind === "display";
+}
+
+// A customer display's message as typed: two lines, each trimmed, at most
+// 120 characters with the line break (0129). Null for none.
+export function displayMessage(first: unknown, second: unknown): string | null {
+  const lines = [first, second].map((v) => String(v ?? "").trim().slice(0, 60)).filter((v) => v !== "");
+  const m = lines.join("\n").slice(0, 120);
+  return m === "" ? null : m;
+}
+
+// Two customer displays given one address: the display shows whichever till
+// spoke last. Said on the page, store by store; each display named once.
+export function displaysSharing(rows: { name: string; address: string | null; kind: string }[]): string[] {
+  const at = new Map<string, string[]>();
+  for (const p of rows.filter((x) => x.kind === "display")) {
+    const raw = (p.address ?? "").trim();
+    const key = raw.includes(":") ? raw : `${raw}:9311`;
+    at.set(key, [...(at.get(key) ?? []), p.name]);
+  }
+  return [...at.entries()].filter(([, names]) => names.length > 1).map(([key, names]) => `${names.join(" and ")} are at the same address (${key}): the display shows the sale of whichever till spoke last. Give each display its own tablet.`);
+}
 export type PrinterCat = { id: string; name: string; printer_ids: string[] };
 
 // A printer's paper (paper_mm): 80 mm, 58 mm, or 57, a 57 mm roll in a printer

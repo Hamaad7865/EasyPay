@@ -4,7 +4,7 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, int, on, Refused, text, uuid } from "@/lib/action";
 import { PREMIUM_ONLY } from "@/lib/plan";
-import { type PrinterCat as Cat, type PrinterRow as Row, paperName, paperOf, printerWarnings, receiptField, receiptPicks } from "@/lib/printers";
+import { type PrinterCat as Cat, type PrinterRow as Row, displayMessage, displaysSharing, paperName, paperOf, printerWarnings, receiptField, receiptPicks, silent } from "@/lib/printers";
 import * as saves from "@/lib/saves";
 import { loadSettings, saveSettings } from "@/lib/settings";
 import { Empty, Flash, PageHead, type Search } from "../ui";
@@ -40,6 +40,53 @@ function screenFields(f: FormData): saves.PrinterForm {
   if (!IP.test(address)) throw new Refused("Type the address the kitchen tablet shows, for example 192.168.1.60.");
   if (!CODE.test(pair)) throw new Refused("Type the pairing code the kitchen tablet shows: eight letters and digits.");
   return { name, kind: "screen", address, paper: 80, feed: 3, cut: true, pair, all: f.get("shows") !== "ticked" };
+}
+
+// A customer display (0129): a tablet that faces the customer and shows the
+// sale of one till, set up from EasyPay's first screen as a customer display.
+// The till reaches it as it reaches a kitchen screen, and signs what it sends
+// with the code the display shows. Free on every plan, for restaurants and
+// shops. The till it faces has to be a till of its store.
+async function displayFields(c: import("pg").PoolClient, tenantId: string, store: string, f: FormData): Promise<saves.PrinterForm> {
+  const name = text(f, "name", 40);
+  const address = text(f, "address", 40);
+  const pair = text(f, "pair_code", 20).replace(/[\s-]/g, "").toUpperCase();
+  const device = String(f.get("device_id") ?? "").toLowerCase();
+  if (!name) throw new Refused("Give the display a name, for example Counter.");
+  if (!IP.test(address)) throw new Refused("Type the address the customer display shows, for example 192.168.1.70.");
+  if (!CODE.test(pair)) throw new Refused("Type the pairing code the customer display shows: eight letters and digits.");
+  const till = UUID.test(device)
+    ? await c.query(`select 1 from pos_devices where tenant_id = $1 and store_id = $2 and id = $3 and deleted_at is null`, [tenantId, store, device])
+    : null;
+  if (!till || till.rowCount !== 1) throw new Refused("Choose the till the display faces, among this store's tills.");
+  return { name, kind: "display", address, paper: 80, feed: 3, cut: true, pair, device, message: displayMessage(f.get("line1"), f.get("line2")) };
+}
+
+async function addDisplay(f: FormData) {
+  "use server";
+  await act("settings.device", PATH, async (c, ctx) => {
+    const store = String(f.get("store_id") ?? "");
+    if (!UUID.test(store)) throw new Refused("This business has no store yet.");
+    const v = await displayFields(c, ctx.tenantId, store, f);
+    if (!(await saves.addPrinter(c, ctx.tenantId, store, v))) throw new Refused("That store is gone. Reload the page.");
+    return `${v.name} added. Its till shows its sale there once it has synced.`;
+  });
+}
+
+async function saveDisplay(f: FormData) {
+  "use server";
+  await act("settings.device", PATH, async (c, ctx) => {
+    const id = uuid(f, "id");
+    if (f.get("remove") === "1") {
+      await c.query(`update printers set deleted_at = now() where tenant_id = $1 and id = $2 and kind = 'display' and deleted_at is null`, [ctx.tenantId, id]);
+      return "Customer display removed.";
+    }
+    const was = await c.query(`select store_id from printers where tenant_id = $1 and id = $2 and kind = 'display' and deleted_at is null`, [ctx.tenantId, id]);
+    if (was.rowCount !== 1) throw new Refused("That customer display is no longer there. Reload the page.");
+    const v = await displayFields(c, ctx.tenantId, was.rows[0].store_id, f);
+    if ((await saves.savePrinter(c, ctx.tenantId, id, v, on(f, "is_active"))) !== true) throw new Refused("That customer display is no longer there. Reload the page.");
+    return `${v.name} saved. Its till follows once it has synced.`;
+  });
 }
 
 function fields(f: FormData) {
@@ -275,14 +322,77 @@ function ScreenFields({ p }: { p?: Row }) {
   );
 }
 
+type Till = { id: string; store_id: string; name: string; code: string };
+
+// A customer display's own fields: the till it faces and its message, no paper.
+function DisplayFields({ p, tills }: { p?: Row; tills: Till[] }) {
+  const [first, second] = (p?.message ?? "").split("\n");
+  const faces = p?.device_id ?? (tills.length === 1 ? tills[0].id : "");
+  return (
+    <>
+      <div className="form-row">
+        <label className="field">
+          Name
+          <input name="name" defaultValue={p?.name} required maxLength={40} placeholder="Counter" />
+          <span className="help">Where it stands: Counter, Front desk.</span>
+        </label>
+        <label className="field">
+          Address
+          <input name="address" defaultValue={p?.address ?? ""} required maxLength={40} placeholder="192.168.1.70" />
+          <span className="help">As the display tablet shows it. Keep it the same on the router for that tablet, as for a printer.</span>
+        </label>
+      </div>
+      <div className="form-row">
+        <label className="field">
+          Pairing code
+          <input name="pair_code" defaultValue={p?.pair_code ?? ""} required maxLength={20} placeholder="ABCD2345" autoComplete="off" />
+          <span className="help">The eight letters and digits the display shows. Only a till that has this code can show its sale there.</span>
+        </label>
+        <label className="field">
+          The till it faces
+          <select name="device_id" defaultValue={faces} required>
+            {tills.length !== 1 && <option value="">Choose a till</option>}
+            {tills.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name === t.code ? t.name : `${t.name} (${t.code})`}
+              </option>
+            ))}
+          </select>
+          <span className="help">The display shows this till&apos;s sale, and no other.</span>
+        </label>
+      </div>
+      <div className="form-row">
+        <label className="field">
+          Between sales, first line
+          <input name="line1" defaultValue={first ?? ""} maxLength={60} placeholder="Ask about our lunch deal" />
+          <span className="help">Under the business&apos;s name and logo while no sale is on the till.</span>
+        </label>
+        <label className="field">
+          Second line
+          <input name="line2" defaultValue={second ?? ""} maxLength={60} placeholder="Open every day till 22:00" />
+        </label>
+      </div>
+      {p && (
+        <label className="check">
+          <input type="checkbox" name="is_active" defaultChecked={p.is_active} />
+          <span>
+            Switched on
+            <small>Off, its till sends it nothing and it goes back to its waiting page.</small>
+          </span>
+        </label>
+      )}
+    </>
+  );
+}
+
 export default async function PrintersPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const { stores, all, cats, one } = await readTenant(ctx.tenantId, async (c) => ({
+  const { stores, all, cats, one, tills } = await readTenant(ctx.tenantId, async (c) => ({
     stores: (await c.query(`select id, name from stores where tenant_id = $1 and deleted_at is null order by created_at`, [ctx.tenantId])).rows as { id: string; name: string }[],
     all: (
       await c.query(
-        `select id, store_id, name, kind, address, paper_mm, is_receipt, feed_lines, cut, is_active, pair_code, all_items
+        `select id, store_id, name, kind, address, paper_mm, is_receipt, feed_lines, cut, is_active, pair_code, all_items, device_id, message
            from printers where tenant_id = $1 and deleted_at is null order by sort_order, name`,
         [ctx.tenantId],
       )
@@ -293,13 +403,20 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
       ])
     ).rows as Cat[],
     one: (await loadSettings(c, ctx.tenantId)).onePrinter,
+    // the tills a customer display can face
+    tills: (await c.query(`select id, store_id, name, code from pos_devices where tenant_id = $1 and deleted_at is null order by name`, [ctx.tenantId])).rows as Till[],
   }));
-  // the printers, and apart from them the kitchen screens, which print nothing
-  const rows = all.filter((p) => p.kind !== "screen");
+  // the printers, and apart from them the kitchen screens and the customer displays, which print nothing
+  const rows = all.filter((p) => !silent(p.kind));
   const screens = all.filter((p) => p.kind === "screen");
+  const displays = all.filter((p) => p.kind === "display");
+  const tillName = new Map(tills.map((t) => [t.id, t.name === t.code ? t.name : `${t.name} (${t.code})`]));
   // what the grid of step 2 has a column for: every printer, and each screen that goes by its ticks
   const ticked = [...rows, ...screens.filter((p) => !p.all_items)];
-  const notes = printerWarnings(rows, cats, one, stores, ctx.premium);
+  const notes = [
+    ...printerWarnings(rows, cats, one, stores, ctx.premium),
+    ...stores.flatMap((s) => displaysSharing(displays.filter((d) => d.store_id === s.id)).map((line) => (stores.length > 1 ? `${s.name}: ${line}` : line))),
+  ];
   // with several stores, a printer is added to the store it stands in and is named with it
   const many = stores.length > 1;
   const storeName = new Map(stores.map((s) => [s.id, s.name]));
@@ -487,6 +604,86 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
                   Remove
                 </Submit>
                 {ctx.premium && <Submit>Save kitchen screen</Submit>}
+              </div>
+            </form>
+          </details>
+        );
+      })}
+
+      {/* A customer display: a tablet that faces the customer and shows one till's sale. Every plan (0129). */}
+      <h2 style={{ marginTop: 28 }}>Customer displays</h2>
+      <details className="card flush">
+        <summary className="card-head" style={{ cursor: "pointer", listStyle: "none" }}>
+          <div>
+            <h2>Add a customer display</h2>
+            <p>
+              A second tablet that faces the customer: the sale as it is rung up, the total and the change after Pay, and your name, logo and a message between
+              sales. The till reaches it over your own Wi-Fi, so it works without internet.
+            </p>
+          </div>
+          <span className="btn-quiet btn-sm">Open</span>
+        </summary>
+        <form action={addDisplay}>
+          <div className="card-body">
+            <p className="muted" style={{ marginTop: 0 }}>
+              On the display tablet, install EasyPay and choose <strong>Set up as a customer display</strong> on its first screen. It then shows its address and
+              its pairing code: type both here, and choose the till it faces. That till needs the EasyPay build that knows displays; an older till lists a
+              display among its printers as not answering, and prints nothing on it.
+            </p>
+            {many ? (
+              <div className="form-row">
+                <label className="field">
+                  Store
+                  <select name="store_id" defaultValue={stores[0].id}>
+                    {stores.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="help">The store the display and its till stand in.</span>
+                </label>
+              </div>
+            ) : (
+              stores.length === 1 && <input type="hidden" name="store_id" value={stores[0].id} />
+            )}
+            {tills.length === 0 ? (
+              <p className="muted">This business has no till yet. Set a tablet up as a till first: the display shows a till&apos;s sale.</p>
+            ) : (
+              <DisplayFields tills={many ? tills : tills.filter((t) => t.store_id === stores[0]?.id)} />
+            )}
+          </div>
+          <div className="card-foot">
+            <Submit>Add customer display</Submit>
+          </div>
+        </form>
+      </details>
+      {displays.map((p) => {
+        const faces = p.device_id ? tillName.get(p.device_id) : undefined;
+        return (
+          <details key={p.id} className="card flush">
+            <summary className="card-head" style={{ cursor: "pointer", listStyle: "none" }}>
+              <div>
+                <h2>{p.name}</h2>
+                <p>
+                  Customer display · {p.address} · {faces ? `faces ${faces}` : "faces a till that was removed: choose another"}
+                  {many ? ` · ${storeName.get(p.store_id) ?? ""}` : ""}
+                </p>
+              </div>
+              <span className="row-actions">
+                <span className={"badge " + (p.is_active && faces ? "green" : "red")}>{p.is_active ? (faces ? "On" : "No till") : "Off"}</span>
+              </span>
+            </summary>
+            <form action={saveDisplay}>
+              <input type="hidden" name="id" value={p.id} />
+              <div className="card-body">
+                <DisplayFields p={p} tills={tills.filter((t) => t.store_id === p.store_id)} />
+              </div>
+              <div className="card-foot">
+                <Submit name="remove" value="1" className="btn-danger" formNoValidate>
+                  Remove
+                </Submit>
+                <Submit>Save customer display</Submit>
               </div>
             </form>
           </details>
