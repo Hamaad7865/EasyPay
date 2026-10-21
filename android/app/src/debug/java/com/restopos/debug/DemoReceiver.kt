@@ -62,6 +62,7 @@ class DemoReceiver : BroadcastReceiver() {
         fun requests(): com.restopos.core.data.TillRequests
         fun updater(): com.restopos.core.sync.AppUpdater
         fun auth(): com.restopos.core.network.AuthClient
+        fun autoClose(): com.restopos.core.data.AutoClose
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -130,6 +131,18 @@ class DemoReceiver : BroadcastReceiver() {
                         // as the pull worker does after a pull: what the back office asked of this till is carried out
                         deps.requests().run()
                         Log.i(TAG, "pulled: " + changes.filter { it.value.isNotEmpty() }.map { it.key + " " + it.value.size }.joinToString(", "))
+                    }
+                } else if (intent.action == NIGHT) {
+                    // A quiet stretch, as if the till had been left alone: the day closes if it
+                    // closes it (AutoClose). Its two ends in minutes from now, either side.
+                    //   adb shell am broadcast -n com.restopos.app/com.restopos.debug.DemoReceiver -a com.restopos.app.DEMO_NIGHT --ei from -5 --ei to 31
+                    // Only on the made-up business.
+                    val shop = Json.parseToJsonElement(context.assets.open("demo-shop.json").bufferedReader().use { it.readText() })
+                    if (deps.session().tenantId() != shop.str("tenant")) Log.w(TAG, "refused: this tablet is not the made-up business")
+                    else {
+                        val now = System.currentTimeMillis()
+                        deps.autoClose().look(now + intent.getIntExtra("from", 0) * 60_000L, now + intent.getIntExtra("to", 31) * 60_000L)
+                        Log.i(TAG, "night looked at")
                     }
                 } else if (intent.action == PRINTER) {
                     // A receipt printer for the made-up business, at an address: a listener on this PC stands in for
@@ -369,5 +382,6 @@ class DemoReceiver : BroadcastReceiver() {
         const val PRINTER = "com.restopos.app.DEMO_PRINTER"
         const val CHIME = "com.restopos.app.DEMO_CHIME"
         const val UPDATE = "com.restopos.app.DEMO_UPDATE"
+        const val NIGHT = "com.restopos.app.DEMO_NIGHT"
     }
 }

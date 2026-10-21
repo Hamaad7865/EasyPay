@@ -27,6 +27,7 @@
                 <action android:name="com.restopos.app.DEMO_PRINTER" />
                 <action android:name="com.restopos.app.DEMO_CHIME" />
                 <action android:name="com.restopos.app.DEMO_UPDATE" />
+                <action android:name="com.restopos.app.DEMO_NIGHT" />
             </intent-filter>
         </receiver>
         <!-- The MRA's Test Drive cases a till has no screen for (2, 5, 6),
