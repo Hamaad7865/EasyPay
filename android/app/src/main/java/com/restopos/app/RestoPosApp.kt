@@ -15,6 +15,7 @@ class RestoPosApp : Application(), Configuration.Provider {
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var printing: Printing
     @Inject lateinit var dueReminders: com.restopos.core.data.DueReminders
+    @Inject lateinit var autoClose: com.restopos.core.data.AutoClose
 
     override fun onCreate() {
         // A backup picked at the first screen is moved into place here, before
@@ -30,6 +31,9 @@ class RestoPosApp : Application(), Configuration.Provider {
         // the app is up: after a restart the till waits on its start screen,
         // with nobody signed in, and must still ring (DueReminders).
         dueReminders.start()
+        // A day nobody closed is closed at the time the business set, from the
+        // moment the app is up, whichever screen is open (AutoClose).
+        autoClose.start()
     }
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder().setWorkerFactory(workerFactory).build()

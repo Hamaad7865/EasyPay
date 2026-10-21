@@ -123,6 +123,10 @@ internal fun printed(r: Report, d: ReportData, cutting: Cutting, byQty: Boolean,
                 s.openedAt?.let { add(ReportLine("Opened", stamp(it, zone) + (s.openedBy?.let { w -> " $w" } ?: ""))) }
                 add(ReportLine("Closed", stamp(s.close.closed_at, zone) + (s.closedBy?.let { w -> " $w" } ?: "")))
                 s.float?.let { add(ReportLine("Opening float", n(it))) }
+                if (s.auto) {
+                    s.expected?.let { add(ReportLine("Expected in drawer", n(it))) }
+                    add(ReportLine("Counted", "Not counted"))
+                }
                 if (s.expected != null && s.counted != null) {
                     add(ReportLine("Expected in drawer", n(s.expected)))
                     add(ReportLine("Counted", n(s.counted)))

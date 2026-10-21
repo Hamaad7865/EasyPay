@@ -45,11 +45,17 @@ class CashOps @Inject constructor(
     private val db: TillDatabase,
     private val session: SessionStore,
     private val staff: StaffSession,
+    // what takes an order or moves money waits for the day and a clocked-in person (SellGate)
+    private val sell: SellCheck,
     private val printing: Printing,
     private val docs: DocBuilder,
     @ApplicationContext private val context: Context,
 ) {
-    private fun op(type: String, payload: JsonObject) = OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
+    // one that takes an order or moves money waits for the gate (SellCheck)
+    private suspend fun op(type: String, payload: JsonObject): OutboxEntity {
+        sell.check(type)
+        return OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
+    }
 
     // ---- closing the day clocks out whoever is still clocked in on this till (ClockOut) ----
     // Who the last closing clocked out, by name, for the screen that closed the day to say.
@@ -96,6 +102,8 @@ class CashOps @Inject constructor(
     // for no reason is what an owner wants to know about.
     suspend fun openDrawer(approver: StaffMember? = null): Result<Unit> = runCatching {
         staff.allow("drawer.open_no_sale", "open the drawer without a sale", approver)
+        // asked before the drawer opens, not when it is written down after
+        sell.check("cash.move")
         val p = printing.receiptPrinter() ?: throw PrintError("The drawer opens through the receipt printer, and none is set up.")
         printing.send(p, EscPos(EscPos.columnsFor(p.paper_mm)).drawer().bytes(), "Open cash drawer", again = null).getOrThrow()
         record("drawer", 0, null, staff.approvedBy("drawer.open_no_sale", approver))
@@ -352,6 +360,11 @@ class CashOps @Inject constructor(
 
     private suspend fun ZDoc.withDrawer(shift: ShiftEntity?): ZDoc {
         val expected = shift?.expected_cash ?: return this
+        // closed by itself (AutoClose, server 0133): nobody closed it, nobody counted
+        if (shift.closed_by == null && shift.counted_cash == null) {
+            val sp = period(shift.device_id, shift.opened_at - 1, shift.closed_at ?: to)
+            return copy(openedAt = shift.opened_at, openedBy = name(shift.opened_by), float = shift.opening_float, cashTaken = sp.cashTaken, expected = expected, counted = null, auto = true)
+        }
         val counted = shift.counted_cash ?: return this
         val sp = period(shift.device_id, shift.opened_at - 1, shift.closed_at ?: to)
         return copy(openedAt = shift.opened_at, openedBy = name(shift.opened_by), float = shift.opening_float, cashTaken = sp.cashTaken, expected = expected, counted = counted)
@@ -386,7 +399,7 @@ class CashOps @Inject constructor(
     // What holds the day open, said in the words of this business.
     suspend fun unpaid(n: Long) = unpaidText(n, PosSettings.parse(db.ops().settings()).retail)
 
-    private fun dayCloseOp(row: DayCloseEntity, z: ZDoc, approvedBy: String?) = op("day.close", buildJsonObject {
+    private suspend fun dayCloseOp(row: DayCloseEntity, z: ZDoc, approvedBy: String?) = op("day.close", buildJsonObject {
         put("id", row.id); put("store_id", row.store_id); put("device_id", row.device_id)
         put("closed_at", Instant.ofEpochMilli(row.closed_at).toString())
         put("totals", buildJsonObject {
@@ -394,6 +407,9 @@ class CashOps @Inject constructor(
             put("discounts", z.discounts); put("tax", z.tax); put("cash_in", z.cashIn); put("cash_out", z.cashOut)
             z.float?.let { put("float", it) }; z.expected?.let { put("expected", it) }; z.counted?.let { put("counted", it) }
             if (z.noShows.isNotEmpty()) { put("no_shows", z.noShows.size); put("no_show_total", z.noShows.sumOf { it.amount }) }
+            // closed by the till itself (AutoClose, server 0133), and the unpaid orders it carried over
+            if (z.auto) put("auto", true)
+            if (z.carried > 0) put("carried", z.carried)
         })
         approvedBy?.let { put("approved_by", it) }
     })
@@ -530,6 +546,87 @@ class CashOps @Inject constructor(
         session.dayClosed()
         pushNow(context)
         printing.scope.launch { printZ(z).onFailure { printing.report(it.message ?: "The closing report did not print") } }
+        return z
+    }
+
+    // ---- the day closed by itself (AutoClose, server 0133) ----
+
+    // The last thing on this till since `since` that moved money or counted
+    // it: a sale, a refund, cash in or out, a drawer count. The drawer opened
+    // with no sale moved nothing. Null: nothing.
+    suspend fun lastWritten(since: Long): Long? {
+        val device = session.deviceId() ?: return null
+        val now = System.currentTimeMillis()
+        val shift = db.staff().openShift(device)
+        return listOfNotNull(
+            db.ops().receiptsBetween(device, since, now).maxOfOrNull { it.device_time },
+            db.ops().cashMoves(device, since, now).filter { it.type != "drawer" }.maxOfOrNull { it.device_time },
+            shift?.let { s -> db.ops().drawerCounts(s.id).maxOfOrNull { it.device_time } },
+        ).maxOrNull()
+    }
+
+    // When the sales no closing covers began, with no day open (see
+    // unclosed); null when there are none.
+    suspend fun unclosedSince(): Long? {
+        val device = session.deviceId() ?: return null
+        if (db.staff().openShift(device) != null) return null
+        return db.ops().receiptsBetween(device, db.ops().lastDayClose(device)?.closed_at ?: 0, System.currentTimeMillis()).firstOrNull()?.device_time
+    }
+
+    // The day closed by the till itself at the time its business set: what
+    // closeDay does, as of `at`, with nobody closing it and the drawer not
+    // counted. Orders still unpaid go on into the next day. The two ops carry
+    // no employee: whoever is signed in may not be allowed to close a day,
+    // and an op the server refuses is set aside for good; with none, the
+    // server takes them as the till's own login's. shift.close carries what
+    // the till expected as its count, for a server without 0133, which needs
+    // one; 0133 keeps none. The Z prints if a printer answers: nobody is
+    // there to be told when it does not, and it is under Day closing.
+    suspend fun closeDayAuto(at: Long): ZDoc {
+        val tenant = session.tenantId() ?: error("no tenant")
+        val store = session.storeId() ?: error("no store")
+        val device = session.deviceId() ?: error("no device")
+        val open = db.staff().openShift(device) ?: error("The day is not open")
+        val expected = expectedCash(open, at)
+        val closed = open.copy(closed_by = null, closed_at = at, counted_cash = null, expected_cash = expected)
+        val last = db.ops().lastDayClose(device)
+        val carried = db.tickets().unpaidOrderCount().toInt()
+        val z = dayDoc(at, by = null).withDrawer(closed).copy(carried = carried)
+        val row = DayCloseEntity(Uuid7.next(), tenant, store, device, z.number, null, last?.closed_at, at)
+        val leaving = stillIn(store, device)
+        db.withTransaction {
+            clockOut(leaving, tenant, store, device, at)
+            db.staff().upsertShifts(listOf(closed))
+            db.ops().upsertDayCloses(listOf(row))
+            db.outbox().enqueue(OutboxEntity(Uuid7.next(), "shift.close", buildJsonObject {
+                put("id", closed.id); put("counted_cash", expected); put("auto", true)
+                put("closed_at", Instant.ofEpochMilli(at).toString())
+            }.toString(), employee_id = null))
+            db.outbox().enqueue(dayCloseOp(row, z, null).copy(employee_id = null))
+        }
+        session.dayClosed()
+        pushNow(context)
+        printing.scope.launch { runCatching { printZ(z) } }
+        return z
+    }
+
+    // The same for a till with no days (no PINs, see unclosed): its sales
+    // closed as of `at`, with nobody closing them; unpaid orders go on.
+    suspend fun closeUnclosedAuto(at: Long): ZDoc {
+        val tenant = session.tenantId() ?: error("no tenant")
+        val store = session.storeId() ?: error("no store")
+        val device = session.deviceId() ?: error("no device")
+        val last = db.ops().lastDayClose(device)
+        val carried = db.tickets().unpaidOrderCount().toInt()
+        val z = dayDoc(at, by = null).copy(auto = true, carried = carried)
+        val row = DayCloseEntity(Uuid7.next(), tenant, store, device, z.number, null, last?.closed_at, at)
+        db.withTransaction {
+            db.ops().upsertDayCloses(listOf(row))
+            db.outbox().enqueue(dayCloseOp(row, z, null).copy(employee_id = null))
+        }
+        session.dayClosed()
+        pushNow(context)
+        printing.scope.launch { runCatching { printZ(z) } }
         return z
     }
 

@@ -24,7 +24,13 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -84,6 +90,11 @@ fun StartScreen(
 
     val all = staff
     val active = all?.filter { it.clockedInAt != null }.orEmpty()
+    // Look only: anyone with a PIN, in to check something with no day open and no clocking in (SellGate)
+    var lookPick by remember { mutableStateOf(false) }
+    var lookPin by remember { mutableStateOf<StaffMember?>(null) }
+    // someone who may open the day, with none open: open it, or look first
+    var openOrLook by remember { mutableStateOf<StaffMember?>(null) }
     Box(Modifier.fillMaxSize().background(Pos.Bg)) {
         when {
             all == null -> Unit // still reading the tablet's own data
@@ -99,8 +110,9 @@ fun StartScreen(
                 title = if (shift == null) "The day is not open" else "No one is clocked in",
                 text = if (shift == null) "Clock in below. Someone allowed to can then open the day." else "Clock in below to use the register.",
                 button = "Clock in/out", note = null, onButton = onClock, onSignIn = onSignIn, onSetUp = onSetUp,
+                onLook = { lookPick = true },
             )
-            else -> Users(vm, active, shiftOpen = shift != null, openedAt = shift?.opened_at, onPick = { pinFor = it }, onClock = onClock, onSetUp = onSetUp)
+            else -> Users(vm, active, shiftOpen = shift != null, openedAt = shift?.opened_at, onPick = { pinFor = it }, onClock = onClock, onSetUp = onSetUp, onLook = { lookPick = true })
         }
         message?.let { m ->
             Text(
@@ -120,11 +132,42 @@ fun StartScreen(
                 pinFor = null
                 when {
                     shift != null -> vm.signIn(member, onOpen)
-                    member.can("shift.open_close") -> vm.signIn(member, onCashCount)
-                    else -> vm.say("The day is not open. Someone allowed to open it has to do that first.")
+                    member.can("shift.open_close") -> openOrLook = member
+                    // the day is not open and they may not open it: in all the same, and the strip says so
+                    else -> vm.signIn(member, onOpen)
                 }
             },
             onDismiss = { pinFor = null },
+        )
+    }
+
+    // Look only: everyone with a PIN, clocked in or not
+    if (lookPick) {
+        AlertDialog(
+            onDismissRequest = { lookPick = false },
+            title = { Text("Look only") },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    Text("Check something without opening the day or clocking in. Nothing can be sold or paid until you clock in.", Modifier.padding(bottom = 12.dp))
+                    all.orEmpty().filter { it.hasPin }.forEach { m ->
+                        Text(m.employee.name, Modifier.fillMaxWidth().clickable { lookPick = false; lookPin = m }.padding(vertical = 12.dp), fontSize = 17.sp)
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { OutlinedButton(onClick = { lookPick = false }) { Text("Cancel") } },
+        )
+    }
+    lookPin?.let { member ->
+        PinPad(member, check = { vm.checkPin(member, it) }, onOk = { lookPin = null; vm.lookOnly(member, onOpen) }, onDismiss = { lookPin = null })
+    }
+    openOrLook?.let { member ->
+        AlertDialog(
+            onDismissRequest = { openOrLook = null },
+            title = { Text("The day is not open") },
+            text = { Text("Opening it counts the cash in the drawer, and the till sells from then on. Look only lets you in to check something first: nothing is sold until the day is open.") },
+            confirmButton = { Button(onClick = { openOrLook = null; vm.signIn(member, onCashCount) }) { Text("Open the day") } },
+            dismissButton = { OutlinedButton(onClick = { openOrLook = null; vm.signIn(member, onOpen) }) { Text("Look only") } },
         )
     }
 }
@@ -141,6 +184,7 @@ private fun Closed(
     onSignIn: () -> Unit,
     onSetUp: () -> Unit,
     goLive: Boolean = true,
+    onLook: (() -> Unit)? = null,
 ) {
     val needsSignIn by vm.needsSignIn.collectAsState()
     val setupOpen by vm.setupOpen.collectAsState()
@@ -159,6 +203,7 @@ private fun Closed(
             Text(text, Modifier.padding(top = 10.dp), color = Pos.Text, fontSize = 15.sp, textAlign = TextAlign.Center)
             Spacer(Modifier.height(32.dp))
             BigButton(button, Modifier.width(340.dp), onButton)
+            onLook?.let { Text("Look only", Modifier.padding(top = 10.dp).clickable(onClick = it).padding(10.dp), color = Pos.NavOn, fontSize = 15.sp, fontWeight = FontWeight.Medium) }
             if (note != null) {
                 Text(note, Modifier.padding(top = 18.dp).width(380.dp), color = Pos.Text3, fontSize = 13.sp, textAlign = TextAlign.Center)
             }
@@ -205,7 +250,7 @@ private fun InfoPanel(vm: StaffViewModel) {
 
 // Everyone who is clocked in, as tiles: tap your name, then enter your PIN.
 @Composable
-private fun Users(vm: StaffViewModel, active: List<StaffMember>, shiftOpen: Boolean, openedAt: Long?, onPick: (StaffMember) -> Unit, onClock: () -> Unit, onSetUp: () -> Unit) {
+private fun Users(vm: StaffViewModel, active: List<StaffMember>, shiftOpen: Boolean, openedAt: Long?, onPick: (StaffMember) -> Unit, onClock: () -> Unit, onSetUp: () -> Unit, onLook: () -> Unit) {
     val setupOpen by vm.setupOpen.collectAsState()
     var byTime by rememberSaveable { mutableStateOf(false) }
     val shown = if (byTime) active.sortedBy { it.clockedInAt } else active
@@ -249,6 +294,8 @@ private fun Users(vm: StaffViewModel, active: List<StaffMember>, shiftOpen: Bool
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 BigButton("Clock in/out", Modifier.width(280.dp), onClock)
+                Spacer(Modifier.width(18.dp))
+                Text("Look only", Modifier.clickable(onClick = onLook).padding(10.dp), color = Pos.NavOn, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 if (setupOpen) { Spacer(Modifier.width(18.dp)); FinishSetUp(vm, onSetUp) }
                 Spacer(Modifier.width(18.dp)); com.restopos.feature.settings.GoLiveFromStart(link = true, color = Pos.NavOn)
             }

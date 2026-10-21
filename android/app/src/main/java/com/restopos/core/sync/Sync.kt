@@ -296,6 +296,7 @@ private val LAST_PULL = longPreferencesKey("last_pull")
 private val LAST_BACKUP = longPreferencesKey("last_backup")
 private val LAST_BACKUP_PLACE = stringPreferencesKey("last_backup_place")
 private val LAST_USE = longPreferencesKey("last_use")
+private val AUTO_CLOSED = stringPreferencesKey("auto_closed")
 private val LANG = stringPreferencesKey("lang")
 private val MODE = stringPreferencesKey("mode")
 private val CABLE_ON = booleanPreferencesKey("cable_display")
@@ -518,6 +519,10 @@ class SessionStore(private val context: Context) {
     // a till stops asking the server for news (Quiet).
     suspend fun lastUse(): Long? = store.data.map { it[LAST_USE] }.first()
     suspend fun setLastUse(at: Long) { store.edit { it[LAST_USE] = at } }
+    // What the till did when it closed a day by itself (AutoClose), kept
+    // until the next person in has been told: a restart does not lose it.
+    suspend fun autoClosed(): String? = store.data.map { it[AUTO_CLOSED] }.first()
+    suspend fun setAutoClosed(text: String?) { store.edit { if (text == null) it.remove(AUTO_CLOSED) else it[AUTO_CLOSED] = text } }
     // The language of the till's own words: "en" or "fr".
     val lang: Flow<String> = store.data.map { it[LANG] ?: "en" }
     suspend fun setLang(code: String) { store.edit { it[LANG] = code } }

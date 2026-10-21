@@ -72,6 +72,8 @@ class TicketRepository @Inject constructor(
     private val db: TillDatabase,
     private val session: SessionStore,
     private val staff: StaffSession,
+    // what takes an order or moves money waits for the day and a clocked-in person (SellGate)
+    private val sell: SellCheck,
     private val docs: DocBuilder,
     private val screenKick: com.restopos.core.kitchen.ScreenKick,
     private val mra: com.restopos.core.mra.MraIssuer,
@@ -84,9 +86,12 @@ class TicketRepository @Inject constructor(
         return Triple(tenant, store, device)
     }
 
-    // every op carries who was signed in at the till when it was made
-    private fun op(type: String, payload: JsonObject) =
-        com.restopos.core.database.OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
+    // every op carries who was signed in at the till when it was made; one that
+    // takes an order or moves money waits for the gate (SellCheck)
+    private suspend fun op(type: String, payload: JsonObject): com.restopos.core.database.OutboxEntity {
+        sell.check(type)
+        return com.restopos.core.database.OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
+    }
 
     suspend fun activeTicket(): TicketEntity? {
         val id = session.activeTicket() ?: return null

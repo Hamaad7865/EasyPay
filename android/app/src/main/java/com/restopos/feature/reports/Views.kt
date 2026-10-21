@@ -298,7 +298,7 @@ private fun Shifts(d: ReportData, vm: ReportsViewModel) {
             val diff = if (s.expected != null && s.counted != null) s.counted - s.expected else null
             Line(
                 "Day closing No. ${s.close.number}",
-                when { diff == null -> ""; diff == 0L -> "Drawer exact"; diff < 0 -> "Short ${Money.format(-diff)}"; else -> "Over ${Money.format(diff)}" },
+                when { s.auto -> "Not counted"; diff == null -> ""; diff == 0L -> "Drawer exact"; diff < 0 -> "Short ${Money.format(-diff)}"; else -> "Over ${Money.format(diff)}" },
                 color = when { diff == null || diff == 0L -> V.Text2; diff < 0 -> V.RedText; else -> V.AmberText },
                 under = listOfNotNull(
                     s.openedAt?.let { "Opened ${stamp(it, vm.zone())}" + (s.openedBy?.let { w -> " by $w" } ?: "") },
@@ -354,6 +354,10 @@ internal fun DaySheet(open: OpenDay, vm: ReportsViewModel) {
         Line("Discounts given", Money.format(z.discounts))
         z.payments.forEach { p -> Line(p.name, Money.format(p.amount), "${p.count}") }
         open.row.float?.let { Line("Opening float", Money.format(it)) }
+        if (z.auto) {
+            open.row.expected?.let { Line("Expected in the drawer", Money.format(it)) }
+            Line("Counted", "Not counted: the day closed by itself")
+        }
         if (open.row.expected != null && open.row.counted != null) {
             Line("Expected in the drawer", Money.format(open.row.expected))
             Line("Counted", Money.format(open.row.counted), bold = true)

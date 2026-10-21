@@ -69,6 +69,8 @@ class OrderOps @Inject constructor(
     private val db: TillDatabase,
     private val session: SessionStore,
     private val staff: StaffSession,
+    // what takes an order or moves money waits for the day and a clocked-in person (SellGate)
+    private val sell: SellCheck,
     private val tickets: TicketRepository,
     private val docs: DocBuilder,
     private val printing: Printing,
@@ -89,7 +91,12 @@ class OrderOps @Inject constructor(
         val e = db.mra().byReceipt(receiptId) ?: return
         if (e.status == "waiting" || e.status == "unsure") runCatching { mraSender.sendNow() }
     }
-    private fun op(type: String, payload: JsonObject) = OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
+
+    // one that takes an order or moves money waits for the gate (SellCheck)
+    private suspend fun op(type: String, payload: JsonObject): OutboxEntity {
+        sell.check(type)
+        return OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
+    }
 
     // Send: what the kitchen has not had yet goes onto the kitchen display as
     // one ticket and is printed where its category prints, then marked as

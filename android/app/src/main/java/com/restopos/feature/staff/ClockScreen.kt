@@ -126,7 +126,8 @@ fun ClockScreen(vm: StaffViewModel = hiltViewModel(), onBack: () -> Unit, onRegi
             title = { Text("${member.employee.name} is clocked in") },
             text = { Text("The day is not open on this till yet. Opening it counts the cash in the drawer; the till sells from then on.") },
             confirmButton = { Button(onClick = { openFor = null; vm.signIn(member, onCashCount) }) { Text("Open the day") } },
-            dismissButton = { OutlinedButton(onClick = { openFor = null }) { Text("Not now") } },
+            // in to look first: nothing is sold until the day is open (SellGate)
+            dismissButton = { OutlinedButton(onClick = { openFor = null; vm.signIn(member, onRegister) }) { Text("Look only") } },
         )
     }
 }

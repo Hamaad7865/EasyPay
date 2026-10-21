@@ -52,6 +52,7 @@ class StaffViewModel @Inject constructor(
     private val api: ApiClient,
     private val approvals: Approvals,
     private val door: com.restopos.core.data.SetupDoor,
+    private val autoClose: com.restopos.core.data.AutoClose,
 ) : ViewModel() {
     private val _info = MutableStateFlow(TillInfo())
     val info: StateFlow<TillInfo> = _info
@@ -160,14 +161,18 @@ class StaffViewModel @Inject constructor(
     // the register, since the PIN was just entered. With the day not open,
     // someone allowed to open it is asked whether to (offerOpen); anyone else
     // is clocked in and waits for someone who may.
+    // Someone who may not open the day is let in all the same: the till
+    // takes no order then, and its strip says the day is not open (SellGate).
     fun clockIn(member: StaffMember, toRegister: () -> Unit, offerOpen: () -> Unit) = viewModelScope.launch {
         repo.punch(member, "in").fold(
             onSuccess = {
+                // a day left open last night is closed first, if the business closes days by itself (AutoClose)
+                autoClose.settled()
                 val open = session.deviceId()?.let { repo.openShift(it).first() }
                 when {
                     open != null -> { session.setPendingDiscount(null); staffSession.signIn(member); toRegister() }
                     member.can("shift.open_close") -> offerOpen()
-                    else -> _message.value = "${member.employee.name} is clocked in. The day is not open: someone allowed to open it has to."
+                    else -> { session.setPendingDiscount(null); staffSession.signIn(member); toRegister() }
                 }
             },
             onFailure = { _message.value = it.message },
@@ -175,10 +180,21 @@ class StaffViewModel @Inject constructor(
     }
 
     // After the right PIN on the start screen. A discount the last person
-    // picked does not carry over to this one.
+    // picked does not carry over to this one. A day left open last night is
+    // closed first, if the business closes days by itself (AutoClose).
     fun signIn(member: StaffMember, then: () -> Unit) = viewModelScope.launch {
+        autoClose.settled()
         session.setPendingDiscount(null)
         staffSession.signIn(member)
+        then()
+    }
+
+    // In to look, with no clocking in and no day open: everything that takes
+    // no order and moves no money, as their role allows (SellGate).
+    fun lookOnly(member: StaffMember, then: () -> Unit) = viewModelScope.launch {
+        autoClose.settled()
+        session.setPendingDiscount(null)
+        staffSession.signIn(member, lookOnly = true)
         then()
     }
 

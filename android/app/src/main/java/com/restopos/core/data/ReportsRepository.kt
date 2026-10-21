@@ -29,6 +29,8 @@ class ReportsRepository @Inject constructor(
     class ShiftRow(
         val close: DayCloseEntity, val openedAt: Long?, val openedBy: String?, val closedBy: String?,
         val float: Long?, val expected: Long?, val counted: Long?,
+        // closed by the till itself (AutoClose): nobody closed it, nobody counted
+        val auto: Boolean = false,
     )
 
     // This till's receipts and refunds of the period, oldest first.
@@ -48,7 +50,11 @@ class ReportsRepository @Inject constructor(
         val shifts = db.staff().closedShifts(device, 400)
         return db.ops().dayClosesBetween(device, span.from, span.to).map { row ->
             val shift = shifts.firstOrNull { it.closed_at == row.closed_at }
-            ShiftRow(row, shift?.opened_at, cash.employeeName(shift?.opened_by), cash.employeeName(row.closed_by), shift?.opening_float, shift?.expected_cash, shift?.counted_cash)
+            val auto = shift != null && shift.closed_by == null && shift.counted_cash == null
+            ShiftRow(
+                row, shift?.opened_at, cash.employeeName(shift?.opened_by), if (auto) "Automatically" else cash.employeeName(row.closed_by),
+                shift?.opening_float, shift?.expected_cash, shift?.counted_cash, auto,
+            )
         }
     }
 

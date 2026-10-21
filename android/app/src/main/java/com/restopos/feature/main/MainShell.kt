@@ -211,9 +211,28 @@ class ShellViewModel @Inject constructor(
     private val dueReminders: com.restopos.core.data.DueReminders,
     private val mraLogin: com.restopos.core.mra.MraLogin,
     private val mraSender: com.restopos.core.mra.MraSender,
+    private val sell: com.restopos.core.data.SellCheck,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     val screen = MutableStateFlow(Screen.Floor)
+    // what holds the till back from selling now, for the strip (SellGate)
+    val blocked: StateFlow<com.restopos.core.data.Blocked?> = sell.blocked
+
+    // Clock in from the strip, after Look only: as at the start screen, then
+    // on to open the day when it is not open and they may (then(true)).
+    fun clockIn(then: (Boolean) -> Unit) = viewModelScope.launch {
+        val who = staff.current.value ?: return@launch
+        staffRepo.punch(who, "in").onFailure { Toaster.say(it.message); return@launch }
+        staff.signIn(who.copy(clockedInAt = System.currentTimeMillis()), lookOnly = false)
+        val device = session.deviceId()
+        val open = device != null && db.staff().openShift(device) != null
+        then(!open && who.can("shift.open_close"))
+    }
+
+    // A day this till closed by itself, said once to whoever comes in next (AutoClose).
+    fun autoClosed(say: (String) -> Unit) = viewModelScope.launch {
+        session.autoClosed()?.let { session.setAutoClosed(null); say(it) }
+    }
     // what this till did because the back office asked (the day closed, cash
     // written down), said once to whoever is at it or next comes to it
     val asked: StateFlow<String?> = requests.said
@@ -573,6 +592,8 @@ fun MainShell(
     LaunchedEffect(said) { said?.let { Toaster.say(it); more.messageShown() } }
     val asked by shell.asked.collectAsState()
     LaunchedEffect(asked) { asked?.let { Toaster.say(it); shell.askedShown() } }
+    LaunchedEffect(Unit) { shell.autoClosed { Toaster.say(it) } }
+    val blocked by shell.blocked.collectAsState()
 
     // Quick sale was tapped with the order screen at this turn: its key is lit at once, before the sale is read
     var quickAt by remember { mutableIntStateOf(-1) }
@@ -707,6 +728,7 @@ fun MainShell(
             SyncNotices(needsSignIn, pending, rejected, onSignIn, onRejected, clockAhead, updateRequired)
             mraSay?.let { say -> MraStrip(say) { shell.go(Screen.Settings) } }
             if (settingUp) SettingUpStrip { shell.go(Screen.Settings) }
+            blocked?.let { b -> DayStrip(b, onOpenDay = onOpenPeriod, onClockIn = { shell.clockIn { open -> if (open) onOpenPeriod() } }) }
             // Where the till goes once a sale is paid in full: from the payment
             // screen's last card, or straight from Fast on the sell or order screen.
             val paid: (String) -> Unit = { kind ->
@@ -963,6 +985,21 @@ private fun MraStrip(say: com.restopos.core.mra.MraBanner.Say, onOpen: () -> Uni
     ) {
         T(say.text, 13.sp, 600, if (say.red) V.RedText else V.AmberText, Modifier.weight(1f), lines = 2)
         VBtn("Settings", height = 38.dp, radius = 10.dp, size = 14.sp, onClick = onOpen)
+    }
+}
+
+// What holds the till back from selling (SellGate): the day not open, or
+// someone in to look only. The way out is on the strip; a blocked action says
+// why in its own words, as any refusal does.
+@Composable
+private fun DayStrip(b: com.restopos.core.data.Blocked, onOpenDay: () -> Unit, onClockIn: () -> Unit) {
+    Row(Modifier.fillMaxWidth().background(V.AmberWash).padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        T(b.text, 13.sp, 600, V.AmberText, Modifier.weight(1f), lines = 2)
+        when (b.offer) {
+            com.restopos.core.data.Offer.OpenDay -> VBtn("Open the day", height = 34.dp, radius = 10.dp, size = 14.sp, onClick = onOpenDay)
+            com.restopos.core.data.Offer.ClockIn -> VBtn("Clock in", height = 34.dp, radius = 10.dp, size = 14.sp, onClick = onClockIn)
+            com.restopos.core.data.Offer.None -> Unit
+        }
     }
 }
 

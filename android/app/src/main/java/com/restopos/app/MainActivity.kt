@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var pictures: com.restopos.core.data.Pictures
     @Inject lateinit var displayFeed: com.restopos.core.display.DisplayFeed
     @Inject lateinit var displayPictures: com.restopos.core.display.DisplayPictures
+    @Inject lateinit var autoClose: com.restopos.core.data.AutoClose
 
     // The screens are drawn for a 1280 x 720dp landscape tablet and scaled to
     // the tablet they run on: a 15-inch till shows the same layout larger,
@@ -156,6 +157,8 @@ class MainActivity : ComponentActivity() {
     private fun used() {
         val now = System.currentTimeMillis()
         if (Quiet.back(now, seen)) SyncScheduler.pullNow(this)
+        // a quiet stretch that ends here may close a day nobody closed (AutoClose)
+        autoClose.touched(now)
         seen = now
         if (Quiet.notes(now, noted)) {
             noted = now

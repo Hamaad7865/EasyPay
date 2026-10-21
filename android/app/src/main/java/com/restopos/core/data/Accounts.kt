@@ -43,10 +43,16 @@ class Accounts @Inject constructor(
     private val db: TillDatabase,
     private val session: SessionStore,
     private val staff: StaffSession,
+    // what takes an order or moves money waits for the day and a clocked-in person (SellGate)
+    private val sell: SellCheck,
     private val docs: DocBuilder,
     @ApplicationContext private val context: Context,
 ) {
-    private fun op(type: String, payload: JsonObject) = OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
+    // one that takes an order or moves money waits for the gate (SellCheck)
+    private suspend fun op(type: String, payload: JsonObject): OutboxEntity {
+        sell.check(type)
+        return OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
+    }
 
     suspend fun settings() = PosSettings.parse(db.ops().settings())
 

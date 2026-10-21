@@ -71,8 +71,12 @@ class SetupDoor @Inject constructor() {
 class StaffSession @Inject constructor() {
     private val _current = MutableStateFlow<StaffMember?>(null)
     val current: StateFlow<StaffMember?> = _current
-    fun signIn(member: StaffMember) { _current.value = member }
-    fun signOut() { _current.value = null }
+    // In to look only (the start screen's Look only, with no clocking in):
+    // nothing that takes an order or moves money until they clock in (SellGate).
+    private val _lookOnly = MutableStateFlow(false)
+    val lookOnly: StateFlow<Boolean> = _lookOnly
+    fun signIn(member: StaffMember, lookOnly: Boolean = false) { _lookOnly.value = lookOnly; _current.value = member }
+    fun signOut() { _current.value = null; _lookOnly.value = false }
     fun id(): String? = _current.value?.employee?.id
     // On a till with no staff PINs nobody is signed in and nothing is held back.
     fun can(permission: String): Boolean = _current.value?.can(permission) ?: true
@@ -158,7 +162,8 @@ class StaffRepository @Inject constructor(
     // amount offered when the next one opens.
     suspend fun suggestedFloat(): Long {
         val device = session.deviceId() ?: return 0
-        return db.staff().lastClosedShift(device)?.counted_cash ?: 0
+        // a day that closed by itself was not counted: what it expected stands in
+        return db.staff().lastClosedShift(device)?.let { it.counted_cash ?: it.expected_cash } ?: 0
     }
 
     // Sales this till took that were never closed (see CashOps.unclosed):
