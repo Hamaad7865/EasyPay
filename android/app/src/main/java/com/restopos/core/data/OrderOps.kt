@@ -93,8 +93,9 @@ class OrderOps @Inject constructor(
     }
 
     // one that takes an order or moves money waits for the gate (SellCheck)
-    private suspend fun op(type: String, payload: JsonObject): OutboxEntity {
-        sell.check(type)
+    // `gated` false: what follows a payment already made (the kitchen's share of it)
+    private suspend fun op(type: String, payload: JsonObject, gated: Boolean = true): OutboxEntity {
+        if (gated) sell.check(type)
         return OutboxEntity(Uuid7.next(), type, payload.toString(), employee_id = staff.id())
     }
 
@@ -109,7 +110,8 @@ class OrderOps @Inject constructor(
     // second now waits, and finds nothing left to send.
     private val sending = Mutex()
 
-    suspend fun save(): Result<SaveResult> = runCatching { sending.withLock { saveNow() } }
+    // Asked before anything prints: a kitchen ticket printed and then refused would reach the kitchen all the same (SellGate).
+    suspend fun save(): Result<SaveResult> = runCatching { sell.check("ticket.send"); sending.withLock { saveNow() } }
 
     private suspend fun saveNow(): SaveResult = run {
         val t = tickets.activeTicket() ?: return@run SaveResult(0, emptyList())
@@ -132,7 +134,7 @@ class OrderOps @Inject constructor(
     // has it, but the kitchen does not look there.)
     private fun unseen(out: KitchenOutcome): String? = Routing.nowhereText(out.nowhere, out.screens)
 
-    private suspend fun markSent(ticketId: String, ids: List<String>) {
+    private suspend fun markSent(ticketId: String, ids: List<String>, gated: Boolean = true) {
         if (ids.isEmpty()) return
         val now = Instant.now().toString()
         // the same lines as one ticket on the kitchen display
@@ -146,7 +148,7 @@ class OrderOps @Inject constructor(
             db.outbox().enqueue(op("ticket.send", buildJsonObject {
                 put("ticket_id", ticketId); put("sent_at", now)
                 put("line_ids", buildJsonArray { ids.forEach { add(it) } })
-            }))
+            }, gated))
         }
         screens.kick()
         kitchen.afterSend(ticketId)
@@ -168,7 +170,8 @@ class OrderOps @Inject constructor(
         val fresh = db.tickets().allLines(ticketId).filter { lineIds.contains(it.id) && it.sent_to_kitchen_at == null && it.voided_at == null }
         if (fresh.isEmpty()) return
         val out = docs.kitchen(t, fresh, "ORDER")
-        markSent(ticketId, out.printed)
+        // paid already: the kitchen's share goes whatever the gate says now
+        markSent(ticketId, out.printed, gated = false)
         (out.errors + listOfNotNull(unseen(out))).forEach { printing.report(it) }
     }
 

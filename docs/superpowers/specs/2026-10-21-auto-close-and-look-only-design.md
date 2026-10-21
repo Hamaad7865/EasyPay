@@ -232,6 +232,31 @@ row from then on. Guest QR ordering already stops while no day is open
   notice, and every row of the Look only table.
 - Not testable here: a real printer printing the Z at midnight.
 
+## What was built, where it differs from the above
+
+Plan: `docs/superpowers/plans/2026-10-21-auto-close-and-look-only.md`.
+
+- **No change to the tablet's database.** In place of `auto` and `carried` on the
+  tablet's day closings, an automatic closing keeps **no closer and no count**:
+  0133 stores the shift's `counted_cash` and `closed_by` as null, and the tablet
+  does the same locally. A closed shift with neither is a day that closed itself;
+  every back-office page already said "Not counted" for a shift with no count.
+  `carried` is in the closing's `totals` and on the Z printed at the time; a Z
+  printed again on the tablet does not repeat it.
+- **0133 also lets the till's login push an automatic closing** when it may set up
+  tills (`settings.device`), not only when it may close a day.
+- **Quiet** is no touch, key or scan and nothing that moved money. Opening the app
+  in the morning is a touch, so the rule looks for a quiet stretch after the
+  cut-off (overnight, while the app was closed or idle), not for quiet now.
+- **No `PullWorker` hook**: WorkManager starts the app's process to pull, and the
+  app's start runs the first look.
+- The Day closing report has no CSV: nothing changed there.
+- **Send in Look only prints nothing**: the gate is asked before the kitchen
+  ticket prints, not only when the send is written. The kitchen's share of a sale
+  already paid (send on pay) is never held back.
+- A clocked-in person who may not open the day is let in, with the strip saying
+  so, where they were turned away before.
+
 ## Not in this
 
 - Closing every till of a business at once from the server.
