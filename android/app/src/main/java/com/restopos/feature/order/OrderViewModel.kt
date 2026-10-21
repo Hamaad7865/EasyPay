@@ -231,6 +231,18 @@ class OrderViewModel @Inject constructor(
     fun scanned(code: String) = viewModelScope.launch {
         query.value = ""
         val item = db.catalog().itemByBarcode(code.trim())
+        // a customer's loyalty card (0128): the order is for them
+        if (item == null) db.customers().byCard(com.restopos.core.data.LoyaltyRules.cleanCard(code))?.let { c ->
+            tickets.setCustomer(c.id).fold(
+                onSuccess = {
+                    val loyal = com.restopos.core.data.PosSettings.parse(db.ops().settings()).loyalty
+                    Toaster.say("${c.name} on the order" + if (loyal) " · Points ${com.restopos.core.common.Money.format(c.points)}" else "")
+                },
+                onFailure = { Toaster.say(it.message) },
+            )
+            reload()
+            return@launch
+        }
         if (item == null) { Toaster.say("No item has the barcode $code. It is set on the item's own sheet" + if (com.restopos.core.data.Journey.alone) ", on Menu & stock." else ", or in the back office."); return@launch }
         tap(item)
     }

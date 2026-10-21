@@ -273,7 +273,15 @@ class RetailViewModel @Inject constructor(
             is Found.Product -> if (put(f.item, f.variant)) Scanner.say(true, "Added · ${sales.nameOf(f.item, f.variant)}")
             is Found.Pick -> { tap(f.item); Scanner.say(true, "Pick which · ${f.item.name}") }
             is Found.Several -> { Toaster.say("Two products carry the code ${f.code}. Find it by its name."); Scanner.say(false, "Two products carry ${f.code}") }
-            is Found.Nothing -> { Toaster.say("No product has the code ${f.code}. Nothing was added."); Scanner.say(false, "No match · ${f.code}") }
+            is Found.Nothing -> {
+                // a customer's loyalty card (0128): they are put on the sale
+                val c = db.customers().byCard(com.restopos.core.data.LoyaltyRules.cleanCard(code))
+                if (c != null) {
+                    setCustomer(c.id)
+                    val loyal = com.restopos.core.data.PosSettings.parse(db.ops().settings()).loyalty
+                    Scanner.say(true, "${c.name} on the sale" + if (loyal) " · Points ${Money.format(c.points)}" else "")
+                } else { Toaster.say("No product has the code ${f.code}. Nothing was added."); Scanner.say(false, "No match · ${f.code}") }
+            }
         }
     }
 

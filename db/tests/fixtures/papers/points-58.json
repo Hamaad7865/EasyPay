@@ -1,0 +1,217 @@
+{
+    "about": "A sale to a customer who used Rs 2.00 of points (the Points discount) and earned 0.98: the points under the payments",
+    "paper": "receipt",
+    "columns": 32,
+    "decimals": 2,
+    "shop": {
+        "name": "Hamaad Retail",
+        "address": "Royal Road\nRose Hill",
+        "phone": "5 123 4567",
+        "brn": "C12345678",
+        "vat": "VAT27000000",
+        "header": "",
+        "footer": "Thank you.",
+        "bars": false
+    },
+    "design": null,
+    "doc": {
+        "kind": "receipt",
+        "number": "S1-T1-000042",
+        "time": 1790000000000,
+        "order": "C-03",
+        "cashier": "Priya",
+        "customer": "Anjali",
+        "lines": [
+            {
+                "qty": 1000,
+                "name": "Ceramic mug",
+                "amount": 10000,
+                "unit": 10000
+            }
+        ],
+        "subtotal": 10000,
+        "discounts": [
+            {
+                "name": "Points",
+                "amount": 200
+            }
+        ],
+        "taxes": [
+            {
+                "name": "VAT",
+                "rateBp": 1500,
+                "amount": 1278,
+                "included": true
+            }
+        ],
+        "total": 9800,
+        "payments": [
+            {
+                "name": "Cash",
+                "amount": 9800,
+                "tendered": 10000,
+                "change": 200
+            }
+        ],
+        "pointsEarned": 98,
+        "pointsBalance": 1598
+    },
+    "expect": [
+        {
+            "t": "Hamaad Retail",
+            "size": "big",
+            "bold": false,
+            "align": "center"
+        },
+        {
+            "t": "Royal Road",
+            "size": "normal",
+            "bold": false,
+            "align": "center"
+        },
+        {
+            "t": "Rose Hill",
+            "size": "normal",
+            "bold": false,
+            "align": "center"
+        },
+        {
+            "t": "Tel: 5 123 4567",
+            "size": "normal",
+            "bold": false,
+            "align": "center"
+        },
+        {
+            "t": "BRN: C12345678",
+            "size": "normal",
+            "bold": false,
+            "align": "center"
+        },
+        {
+            "t": "VAT: VAT27000000",
+            "size": "normal",
+            "bold": false,
+            "align": "center"
+        },
+        {
+            "t": "--------------------------------",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "RECEIPT",
+            "size": "normal",
+            "bold": true,
+            "align": "center"
+        },
+        {
+            "t": "No.                 S1-T1-000042",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "21/09/2026 18:13            C-03",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "Served by                  Priya",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "Customer                  Anjali",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "--------------------------------",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "1 Ceramic mug             100.00",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "--------------------------------",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "Subtotal                  100.00",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "Discount: Points           -2.00",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "VAT 15% (incl.)            12.78",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "TOTAL                   Rs 98.00",
+            "size": "tall",
+            "bold": true,
+            "align": "left"
+        },
+        {
+            "t": "Cash                       98.00",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "Given                     100.00",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "Change                      2.00",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "Points earned               0.98",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "Points balance             15.98",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "--------------------------------",
+            "size": "normal",
+            "bold": false,
+            "align": "left"
+        },
+        {
+            "t": "Thank you.",
+            "size": "normal",
+            "bold": false,
+            "align": "center"
+        }
+    ]
+}

@@ -269,9 +269,18 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                     )
                 })
             }
+            // A customer's points balance (0128) is the server's, except while a
+            // sale or a refund of theirs made here still waits to go up (the
+            // server's figure is older then), and on a tablet that works on its
+            // own, where every sale was counted here alone (Fetched.customer).
             changes["customers"]?.let { rows ->
-                db.customers().upsert(rows.map {
-                    CustomerEntity(id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", str(it, "phone"), str(it, "email"), str(it, "note"), str(it, "deleted_at"), lng(it, "server_seq"))
+                val cd = db.customers()
+                val alone = com.restopos.core.data.PosSettings.parse(db.ops().settings()).alone
+                cd.upsert(rows.map {
+                    val sent = CustomerEntity(id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", str(it, "phone"), str(it, "email"), str(it, "note"), str(it, "deleted_at"), lng(it, "server_seq"),
+                        points = lng(it, "points") ?: 0, card = str(it, "card"))
+                    val own = if (alone || cd.waitingPoints(sent.id) > 0) cd.customer(sent.id) else null
+                    if (alone) Fetched.customer(own, sent) else if (own != null) sent.copy(points = own.points) else sent
                 })
             }
             changes["drawer_counts"]?.let { rows ->
@@ -405,6 +414,7 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         str(it, "type") ?: "sale", str(it, "refund_of"), lng(it, "subtotal") ?: 0, lng(it, "discount_total") ?: 0, lng(it, "tax_total") ?: 0,
                         lng(it, "service_charge") ?: 0, lng(it, "rounding") ?: 0, lng(it, "total") ?: 0, bool(it, "needs_review", false), at,
                         str(it, "deleted_at"), lng(it, "server_seq"), doc = null, pulled = true,
+                        customer_id = str(it, "customer_id"), points_earned = lng(it, "points_earned") ?: 0, points_used = lng(it, "points_used") ?: 0,
                     ),
                 )
             }

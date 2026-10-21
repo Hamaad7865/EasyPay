@@ -167,6 +167,15 @@ class BusinessViewModel @Inject constructor(db: TillDatabase, private val servic
         go("Saved. Every till of the shop takes it.", {}) { by -> service.saveAccounts(on.takeIf { changed[0] }, d.takeIf { changed[1] }, by) }
     }
 
+    // loyalty points (0128), for every business: only what changed is sent
+    fun saveLoyalty(was: PosSettings, on: Boolean, pct: String) {
+        val bp = pct.trim().replace(',', '.').toDoubleOrNull()?.let { Math.round(it * 100).toInt() }?.takeIf { it in 1..10000 }
+            ?: run { Toaster.say("The percentage back is 0.01 to 100"); return }
+        val changed = listOf(on != was.loyalty, bp != was.loyaltyBp)
+        if (changed.none { it }) { Toaster.say("Nothing was changed."); return }
+        go("Saved. Every till of the business takes it.", {}) { by -> service.saveLoyalty(on.takeIf { changed[0] }, bp.takeIf { changed[1] }, by) }
+    }
+
     // another printer (a kitchen's, a bar's): the first one of a store is the receipt printer, the others print what is ticked for them
     fun addPrinter(id: String, name: String, kind: String, address: String, paper: Int, done: () -> Unit) {
         val p = com.restopos.core.data.PrinterForm.read(name, kind, address, paper).getOrElse { Toaster.say(it.message ?: "That is not a printer yet"); return }
@@ -512,6 +521,30 @@ internal fun AccountSettingsPage(vm: BusinessViewModel = hiltViewModel()) {
         }
     }
     Row { VBtn(if (busy) "Saving..." else "Save", bg = V.Blue, fg = Color.White, height = 52.dp, radius = 14.dp, weight = 800, enabled = !busy) { vm.saveAccounts(st, on, days) } }
+}
+
+// ---- Settings > Loyalty (loyalty points, 0128, every business) ----
+@Composable
+internal fun LoyaltySettingsPage(vm: BusinessViewModel = hiltViewModel()) {
+    val st by vm.settings.collectAsState()
+    val busy by vm.busy.collectAsState()
+    var on by remember(st.loyalty) { mutableStateOf(st.loyalty) }
+    var pct by remember(st.loyaltyBp) { mutableStateOf(com.restopos.core.data.LoyaltyRules.percent(st.loyaltyBp)) }
+
+    Note("A customer named on a sale earns points on what they pay, after discounts and with VAT. A point is worth Rs 1. On Pay, Use points takes them off the bill as a discount, before VAT. A refund takes back its share. Points never expire.")
+    Panel {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Choice("Loyalty points", listOf("on" to "On", "off" to "Off"), if (on) "on" else "off") { on = it == "on" }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f)) {
+                    T("Percentage back", 15.sp, 700)
+                    T("Of what the customer pays: at 1%, a Rs 1,000 sale earns Rs 10 of points.", 13.sp, 500, V.Text2, lines = 2)
+                }
+                Field(pct, { v -> pct = v.filter { it.isDigit() || it == '.' || it == ',' }.take(6) }, "1", Modifier.fillMaxWidth(0.25f), height = 50.dp, number = true, size = 17.sp)
+            }
+        }
+    }
+    Row { VBtn(if (busy) "Saving..." else "Save", bg = V.Blue, fg = Color.White, height = 52.dp, radius = 14.dp, weight = 800, enabled = !busy) { vm.saveLoyalty(st, on, pct) } }
 }
 
 // One setting with its choices as keys, the one picked lit.

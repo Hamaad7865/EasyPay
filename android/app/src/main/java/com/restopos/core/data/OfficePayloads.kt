@@ -129,6 +129,13 @@ object OfficePayloads {
         approvedBy?.let { put("approved_by", it) }
     }
 
+    // Loyalty points (server 0128): on or off, and what comes back in basis points.
+    fun loyaltySave(on: Boolean?, bp: Int?, approvedBy: String?): JsonObject = buildJsonObject {
+        on?.let { put("loyalty", if (it) "on" else "off") }
+        bp?.let { put("loyaltyBp", it) }
+        approvedBy?.let { put("approved_by", it) }
+    }
+
     // The minutes before an order for later is due that the tills ring; 0 is off (server 0111).
     fun dueReminderSave(minutes: Int, approvedBy: String?): JsonObject = buildJsonObject {
         put("dueReminderMinutes", minutes)

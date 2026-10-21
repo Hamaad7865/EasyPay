@@ -51,6 +51,9 @@ data class DiscountPick(
     val name: String = "Discount",
     // who approved it, when the person at the register may not give it
     val approvedBy: String? = null,
+    // the customer's loyalty points, spent (0128): always last, an amount, and
+    // not a discount the shop gives, so it needs nobody's right to discount
+    val points: Boolean = false,
 )
 
 // An add-on picked for a line. qty: how many of it (three sausages); price:
@@ -479,15 +482,25 @@ class TicketRepository @Inject constructor(
 
     // A customer made or changed on this till. It is on the tablet at once and
     // goes to the server and the other tills from there.
-    suspend fun saveCustomer(id: String?, name: String, phone: String, email: String, note: String): Result<CustomerEntity> = runCatching {
+    // card (0128): the loyalty card's number, scanned or typed; blank takes it
+    // off; null leaves the card as it is. A card another customer holds is
+    // refused: a scan must find one person. Their points are never changed here.
+    suspend fun saveCustomer(id: String?, name: String, phone: String, email: String, note: String, card: String? = null): Result<CustomerEntity> = runCatching {
         require(name.isNotBlank()) { "Type the customer's name" }
         val (tenant, _, _) = ctx()
-        val row = CustomerEntity(id ?: Uuid7.next(), tenant, name.trim().take(120), phone.trim().ifEmpty { null }, email.trim().ifEmpty { null }, note.trim().ifEmpty { null })
+        val was = id?.let { db.customers().customer(it) }
+        val newCard = card?.let { LoyaltyRules.cleanCard(it).take(40).ifEmpty { null } }
+        newCard?.let { c -> db.customers().byCard(c)?.takeIf { it.id != id }?.let { error("Card $c is ${it.name}'s already") } }
+        val row = (was ?: CustomerEntity(id ?: Uuid7.next(), tenant, "")).copy(
+            name = name.trim().take(120), phone = phone.trim().ifEmpty { null }, email = email.trim().ifEmpty { null }, note = note.trim().ifEmpty { null },
+            card = if (card == null) was?.card else newCard,
+        )
         db.withTransaction {
             db.customers().upsert(listOf(row))
             db.outbox().enqueue(op("customer.upsert", buildJsonObject {
                 put("id", row.id); put("name", row.name)
                 row.phone?.let { put("phone", it) }; row.email?.let { put("email", it) }; row.note?.let { put("note", it) }
+                if (card != null) put("card", newCard ?: "")
             }))
         }
         pushNow(context)
@@ -697,9 +710,12 @@ class TicketRepository @Inject constructor(
         // What the server would refuse is refused here, before any money is
         // recorded: a receipt it rejects would leave a payment stranded.
         require(staff.can("payment.take")) { "You are not allowed to take payment" }
-        // a discount needs someone allowed to give it: the person paying, or whoever approved it on the register
+        // the customer's points (0128) come off after every other discount, as the server takes them
+        @Suppress("NAME_SHADOWING") val discounts = discounts.sortedBy { it.points }
+        // a discount needs someone allowed to give it: the person paying, or whoever approved it on the register.
+        // Points spent are the customer's, not a discount the shop gives.
         val approver = discounts.firstNotNullOfOrNull { it.approvedBy }
-        require(discounts.isEmpty() || staff.can("sale.apply_discount") || may(approver, "sale.apply_discount")) { "You are not allowed to give a discount" }
+        require(discounts.none { !it.points } || staff.can("sale.apply_discount") || may(approver, "sale.apply_discount")) { "You are not allowed to give a discount" }
         val t = activeTicket() ?: error("no ticket")
         val (tenant, store, deviceId) = ctx()
         val lines = currentLines().filter { it.voided_at == null }
@@ -757,6 +773,19 @@ class TicketRepository @Inject constructor(
         } else {
             "${storeRow.code}-${device.code}-${seq.toString().padStart(6, '0')}"
         }
+        // Loyalty points (0128): what this receipt uses (the Points discount,
+        // as charged) and what it earns on what it comes to after it. The
+        // tablet's balance moves with the sale; the server keeps these figures.
+        val pointsAt = discounts.indexOfFirst { it.points }
+        val used = if (pointsAt >= 0) totals.discountAmounts[pointsAt] else 0L
+        val customer = t.customer_id?.let { db.customers().customer(it) }
+        if (used > 0) {
+            require(customer != null) { "Pick the customer first: points are a customer's" }
+            require(used <= customer.points) { "${customer.name} has ${LoyaltyRules.say(customer.points.coerceAtLeast(0))} in points" }
+        }
+        val earned = if (settings.loyalty && customer != null) LoyaltyRules.earned(totals.total, settings.loyaltyBp) else 0L
+        val pointsAfter = if (customer != null && (settings.loyalty || used > 0)) customer.points + earned - used else null
+        val pointsMoved = customer != null && (earned > 0 || used > 0)
         val receiptId = Uuid7.next()
         val now = System.currentTimeMillis()
         val types = db.ops().allPaymentTypes().associateBy { it.id }
@@ -766,7 +795,7 @@ class TicketRepository @Inject constructor(
             discounts.mapIndexed { i, d -> com.restopos.core.print.DocAmount(d.name, totals.discountAmounts[i]) }.filter { it.amount > 0 },
             payments.map { com.restopos.core.print.DocPayment(it.label ?: types[it.paymentTypeId]?.name ?: "Paid", it.amount, it.tendered, it.change, it.reference) },
             number, now,
-        ).copy(owed = owedAfter))
+        ).copy(owed = owedAfter, pointsEarned = earned.takeIf { it > 0 }, pointsBalance = pointsAfter))
         val payArr = buildJsonArray {
             payments.forEach { p ->
                 add(buildJsonObject {
@@ -782,6 +811,7 @@ class TicketRepository @Inject constructor(
                     d.discountId?.let { put("discount_id", it) }
                     put("type", d.type); put("value", d.value); put("name", d.name)
                     put("amount", totals.discountAmounts[i]) // as charged
+                    if (d.points) put("points", true)
                     if (restricted.contains(d.discountId)) {
                         (d.approvedBy?.takeIf { !staff.can("sale.apply_restricted_discount") } ?: staff.id())?.let { put("approved_by", it) }
                     }
@@ -796,8 +826,10 @@ class TicketRepository @Inject constructor(
                 ReceiptEntity(receiptId, tenant, store, deviceId, t.id, number,
                     subtotal = totals.subtotal, discount_total = totals.discount,
                     tax_total = totals.tax, service_charge = totals.service, rounding = totals.rounding, total = totals.total,
-                    device_time = now, doc = doc),
+                    device_time = now, doc = doc,
+                    customer_id = if (pointsMoved) customer?.id else null, points_earned = earned, points_used = used),
             )
+            if (customer != null && earned != used) db.customers().addPoints(customer.id, earned - used)
             db.receipts().insertLines(payLines.map {
                 ReceiptLineEntity(Uuid7.next(), tenant, receiptId, it.name_snapshot, it.unit_price, it.qty, it.id, it.list_price, it.price_kind, it.price_label)
             })
@@ -860,6 +892,7 @@ class TicketRepository @Inject constructor(
                 if (totals.rounding != 0L) put("rounding", totals.rounding)
                 put("payments", payArr); put("discounts", discArr); put("line_ids", lineArr)
                 if (discounts.isNotEmpty() && !staff.can("sale.apply_discount")) approver?.let { put("approved_by", it) }
+                if (pointsMoved) put("points", buildJsonObject { put("customer_id", customer!!.id); put("earned", earned) })
             }))
         }
         session.setPeriodSeq(daySeq)
@@ -868,6 +901,7 @@ class TicketRepository @Inject constructor(
         ReceiptEntity(receiptId, tenant, store, deviceId, t.id, number,
             subtotal = totals.subtotal, discount_total = totals.discount,
             tax_total = totals.tax, service_charge = totals.service, rounding = totals.rounding, total = totals.total,
-            device_time = now, doc = doc)
+            device_time = now, doc = doc,
+            customer_id = if (pointsMoved) customer?.id else null, points_earned = earned, points_used = used)
     }
 }

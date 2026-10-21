@@ -171,6 +171,12 @@ data class ReceiptEntity(
     // reinstall). It can be found, reprinted and refunded here; what was
     // printed for it is put together from its lines.
     val pulled: Boolean = false,
+    // Loyalty points (0128): who earned or used points on this receipt, and
+    // how much. A refund holds what it took back (points_earned) and gave
+    // back (points_used), both at most 0.
+    val customer_id: String? = null,
+    val points_earned: Long = 0,
+    val points_used: Long = 0,
 )
 
 // The taxes and the add-ons of a line of a pulled receipt, as the server

@@ -65,6 +65,7 @@ import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.Exchanges
 import com.restopos.core.data.ReturnRules
 import com.restopos.core.data.LineInfo
+import com.restopos.core.data.LoyaltyRules
 import com.restopos.core.data.OrderOps
 import com.restopos.core.data.PayInput
 import com.restopos.core.data.StaffSession
@@ -117,7 +118,14 @@ data class PayDone(
     val exchange: Boolean = false, val back: Long = 0, val backBy: String? = null, val note: Long = 0,
     // put on the customer's account (0114), and what they owe on it now
     val onAccount: Long = 0, val owes: Long = 0,
+    // loyalty points (0128): what the sale earned, and the customer's balance now
+    val earned: Long = 0, val pointsBalance: Long? = null,
 )
+
+// Loyalty points (0128), offered on Pay when the business keeps them and the
+// sale names a customer who has some: the customer's name and balance, the
+// most that can come off this bill, and what is used now (0: none).
+data class PointsOffer(val who: String, val balance: Long, val most: Long, val used: Long)
 
 // On account (0114), offered on Pay: the shop sells on account, the sale names
 // a customer, and the person paying may. who: the customer's name; null with
@@ -165,6 +173,9 @@ data class PayUi(
     val noteAsk: Boolean = false,
     // a shop that sells on account (0114): the key and what it says; null: not offered
     val account: AccountOffer? = null,
+    // loyalty points (0128): the key, and whether its sheet is open; null: not offered
+    val points: PointsOffer? = null,
+    val pointsAsk: Boolean = false,
     val busy: Boolean = false,
     val done: PayDone? = null,
 ) {
@@ -204,6 +215,9 @@ class PayViewModel @Inject constructor(
     private class Share(val type: String, val input: PayInput)
     private var shares: List<Share> = emptyList()
     private var discount: DiscountPick? = null
+    // the customer's points used on this bill (0128), as chosen; 0 is none
+    private var points = 0L
+    private fun pointsPick(): DiscountPick? = points.takeIf { it > 0 }?.let { DiscountPick(type = "amount", value = it, name = "Points", points = true) }
     private var servicePct = 0
     private var calc: Map<String, Calc.Line> = emptyMap()
     private var earlier: List<PaidRow> = emptyList()
@@ -218,11 +232,13 @@ class PayViewModel @Inject constructor(
     // are given back (the cashier is asked first) or recorded.
     fun reset() {
         shares = emptyList()
+        points = 0
         _ui.value = PayUi()
     }
 
     fun open() = viewModelScope.launch {
         shares = emptyList()
+        points = 0
         // the check of a split check this screen was opened for; read once
         val check = session.payCheck()
         session.setPayCheck(null)
@@ -310,12 +326,47 @@ class PayViewModel @Inject constructor(
         saveKept(if (now.isEmpty()) allKept() - id else allKept() + (id to KeptSplit(id, n, now, mode)))
     }
 
-    private fun totalsFor(ids: Collection<String>): Calc.Totals {
+    private fun totalsFor(ids: Collection<String>, withPoints: Boolean = true): Calc.Totals {
         val d = discount
         return Calc.totalsRounded(
             calc.filterKeys { ids.contains(it) }.values.toList(),
-            listOfNotNull(d?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) }), servicePct,
+            listOfNotNull(
+                d?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) },
+                // the customer's points (0128) after every other discount, as the till records them
+                points.takeIf { withPoints && it > 0 }?.let { Calc.Discount(null, it) },
+            ), servicePct,
         )
+    }
+
+    // Loyalty points (0128): offered on a whole bill (not a check of a split
+    // check, nor an exchange) of a business that keeps them, whose sale names
+    // a customer with points, before any payment is taken on it.
+    private suspend fun pointsOffer(t: com.restopos.core.database.TicketEntity, settings: PosSettings, check: Int?, exchange: Boolean): PointsOffer? {
+        if (!settings.loyalty || check != null || exchange) { points = 0; return null }
+        val c = t.customer_id?.let { db.customers().customer(it) } ?: run { points = 0; return null }
+        val before = totalsFor(calc.keys, withPoints = false)
+        val most = LoyaltyRules.most(c.points, before.subtotal - before.discount)
+        points = points.coerceIn(0, most)
+        if (most <= 0 && points == 0L) return null
+        return PointsOffer(c.name, c.points, most, points)
+    }
+
+    fun askPoints(on: Boolean) {
+        val s = _ui.value
+        if (on && shares.isNotEmpty()) { Toaster.say("Points are used before any payment is taken. Give back what was taken to use them."); return }
+        _ui.value = s.copy(pointsAsk = on && s.points != null)
+    }
+
+    // As much of the customer's points as the cashier chose, at most what the
+    // bill comes to before them; 0 takes them off the bill.
+    fun usePoints(amount: Long) {
+        val s = _ui.value
+        val o = s.points ?: return
+        if (s.busy || s.done != null) return
+        if (shares.isNotEmpty()) { Toaster.say("Points are used before any payment is taken. Give back what was taken to use them."); return }
+        points = amount.coerceIn(0, o.most)
+        show(s.copy(points = o.copy(used = points), pointsAsk = false, tend = "", piece = 0))
+        Toaster.say(if (points > 0) "${Money.format(points)} of ${o.who}'s points come off the bill" else "Points taken off the bill")
     }
 
     private suspend fun load(split: String? = null) {
@@ -362,6 +413,7 @@ class PayViewModel @Inject constructor(
                 val c = t.customer_id?.let { db.customers().customer(it) }
                 AccountOffer(db.accounts().paymentType()?.id, c?.name, c?.let { db.accounts().balance(it.id) } ?: 0, staff.can("sale.on_account"))
             } else null,
+            points = pointsOffer(t, settings, cur.check, ex != null),
             // one check of a split check: its lines, and only they
             lines = all.filter { cur.check == null || (it.line.check_no == cur.check && !it.line.paid) }.map { PayLine(it, cur.check != null) },
             methods = methods, method = cur.method?.let { m -> methods.firstOrNull { it.id == m.id } } ?: methods.firstOrNull(),
@@ -583,9 +635,10 @@ class PayViewModel @Inject constructor(
         val t = tickets.activeTicket()
         val payments = with.map { it.input }.filter { it.amount > 0 }
         val change = with.sumOf { it.input.change }
-        tickets.pay(payments, listOfNotNull(discount), servicePct, covered).fold(
+        tickets.pay(payments, listOfNotNull(discount, pointsPick()), servicePct, covered).fold(
             onSuccess = { receipt ->
                 shares = emptyList()
+                points = 0
                 keep(ticketId, 0)
                 orderOps.afterPay(receipt, perGuest = s.split == "equal" && with.size >= 2)
                 if (tickets.activeTicket() == null) {
@@ -599,6 +652,7 @@ class PayViewModel @Inject constructor(
                         with.filter { it.input.amount > 0 }.let { real -> if (real.size > 1) "${real.size} payments" else real.firstOrNull()?.type ?: "No charge" },
                         s.kind, t?.table_id?.let { db.tables().table(it)?.name }, t?.phone ?: customer?.phone, customer?.email,
                         onAccount = onAcc, owes = if (onAcc > 0 && customer != null) db.accounts().balance(customer.id) else 0,
+                        earned = receipt.points_earned, pointsBalance = customer?.takeIf { s.points != null || receipt.points_earned > 0 }?.points,
                     ))
                 } else {
                     // an amount discount is given once, not on every guest's receipt
@@ -786,23 +840,45 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
                             T("Scan the slip, or type its number", 13.sp, 600, V.Text2)
                         }
                     }
-                    // a shop's customer accounts (0114): this payment goes on the customer's account
-                    ui.account?.takeIf { ui.exchangeOf == null && ui.check == null }?.let { a ->
-                        Row(
-                            Modifier.fillMaxWidth().height(if (short) 50.dp else 56.dp).clip(RoundedCornerShape(12.dp)).background(V.BlueWash).clickable(enabled = !ui.busy) { vm.onAccount() }.padding(horizontal = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            VIcon(VI.Receipt, 20.dp, V.BlueSoft)
-                            T("On account", 16.sp, 800, V.BlueSoft)
-                            T(
-                                when {
-                                    a.typeId == null -> "Not on this till yet: let it sync"
-                                    a.who == null -> "Pick the customer on the sale first"
-                                    !a.allowed -> "Needs someone allowed to sell on account"
-                                    else -> "${Money.format(ui.amount)} on ${a.who}'s account" + if (a.owes > 0) " · owes ${Money.format(a.owes)} now" else ""
-                                },
-                                13.sp, 600, V.Text2, lines = 1,
-                            )
+                    // a shop's customer accounts (0114): this payment goes on the customer's account;
+                    // loyalty points (0128) beside it: the customer's points off the bill. One row for
+                    // both, so a low screen keeps its keypad.
+                    val acct = ui.account?.takeIf { ui.exchangeOf == null && ui.check == null }
+                    // points are used before any payment is taken (a collection's deposit is one): after, only what was used shows
+                    val pts = ui.points?.takeIf { ui.pending == 0L || it.used > 0 }
+                    if (acct != null || pts != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        acct?.let { a ->
+                            Row(
+                                Modifier.weight(1f).height(if (short) 50.dp else 56.dp).clip(RoundedCornerShape(12.dp)).background(V.BlueWash).clickable(enabled = !ui.busy) { vm.onAccount() }.padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                VIcon(VI.Receipt, 20.dp, V.BlueSoft)
+                                T("On account", 16.sp, 800, V.BlueSoft)
+                                T(
+                                    when {
+                                        a.typeId == null -> "Not on this till yet: let it sync"
+                                        a.who == null -> "Pick the customer on the sale first"
+                                        !a.allowed -> "Needs someone allowed to sell on account"
+                                        else -> "${Money.format(ui.amount)} on ${a.who}'s account" + if (a.owes > 0) " · owes ${Money.format(a.owes)} now" else ""
+                                    },
+                                    13.sp, 600, V.Text2, lines = 1,
+                                )
+                            }
+                        }
+                        pts?.let { p ->
+                            Row(
+                                Modifier.weight(1f).height(if (short) 50.dp else 56.dp).clip(RoundedCornerShape(12.dp)).background(if (p.used > 0) V.GreenWash else V.BlueWash)
+                                    .clickable(enabled = !ui.busy) { vm.askPoints(true) }.padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                VIcon(if (p.used > 0) VI.Check else VI.Receipt, 20.dp, if (p.used > 0) V.GreenText else V.BlueSoft)
+                                T(if (p.used > 0) "Points used" else "Use points", 16.sp, 800, if (p.used > 0) V.GreenText else V.BlueSoft)
+                                T(
+                                    if (p.used > 0) "${Money.format(p.used)} off · ${Money.format(p.balance - p.used)} left"
+                                    else "${p.who} has ${Money.format(p.balance)}",
+                                    13.sp, 600, V.Text2, lines = 1,
+                                )
+                            }
                         }
                     }
                 }
@@ -900,6 +976,7 @@ fun PayScreen(vm: PayViewModel, onBack: () -> Unit, onSplit: () -> Unit, onFinis
 
     if (typing && ui.split == "amount") PieceSheet(ui.remaining, onDismiss = { typing = false }) { typing = false; vm.piece(it) }
     if (ui.noteAsk) NoteSheet(onDismiss = { vm.askNote(false) }) { vm.useNote(it) }
+    if (ui.pointsAsk) ui.points?.let { p -> PointsSheet(p, onDismiss = { vm.askPoints(false) }) { vm.usePoints(it) } }
 
     if (leaving) {
         Sheet(onDismiss = { leaving = false }, width = 520.dp) {
@@ -948,6 +1025,47 @@ private fun PieceSheet(remaining: Long, onDismiss: () -> Unit, onSet: (Long) -> 
     }
 }
 
+// Loyalty points (0128): how much of the customer's points come off this
+// bill, typed on a pad; nothing typed is the most they can. They come off
+// as the Points discount, before VAT.
+@Composable
+private fun PointsSheet(p: PointsOffer, onDismiss: () -> Unit, onUse: (Long) -> Unit) {
+    var typed by remember { mutableStateOf("") }
+    val cents = PayParts.cents(typed)
+    val use = if (typed.isEmpty()) p.most else minOf(cents, p.most)
+    Sheet(onDismiss = onDismiss, width = 440.dp, gap = 14.dp) {
+        SheetHead(
+            "${p.who}'s points",
+            "${p.who} has ${Money.format(p.balance)} in points. Up to ${Money.format(p.most)} can come off this bill, as a discount before VAT.",
+            onDismiss,
+        )
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(V.Well).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.Bottom) {
+            T("Rs", 15.sp, 700, V.Text2)
+            Gap()
+            T(typed.ifEmpty { Money.plain(p.most) }, 30.sp, 800, if (typed.isEmpty()) V.Text2 else V.Text)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf(".", "0", "del")).forEach { row ->
+                Row(Modifier.height(54.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { k ->
+                        Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(12.dp)).background(V.Key2).clickable { typed = PayParts.key(typed, k) }, contentAlignment = Alignment.Center) {
+                            T(if (k == "del") "⌫" else k, 24.sp, 700)
+                        }
+                    }
+                }
+            }
+        }
+        if (typed.isNotEmpty() && cents > p.most) T("At most ${Money.format(p.most)} on this bill", 13.sp, 600, V.Text2)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (p.used > 0) VBtn("Take them off", Modifier.weight(1f), V.RedWash, V.RedText, 58.dp) { onUse(0) }
+            VBtn(
+                if (use > 0) "Use ${Money.format(use)}" else "Type the amount",
+                Modifier.weight(1f), if (use > 0) V.Blue else V.Key, if (use > 0) Color.White else V.Text2, 58.dp, weight = 800, enabled = use > 0,
+            ) { onUse(use) }
+        }
+    }
+}
+
 // A credit note's number, scanned from its slip or typed (0109).
 @Composable
 private fun NoteSheet(onDismiss: () -> Unit, onUse: (String) -> Unit) {
@@ -983,6 +1101,10 @@ private fun Done(d: PayDone, vm: PayViewModel, onFinish: () -> Unit) {
                     T("On account ${Money.format(d.onAccount)}", 16.sp, 800, V.BlueSoft)
                     T("They owe ${Money.format(d.owes)} on account now", 14.sp, 700, V.Dim)
                 }
+            }
+            // loyalty points (0128): what the sale earned, and the balance now
+            d.pointsBalance?.let { b ->
+                T((if (d.earned > 0) "Points earned ${Money.format(d.earned)} · " else "") + "balance ${Money.format(b)}", 15.sp, 700, V.GreenText)
             }
             if (d.change > 0 || d.back > 0 || d.note > 0) {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(V.GreenWash).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {

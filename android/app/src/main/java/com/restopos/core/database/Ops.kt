@@ -126,6 +126,7 @@ data class PaymentRow(val id: String, val receipt_id: String, val number: String
 // What changed prices on lines came to in a period: by kind of change
 // (discount | override) and kind of receipt (sale | refund).
 data class LineChange(val type: String, val kind: String, val total: Long)
+data class PointsBack(val earned: Long, val used: Long)
 
 // What was sold of each category in a period.
 data class CategorySale(val name: String?, val qty: Long, val amount: Long)
@@ -222,6 +223,10 @@ interface OpsDao {
 
     @Query("SELECT COUNT(*) FROM receipts WHERE refund_of = :id AND deleted_at IS NULL")
     suspend fun refundCount(id: String): Int
+
+    // what a receipt's refunds took back of its points (earned) and gave back (used), both at most 0 (0128)
+    @Query("SELECT COALESCE(SUM(points_earned), 0) AS earned, COALESCE(SUM(points_used), 0) AS used FROM receipts WHERE refund_of = :id AND deleted_at IS NULL")
+    suspend fun pointsBackOf(id: String): PointsBack
 
     // how much of each line of a receipt its refunds have already given back
     @Query(

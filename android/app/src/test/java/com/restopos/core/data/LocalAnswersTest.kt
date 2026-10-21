@@ -631,6 +631,7 @@ class LocalAnswersTest {
         ask("settings.save", OfficeFixtures.payload("settings-save").jsonObject)
         ask("settings.save", OfficeFixtures.payload("settings-save-deposits").jsonObject)
         ask("settings.save", OfficeFixtures.payload("settings-save-accounts").jsonObject)
+        ask("settings.save", OfficeFixtures.payload("settings-save-loyalty").jsonObject)
         ask("printer.save", """{"id":"${id(410)}","store_id":"$store","name":"Counter","kind":"usb","address":"","paper_mm":80,"one_printer":true}""")
         val after = obj(dao.settings!!.data)
         val written = after.keys.filter { after[it] != before[it] }.toSet()
@@ -1181,6 +1182,20 @@ class LocalAnswersTest {
         assertEquals("done", ask("settings.save", """{"accounts":"on"}"""))
         assertEquals(true, PosSettings.parse(dao.settings!!.data).accounts)
         assertEquals(OfficeFixtures.payload("settings-save-accounts"), OfficePayloads.accountsSave(false, 45, null))
+    }
+
+    @Test fun `loyalty points settings, as the server takes them, for any business and plan`() {
+        dao.settings = SettingsEntity(tenant, """{"plan":"offline","businessType":"restaurant","servicePct":10}""")
+        assertEquals(false, PosSettings.parse(dao.settings!!.data).loyalty)
+        assertEquals("done", ask("settings.save", OfficeFixtures.payload("settings-save-loyalty").jsonObject))
+        val s = PosSettings.parse(dao.settings!!.data)
+        assertEquals(listOf<Any>(true, 250, 10), listOf(s.loyalty, s.loyaltyBp, s.servicePct))
+        assertEquals("bad-payload", ask("settings.save", """{"loyaltyBp":0}"""))
+        assertEquals("bad-payload", ask("settings.save", """{"loyaltyBp":10001}"""))
+        assertEquals("bad-payload", ask("settings.save", """{"loyalty":"yes"}"""))
+        assertEquals("done", ask("settings.save", """{"loyalty":"off"}"""))
+        assertEquals(false, PosSettings.parse(dao.settings!!.data).loyalty)
+        assertEquals(OfficeFixtures.payload("settings-save-loyalty"), OfficePayloads.loyaltySave(true, 250, null))
     }
 
     @Test fun `customer accounts are an extra, only for a shop that has them by its plan or switched on`() {

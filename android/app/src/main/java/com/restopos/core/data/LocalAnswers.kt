@@ -1033,6 +1033,9 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         // a shop's customer accounts (0114)
         word("accounts", setOf("on", "off"))
         days("accountDays", 1..365)
+        // loyalty points, for every business (0128)
+        word("loyalty", setOf("on", "off"))
+        days("loyaltyBp", 1..10000)
         if (patch.isNotEmpty()) mergeSettings(tenant, patch)
     }
 

@@ -48,6 +48,8 @@ class GoLive @Inject constructor(
             }
             dao.dropNoted()
             dao.clearRungUp()
+            // a customer's points are what their receipts earned and used (0128): none are left
+            db.customers().clearPoints()
             dao.dropQueued(GoLiveRules.RUNG_UP.toList())
             dao.numbersFromOne(device)
         }

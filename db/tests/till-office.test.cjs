@@ -411,6 +411,10 @@ const swap = (v, map) => (Array.isArray(v) ? v.map((x) => swap(x, map))
     r = await rone(...ax('settings-save-accounts'));
     st = await settings(resto);
     check('Z1c the two account settings saved; the deposits left', r.said === 'applied' && st.accounts === 'off' && st.accountDays === 45 && st.depositDays === 45, JSON.stringify(st));
+    // loyalty points (0128), for any business: the sample a tablet working alone answers itself too
+    r = await rone(...ax('settings-save-loyalty'));
+    st = await settings(resto);
+    check('Z1d the two loyalty settings saved; the accounts left', r.said === 'applied' && st.loyalty === 'on' && st.loyaltyBp === 250 && st.accountDays === 45, JSON.stringify({ l: st.loyalty, b: st.loyaltyBp }));
     r = await rone('settings.save', { servicePct: 31 });
     const z2 = await rone('settings.save', { servicePct: -1 });
     check('Z2 a service charge over 30 % or below nothing is refused', r.said === 'rejected:bad-value' && z2.said === 'rejected:bad-value' && (await settings(resto)).servicePct === 10, r.said + ' ' + z2.said);

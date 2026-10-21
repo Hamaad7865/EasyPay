@@ -475,7 +475,7 @@ class SettingsViewModel @Inject constructor(
 private enum class Page(val label: String) {
     Till("This till"), Notices("Notifications"), Cash("Cash drawer"), Reports("Reports"), Payments("Payments"),
     // what the business is set up with, as its back office sets it (server 0094 on)
-    Taxes("Taxes"), Discounts("Discounts"), Staff("Staff"), Roles("Roles"), Receipt("Receipt"), Deposits("Deposits"), Accounts("Accounts"),
+    Taxes("Taxes"), Discounts("Discounts"), Staff("Staff"), Roles("Roles"), Receipt("Receipt"), Deposits("Deposits"), Accounts("Accounts"), Loyalty("Loyalty"),
     Printers("Printers"), Labels("Label printer"), Scanners("Scanners"), Display("Display"), Support("Support"), Help("Help"),
 }
 
@@ -504,6 +504,7 @@ private fun icon(p: Page): String = when (p) {
     Page.Receipt -> VI.Receipt
     Page.Deposits -> VI.Card
     Page.Accounts -> VI.Receipt
+    Page.Loyalty -> VI.Tag
     Page.Printers -> VI.Print
     Page.Labels -> VI.Tag
     Page.Scanners -> SCAN_ICON
@@ -637,6 +638,7 @@ fun SettingsScreen(
                             Page.Receipt -> ReceiptPage()
                             Page.Deposits -> DepositSettingsPage()
                             Page.Accounts -> AccountSettingsPage()
+                            Page.Loyalty -> LoyaltySettingsPage()
                             Page.Printers -> PrintersPage(vm, more, retail)
                             Page.Labels -> LabelPrinterPage()
                             Page.Scanners -> ScannersPage(vm, retail == true)
@@ -1444,6 +1446,7 @@ private const val STAFF_HELP = "In Settings. Staff: tap Add staff and give them 
 
 private val HELP = listOf(
     "Starting the day" to "Clock in: tap Clock in/out, pick your name and enter your PIN. Then open the day: someone allowed to taps their name on the start screen and counts the cash in the drawer, which opens for the count. The till sells from then on.",
+    "Loyalty points" to "Switched on in Settings, Loyalty, with the percentage that comes back. A customer named on the order earns points on what they pay, and a point is worth Rs 1. On Pay, Use points shows their balance: tap it to take some or all of it off the bill, as a discount before VAT. Points are used before any payment is taken, and not on one check of a split check. A refund takes back its share of the points the sale earned and gives back its share of the points it used. A customer can have a loyalty card: on Customers, open them, tap New number (or scan a card bought with a barcode) and Save; open them again for Print card. Scanning the card on the order screen puts them on it.",
     "Serving a table" to "On Tables, tap a free table and the number of guests: its order opens. Tap the items, then Send to kitchen. The table turns blue and shows what it owes and how long it has been. Tap it again to add to the order, print the bill or take payment.",
     "Drawing the floor plan" to "For a restaurant that works on its own, with no back office: on Tables, tap Edit plan. Drag a table to place it, drag its corner to make it bigger or smaller, tap it to change its number, covers or shape. Add table puts down one or several; Room adds a room, and a room can be renamed or removed. Nothing changes until Save plan. A table with an open order cannot be removed: pay it or move it first. A restaurant linked to the cloud draws its plan in the back office, under Tables.",
     "Moving a table, or two tables on one bill" to "On Tables, tap the table, then Move or merge, then the table it should go to. A free table takes the order as it is. A table that has an order of its own takes this one onto its bill: the guests are added together and the first table is free. From an order, the same is under More. To pay apart again afterwards, use Split check.",
@@ -1511,6 +1514,7 @@ private val SHOP_HELP = listOf(
     "Taking a line off, or clearing the sale" to "Tap the line, then Remove, or tap − until none is left. The bin at the top of the sale takes every line off at once, after asking. Nothing was paid, so nothing is refunded. Either may need someone allowed to take a line off a sale.",
     "Serving someone else first" to "Tap Park sale: the sale waits as it is and an empty one takes its place. The amber key at the top of the sale says how many are parked. Tap it, then the sale you want back; the one on the screen, if it holds anything, is parked in its place.",
     "A customer on the sale" to "Tap Add customer at the top of the sale, find them by name, phone or email, or tap New customer. Their name prints on the receipt, and Email and WhatsApp after payment start with their address or number. Everyone the shop knows is on Customers, where their details are changed.",
+    "Loyalty points" to "Switched on in Settings, Loyalty, with the percentage that comes back. A customer named on the sale earns points on what they pay, and a point is worth Rs 1. On Pay, Use points shows their balance: tap it to take some or all of it off the bill, as a discount before VAT. Points are used before any payment is taken, and not on an exchange. A refund takes back its share of the points the sale earned and gives back its share of the points it used. A customer can have a loyalty card: on Customers, open them, tap New number (or scan a card bought with a barcode) and Save; open them again for Print card. Scanning the card on the Sell screen puts them on it.",
     "Taking payment" to "Tap Pay and pick how it is paid. For cash, tap what the customer gave, or type it, to see the change, then tap Charge. For a card or a transfer, take the money first, then tap Charge to record it. The receipt prints; Print gives another copy, and Email or WhatsApp hands the receipt to that app on the tablet. Next sale brings back an empty sale. To share one sale between several payments, tap Equally and set how many: each share is paid its own way. To pay part of a sale one way and the rest another, tap By amount, type the first part and charge it, then pay what remains. Paid in cash, the exact amount? Tap Fast beside Pay: the sale is paid in one tap and an empty one takes its place.",
     "Another copy of a receipt" to "For the last receipt this till issued, tap the More key under the sale, then Reprint last receipt. For an older one, tap it on Receipts, or scan the barcode at its foot, then tap Print again. The paper says it is a copy, and what has been refunded since.",
     "A return or a refund" to "Scan the barcode at the foot of the customer's receipt, on Sell or on Receipts: the receipt opens. Without the paper, open Receipts (Refund or exchange, behind the More key under the sale, goes there too) and tap the receipt or type its number: the list holds the shop's receipts of the last 30 days, from every till. Tap Refund. Take off what the customer keeps, pick how the money goes back and type the reason: a refund must have one. Put back into stock stays on when the goods go on the shelf again; switch it off for something faulty, and it is written off as damaged.",

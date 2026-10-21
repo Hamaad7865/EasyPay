@@ -1,0 +1,4 @@
+{
+  "type": "settings.save",
+  "payload": { "loyalty": "on", "loyaltyBp": 250 }
+}

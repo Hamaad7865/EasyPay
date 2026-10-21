@@ -279,7 +279,9 @@ class OrderOps @Inject constructor(
     suspend fun marked(r: ReceiptEntity, doc: ReceiptDoc, reprint: Boolean): ReceiptDoc {
         val back = if (r.type == "sale") db.ops().refundedOf(r.id) else 0L
         // what was owed on account the day of the sale (0114) is not what is owed now: a copy leaves it out
-        return doc.copy(reprint = reprint, refunded = back, refundedAll = back > 0 && back >= r.total, owed = if (reprint || back > 0) null else doc.owed)
+        return doc.copy(reprint = reprint, refunded = back, refundedAll = back > 0 && back >= r.total, owed = if (reprint || back > 0) null else doc.owed,
+            // nor is the points balance of that day the balance now (0128)
+            pointsBalance = if (reprint || back > 0) null else doc.pointsBalance)
     }
 
     // Another copy of a receipt that has just been issued, for the guest who
@@ -467,6 +469,18 @@ class OrderOps @Inject constructor(
         val seq = device.last_receipt_seq + 1
         val number = "${storeRow.code}-${device.code}-R${seq.toString().padStart(6, '0')}"
         val noteNumber = ReturnRules.noteNumber(number)
+        // Loyalty points (0128): this refund's share of what the sale earned
+        // (taken back) and of what it used (given back), by its subtotal; the
+        // refund that leaves nothing of the sale settles what is left of both.
+        val last = back == null || shares.orEmpty().all { s ->
+            (done[s.line.id] ?: 0) + (back.firstOrNull { it.first.line.id == s.line.id }?.second ?: 0) >= s.line.qty
+        }
+        val pointsDone = db.ops().pointsBackOf(orig.id)
+        val refundSub = parts?.sub ?: orig.subtotal
+        val pointsTaken = if (orig.customer_id == null) 0L else LoyaltyRules.share(orig.points_earned, refundSub, orig.subtotal, last, orig.points_earned + pointsDone.earned)
+        val pointsBack = if (orig.customer_id == null) 0L else LoyaltyRules.share(orig.points_used, refundSub, orig.subtotal, last, orig.points_used + pointsDone.used)
+        val pointsMoved = pointsTaken > 0 || pointsBack > 0
+        val pointsOf = if (pointsMoved) orig.customer_id?.let { db.customers().customer(it) } else null
         val id = Uuid7.next()
         val now = System.currentTimeMillis()
         val was = docFor(orig)
@@ -507,16 +521,22 @@ class OrderOps @Inject constructor(
             refundOf = orig.number, reason = reason.trim(),
             // a return off a bill on account (0114): what the customer owes on account after it
             owed = if (offBill > 0 && bill?.customer_id != null) db.accounts().balance(bill.customer_id) - offBill else null,
+            // the points the sale earned are not this paper's; what the refund moved is
+            pointsEarned = null,
+            pointsTaken = pointsTaken.takeIf { it > 0 }, pointsBack = pointsBack.takeIf { it > 0 },
+            pointsBalance = pointsOf?.let { it.points + pointsBack - pointsTaken },
         )
         val refund = ReceiptEntity(
             id, tenant, store, deviceId, orig.ticket_id, number, type = "refund", refund_of = orig.id,
             subtotal = parts?.sub ?: orig.subtotal, discount_total = parts?.disc ?: orig.discount_total, tax_total = parts?.tax ?: orig.tax_total,
             service_charge = parts?.svc ?: orig.service_charge, rounding = parts?.rnd ?: orig.rounding, total = amount, device_time = now, doc = docs.encode(doc),
+            customer_id = if (pointsMoved) orig.customer_id else null, points_earned = -pointsTaken, points_used = -pointsBack,
         )
         // a tablet that is setting up writes down what comes back on the shelf, for Go live
         val trial = db.tryingOut(session)
         db.withTransaction {
             db.receipts().insertReceipt(refund)
+            if (pointsOf != null && pointsBack != pointsTaken) db.customers().addPoints(pointsOf.id, pointsBack - pointsTaken)
             db.receipts().insertLines(
                 if (back == null) sold.map { ReceiptLineEntity(Uuid7.next(), tenant, id, it.name_snapshot, it.unit_price, it.qty, it.ticket_line_id, it.list_price, it.price_kind, it.price_label) }
                 else back.mapNotNull { (s, q) -> sold.firstOrNull { it.ticket_line_id == s.line.id }?.let { ReceiptLineEntity(Uuid7.next(), tenant, id, it.name_snapshot, it.unit_price, q, s.line.id, it.list_price, it.price_kind, it.price_label) } },
@@ -561,6 +581,9 @@ class OrderOps @Inject constructor(
                 })
                 staff.approvedBy("sale.refund", approver)?.let { put("approved_by", it) }
                 if (!restock) put("restock", false)
+                if (pointsMoved) put("points", buildJsonObject {
+                    put("customer_id", orig.customer_id!!); put("taken", pointsTaken); put("back", pointsBack)
+                })
             }))
         }
         if (!quiet) {
@@ -601,6 +624,16 @@ class OrderOps @Inject constructor(
             }))
         }
         pushNow(context)
+    }
+
+    // A customer's loyalty card (0128), on the receipt printer.
+    suspend fun printCard(customerId: String): Result<Unit> = runCatching {
+        val c = db.customers().customer(customerId) ?: error("That customer is not on this tablet")
+        val card = c.card ?: error("Give ${c.name} a card number first")
+        val p = printing.receiptPrinter() ?: error("This till has no receipt printer. Add one in Settings, Printers.")
+        val store = session.storeId()?.let { db.catalog().store(it) }
+        val business = PosSettings.parse(db.ops().settings()).companyName.ifBlank { store?.name ?: "EasyPay" }
+        printing.send(p, Docs.card(business, c.name, card, printing.paper(p)), "Loyalty card").getOrThrow()
     }
 
     suspend fun test(printerId: String): Result<Unit> = runCatching {

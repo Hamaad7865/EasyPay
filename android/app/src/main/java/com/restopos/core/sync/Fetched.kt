@@ -29,6 +29,14 @@ object Fetched {
     fun level(own: StockLevelEntity?, sent: StockLevelEntity): StockLevelEntity =
         if (own == null) sent else sent.copy(qty = own.qty, avg_cost = own.avg_cost)
 
+    // A customer the server sends (0128): their name, phone, card and note are
+    // what was set up for them there, and are taken; their points were earned
+    // and spent on the tablet alone, so the tablet's balance stays. One the
+    // tablet has none of comes with what the server holds (nothing, for an
+    // offline business).
+    fun customer(own: com.restopos.core.database.CustomerEntity?, sent: com.restopos.core.database.CustomerEntity): com.restopos.core.database.CustomerEntity =
+        if (own == null) sent else sent.copy(points = own.points)
+
     // What a pull brought, in the till's words, from the tables it had rows
     // of: "products, taxes and staff". Null when it brought nothing anyone
     // set up (the server's own note that a till asked is not a change).

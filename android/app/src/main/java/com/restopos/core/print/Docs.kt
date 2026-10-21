@@ -137,6 +137,13 @@ data class ReceiptDoc(
     // A sale on account (0114): what the customer owes on account with it,
     // printed under the payments. None on any other receipt.
     val owed: Long? = null,
+    // Loyalty points (0128), printed under the payments: what a sale earned,
+    // what a refund took back and gave back, and the customer's balance after
+    // it (left out of a reprint: it is not the balance now).
+    val pointsEarned: Long? = null,
+    val pointsTaken: Long? = null,
+    val pointsBack: Long? = null,
+    val pointsBalance: Long? = null,
 )
 
 @Serializable
@@ -704,6 +711,25 @@ object Docs {
         p.line("Crevettes sautées à l'ail, café crème")
         p.rule()
         p.center("If you can read this, the printer works.")
+        p.end(paper)
+        return p.bytes()
+    }
+
+    // A customer's loyalty card (0128), on the receipt printer: the business,
+    // the customer, the card's number in bars (Code 128, as a receipt's own)
+    // and in words. Cut out and kept, or any card bought with a barcode.
+    fun card(business: String, customer: String, card: String, paper: Paper): ByteArray {
+        val p = page(paper)
+        p.align(EscPos.Align.Center).bold(true).big(true).line(business.take(paper.columns)).big(false).bold(false)
+        p.line("Loyalty card")
+        p.rule()
+        p.bold(true).line(customer.take(paper.columns)).bold(false)
+        p.feed(1)
+        p.barcode(card)
+        p.line(card)
+        p.feed(1)
+        p.center("Show this card at the till to earn and use points.")
+        p.align(EscPos.Align.Left)
         p.end(paper)
         return p.bytes()
     }

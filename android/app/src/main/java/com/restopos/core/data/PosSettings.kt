@@ -99,6 +99,10 @@ data class PosSettings(
     val accountsPaid: Boolean = false,
     val accountsOn: Boolean = true,
     val accountDays: Int = 30,
+    // Loyalty points (server 0128), for every business on every plan: off
+    // until switched on; loyaltyBp is what comes back, in basis points (100 is 1%).
+    val loyalty: Boolean = false,
+    val loyaltyBp: Int = 100,
 ) {
     // a shop that may take deposits now
     val deposits: Boolean get() = retail && depositsPaid && depositsOn
@@ -173,6 +177,8 @@ data class PosSettings(
                     runCatching { d["features"]?.jsonArray?.any { it.jsonPrimitive.contentOrNull == "accounts" } }.getOrNull() == true,
                 accountsOn = d.str("accounts") != "off",
                 accountDays = runCatching { d["accountDays"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..365 } ?: 30,
+                loyalty = d.str("loyalty") == "on",
+                loyaltyBp = runCatching { d["loyaltyBp"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..10000 } ?: 100,
             )
         }
     }

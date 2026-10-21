@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.restopos.core.data.LoyaltyRules
+import com.restopos.core.data.OrderOps
 import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.CustomerEntity
 import com.restopos.core.database.TillDatabase
@@ -65,6 +67,7 @@ import javax.inject.Inject
 class CustomersViewModel @Inject constructor(
     private val db: TillDatabase,
     private val tickets: TicketRepository,
+    private val orderOps: OrderOps,
 ) : ViewModel() {
     private val query = MutableStateFlow("")
     val rows: StateFlow<List<CustomerEntity>> = query
@@ -79,13 +82,22 @@ class CustomersViewModel @Inject constructor(
     val retail: StateFlow<Boolean> = db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).retail }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    // the business keeps loyalty points (0128): the balances and the card are shown
+    val loyal: StateFlow<Boolean> = db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).loyalty }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     fun search(text: String) { query.value = text }
 
-    fun save(id: String?, name: String, phone: String, email: String, note: String, then: (CustomerEntity) -> Unit) = viewModelScope.launch {
-        tickets.saveCustomer(id, name, phone, email, note).fold(
+    fun save(id: String?, name: String, phone: String, email: String, note: String, card: String? = null, then: (CustomerEntity) -> Unit) = viewModelScope.launch {
+        tickets.saveCustomer(id, name, phone, email, note, card).fold(
             onSuccess = { then(it) },
             onFailure = { _message.value = it.message },
         )
+    }
+
+    // the customer's loyalty card (0128), as saved, on the receipt printer
+    fun printCard(id: String) = viewModelScope.launch {
+        orderOps.printCard(id).fold({ _message.value = "Card sent to the printer" }, { _message.value = it.message })
     }
 }
 
@@ -96,6 +108,7 @@ fun CustomersScreen(vm: CustomersViewModel = hiltViewModel()) {
     val rows by vm.rows.collectAsState()
     val message by vm.message.collectAsState()
     val shop by vm.retail.collectAsState()
+    val loyal by vm.loyal.collectAsState()
     var typed by remember { mutableStateOf("") }
     // the customer being made (blank) or changed
     var form by remember { mutableStateOf<CustomerEntity?>(null) }
@@ -107,7 +120,7 @@ fun CustomersScreen(vm: CustomersViewModel = hiltViewModel()) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     typed, { typed = it.take(60); vm.search(typed) }, Modifier.weight(1f),
-                    placeholder = { Text("Search by name, phone or email") }, singleLine = true,
+                    placeholder = { Text(if (loyal) "Search by name, phone, email or card" else "Search by name, phone or email") }, singleLine = true,
                 )
                 Box(
                     Modifier.height(48.dp).clip(RoundedCornerShape(24.dp)).background(Pos.TabOn).clickable { adding = true }.padding(horizontal = 22.dp),
@@ -120,6 +133,7 @@ fun CustomersScreen(vm: CustomersViewModel = hiltViewModel()) {
                     HeadCell("Phone", 1f)
                     HeadCell("Email", 1.4f)
                     HeadCell("Note", 1.6f)
+                    if (loyal) HeadCell("Points", 0.8f)
                 }
                 Hairline()
                 if (rows.isEmpty()) {
@@ -138,6 +152,7 @@ fun CustomersScreen(vm: CustomersViewModel = hiltViewModel()) {
                             Text(c.phone ?: "", Modifier.weight(1f).padding(horizontal = 8.dp), color = Pos.Text, fontSize = 15.sp, maxLines = 1)
                             Text(c.email ?: "", Modifier.weight(1.4f).padding(horizontal = 8.dp), color = Pos.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(c.note ?: "", Modifier.weight(1.6f).padding(horizontal = 8.dp), color = Pos.Text2, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (loyal) Text(if (c.points != 0L) LoyaltyRules.say(c.points) else "", Modifier.weight(0.8f).padding(horizontal = 8.dp), color = if (c.points < 0) Pos.Pink else Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                         }
                         Hairline(Modifier.padding(horizontal = 20.dp))
                     }
@@ -154,8 +169,8 @@ fun CustomersScreen(vm: CustomersViewModel = hiltViewModel()) {
     }
 
     if (adding || form != null) {
-        CustomerForm(form, shop = shop, onDismiss = { adding = false; form = null }) { name, phone, email, note ->
-            vm.save(form?.id, name, phone, email, note) { adding = false; form = null }
+        CustomerForm(form, shop = shop, loyal = loyal, onPrint = { vm.printCard(it) }, onDismiss = { adding = false; form = null }) { name, phone, email, note, card ->
+            vm.save(form?.id, name, phone, email, note, card) { adding = false; form = null }
         }
     }
 }
@@ -167,12 +182,13 @@ fun CustomerPicker(current: String?, vm: CustomersViewModel = hiltViewModel(), w
     val rows by vm.rows.collectAsState()
     val message by vm.message.collectAsState()
     val shop by vm.retail.collectAsState()
+    val loyal by vm.loyal.collectAsState()
     var typed by remember { mutableStateOf("") }
     var adding by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.search("") }
     if (adding) {
-        CustomerForm(null, startName = typed, shop = shop, onDismiss = { adding = false }) { name, phone, email, note ->
-            vm.save(null, name, phone, email, note) { made -> adding = false; onPick(made.id) }
+        CustomerForm(null, startName = typed, shop = shop, loyal = loyal, onDismiss = { adding = false }) { name, phone, email, note, card ->
+            vm.save(null, name, phone, email, note, card) { made -> adding = false; onPick(made.id) }
         }
         return
     }
@@ -192,7 +208,8 @@ fun CustomerPicker(current: String?, vm: CustomersViewModel = hiltViewModel(), w
                             Avatar(c.name, 28.dp)
                             Column(Modifier.weight(1f).padding(start = 10.dp)) {
                                 Text(c.name + if (c.id == current) "  ✓" else "", color = Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                val sub = listOfNotNull(c.phone, c.email).joinToString(" · ")
+                                // the points they have (0128), for the cashier to offer at Pay
+                                val sub = listOfNotNull(c.phone, c.email, if (loyal && c.points != 0L) LoyaltyRules.say(c.points) + " in points" else null).joinToString(" · ")
                                 if (sub.isNotBlank()) Text(sub, color = Pos.Text3, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
@@ -212,12 +229,20 @@ fun CustomerPicker(current: String?, vm: CustomersViewModel = hiltViewModel(), w
     )
 }
 
+// card (0128): the loyalty card's number, typed, scanned while the form is
+// open, or made with New number; Print card prints the card as saved.
 @Composable
-private fun CustomerForm(initial: CustomerEntity?, startName: String = "", shop: Boolean = false, onDismiss: () -> Unit, onSave: (String, String, String, String) -> Unit) {
+private fun CustomerForm(
+    initial: CustomerEntity?, startName: String = "", shop: Boolean = false, loyal: Boolean = false, onPrint: (String) -> Unit = {},
+    onDismiss: () -> Unit, onSave: (String, String, String, String, String?) -> Unit,
+) {
     var name by remember { mutableStateOf(initial?.name ?: startName) }
     var phone by remember { mutableStateOf(initial?.phone ?: "") }
     var email by remember { mutableStateOf(initial?.email ?: "") }
     var note by remember { mutableStateOf(initial?.note ?: "") }
+    var card by remember { mutableStateOf(initial?.card ?: "") }
+    // a card scanned while the form is open is its number
+    LaunchedEffect(loyal) { if (loyal) com.restopos.core.common.Scanner.codes.collect { card = LoyaltyRules.cleanCard(it).take(40) } }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "New customer" else "Customer") },
@@ -227,9 +252,19 @@ private fun CustomerForm(initial: CustomerEntity?, startName: String = "", shop:
                 OutlinedTextField(phone, { phone = it.take(40) }, Modifier.fillMaxWidth(), label = { Text("Phone") }, singleLine = true)
                 OutlinedTextField(email, { email = it.take(120) }, Modifier.fillMaxWidth(), label = { Text("Email") }, singleLine = true)
                 OutlinedTextField(note, { note = it.take(200) }, Modifier.fillMaxWidth(), label = { Text(if (shop) "Note (sizes, what they like)" else "Note (allergies, what they like)") })
+                if (loyal) {
+                    if (initial != null) Text("Points: " + LoyaltyRules.say(initial.points), color = if (initial.points < 0) Pos.Pink else Pos.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(card, { card = it.take(40) }, Modifier.weight(1f), label = { Text("Loyalty card (scan or type)") }, singleLine = true)
+                        OutlinedButton(onClick = { card = LoyaltyRules.newCard() }) { Text("New number") }
+                    }
+                    if (initial?.card != null && initial.card == card.trim()) {
+                        OutlinedButton(onClick = { onPrint(initial.id) }) { Text("Print card") }
+                    }
+                }
             }
         },
-        confirmButton = { Button(enabled = name.isNotBlank(), onClick = { onSave(name, phone, email, note) }) { Text("Save") } },
+        confirmButton = { Button(enabled = name.isNotBlank(), onClick = { onSave(name, phone, email, note, if (loyal) card else null) }) { Text("Save") } },
         dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

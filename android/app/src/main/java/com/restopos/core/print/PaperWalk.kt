@@ -148,7 +148,14 @@ internal object PaperWalk {
                     Out.Row(pay.name, n(pay.amount)),
                     pay.reference?.takeIf { it.isNotBlank() }?.let { Out.Line("  Ref: $it") },
                 ) + if (pay.tendered != null && pay.change > 0) listOf(Out.Row("  Given", n(pay.tendered)), Out.Row("  Change", n(pay.change))) else emptyList()
-            } + listOfNotNull(d.owed?.let { Out.Row("Balance owed on account", n(it)) })
+            } + listOfNotNull(
+                d.owed?.let { Out.Row("Balance owed on account", n(it)) },
+                // loyalty points (0128)
+                d.pointsEarned?.takeIf { it > 0 }?.let { Out.Row("Points earned", n(it)) },
+                d.pointsTaken?.takeIf { it > 0 }?.let { Out.Row("Points taken back", n(it)) },
+                d.pointsBack?.takeIf { it > 0 }?.let { Out.Row("Points given back", n(it)) },
+                d.pointsBalance?.let { Out.Row("Points balance", (if (it < 0) "-" else "") + n(Math.abs(it))) },
+            )
             "bill_note" -> if (d.kind == "bill") listOf(Out.Words("This is not a receipt")) else emptyList()
             "remark" -> listOfNotNull(d.note?.takeIf { it.isNotBlank() }?.let { Out.Words("Remark: $it") })
             "footer" -> words(shop.footer)

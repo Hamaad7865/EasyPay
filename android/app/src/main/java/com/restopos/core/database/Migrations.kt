@@ -429,4 +429,16 @@ object Migrations {
             db.execSQL("ALTER TABLE `cash_movements` ADD COLUMN `account_payment_id` TEXT")
         }
     }
+
+    // Loyalty points (server 0128): a customer's balance and card; who
+    // earned or used points on a receipt, and how much.
+    val V31_V32 = object : Migration(31, 32) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `customers` ADD COLUMN `points` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `customers` ADD COLUMN `card` TEXT")
+            db.execSQL("ALTER TABLE `receipts` ADD COLUMN `customer_id` TEXT")
+            db.execSQL("ALTER TABLE `receipts` ADD COLUMN `points_earned` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `receipts` ADD COLUMN `points_used` INTEGER NOT NULL DEFAULT 0")
+        }
+    }
 }
