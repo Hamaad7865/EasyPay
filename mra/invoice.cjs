@@ -44,10 +44,11 @@ const vatAdded = (net, bp) => (bp > 0 ? Math.floor((net * bp + 5000) / 10000) : 
 const general = (l) => ({ desc: l.desc, code: l.code || '', taxCode: l.taxCode, nature: l.nature, qtyMilli: l.qty * 1000, base: l.unitPrice * l.qty, share: 0, vatBp: l.vatBp, added: false });
 
 // What one line comes to, in cents: without VAT before and after its part of
-// the order discount, and its VAT, worked out as the till works it out.
-function figures({ base, share = 0, vatBp = 0, added = false }, vatRegistered) {
+// the order discount, and its VAT, worked out as the till works it out. A
+// refund's line brings its VAT as the till's refund worked it out (vat).
+function figures({ base, share = 0, vatBp = 0, added = false, vat: given = null }, vatRegistered) {
   const net = base - share;
-  const vat = !vatRegistered ? 0 : added ? vatAdded(net, vatBp) : vatIncluded(net, vatBp);
+  const vat = !vatRegistered ? 0 : given != null ? given : added ? vatAdded(net, vatBp) : vatIncluded(net, vatBp);
   const exBefore = !vatRegistered || added ? base : base - vatIncluded(base, vatBp);
   return { exBefore, ex: added ? net : net - vat, vat };
 }

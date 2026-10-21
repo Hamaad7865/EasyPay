@@ -30,6 +30,8 @@ function cases() {
     { name: 'VAT on top', input: { ...first, lines: [line('Cake', 1000, 10000, { code: 'CK', added: true })] } },
     { name: 'by the kilo', input: { ...first, lines: [line('Prawns', 250, 20000)] } },
     { name: 'service charge', input: { ...first, lines: [...t1, line('Service charge', 1000, 3000, { taxCode: 'TC03', nature: 'SERVICES', vatBp: 0 })] } },
+    // a refund of part of a line: its VAT as RefundCalc gave it, a cent off what it would be worked out to
+    { name: 'a refund line with its VAT given', input: { ...first, counter: 5, identifier: 'MU-T1-R000005', type: 'CRN', ref: 'MU-T1-000001', reason: 'Returned', lines: [line('Fried noodles', 1000, 11500, { share: 1150, vat: 1351 })] } },
     { name: 'escaping', input: { ...first, cashier: 'Zoë', lines: [line('Say "hi" \\ café\t€ \u0001', 1000, 11500)] } },
     { name: 'ten in one request', input: ten },
   ];
