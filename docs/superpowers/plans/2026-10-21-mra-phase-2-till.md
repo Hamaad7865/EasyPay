@@ -221,8 +221,8 @@ copied from its invoice. Otherwise each line's `base` and `share` are `RefundCal
 
 ### Task 1: invoice.cjs takes a real sale; the probes; the fixture
 
-**Files:** `mra/invoice.cjs`, `mra/invoice.test.cjs`, `mra/sandbox.cjs`, `mra/sandbox.test.cjs`,
-`mra/fixtures/make-invoices.cjs`, `mra/fixtures/invoices.json`
+**Files:** `mra/invoice.cjs`, `mra/invoice.test.cjs`, `mra/sandbox-invoices.test.cjs` (this PC only), `mra/sandbox.cjs`,
+`mra/sandbox.test.cjs`, `mra/fixtures/make-invoices.cjs`, `mra/fixtures/invoices.json`
 
 - [ ] **Step 1: failing tests in `mra/invoice.test.cjs`**
 
@@ -298,10 +298,17 @@ test('the old form (whole quantities, prices with VAT) builds what the sandbox f
 });
 ```
 
+Also, first, a test for this PC only that holds `invoice.cjs` to what the MRA fiscalised, **before** any change.
+`mra/sandbox-invoices.test.cjs` skips when `.claude/mra/out` is absent. For each `invoice-*.json`, it rebuilds each
+invoice with `build()` from the file's own seller, counter, identifier, ref, reason and time, and from the case's
+lines, and compares `JSON.stringify` byte for byte. Run it before Step 3: it passes on the code as it is. It must
+still pass after Step 3, or the committed fixture would carry a change the MRA never saw into the Kotlin. The
+general-vs-old test below only shows the two forms agree; this one shows they agree with the MRA.
+
 - [ ] **Step 2: run them and see them fail**
 
 Run: `node --test mra/invoice.test.cjs`
-Expected: FAIL, `inv.qtyText is not a function` and the like.
+Expected: FAIL, `inv.qtyText is not a function` and the like. (`node --test mra/sandbox-invoices.test.cjs`: PASS.)
 
 - [ ] **Step 3: change `mra/invoice.cjs`**
 
@@ -1079,6 +1086,14 @@ alter table pos_devices add column if not exists mra_status jsonb;
   `node db/tests/isolation.test.cjs`, one after the other: `rls_coverage` must accept the new table.
 - [ ] **Step 4:** `delete-client.cjs` deletes `mra_records` before the tenant (it already refuses a client that
   went live).
+- [ ] **Step 4b: EasyPay's Go live and Clear test activity.** A client trains with the MRA while it is still
+  setting up, so Go live runs over training records. Read `platform.go_live` (0104) and
+  `platform.clear_test_activity` (live definitions).
+  - Neither deletes `mra_records`, or fails on them (no foreign key from `mra_records` to `receipts`).
+  - Neither resets `pos_devices.mra_counter` or `mra_chain`: the TRN invoices were sent to the MRA and stay.
+
+  Add both to `mra-till.test.cjs`: clear test activity on a training client, and the records and counter are
+  still there.
 - [ ] **Step 5:** commit (`database: what the MRA tills send (0132): mra_records, the chain per till, training and live`).
 
 ### Task 9: back office and /admin
@@ -1142,7 +1157,10 @@ data class MraInvoiceEntity(
 - **`MraDao`:**
   - `insert`;
   - `answer(id, status, irn, qr, errors, warnings, answeredAt, responseId)`;
-  - `markUnsure(ids)`, which adds one to `unanswered` and sets `unsure`, or `check` when it reaches 2;
+  - `sending(ids)`, written just before a request goes: `unsure`, one more `unanswered`, or `check` when it
+    reaches 2 (Task 12);
+  - `notSent(ids, before)`, which puts them back as they were when a request was not reached or was refused as a
+    whole;
   - `waiting(limit)`: `status in ('waiting','unsure') order by counter`;
   - `byReceipt(id)`, `counts(): Flow<MraCounts>`, `lastIssued(type)`, `latestIssuedAt()`, `problems(): Flow<List<…>>`.
 - **`DeviceEntity`:** `mra_ebs_id: String? = null`, `mra_counter: Long = 0`, `mra_chain: String = "{}"`.
@@ -1158,6 +1176,11 @@ data class MraInvoiceEntity(
     MRA till does not sell until it has them back).
 - **`PosSettings`:** `mra` (`off` when absent), `mraSeller` (legal name, TAN, nature) and `mraConnect` (address,
   certificate). `mraOn` is true for `training` and `live`.
+- **Go live on the tablet** (`core/database/GoLive.kt`, `core/data/GoLive.kt`): `numbersFromOne` resets
+  `last_receipt_seq` only, never `mra_counter` or `mra_chain`. The `mra_invoices` rows and the queued `mra.record` /
+  `mra.status` ops survive it, so what was sent in training stays sent and still reaches the server. Read what Go
+  live clears and what `GoLiveRules.RUNG_UP` decides before adding the two kinds. Test it in `GoLiveRulesTest` and
+  in a pure test of what `numbersFromOne` changes.
 - **Tests:** `PosSettingsMraTest` parses each one, and holds that a missing `mra` is `off`. Run every unit test.
   On the emulator, the Room 34 → 35 migration is seen when the build is installed over 34 (Task 18).
 - **Commit:** `till: what the MRA needs comes down with the pull (Room 35)`.
@@ -1189,6 +1212,8 @@ data class MraInvoiceEntity(
 - **In `refund()`:** the same with `MraLines.ofRefund`. A whole refund copies the sale's items from its invoice. The
   reason is the refund's reason.
 - **Tests:**
+  - training, then Go live on the tablet, then a live sale: the counter goes on from the training's, and the
+    TRN chain and the STD chain stay apart;
   - training gives TRN with `TRN` + counter;
   - live gives STD with the receipt number;
   - a refund in live gives CRN naming its sale;
@@ -1225,15 +1250,29 @@ rules, pure: `MraQueue.next(waiting, originals)` and `MraQueue.after(outcome)`).
     - stops before a CRN whose sale is on this till and not fiscalised;
     - sends them in one request;
     - repeats while there are more and each request was answered.
+  - **One send at a time.** A single `Mutex` in `MraSender` is held around every request, so a payment's
+    `sendNow` and the worker's `drain` never send the same invoice at once. Whoever takes the lock second
+    reads the rows again first.
+  - **Written down before it goes**, as `sandbox.cjs` does. Just before the body is sent, its invoices are saved
+    as `unsure` with `unanswered + 1` (`MraDao.sending(ids)`), in one Room write. If the app is killed, the
+    tablet dies or the request hangs, the invoice comes back as one that may have reached the MRA, never as one
+    that did not.
   - What each outcome does:
     - Answered, per invoice: `fiscalised` with IRN and QR, or `refused` with its reasons; never sent again.
-    - Answered, refused as a whole (HTTP 4xx with no `fiscalisedInvoices`): they stay `waiting`. The MRA did not
-      see them, so it does not count as their one resend. An invalid token signs in once and sends again.
-      `EBS status is not active` sets the banner's reason.
-    - NotReached: they stay `waiting`.
-    - NoAnswer: `markUnsure`. An `unsure` invoice is sent once more at the next drain. If that gets no answer
-      either, it becomes `check` and is not sent again until a manager presses **Send again** (Task 14). That is
-      the guide's 9.1: once later, never in a loop.
+    - Answered, refused as a whole (HTTP 4xx with no `fiscalisedInvoices`): `MraDao.notSent(ids)` puts them
+      back as they were before the send (status and `unanswered`). The MRA did not see them, so it does not
+      count as their one resend.
+      - An invalid token signs in once and sends again.
+      - Any other whole refusal keeps its reason as the till's MRA problem: ERR0020, decryption, a body error,
+        "EBS status is not active". Settings, MRA and the banner show it until a request is answered.
+    - NotReached: `notSent(ids)`, the same.
+    - NoAnswer: they stay as saved before the send. An `unsure` invoice is sent once more at the next drain. If
+      that gets no answer either (`unanswered` reaches 2), it becomes `check` and is not sent again until a
+      manager presses **Send again** (Task 14). That is the guide's 9.1: once later, never in a loop.
+  - **Nothing secret in a report.** `MraHttp`'s exceptions are cut down to their class and a fixed text before
+    anyone keeps them. The crash reports `PullWorker` pushes, logcat and `mra.record`'s errors never hold a
+    header, a body, the token, the key or the login.
+  - **The token is kept fresh by the worker**, so a sale rarely spends its 10 seconds signing in first.
   - Every answer queues `mra.record` again (the answer columns).
   - `mra.status` is queued when the login state, the token's end or the problems change, and at most once a
     minute for the waiting count.
@@ -1249,7 +1288,9 @@ rules, pure: `MraQueue.next(waiting, originals)` and `MraQueue.after(outcome)`).
   - a CRN held behind its sale;
   - each outcome's new status;
   - two unanswered sends gives `check`;
-  - a request refused as a whole leaves `unanswered` alone.
+  - a request refused as a whole, or not reached, puts the rows back as they were;
+  - **a restart in the middle of a send:** the rows saved before the send, then no outcome. The next drain sends
+    them once more as `unsure`, and the one after that makes them `check`.
 - **Commit:** `till: the till signs in to the MRA, sends at payment and sends what waited, once`.
 
 ### Task 13: what is printed
