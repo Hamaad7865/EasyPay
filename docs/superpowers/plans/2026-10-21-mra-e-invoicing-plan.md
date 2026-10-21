@@ -14,7 +14,7 @@ piece list in its section 12.
 | | State |
 |---|---|
 | Piece 1: the plan, the checklist, the fields | Live (0116, 0118). Premium MRA in `/admin`, `tenants.mra` (`off`, `setting_up`), the checklist, legal name, TAN, goods or services, tax codes, and each till's EBS MRA ID typed in `/admin`. Nothing is sent. |
-| Piece 2: the connection | Code on `restopos`, not pushed (from `1d19b75`): `mra/` (sign-in, encryption, the invoice, the hash chain) and `node mra/sandbox.cjs` with all seven MRA test cases, 29 tests against a stand-in for the MRA. **Not yet run against the MRA.** |
+| Piece 2: the connection | Code on `restopos`, not pushed (from `1d19b75`): `mra/` (sign-in, encryption, the invoice, the hash chain) and `node mra/sandbox.cjs` with all seven MRA test cases, 31 tests against a stand-in for the MRA. **All seven passed against the MRA's sandbox on 2026-10-21** (phase 1, below). |
 | EasyPay's test EBS | Registered on the developer portal: EasyPayPos, Bel Air, **SANDBOX**. |
 
 ## Decided
@@ -39,7 +39,7 @@ Proposed order:
 
 Until this is decided: do not press Test Drive or Confirm.
 
-## Phase 1: finish the sandbox testing (now)
+## Phase 1: finish the sandbox testing (done)
 
 The owner:
 
@@ -57,12 +57,41 @@ the till follows the guide (section 9.1), which sends it again later, once, neve
 
 **Done when:** all seven cases are fiscalised in SANDBOX, and what the MRA accepts is known field by field.
 
+**Done, 2026-10-21** (run by the owner; the answers are in `.claude/mra/out/`):
+
+| Case | Sent | The MRA's answer |
+|---|---|---|
+| 1 | EPTSTD000001, 000016, 000017 | fiscalised, no warnings |
+| 2 | EPTDRN000002 (on 000001) | fiscalised, no warnings |
+| 3 | EPTCRN000018 (on 000017) | fiscalised, no warnings |
+| 4 | EPTSTD000003 to 000012, one request | all 10 fiscalised, no warnings |
+| 5 | EPTSTD000013 | refused as expected: ERR0500 "TAN of registered user does not match with TAN of seller in invoice details" |
+| 6 | EPTPRF000014 | fiscalised, no warnings |
+| 7 | EPTTRN000015 | fiscalised, no warnings |
+
+What it taught:
+
+- **Sign-in needs no area code, but sending does.** Two first sends were refused as a whole: HTTP 400,
+  ERR0020 "Missing request headers". The till's Connect screen must ask for the area code. A request refused
+  as a whole answers for no invoice, and their numbers are used again.
+- **The MRA accepts the invoice exactly as `mra/invoice.cjs` builds it:**
+  - `unitPrice` without VAT, and the VAT taken out of VAT-included prices as the till does;
+  - a walk-in customer as empty fields with NVTR;
+  - TC01 and TC03 lines;
+  - one hash chain per document type;
+  - amounts as strings with two decimals;
+  - Mauritius time.
+- **Every answer came back in 0.17 to 0.5 seconds** from the owner's computer, including the request of 10
+  invoices. Fiscalising at the moment of payment is fast enough. Each answer said `environment: TEST`.
+- The QR code comes back as a PNG of about 570 bytes.
+- The VAT status was left empty and sent as VATR. The MRA did not object.
+
 ## Phase 2: the till signs in and sends (piece 3)
 
 1. **The MRA part in Kotlin:** sign-in, encryption, the invoice, the hash. Held to `mra/fixtures/crypto.json`
    and to invoices the script had fiscalised, so the till sends byte for byte what the MRA accepted.
 2. **Settings, MRA, on the till (managers only):**
-   - fields for username, password and area code;
+   - fields for username, password and area code (the MRA refuses invoices without the area code);
    - the till's EBS MRA ID, shown read-only (it is typed in `/admin`);
    - a **Connect to the MRA** button that signs in and shows "Connected", or the MRA's reason;
    - **Change login**.
