@@ -168,7 +168,11 @@ await check("a price that is not a number is still a problem when the price is n
   assert.deepEqual(rows.map((r) => r.bad), ["price-missing", "price-missing"]);
 });
 await check("other headers for them", () => {
-  assert.deepEqual(autoMap(["Item", "Prix", "Unit", "Track stock"]), ["name", "price", "sold_by", "count_stock"]);
+  assert.deepEqual(autoMap(["Item", "Prix", "Sell by", "Track stock"]), ["name", "price", "sold_by", "count_stock"]);
+});
+await check("a supplier's own Unit, UOM or Counted column is not taken for them", () => {
+  // Box, CTN, L or a quantity would be refused on every row
+  assert.deepEqual(autoMap(["Name", "Price", "UOM", "Unit", "Unité", "Counted", "Stocked"]), ["name", "price", null, null, null, null, null]);
 });
 
 console.log(failures === 0 ? "CATALOG ROWS PASS" : `CATALOG ROWS FAIL (${failures})`);

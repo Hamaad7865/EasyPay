@@ -99,14 +99,15 @@ A shop's product is sold one of three ways:
   The selling price label reads "Price a kilo (Rs)" when by the kilo. The save writes
   `sold_by` and `open_price`, refusing as rule 3 (`item_holds_stock`) and as today.
 - The import screen: two new kinds of column in `lib/catalog-rows.ts`:
-  - "Sold by" (headers: soldby, sellby, unit, uom, unite, vendupar): each, piece,
+  - "Sold by" (headers: soldby, sellby, vendupar, venteau; a column headed Unit or UOM is
+    a supplier's own unit, Box or CTN, and stays unread unless chosen by hand): each, piece,
     pieces, pc, pcs, unit, units, item → `each`; kilo, kilos, kg, kgs, kilogram,
     kilograms, weight, byweight, bythekilo, perkg, perkilo, aukilo, aupoids, poids →
     `weight`; atthesale, atthetill, typed, open, openprice, variable, adeterminer →
     `open` (cells compared as headers are: letters and digits, lower case, no accents).
     Anything else: `bad-sold-by`.
-  - "Count stock" (headers: countstock, trackstock, countedinstock, stocked, counted,
-    suivistock, gererstock): yes, y, true, 1, oui, o, x → true; no, n, false, 0, non →
+  - "Count stock" (headers: countstock, trackstock, countedinstock, suivistock,
+    gererstock; not Counted or Stocked, which a sheet uses for a quantity): yes, y, true, 1, oui, o, x → true; no, n, false, 0, non →
     false; anything else `bad-count-stock`.
   - An `open` row whose price cell is empty or not a number is not `price-missing`.
   - The words of the new problem codes in `importer.tsx`.

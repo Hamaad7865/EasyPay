@@ -45,8 +45,11 @@ export const FIELDS: { key: Target; label: string; required?: boolean; pair?: bo
   { key: "stock", label: "Opening stock", words: ["openingstock", "stock", "quantity", "qty", "instock", "onhand", "units", "pcs", "quantite", "qte"] },
   { key: "reorder", label: "Reorder at", words: ["reorderat", "reorderlevel", "reorder", "reorderpoint", "minimum", "minstock", "seuil"] },
   { key: "order_qty", label: "Order quantity", words: ["orderquantity", "orderqty", "reorderquantity", "reorderqty"] },
-  { key: "sold_by", label: "Sold by (each, kilo or at the sale)", words: ["soldby", "sellby", "unit", "uom", "unite", "vendupar", "venteau"] },
-  { key: "count_stock", label: "Count stock (yes or no)", words: ["countstock", "trackstock", "countedinstock", "stocked", "counted", "suivistock", "gererstock"] },
+  // Only headers that cannot mean anything else: a supplier's sheet often has a Unit or UOM
+  // column (Box, CTN, L) or a Counted one (a quantity), which read as these would refuse
+  // every row. Such a column stays unread unless the person importing chooses it.
+  { key: "sold_by", label: "Sold by (each, kilo or at the sale)", words: ["soldby", "sellby", "vendupar", "venteau"] },
+  { key: "count_stock", label: "Count stock (yes or no)", words: ["countstock", "trackstock", "countedinstock", "suivistock", "gererstock"] },
   { key: "option", label: "A variant option, named after this column", words: ["size", "sizes", "colour", "color", "taille", "couleur", "pointure"] },
   { key: "o1", label: "Option 1: its name", pair: true, words: ["option1", "option1name"] },
   { key: "v1", label: "Option 1: its value", pair: true, words: ["value1", "option1value"] },
