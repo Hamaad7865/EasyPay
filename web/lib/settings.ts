@@ -64,6 +64,10 @@ export type PosSettings = {
   // The receipt's and the kitchen ticket's designs (Receipt design, lib/papers.ts), as kept:
   // read with readDesign, saved with savePaper. A paper not there prints EasyPay's.
   papers: { receipt?: unknown; kitchen?: unknown };
+  // What a Premium MRA client's tills put on every invoice they send the MRA
+  // (migration 0132): written here by the Company page and by /admin, never
+  // read back by this back office.
+  mra_seller?: { legal_name: string; tan: string; nature: string };
 };
 
 export const DEFAULT_SETTINGS: PosSettings = {

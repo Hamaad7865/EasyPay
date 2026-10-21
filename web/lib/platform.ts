@@ -71,6 +71,13 @@ const MESSAGES: Record<string, string> = {
   "bad-mra-state": "That MRA state cannot be set from here.",
   "bad-mra-id": "An EBS MRA ID is letters, digits, - and _ only, as the MRA gave it.",
   "mra-id-taken": "Another till of this client already has that EBS MRA ID.",
+  // training and live, and the MRA connection (migration 0132)
+  "bad-mra-move": "That move is not allowed: setting up and training go both ways, training goes live, and live is left only by turning the MRA off.",
+  "mra-checklist": "The checklist is not complete yet: see what is left to do above.",
+  "mra-no-connection": "Type the MRA connection first (its address and public key, below): no till can connect without it.",
+  "mra-before-go-live": "The client is still being set up on EasyPay. Go live first (Being set up, Go live), then go live with the MRA.",
+  "bad-mra-url": "The MRA's address starts with https://, as https://vfisc.mra.mu.",
+  "bad-mra-certificate": "That is not a certificate. Open the .crt from the MRA's portal as text and paste all of it, from -----BEGIN CERTIFICATE----- to -----END CERTIFICATE-----.",
   "code-in-use": "That code is a tablet at work. It goes when its till is removed, and ends when a code for a replacement is made.",
 };
 

@@ -16,6 +16,28 @@ export const MRA_STATE_WORDS: Record<MraState, string> = {
   live: "Live",
 };
 
+// The moves /admin offers besides Turn MRA off (0132): setting up and training
+// both ways, training to live. Live is left only by turning the MRA off.
+export const MRA_MOVES: Record<MraState, MraState[]> = {
+  off: [],
+  setting_up: ["training"],
+  training: ["setting_up", "live"],
+  live: [],
+};
+
+// what /admin says once a client has moved
+export function mraNotice(s: MraState): string {
+  if (s === "training") return "Training: the tills send training invoices (TRN). Nothing counts with the MRA.";
+  if (s === "live") return "Live with the MRA: every till sends real invoices from its next sale.";
+  if (s === "setting_up") return "Back to setting up: the tills stop sending to the MRA.";
+  return "MRA turned off: the client is on Premium.";
+}
+
+// What a till last said of its connection to the MRA (pos_devices.mra_status,
+// 0132): connected, unless the MRA refused its login.
+export type TillMraStatus = { connected?: boolean; refused?: string | null } | null | undefined;
+export const tillConnected = (s: TillMraStatus): boolean => !!s && s.connected === true && !s.refused;
+
 // The MRA's tax codes, one on every line it is sent (the Standard e-Invoice Template).
 export const MRA_CODES = [
   ["TC01", "Taxable at 15%"],
@@ -52,18 +74,25 @@ const TITLES: Record<string, string> = {
   taxes: "An MRA code for every tax",
   items: "A tax on every item",
   tills: "An EBS MRA ID for every till in use",
-  login: "The client's MRA login",
+  login: "Each till connected to the MRA",
 };
 const MISSING: Record<string, string> = { company: "Missing", addresses: "No address", taxes: "No code", tills: "No ID" };
 
-export function checklistWords(lines: ChecklistLine[]): ChecklistWords[] {
+// tills: how many of the client's tills in use are connected to the MRA, when known
+export function checklistWords(lines: ChecklistLine[], tills?: { connected: number; total: number }): ChecklistWords[] {
   const out = lines.map((l) => {
     let detail = "";
     if (!l.ok && l.missing?.length) detail = `${MISSING[l.key] ?? "Missing"}: ${l.missing.join(", ")}.`;
     if (!l.ok && l.key === "items") detail = `${l.count} ${l.count === 1 ? "item has" : "items have"} no tax.`;
     return { key: l.key, ok: l.ok, title: TITLES[l.key] ?? l.key, detail };
   });
-  // asked for once the MRA's connection is built (piece 2)
-  out.push({ key: "login", ok: false, title: TITLES.login, detail: "Comes with the MRA connection." });
+  // each till signs in to the MRA itself, with the login typed on it (0132): never kept here
+  const where = "A manager connects each till on the till: Settings, MRA. The login stays on the till.";
+  out.push({
+    key: "login",
+    ok: !!tills && tills.total > 0 && tills.connected === tills.total,
+    title: TITLES.login,
+    detail: tills ? `${tills.connected} of ${tills.total} tills connected. ${where}` : where,
+  });
   return out;
 }

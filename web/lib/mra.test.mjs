@@ -2,7 +2,7 @@
 // (web/lib/mra.ts, migration 0116).
 // Usage: node web/lib/mra.test.mjs   (Node runs the .ts file itself)
 import assert from "node:assert/strict";
-import { asMra, checklistWords, isMraCode, MRA_CODES, onMra, suggestCode } from "./mra.ts";
+import { asMra, checklistWords, isMraCode, MRA_CODES, MRA_MOVES, mraNotice, onMra, suggestCode, tillConnected } from "./mra.ts";
 
 let failures = 0;
 function check(name, fn) {
@@ -59,13 +59,43 @@ check("each line of the checklist in words, with what is missing", () => {
   assert.equal(by.items.detail, "12 items have no tax.");
   assert.equal(by.tills.detail, "No ID: Till 1.");
   assert.equal(by.login.ok, false);
-  assert.match(by.login.detail, /connection/);
+  assert.match(by.login.detail, /Settings, MRA/);
   assert.ok(lines.every((l) => l.title.length > 5));
 });
 
 check("one item without a tax is said in the singular", () => {
   const [l] = checklistWords([{ key: "items", ok: false, count: 1 }]);
   assert.equal(l.detail, "1 item has no tax.");
+});
+
+// 0132: training and live, and the tills' own connection to the MRA
+check("the moves /admin offers from each state", () => {
+  assert.deepEqual(MRA_MOVES.off, []);
+  assert.deepEqual(MRA_MOVES.setting_up, ["training"]);
+  assert.deepEqual(MRA_MOVES.training, ["setting_up", "live"]);
+  assert.deepEqual(MRA_MOVES.live, []);
+});
+
+check("what /admin says once a client has moved", () => {
+  assert.match(mraNotice("training"), /TRN/);
+  assert.match(mraNotice("live"), /next sale/);
+  assert.match(mraNotice("off"), /Premium/);
+  assert.match(mraNotice("setting_up"), /stop/);
+});
+
+check("a till is connected when it last said it was signed in and was not refused", () => {
+  assert.equal(tillConnected({ connected: true, refused: null }), true);
+  assert.equal(tillConnected({ connected: true, refused: "Invalid User" }), false);
+  assert.equal(tillConnected({ connected: false }), false);
+  assert.equal(tillConnected(null), false);
+});
+
+check("the tills' login line counts the tills connected", () => {
+  const by = (t) => Object.fromEntries(checklistWords([], t).map((l) => [l.key, l]));
+  assert.equal(by({ connected: 2, total: 2 }).login.ok, true);
+  assert.match(by({ connected: 1, total: 2 }).login.detail, /^1 of 2 tills connected/);
+  assert.equal(by({ connected: 0, total: 0 }).login.ok, false);
+  assert.equal(by(undefined).login.ok, false);
 });
 
 console.log(failures ? `${failures} FAILED` : "ALL PASS");

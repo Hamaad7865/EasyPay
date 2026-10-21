@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { isOffline } from "@/lib/plan";
 import { BUSINESS_TYPES, PLAN_HELP, PLANS, PREMIUM_MRA } from "@/lib/platform";
-import { asMra, MRA_STATE_WORDS, onMra, type ChecklistLine } from "@/lib/mra";
+import { asMra, MRA_STATE_WORDS, onMra, type ChecklistLine, type TillMraStatus } from "@/lib/mra";
 import { Submit, Wait } from "../../../backoffice/busy";
 import { cap, day, dayTime, Notes, supportId } from "../../bits";
 import { ConfirmSubmit } from "../../confirm";
 import { Password } from "../../password";
 import { type Login, LoginsTable } from "./logins";
 import { type CodeAction, type TabletCode, Tablets } from "./tablets";
-import { MraPanel } from "./mra";
+import { type MraConnection, MraPanel } from "./mra";
 
 export type Tenant = {
   id: string;
@@ -38,8 +38,9 @@ export type Till = {
   active: boolean;
   // nothing recorded on it: no receipt, no day, no cash, no clock-in
   bare: boolean;
-  // the ID the MRA gave it (0116)
+  // the ID the MRA gave it (0116), and what it last said of its connection to the MRA (0132)
   mra_ebs_id: string | null;
+  mra_status: TillMraStatus;
 };
 // Is the client being set up, and how much has been rung up on it so far.
 export type Setup = { settingUp: boolean; receipts: number; orders: number };
@@ -70,6 +71,7 @@ export type TenantActions = {
   clearTest: Action;
   setMra: Action;
   setTillMraIds: Action;
+  setMraConnection: Action;
 };
 
 const ACTIONS: Record<string, string> = {
@@ -136,6 +138,7 @@ export function TenantView({
   codes,
   setup,
   checklist,
+  mraConnection,
   error,
   notice,
   actions,
@@ -150,6 +153,8 @@ export function TenantView({
   setup: Setup;
   // what a Premium MRA client's move still lacks (0116); empty for any other client
   checklist: ChecklistLine[];
+  // the MRA's address and key, for every client on MRA (0132); null until typed
+  mraConnection: MraConnection | null;
   error?: string;
   notice?: string;
   actions: TenantActions;
@@ -544,9 +549,18 @@ export function TenantView({
               checklist={checklist}
               tills={tills
                 .filter((d) => d.active)
-                .map((d) => ({ id: d.id, name: d.name, code: d.code, store: stores.find((st) => st.id === d.store_id)?.name ?? "", mra_ebs_id: d.mra_ebs_id }))}
+                .map((d) => ({
+                  id: d.id,
+                  name: d.name,
+                  code: d.code,
+                  store: stores.find((st) => st.id === d.store_id)?.name ?? "",
+                  mra_ebs_id: d.mra_ebs_id,
+                  mra_status: d.mra_status,
+                }))}
+              connection={mraConnection}
               setTillMraIds={actions.setTillMraIds}
               setMra={actions.setMra}
+              setMraConnection={actions.setMraConnection}
             />
           )}
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Ticket } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
+import { onMra } from "@/lib/mra";
 import { readTenant } from "@/lib/db";
 import { act, Refused, text, uuid } from "@/lib/action";
 import { loadSettings, money } from "@/lib/settings";
@@ -92,7 +93,11 @@ export default async function CreditNotesPage({ searchParams }: { searchParams: 
     r.status === "void" ? `Cancelled: ${r.void_reason ?? ""}` : r.status === "used" ? `Used up${r.used_at ? " " + at(r.used_at) : ""}` : r.expired ? `Expired on ${r.valid_to}` : r.valid_to ? `Valid to ${r.valid_to}` : "Does not expire";
   return (
     <div>
-      <PageHead title="Credit notes" lede="What an exchange left over for the customer, printed as a slip at the till and spent there by its number, in one go or in parts. A note is issued only at a till; from here one can be cancelled.">
+      {/* for a client on MRA a credit note is the MRA's word for a refund: EasyPay's are store credit (design 7, 0132) */}
+      <PageHead
+        title={onMra(ctx.mra) ? "Store credit" : "Credit notes"}
+        lede={`What an exchange left over for the customer, printed as a slip at the till and spent there by its number, in one go or in parts. A note is issued only at a till; from here one can be cancelled.${onMra(ctx.mra) ? " It is store credit, not an MRA credit note: a refund goes to the MRA as one by itself." : ""}`}
+      >
         <Link href="/backoffice/settings" className="btn-quiet">Returns setting</Link>
       </PageHead>
       <Flash sp={sp} />

@@ -33,6 +33,10 @@ async function save(f: FormData) {
       tan || null,
       asNature(f.get("mra_nature")),
     ]);
+    // what the tills put on every invoice they send the MRA (0132)
+    await saveSettings(c, ctx.tenantId, {
+      mra_seller: { legal_name: text(f, "legal_name", 100), tan, nature: asNature(f.get("mra_nature")) ?? "" },
+    });
     const stores = (await c.query(`select id from stores where tenant_id = $1 and deleted_at is null`, [ctx.tenantId])).rows as { id: string }[];
     // with one branch the company's address is that branch's; with more, each has its own
     for (const s of stores) {

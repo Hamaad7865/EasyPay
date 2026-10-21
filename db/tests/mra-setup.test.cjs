@@ -91,7 +91,9 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     check('M3 a client on MRA is not moved to another plan',
       said(await failsWith(`select platform.set_tenant_plan($1, $2, 'offline')`, [admin, t])) === 'mra-needs-premium');
     check('M3 nor made trial', said(await failsWith(`update tenants set plan = 'trial' where id = $1`, [t])) === 'mra-needs-premium');
-    check('M3 training and live are not set from /admin yet', said(await setMra(t, 'live')) === 'bad-mra-state' && said(await setMra(t, 'training')) === 'bad-mra-state');
+    // training and live came with the till (0132, db/tests/mra-till.test.cjs)
+    check('M3 training waits for the checklist, and live comes after training',
+      said(await setMra(t, 'training')) === 'mra-checklist' && said(await setMra(t, 'live')) === 'bad-mra-move');
     check('M3 an unknown state is refused', said(await setMra(t, 'x')) === 'bad-mra-state');
     check('M3 an unknown client is refused', said(await setMra(crypto.randomUUID(), 'setting_up')) === 'unknown-tenant');
 

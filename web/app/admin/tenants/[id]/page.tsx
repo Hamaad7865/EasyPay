@@ -1,3 +1,4 @@
+import { X509Certificate } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
@@ -5,10 +6,11 @@ import { db, withTenant } from "@/lib/db";
 import { hashPin, isPin } from "@/lib/pin";
 import { isOffline } from "@/lib/plan";
 import { adminMessage, PREMIUM_MRA, requirePlatformAdmin } from "@/lib/platform";
-import type { ChecklistLine } from "@/lib/mra";
+import { asMra, mraNotice, type ChecklistLine } from "@/lib/mra";
 import { loginForRestaurant, passwordProblem, removeLogin, setLoginPassword } from "@/lib/platform-auth";
 import { AS_COOKIE, AS_PATH, adminInside } from "@/lib/tenant";
 import type { CodeAnswer, TabletCode } from "./tablets";
+import type { MraConnection } from "./mra";
 import { type Audit, type Login, type Setup, type Store, type Tenant, TenantView, type Till } from "./view";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -52,17 +54,41 @@ async function setPlan(formData: FormData) {
   );
 }
 
-// Back to plain Premium (0116). Training and live come with the till update.
+// A Premium MRA client's state (0116, 0132): setting up and training both
+// ways, training to live, or back to plain Premium. The database says which
+// moves are allowed and what a move still needs.
 async function setMra(formData: FormData) {
   "use server";
   const { adminId, tenantId } = await tenantOf(formData);
+  const state = asMra(formData.get("state"));
   try {
     await db().query(`select platform.set_tenant_mra($1, $2, $3)`, [adminId, tenantId, String(formData.get("state") ?? "")]);
   } catch (e) {
     back(tenantId, "error", adminMessage(e));
   }
   revalidatePath(`/admin/tenants/${tenantId}`);
-  back(tenantId, "notice", "MRA turned off: the client is on Premium.");
+  back(tenantId, "notice", mraNotice(state));
+}
+
+// The MRA's address and public key (0132), typed once for every client on
+// MRA: each of their tills seals its login with the key, and receives both
+// with its settings, so a new certificate needs no app update.
+async function setMraConnection(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  let n = 0;
+  try {
+    const r = await db().query(`select platform.set_mra_connection($1, $2, $3) as n`, [
+      adminId,
+      String(formData.get("url") ?? ""),
+      String(formData.get("certificate") ?? "").replace(/\r\n/g, "\n"),
+    ]);
+    n = Number(r.rows[0]?.n ?? 0);
+  } catch (e) {
+    back(tenantId, "error", adminMessage(e));
+  }
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  back(tenantId, "notice", `MRA connection saved. The tills of ${n} ${n === 1 ? "client" : "clients"} on MRA receive it with their next sync.`);
 }
 
 // The ID the MRA gave each till, as typed in the MRA part: every field is sent
@@ -511,7 +537,7 @@ export default async function TenantPage({
       .then((r) => r.rows as Store[]),
     pool
       .query(
-        `select d.id, d.store_id, d.name, d.code, d.app_version, d.last_seen_at, d.last_receipt_seq, d.mra_ebs_id,
+        `select d.id, d.store_id, d.name, d.code, d.app_version, d.last_seen_at, d.last_receipt_seq, d.mra_ebs_id, d.mra_status,
                 d.deleted_at is null as active, platform.till_is_bare(d.tenant_id, d.id) as bare
            from pos_devices d where d.tenant_id = $1 order by d.created_at`,
         [id],
@@ -554,6 +580,23 @@ export default async function TenantPage({
     tenant.mra !== "off"
       ? (((await pool.query(`select platform.mra_checklist($1, $2) as r`, [admin.userId, id])).rows[0]?.r ?? []) as ChecklistLine[])
       : [];
+  // the MRA's address and public key, shared by every client on MRA (0132)
+  const mraConnection: MraConnection | null =
+    tenant.mra !== "off"
+      ? await pool
+          .query(`select url, certificate, updated_at from platform.mra_connection where id = 1`)
+          .then((r) => {
+            const row = r.rows[0] as { url: string; certificate: string; updated_at: string } | undefined;
+            if (!row) return null;
+            let validTo: string | null = null;
+            try {
+              validTo = new X509Certificate(row.certificate).validTo;
+            } catch {
+              validTo = null;
+            }
+            return { url: row.url, validTo, updatedAt: row.updated_at };
+          })
+      : null;
   return (
     <TenantView
       tenant={tenant}
@@ -565,12 +608,13 @@ export default async function TenantPage({
       codes={codes}
       setup={setup}
       checklist={checklist}
+      mraConnection={mraConnection}
       error={sp.error}
       notice={sp.notice}
       actions={{
         setDetails, setPlan, setFeatures, setBusinessType, setStatus, addStore, setTillActive, addLogin, setPassword, setPin, setActive,
         addTablet, moveTablet, endCode, openBackOffice, removeTill, removeCode, goLive, backToSettingUp, clearTest,
-        setMra, setTillMraIds,
+        setMra, setTillMraIds, setMraConnection,
       }}
     />
   );
