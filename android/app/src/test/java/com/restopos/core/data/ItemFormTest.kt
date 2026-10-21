@@ -11,6 +11,38 @@ import org.junit.Test
 class ItemFormTest {
     private fun read(name: String = "Samosa", price: String = "30", open: Boolean = false, barcode: String = "") = ItemForm.read(name, price, open, barcode)
 
+    // how a shop's product is sold (0129): what the sheet's choice sends
+    @Test fun `a new product always says how it is sold`() {
+        assertEquals("each", ItemForm.soldBy(ItemForm.Way.FIXED, null))
+        assertEquals("weight", ItemForm.soldBy(ItemForm.Way.KILO, null))
+        assertEquals("each", ItemForm.soldBy(ItemForm.Way.AT_SALE, null))
+    }
+
+    @Test fun `a product being changed says it only when its unit changes`() {
+        assertNull(ItemForm.soldBy(ItemForm.Way.KILO, "weight"))
+        assertNull(ItemForm.soldBy(ItemForm.Way.FIXED, "each"))
+        assertNull(ItemForm.soldBy(ItemForm.Way.AT_SALE, "each"))
+        assertEquals("each", ItemForm.soldBy(ItemForm.Way.FIXED, "weight"))
+        assertEquals("each", ItemForm.soldBy(ItemForm.Way.AT_SALE, "weight"))
+        assertEquals("weight", ItemForm.soldBy(ItemForm.Way.KILO, "each"))
+    }
+
+    @Test fun `the way a product is sold, read back from it`() {
+        assertEquals(ItemForm.Way.KILO, ItemForm.wayOf(open = false, soldBy = "weight"))
+        assertEquals(ItemForm.Way.AT_SALE, ItemForm.wayOf(open = true, soldBy = "each"))
+        assertEquals(ItemForm.Way.FIXED, ItemForm.wayOf(open = false, soldBy = "each"))
+    }
+
+    @Test fun `by the kilo needs its price for a kilo, and goes in the save`() {
+        assertEquals("Type its price for a kilo", ItemForm.read("Ironing", "", false, "", soldBy = "weight").exceptionOrNull()?.message)
+        val i = ItemForm.read("Ironing", "110", false, "", soldBy = "weight").getOrThrow()
+        assertEquals("weight", i.soldBy)
+        assertEquals("weight", OfficePayloads.itemSave("id-1", i, null, true, false, null, null, null)["sold_by"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
+        // not said: not sent, and the server leaves the unit as it is
+        assertNull(OfficePayloads.itemSave("id-1", read().getOrThrow(), null, true, null, null, null, null)["sold_by"])
+        assertEquals("unit-has-stock", ItemForm.refused("unit-has-stock", shop = true).let { if (it.startsWith("It holds stock")) "unit-has-stock" else it })
+    }
+
     @Test fun `a name and a price make an item`() {
         val i = read().getOrThrow()
         assertEquals("Samosa", i.name)

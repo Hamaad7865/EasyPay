@@ -395,7 +395,7 @@ private fun ProductSheet(p: ProductOpen, vm: ProductsViewModel, onLabel: (ItemEn
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             // its name, category, barcode, and removing it: the product's own sheet
-            VBtn("Edit product", height = 52.dp, radius = 14.dp) { vm.close(); vm.items.open(i, fixedPrice = p.variants.isNotEmpty() || weighed) }
+            VBtn("Edit product", height = 52.dp, radius = 14.dp) { vm.close(); vm.items.open(i, fixedPrice = p.variants.isNotEmpty()) }
             if (!weighed && !i.open_price) VBtn("Variants", height = 52.dp, radius = 14.dp) { vm.options.value = i }
             // onto the Print labels list: its price and barcode on a sticker
             VBtn("Print label", height = 52.dp, radius = 14.dp, icon = VI.Tag) { vm.close(); onLabel(i) }

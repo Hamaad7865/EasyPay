@@ -155,7 +155,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         }
     }
 
-    // ---- push_item_save (0084, 0087, 0094) ----
+    // ---- push_item_save (0084, 0087, 0094, 0129) ----
     private suspend fun itemSave(p: JsonObject, tenant: String) {
         val id = p.id("id")
         var price = p.long("price") ?: 0
@@ -163,6 +163,9 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         val open = p.bool("open_price") ?: false
         val avail = p.bool("available") ?: true
         val track = p.bool("track_stock")
+        // how it is sold (0129): each or weight; not said, it stays as it is
+        val sold = p.str("sold_by")?.trim()?.ifEmpty { null }
+        if (sold != null && sold != "each" && sold != "weight") bad()
         val newTax = p.str("tax_id")?.ifEmpty { null }
         val sup = p.str("supplier_id")?.ifEmpty { null }
         val store = p.str("store_id")?.ifEmpty { null }
@@ -202,9 +205,14 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
 
         if (was != null) {
             if (was.deleted_at != null) throw Refused("bad-item")
-            if (open && (was.sold_by == "weight" || dao.variantsOf(id).isNotEmpty())) throw Refused("open-price-not-here")
+            // its unit after this save (0129): what the sheet sends, or what it was
+            val unit = sold ?: was.sold_by
+            if (open && (unit == "weight" || dao.variantsOf(id).isNotEmpty())) throw Refused("open-price-not-here")
+            // a kilo is not a piece: a product that counts stock and holds some keeps
+            // its unit until it is counted to zero, or no longer counted
+            if (unit != was.sold_by && (track ?: was.track_stock) && !open && dao.levelsOfItem(id).any { it.qty != 0 }) throw Refused("unit-has-stock")
             dao.putItem(was.copy(
-                name = name, price = price, open_price = open, category_id = cat, barcode = code, is_available = avail,
+                name = name, price = price, open_price = open, category_id = cat, barcode = code, is_available = avail, sold_by = unit,
                 // one whose price is typed at the sale is a service, and has no stock to count
                 track_stock = if (track == null) was.track_stock else track && !open,
                 sku = sku,
@@ -217,9 +225,10 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
             // one tax per item: the others are taken off, the chosen one put on
             if (newTax != null) { dao.dropTaxesOf(id); dao.putItemTax(ItemTaxCrossRef(id, newTax)) }
         } else {
+            if (open && sold == "weight") throw Refused("open-price-not-here")
             val shop = PosSettings.parse(dao.settings()?.data).retail
             dao.putItem(ItemEntity(
-                id, tenant, cat, name, price, avail, barcode = code, sku = sku,
+                id, tenant, cat, name, price, avail, barcode = code, sku = sku, sold_by = sold ?: "each",
                 track_stock = (track ?: shop) && !open, open_price = open,
                 cost = if ("cost" in p) cost else null, supplier_id = sup, brand = text("brand"), supplier_code = text("supplier_code"),
             ))

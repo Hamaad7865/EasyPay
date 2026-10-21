@@ -74,7 +74,7 @@ class ItemEditor(private val service: ServiceRepository, private val approvals: 
     private val thing = if (shop) "product" else "item"
 
     fun new(category: String?) = show(ItemEdit(null, category))
-    // fixedPrice: a product whose variants or weight carry its price; it cannot be one whose price is typed
+    // fixedPrice: a product whose variants carry its prices; it cannot be one whose price is typed (0129: a kilo is now a choice on the sheet)
     fun open(item: ItemEntity, fixedPrice: Boolean = false) = show(ItemEdit(item, item.category_id, fixedPrice))
     fun close() { if (!busy.value) editing.value = null }
 
@@ -86,12 +86,14 @@ class ItemEditor(private val service: ServiceRepository, private val approvals: 
     // count: whether its stock is counted, as the sheet's switch stands
     // typed: the sheet's second page, or null when it had not been read yet: the server then leaves all of it as it is
     // from: that page as it opened, for an item being changed: only what was changed since is sent
+    // way: how a shop's product is sold (0129); null for a restaurant's item, whose sheet does not say
     fun save(
         name: String, price: String, open: Boolean, category: String?, barcode: String, available: Boolean, count: Boolean,
-        typed: ItemForm.Typed? = null, from: ItemForm.Typed? = null, by: StaffMember? = null, done: () -> Unit = {},
+        typed: ItemForm.Typed? = null, from: ItemForm.Typed? = null, by: StaffMember? = null, way: ItemForm.Way? = null, done: () -> Unit = {},
     ) {
         val edit = editing.value ?: return
-        val read = ItemForm.read(name, price, open, barcode).getOrElse { Toaster.say(it.message ?: "That is not an $thing yet"); return }
+        val soldBy = way?.let { ItemForm.soldBy(it, edit.item?.sold_by) }
+        val read = ItemForm.read(name, price, open, barcode, soldBy).getOrElse { Toaster.say(it.message ?: "That is not an $thing yet"); return }
         val second = typed?.let { t -> ItemForm.readMore(t, from.takeIf { edit.item != null }).getOrElse { Toaster.say(it.message ?: "That is not an $thing yet"); return } }
         if (busy.value) return
         scope.launch {
@@ -101,7 +103,7 @@ class ItemEditor(private val service: ServiceRepository, private val approvals: 
             val need = out.exceptionOrNull() as? NeedsApproval
             if (need != null && by == null) {
                 editing.value = null
-                approvals.ask(need.permission, need.what) { approver -> editing.value = edit; save(name, price, open, category, barcode, available, count, typed, from, approver, done) }
+                approvals.ask(need.permission, need.what) { approver -> editing.value = edit; save(name, price, open, category, barcode, available, count, typed, from, approver, way, done) }
             } else out.fold(
                 {
                     editing.value = null
@@ -153,6 +155,8 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
     var name by remember(edit) { mutableStateOf(was?.name ?: "") }
     var price by remember(edit) { mutableStateOf(if (was == null || was.open_price) "" else rupees(was.price)) }
     var open by remember(edit) { mutableStateOf(was?.open_price ?: false) }
+    // how a shop's product is sold (0129): a price each, a price for a kilo, or typed at the sale
+    var way by remember(edit) { mutableStateOf(ItemForm.wayOf(was?.open_price ?: false, was?.sold_by)) }
     var cat by remember(edit) { mutableStateOf(was?.category_id ?: edit.category) }
     var barcode by remember(edit) { mutableStateOf(was?.barcode ?: "") }
     var onSale by remember(edit) { mutableStateOf(was?.is_available ?: true) }
@@ -223,7 +227,7 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Bottom) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Caps("Price", V.Text2)
+                    Caps(if (shop && way == ItemForm.Way.KILO) "Price a kilo" else "Price", V.Text2)
                     Field(
                         if (open) "" else price, { v -> if (!open) price = v.filter { it.isDigit() || it == '.' }.take(10) },
                         if (open) "Typed at the sale" else "0.00", Modifier.fillMaxWidth(), height = 52.dp, number = true, size = 17.sp,
@@ -244,12 +248,25 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             // The two switches side by side, and the categories on one row that
             // slides: the sheet has to fit the screen with its keys in view,
             // however many categories a menu has.
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (shop) {
+                    // How a shop's product is sold (0129). One with variants has prices of its own: not typed at the sale.
+                    val atSale = !edit.fixedPrice && more?.variants != true
+                    Seg(
+                        listOf(
+                            SegOption("Fixed price", way == ItemForm.Way.FIXED) { way = ItemForm.Way.FIXED; open = false },
+                            SegOption("By the kilo", way == ItemForm.Way.KILO) { way = ItemForm.Way.KILO; open = false },
+                            *(if (atSale || way == ItemForm.Way.AT_SALE) arrayOf(SegOption("At the sale", way == ItemForm.Way.AT_SALE) { way = ItemForm.Way.AT_SALE; open = true }) else emptyArray()),
+                        ),
+                        Modifier.weight(1.6f), well = V.Key, height = 44.dp, radius = 14.dp, fill = true, size = 14.sp,
+                    )
+                }
                 // a service, or anything charged differently each time: tapping it on the till opens the keypad for its price
-                if (!edit.fixedPrice) Switch("Price typed at the sale", open, Modifier.weight(1f)) { open = !open }
+                else if (!edit.fixedPrice) Switch("Price typed at the sale", open, Modifier.weight(1f)) { open = !open }
                 Switch("On sale", onSale, Modifier.weight(1f)) { onSale = !onSale }
             }
             if (open) T("Tapping it on the till opens the keypad: for a service, or anything charged differently each time.", 13.sp, 500, V.Text2, lines = 2)
+            else if (shop && way == ItemForm.Way.KILO) T("The till asks how heavy and works out the amount. Its stock is counted in kilos.", 13.sp, 500, V.Text2, lines = 2)
 
             // made of others, it keeps no stock of its own: its parts are counted
             if (madeOf) T("It is made of ${parts.size} ${if (parts.size == 1) "part" else "parts"}: selling it takes them off the stock, so it has none of its own.", 13.sp, 500, V.Text2, lines = 2)
@@ -342,7 +359,7 @@ internal fun ItemSheet(editor: ItemEditor, edit: ItemEdit, cats: List<CategoryEn
             Box(Modifier.weight(1f))
             VBtn("Cancel", height = 52.dp, enabled = !busy) { editor.close() }
             VBtn(if (busy) "Saving…" else if (was == null) "Add $thing" else "Save", bg = V.Blue, fg = Color.White, height = 52.dp, weight = 800, enabled = !busy) {
-                editor.save(name, price, open, cat, barcode, onSale, count, more?.let { typed() }, start, done = done)
+                editor.save(name, price, open, cat, barcode, onSale, count, more?.let { typed() }, start, way = if (shop) way else null, done = done)
             }
         }
     }

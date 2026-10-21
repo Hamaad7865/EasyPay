@@ -292,6 +292,47 @@ class LocalAnswersTest {
         assertTrue(dao.items.isEmpty())
     }
 
+    // ---- how it is sold (0129), the cases of sold-by.test.cjs ----
+    private fun sold(item: String, name: String, extra: String) =
+        ask("item.save", """{"id":"$item","name":"$name","price":12000,"open_price":false,"category_id":"","barcode":"","available":true$extra}""")
+
+    @Test fun `a new product is sold by the kilo when the sheet says, each when it says nothing`() {
+        assertEquals("done", sold(id(120), "Wash & fold", ""","sold_by":"weight","track_stock":false"""))
+        assertEquals("weight", dao.items[id(120)]!!.sold_by)
+        assertEquals("done", sold(id(121), "Towel", ""))
+        assertEquals("each", dao.items[id(121)]!!.sold_by)
+        // an older sheet sends no sold_by: the kilo stays
+        assertEquals("done", sold(id(120), "Wash & fold", ""))
+        assertEquals("weight", dao.items[id(120)]!!.sold_by)
+        assertEquals("bad-payload", sold(id(122), "Milk", ""","sold_by":"litre""""))
+    }
+
+    @Test fun `by the kilo and a price typed at the sale exclude each other`() {
+        val open = """{"id":"${id(123)}","name":"X","price":0,"open_price":true,"category_id":"","barcode":"","available":true,"sold_by":"weight"}"""
+        assertEquals("open-price-not-here", ask("item.save", open))
+        sold(id(124), "Package", ""","sold_by":"weight","track_stock":false""")
+        // an older sheet asking for a typed price on a kilo product is still refused
+        assertEquals("open-price-not-here", ask("item.save", """{"id":"${id(124)}","name":"Package","price":0,"open_price":true,"category_id":"","barcode":"","available":true}"""))
+        // from by the kilo to at the sale in one save
+        assertEquals("done", ask("item.save", """{"id":"${id(124)}","name":"Package","price":0,"open_price":true,"category_id":"","barcode":"","available":true,"sold_by":"each"}"""))
+        val p = dao.items[id(124)]!!
+        assertEquals(listOf("each", true, 0L, false), listOf(p.sold_by, p.open_price, p.price, p.track_stock))
+    }
+
+    @Test fun `a counted product holding stock keeps its unit until it is counted to zero or no longer counted`() {
+        sold(id(125), "Rice", ""","track_stock":true""")
+        dao.levels["$store/${id(125)}/"] = StockLevelEntity(store, id(125), "", 5000)
+        assertEquals("unit-has-stock", sold(id(125), "Rice", ""","sold_by":"weight""""))
+        assertEquals("unit-has-stock", sold(id(125), "Rice", ""","sold_by":"weight","track_stock":true"""))
+        assertEquals("done", sold(id(125), "Rice", ""","sold_by":"each""""))
+        assertEquals("done", sold(id(125), "Rice", ""","sold_by":"weight","track_stock":false"""))
+        assertEquals(listOf("weight", false), dao.items[id(125)]!!.let { listOf(it.sold_by, it.track_stock) })
+        sold(id(126), "Beans", ""","track_stock":true""")
+        dao.levels["$store/${id(126)}/"] = StockLevelEntity(store, id(126), "", 0)
+        assertEquals("done", sold(id(126), "Beans", ""","sold_by":"weight""""))
+        assertEquals("weight", dao.items[id(126)]!!.sold_by)
+    }
+
     @Test fun `a barcode and a SKU are one product's only`() {
         ask("item.save", fixture("item-save-full", ids))
         val other = """"id":"${id(101)}","name":"Other polo","price":1000,"open_price":false,"category_id":"","available":true"""

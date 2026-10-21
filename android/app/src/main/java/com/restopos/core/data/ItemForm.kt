@@ -7,18 +7,37 @@ import com.restopos.core.common.Money
 // it again and has the last word; reading it here catches a slip before the
 // tablet asks, and puts the server's refusals in the till's words.
 object ItemForm {
-    class Item(val name: String, val price: Long, val open: Boolean, val barcode: String?)
+    // soldBy: how it is sold (0129), "each" or "weight"; null: not said, the server leaves it as it is
+    class Item(val name: String, val price: Long, val open: Boolean, val barcode: String?, val soldBy: String? = null)
+
+    // How a shop's product is sold, as its sheet offers it (0129): one price
+    // each, a price for a kilo (the till asks how heavy), or its price typed
+    // at the sale (sold each, and counting no stock).
+    enum class Way { FIXED, KILO, AT_SALE }
+
+    fun wayOf(open: Boolean, soldBy: String?): Way = if (open) Way.AT_SALE else if (soldBy == "weight") Way.KILO else Way.FIXED
+
+    // What a save says of the unit: for a new product always, for one being
+    // changed only when it changes (the tablet's copy may be older than the
+    // server's, as with the sheet's second page). was: the product's unit, null for a new one.
+    fun soldBy(way: Way, was: String?): String? {
+        val unit = if (way == Way.KILO) "weight" else "each"
+        return if (was == null || unit != was) unit else null
+    }
 
     // What the sheet holds, read as an item, or why it is not one yet.
-    fun read(name: String, price: String, open: Boolean, barcode: String): Result<Item> = runCatching {
+    fun read(name: String, price: String, open: Boolean, barcode: String, soldBy: String? = null): Result<Item> = runCatching {
         val called = name.trim().take(80)
         require(called.isNotEmpty()) { "Give it a name" }
+        require(!(open && soldBy == "weight")) { "By the kilo has a price for a kilo: it cannot be typed at the sale" }
         // one whose price is typed at the sale has none of its own, whatever was left in the box
-        val costs = if (open) 0L else Money.parseRs(price) ?: throw IllegalArgumentException("Type its price, or switch on \"Price typed at the sale\"")
+        val costs = if (open) 0L else Money.parseRs(price) ?: throw IllegalArgumentException(
+            if (soldBy == "weight") "Type its price for a kilo" else "Type its price, or switch on \"Price typed at the sale\"",
+        )
         require(costs <= LinePrice.MOST) { "Rs 1,000,000 is the most an item can cost" }
         val code = barcode.filterNot { it.isWhitespace() }
         require(code.length <= 64) { "That barcode is too long" }
-        Item(called, costs, open, code.ifEmpty { null })
+        Item(called, costs, open, code.ifEmpty { null }, soldBy)
     }
 
     // What the sheet's second page holds, as it was typed (server 0094): the
@@ -136,6 +155,8 @@ object ItemForm {
             "conflict" -> "That did not work. Close this and try again."
             "forbidden" -> "You are not allowed to change the ${if (shop) "products" else "menu"}. Ask a manager."
             "open-price-not-here" -> "A product with variants, or sold by weight, has prices of its own: its price cannot be typed at the sale."
+            // how it is sold (0129)
+            "unit-has-stock" -> "It holds stock, so it cannot change between each and by the kilo. Count it to zero first, or switch off \"Count its stock\"."
             "unknown-op" -> "The server has to be updated before items can be changed from a till."
             null -> "The server refused it."
             else -> "The server refused it ($code)."
