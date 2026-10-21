@@ -103,7 +103,20 @@ data class PosSettings(
     // until switched on; loyaltyBp is what comes back, in basis points (100 is 1%).
     val loyalty: Boolean = false,
     val loyaltyBp: Int = 100,
+    // MRA e-invoicing (server 0116, 0132): where the business stands (off,
+    // setting_up, training, live; a missing key is off), the seller's details
+    // its invoices carry, and the MRA's address and public key, typed once in
+    // /admin for every client.
+    val mra: String = "off",
+    val mraSeller: MraSeller = MraSeller(),
+    val mraConnect: MraConnect? = null,
 ) {
+    data class MraSeller(val legalName: String = "", val tan: String = "", val nature: String = "")
+    data class MraConnect(val url: String, val certificate: String)
+
+    // the tills send to the MRA: training invoices, or real ones
+    val mraOn: Boolean get() = mra == "training" || mra == "live"
+
     // a shop that may take deposits now
     val deposits: Boolean get() = retail && depositsPaid && depositsOn
 
@@ -179,6 +192,12 @@ data class PosSettings(
                 accountDays = runCatching { d["accountDays"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..365 } ?: 30,
                 loyalty = d.str("loyalty") == "on",
                 loyaltyBp = runCatching { d["loyaltyBp"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..10000 } ?: 100,
+                mra = d.str("mra")?.takeIf { it in setOf("off", "setting_up", "training", "live") } ?: "off",
+                mraSeller = obj("mra_seller").let { m -> MraSeller(m.str("legal_name") ?: "", m.str("tan") ?: "", m.str("nature") ?: "") },
+                mraConnect = obj("mra_connect")?.let { m ->
+                    val url = m.str("url"); val cert = m.str("certificate")
+                    if (url.isNullOrBlank() || cert.isNullOrBlank()) null else MraConnect(url, cert)
+                },
             )
         }
     }

@@ -77,8 +77,9 @@ import androidx.room.RoomDatabase
         PromotionEntity::class,
         DepositEntity::class, DepositLineEntity::class, DepositPaymentEntity::class,
         AccountBillEntity::class, AccountPaymentEntity::class, AccountPaymentLineEntity::class,
+        MraInvoiceEntity::class,
     ],
-    version = 34,
+    version = 35,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {
@@ -103,6 +104,7 @@ abstract class TillDatabase : RoomDatabase() {
     abstract fun promotions(): PromotionDao
     abstract fun deposits(): DepositDao
     abstract fun accounts(): AccountDao
+    abstract fun mra(): MraDao
     // a DAO, not a table: the version stays as it is
     abstract fun goLive(): GoLiveDao
 }

@@ -18,6 +18,8 @@ data class StoreEntity(
     val timezone: String = "Indian/Mauritius",
     val deleted_at: String? = null,
     val server_seq: Long? = null,
+    // the branch's address: what a Premium MRA client's invoices from it carry (server 0116)
+    val address: String? = null,
 )
 
 @Entity(tableName = "categories")
@@ -32,6 +34,8 @@ data class CategoryEntity(
     // the printers its items go to when an order is sent, as a JSON array of ids
     val printer_ids: String = "[]",
     val is_stock: Boolean = false,
+    // goods or services, for the MRA; null is the business's own (server 0116)
+    val mra_nature: String? = null,
 )
 
 @Entity(
@@ -116,6 +120,8 @@ data class TaxEntity(
     val is_default: Boolean = false,
     val deleted_at: String? = null,
     val server_seq: Long? = null,
+    // its MRA code, TC01 to TC06 (server 0116)
+    val mra_code: String? = null,
 )
 
 @Entity(tableName = "dining_options")
@@ -158,6 +164,14 @@ data class DeviceEntity(
     val last_receipt_seq: Long = 0,
     val deleted_at: String? = null,
     val server_seq: Long? = null,
+    // MRA e-invoicing (server 0116, 0132): the ID the MRA gave this till (typed
+    // in /admin); its counter, which only goes up; and the last invoice of each
+    // type it issued, {"STD": {counter, dateTime, totalAmtPaid, brn,
+    // invoiceIdentifier}, ...}, which the next of that type hashes. Both come
+    // back from the server after a reinstall.
+    val mra_ebs_id: String? = null,
+    val mra_counter: Long = 0,
+    val mra_chain: String = "{}",
 )
 
 // Pull cursor per store. Saved in the SAME txn as the page it came with (5.5).

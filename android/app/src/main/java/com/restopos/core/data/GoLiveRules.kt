@@ -19,7 +19,8 @@ object GoLiveRules {
     )
 
     // What was set up: stays in the queue, in its order, for the day the business is connected to the cloud.
-    val SET_UP = LocalAnswers.KINDS + setOf("customer.upsert", "item.set_available", "item.set_price", "setup.finish")
+    // What was sent to the MRA stays sent: a training invoice's record (0132) reaches the server after Go live too.
+    val SET_UP = LocalAnswers.KINDS + setOf("customer.upsert", "item.set_available", "item.set_price", "setup.finish", "mra.record", "mra.status")
 
     // A kind in neither list stays: a sale left in can still be cleared then;
     // a set-up change taken out could not be had back.

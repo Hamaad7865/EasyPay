@@ -48,6 +48,7 @@ import com.restopos.core.database.CreditNoteEntity
 import com.restopos.core.database.PromotionEntity
 import com.restopos.core.database.ReceiptPaymentEntity
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
@@ -83,6 +84,7 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", str(it, "color"), (lng(it, "sort_order") ?: 0).toInt(), str(it, "deleted_at"), lng(it, "server_seq"),
                         printer_ids = it.jsonObject["printer_ids"]?.takeIf { v -> v is kotlinx.serialization.json.JsonArray }?.toString() ?: "[]",
                         is_stock = bool(it, "is_stock", false),
+                        mra_nature = str(it, "mra_nature"),
                     )
                 })
             }
@@ -166,7 +168,8 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
             }
             changes["taxes"]?.let { rows ->
                 dao.upsertTaxes(rows.map {
-                    TaxEntity(id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", (lng(it, "rate_bp") ?: 0).toInt(), str(it, "type") ?: "added", bool(it, "is_default", false), str(it, "deleted_at"), lng(it, "server_seq"))
+                    TaxEntity(id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", (lng(it, "rate_bp") ?: 0).toInt(), str(it, "type") ?: "added", bool(it, "is_default", false), str(it, "deleted_at"), lng(it, "server_seq"),
+                        mra_code = str(it, "mra_code"))
                 })
             }
             changes["discounts"]?.let { rows ->
@@ -193,7 +196,8 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
             }
             changes["stores"]?.let { rows ->
                 dao.upsertStores(rows.map {
-                    StoreEntity(id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", str(it, "code") ?: "", str(it, "timezone") ?: "Indian/Mauritius", str(it, "deleted_at"), lng(it, "server_seq"))
+                    StoreEntity(id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", str(it, "code") ?: "", str(it, "timezone") ?: "Indian/Mauritius", str(it, "deleted_at"), lng(it, "server_seq"),
+                        address = str(it, "address"))
                 })
             }
             changes["pos_devices"]?.let { rows ->
@@ -201,8 +205,15 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                     // The receipt sequence only ever moves forward. This till may
                     // have issued receipts the server has not seen yet; taking the
                     // server's lower number would hand out the same numbers again.
-                    val local = dao.device(id(it))?.last_receipt_seq ?: 0
-                    DeviceEntity(id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: "", str(it, "name") ?: "", str(it, "code") ?: "", maxOf(local, lng(it, "last_receipt_seq") ?: 0), str(it, "deleted_at"), lng(it, "server_seq"))
+                    val mine = dao.device(id(it))
+                    val local = mine?.last_receipt_seq ?: 0
+                    DeviceEntity(id(it), str(it, "tenant_id") ?: "", str(it, "store_id") ?: "", str(it, "name") ?: "", str(it, "code") ?: "", maxOf(local, lng(it, "last_receipt_seq") ?: 0), str(it, "deleted_at"), lng(it, "server_seq"),
+                        mra_ebs_id = str(it, "mra_ebs_id"),
+                        // the MRA counter and chains too: never back (server 0132), and
+                        // after a reinstall they come back from here (design section 7)
+                        mra_counter = maxOf(mine?.mra_counter ?: 0, lng(it, "mra_counter") ?: 0),
+                        mra_chain = com.restopos.core.mra.MraChain.merge(mine?.mra_chain, it.jsonObject["mra_chain"]?.takeIf { v -> v is JsonObject }?.toString()),
+                    )
                 })
             }
             val ops = db.ops()

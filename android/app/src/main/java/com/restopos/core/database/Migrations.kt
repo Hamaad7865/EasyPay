@@ -459,4 +459,23 @@ object Migrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_display_pictures_owner` ON `display_pictures` (`owner`)")
         }
     }
+
+    // MRA e-invoicing, phase 2 (server 0132): what the MRA needs that the pull
+    // brought and this till dropped (a branch's address, a category's goods or
+    // services, a tax's code, a till's EBS MRA ID), the till's MRA counter and
+    // chains, and every document it issued for the MRA, as it was sent.
+    val V34_V35 = object : Migration(34, 35) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `stores` ADD COLUMN `address` TEXT")
+            db.execSQL("ALTER TABLE `categories` ADD COLUMN `mra_nature` TEXT")
+            db.execSQL("ALTER TABLE `taxes` ADD COLUMN `mra_code` TEXT")
+            db.execSQL("ALTER TABLE `pos_devices` ADD COLUMN `mra_ebs_id` TEXT")
+            db.execSQL("ALTER TABLE `pos_devices` ADD COLUMN `mra_counter` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `pos_devices` ADD COLUMN `mra_chain` TEXT NOT NULL DEFAULT '{}'")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `mra_invoices` (`id` TEXT NOT NULL, `tenant_id` TEXT NOT NULL, `store_id` TEXT NOT NULL, `device_id` TEXT NOT NULL, `ebs_id` TEXT NOT NULL, `receipt_id` TEXT, `type` TEXT NOT NULL, `counter` INTEGER NOT NULL, `identifier` TEXT NOT NULL, `ref_identifier` TEXT, `previous_hash` TEXT NOT NULL, `invoice` TEXT NOT NULL, `issued_at` INTEGER NOT NULL, `status` TEXT NOT NULL, `unanswered` INTEGER NOT NULL, `irn` TEXT, `qr` TEXT, `errors` TEXT NOT NULL, `warnings` TEXT NOT NULL, `answered_at` INTEGER, `response_id` TEXT, PRIMARY KEY(`id`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_mra_invoices_status` ON `mra_invoices` (`status`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_mra_invoices_counter` ON `mra_invoices` (`counter`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_mra_invoices_receipt_id` ON `mra_invoices` (`receipt_id`)")
+        }
+    }
 }
