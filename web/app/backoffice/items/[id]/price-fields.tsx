@@ -3,6 +3,8 @@
 import { useState } from "react";
 
 export type TaxChoice = { id: string; name: string; rate_bp: number; type: string };
+// how it is sold (0129): one price each, a price for a kilo, or a price typed at the till
+export type Way = "each" | "weight" | "open";
 
 // Only for the margin shown while typing: the server reads the amounts for
 // good when the product is saved, and refuses what is not a number.
@@ -16,7 +18,13 @@ const rs = (v: number) => "Rs " + v.toLocaleString("en-US", { minimumFractionDig
 // with the margin worked out as the figures are typed: what the shop keeps of
 // the price once the tax in it and the cost are taken out.
 // Someone who may not see cost gets the price and the tax alone.
-export function PriceFields({ cost, price, tax, taxes, showCost }: { cost: string; price: string; tax: string; taxes: TaxChoice[]; showCost: boolean }) {
+// way: how it is sold, chosen under the figures (the price then reads as a
+// kilo's, or is typed at the till); atTill: whether a price typed at the till
+// may be chosen (not for a product with variants).
+export function PriceFields({ cost, price, tax, taxes, showCost, way, atTill }: {
+  cost: string; price: string; tax: string; taxes: TaxChoice[]; showCost: boolean; way: Way; atTill: boolean;
+}) {
+  const [w, setW] = useState<Way>(way);
   const [c, setC] = useState(cost);
   const [p, setP] = useState(price);
   const [t, setT] = useState(tax);
@@ -35,8 +43,8 @@ export function PriceFields({ cost, price, tax, taxes, showCost }: { cost: strin
           </label>
         )}
         <label className="field">
-          Selling price (Rs)
-          <input name="price" value={p} onChange={(e) => setP(e.target.value)} required inputMode="decimal" />
+          {w === "weight" ? "Price a kilo (Rs)" : "Selling price (Rs)"}
+          <input name="price" value={w === "open" ? "" : p} onChange={(e) => setP(e.target.value)} required={w !== "open"} disabled={w === "open"} placeholder={w === "open" ? "Typed at the till" : undefined} inputMode="decimal" />
         </label>
         <label className="field">
           Tax
@@ -50,14 +58,40 @@ export function PriceFields({ cost, price, tax, taxes, showCost }: { cost: strin
           </select>
         </label>
       </div>
-      {!showCost ? null : margin ? (
+      {!showCost || w === "open" ? null : margin ? (
         <p className={margin.each < 0 ? "note danger" : "note ok"} style={{ margin: 0 }}>
-          <strong>Margin {margin.pct.toFixed(1)}%</strong>: {rs(margin.each)} on each one{chosen && chosen.rate_bp > 0 && chosen.type === "included" ? ", after the tax" : ""}.
+          <strong>Margin {margin.pct.toFixed(1)}%</strong>: {rs(margin.each)} on {w === "weight" ? "each kilo" : "each one"}{chosen && chosen.rate_bp > 0 && chosen.type === "included" ? ", after the tax" : ""}.
           {margin.each < 0 && " It sells for less than it costs."}
         </p>
       ) : (
         <p className="muted" style={{ margin: 0 }}>Type the cost and the selling price to see the margin.</p>
       )}
+      <div className="field" role="radiogroup" aria-label="How it is sold" style={{ marginTop: 12, marginBottom: 0 }}>
+        How it is sold
+        <label className="check">
+          <input type="radio" name="sold" value="each" checked={w === "each"} onChange={() => setW("each")} />
+          <span>
+            Fixed price
+            <small>One price for each one sold.</small>
+          </span>
+        </label>
+        <label className="check">
+          <input type="radio" name="sold" value="weight" checked={w === "weight"} onChange={() => setW("weight")} />
+          <span>
+            By the kilo
+            <small>The price above is for a kilo: the till asks how heavy and works out the amount. Its stock is counted in kilos.</small>
+          </span>
+        </label>
+        {atTill && (
+          <label className="check">
+            <input type="radio" name="sold" value="open" checked={w === "open"} onChange={() => setW("open")} />
+            <span>
+              Price typed at the till
+              <small>For a service, or anything charged differently each time: tapping it on the till opens the keypad for its price. It counts no stock.</small>
+            </span>
+          </label>
+        )}
+      </div>
     </>
   );
 }

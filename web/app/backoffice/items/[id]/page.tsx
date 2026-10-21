@@ -69,16 +69,26 @@ async function saveProduct(f: FormData) {
       const tax = String(f.get("tax") ?? "");
       const category = String(f.get("category") ?? "");
       const supplier = String(f.get("supplier") ?? "");
-      // its price is typed at the till each time it is sold (migration 0083)
-      const open = on(f, "open_price");
+      // How it is sold (0129): one price each, a price for a kilo, or its price
+      // typed at the till each time (0083), which is sold each and counts no stock.
+      // A form that does not say leaves its unit as it was.
+      const sold = String(f.get("sold") ?? "");
+      const open = sold === "open";
+      const unit = sold === "weight" ? "weight" : sold === "each" || open ? "each" : null;
+      const counted = on(f, "track_stock") && !open;
       if (!name) throw new Refused("Give the product a name.");
       if (!open && price === null) throw new Refused("The selling price is not a number.");
-      if (open && editing) {
+      if (editing) {
         const kind = await c.query(
-          `select i.sold_by, (select count(*)::int from item_variants v where v.tenant_id = i.tenant_id and v.item_id = i.id and v.deleted_at is null) as lines
+          `select i.sold_by, item_holds_stock(i.tenant_id, i.id) as holds,
+                  (select count(*)::int from item_variants v where v.tenant_id = i.tenant_id and v.item_id = i.id and v.deleted_at is null) as lines
              from items i where i.tenant_id = $1 and i.id = $2`, [ctx.tenantId, id]);
-        if (kind.rows[0]?.lines > 0) throw new Refused("A product with variants keeps its prices: each variant has its own. A price typed at the till is for a product with none.");
-        if (kind.rows[0]?.sold_by === "weight") throw new Refused("A product sold by weight is priced by the kilo. A price typed at the till is for one sold each.");
+        const was = kind.rows[0] as { sold_by: string; holds: boolean; lines: number } | undefined;
+        if (open && was && was.lines > 0) throw new Refused("A product with variants keeps its prices: each variant has its own. A price typed at the till is for a product with none.");
+        // a kilo is not a piece: what it holds would change meaning
+        if (was && unit !== null && unit !== was.sold_by && counted && was.holds) {
+          throw new Refused("It holds stock, so it cannot change between each and by the kilo. Count it to zero under Stock first, or untick Counted in stock.");
+        }
       }
       if (costText !== "" && cost === null) throw new Refused("The cost is not a number.");
       if (!UUID.test(tax)) throw new Refused("Pick the tax this product carries.");
@@ -92,11 +102,11 @@ async function saveProduct(f: FormData) {
         brand: text(f, "brand", 60) || null,
         supplier: UUID.test(supplier) ? supplier : null,
         supplierCode: text(f, "supplier_code", 60) || null,
-        available: on(f, "available"), counted: on(f, "track_stock"),
+        available: on(f, "available"), counted,
       };
       await ruled(async () => {
         if (!(await saveProductRow(c, editing, product, mayCost))) throw new Refused("That product is no longer there.");
-        await c.query(`update items set open_price = $3 where tenant_id = $1 and id = $2`, [ctx.tenantId, id, open]);
+        await c.query(`update items set open_price = $3, sold_by = coalesce($4, sold_by) where tenant_id = $1 and id = $2`, [ctx.tenantId, id, open, unit]);
         // a simple product carries its own codes; one with variants has them on its lines
         if (f.has("sku") || f.has("barcode")) {
           await c.query(`update items set sku = $3, barcode = $4 where tenant_id = $1 and id = $2`, [ctx.tenantId, id, text(f, "sku", 60) || null, code(f, "barcode", 64)]);
@@ -204,7 +214,7 @@ async function removeProduct(f: FormData) {
 type ItemRow = {
   id: string; name: string; price: string; cost: string | null; category_id: string | null; brand: string | null;
   supplier_id: string | null; supplier_code: string | null; sku: string | null; barcode: string | null;
-  is_available: boolean; open_price: boolean; track_stock: boolean; option_names: string[]; stock_qty: number; tax_id: string | null;
+  is_available: boolean; open_price: boolean; track_stock: boolean; option_names: string[]; stock_qty: number; tax_id: string | null; sold_by: string;
   reorder_point: number | null; reorder_qty: number | null;
 };
 type VariantRow = { id: string; name: string; barcode: string | null; sku: string | null; price: string; cost: string | null; option_values: string[]; qty: number };
@@ -224,7 +234,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
         ? Promise.resolve({ rows: [] as ItemRow[] })
         : c.query(
             `select i.id, i.name, i.price, i.cost, i.category_id, i.brand, i.supplier_id, i.supplier_code, i.sku, i.barcode,
-                    i.is_available, i.open_price, i.track_stock, i.option_names, coalesce(i.stock_qty, 0)::int as stock_qty,
+                    i.is_available, i.open_price, i.track_stock, i.option_names, coalesce(i.stock_qty, 0)::int as stock_qty, i.sold_by,
                     (select it.tax_id from item_taxes it where it.tenant_id = i.tenant_id and it.item_id = i.id and it.deleted_at is null limit 1) as tax_id,
                     (select l.reorder_point from stock_levels l where l.tenant_id = i.tenant_id and l.item_id = i.id and l.reorder_point is not null limit 1) as reorder_point,
                     (select l.reorder_qty from stock_levels l where l.tenant_id = i.tenant_id and l.item_id = i.id and l.reorder_qty is not null limit 1) as reorder_qty
@@ -317,16 +327,10 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
             </label>
           </Card>
           <Card title="Price">
-            <PriceFields showCost={d.mayCost} cost={d.mayCost ? rupees(item?.cost ?? null) : ""} price={item ? rupees(item.price) : ""} tax={tax} taxes={d.taxes} />
-            {!hasLines && (
-              <label className="check" style={{ marginTop: 12 }}>
-                <input type="checkbox" name="open_price" defaultChecked={item?.open_price ?? false} />
-                <span>
-                  Price typed at the till
-                  <small>For a service, or anything charged differently each time: tapping it on the till opens the keypad for its price, and the selling price above is not used. Tills need EasyPay 0.5.0 or later; an older one sells it at Rs 0.</small>
-                </span>
-              </label>
-            )}
+            <PriceFields
+              showCost={d.mayCost} cost={d.mayCost ? rupees(item?.cost ?? null) : ""} price={item && !item.open_price ? rupees(item.price) : ""} tax={tax} taxes={d.taxes}
+              way={item?.open_price ? "open" : item?.sold_by === "weight" ? "weight" : "each"} atTill={!hasLines}
+            />
             {hasLines && <p className="muted" style={{ margin: "12px 0 0" }}>A change here reaches the variants that are at this price or cost. One priced differently keeps its own.</p>}
           </Card>
           <Card title="Stock">
