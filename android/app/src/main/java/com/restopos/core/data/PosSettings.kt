@@ -103,6 +103,9 @@ data class PosSettings(
     // until switched on; loyaltyBp is what comes back, in basis points (100 is 1%).
     val loyalty: Boolean = false,
     val loyaltyBp: Int = 100,
+    // The time each till closes a day nobody closed (server 0133), on the
+    // tablet's clock; null, and a missing key, is off.
+    val autoClose: java.time.LocalTime? = null,
     // MRA e-invoicing (server 0116, 0132): where the business stands (off,
     // setting_up, training, live; a missing key is off), the seller's details
     // its invoices carry, and the MRA's address and public key, typed once in
@@ -192,7 +195,8 @@ data class PosSettings(
                 accountDays = runCatching { d["accountDays"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..365 } ?: 30,
                 loyalty = d.str("loyalty") == "on",
                 loyaltyBp = runCatching { d["loyaltyBp"]?.jsonPrimitive?.intOrNull }.getOrNull()?.takeIf { it in 1..10000 } ?: 100,
-                mra = d.str("mra")?.takeIf { it in setOf("off", "setting_up", "training", "live") } ?: "off",
+                autoClose = AutoCloseRules.parse(d.str("autoClose")),
+                mra =d.str("mra")?.takeIf { it in setOf("off", "setting_up", "training", "live") } ?: "off",
                 mraSeller = obj("mra_seller").let { m -> MraSeller(m.str("legal_name") ?: "", m.str("tan") ?: "", m.str("nature") ?: "") },
                 mraConnect = obj("mra_connect")?.let { m ->
                     val url = m.str("url"); val cert = m.str("certificate")
