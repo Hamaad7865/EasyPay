@@ -11,7 +11,7 @@ export type PrinterRow = {
   store_id: string;
   name: string;
   // "screen": a kitchen screen (0086), a tablet that shows the orders;
-  // "display": a customer display (0129), a tablet that faces the customer
+  // "display": a customer display (0130), a tablet that faces the customer
   // and shows one till's sale. Neither prints, so the page hands this file
   // its printers only (silent, below).
   kind: "network" | "usb" | "bluetooth" | "screen" | "display";
@@ -37,7 +37,7 @@ export function silent(kind: string): boolean {
 }
 
 // A customer display's message as typed: two lines, each trimmed, at most
-// 120 characters with the line break (0129). Null for none.
+// 120 characters with the line break (0130). Null for none.
 export function displayMessage(first: unknown, second: unknown): string | null {
   const lines = [first, second].map((v) => String(v ?? "").trim().slice(0, 60)).filter((v) => v !== "");
   const m = lines.join("\n").slice(0, 120);

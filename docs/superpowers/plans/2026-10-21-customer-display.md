@@ -4,7 +4,7 @@
 
 **Goal:** a second tablet running the same APK shows the customer the order being rung up on its till (lines, discounts, VAT, total, paid and change) and the business's name, logo and message between sales, over the shop's own Wi-Fi, on every plan.
 
-**Architecture:** a display is a printer row of kind `display` facing one till (`printers.device_id`, migration 0129, Room 33). The till works out a picture of its open order from Room (`DisplayFeed`) and sends the whole picture, signed with the display's pairing code, to each display facing it (`DisplayLink`, port 9311), as the kitchen screen's link does. The display tablet listens (`ScreenServer`), keeps the latest picture (`DisplayBook`) and draws it (`feature/display`). Every place that took "not a kitchen screen" for "a printer" goes through one test, `Routing.silent` / `silent()` in `web/lib/printers.ts`.
+**Architecture:** a display is a printer row of kind `display` facing one till (`printers.device_id`, migration 0130, Room 33). The till works out a picture of its open order from Room (`DisplayFeed`) and sends the whole picture, signed with the display's pairing code, to each display facing it (`DisplayLink`, port 9311), as the kitchen screen's link does. The display tablet listens (`ScreenServer`), keeps the latest picture (`DisplayBook`) and draws it (`feature/display`). Every place that took "not a kitchen screen" for "a printer" goes through one test, `Routing.silent` / `silent()` in `web/lib/printers.ts`.
 
 **Stack:** Kotlin, Compose, Room, Hilt, kotlinx.serialization, JUnit 4 on the JVM; Postgres (Neon) migrations in `db/migrations`, suites in `db/tests` (`node db/tests/<name>.test.cjs`); Next.js back office in `web/`.
 
@@ -34,7 +34,7 @@ Unit tests: `cd android && ./gradlew --priority low --max-workers 2 :app:testDeb
 | `feature/settings/SettingsScreen.kt`, `BusinessPages.kt` | the displays under Printers; Add a customer display (alone) |
 | `feature/pay/Pay.kt` | one call: `display.paid(total, change)` |
 | `feature/menu/MenuStock.kt`, `feature/setup/SetupViewModel.kt` | `silent()` in place of `!= "screen"` |
-| `db/migrations/0129_customer_displays.sql` (new), `db/tests/customer-display.test.cjs` (new) | the server |
+| `db/migrations/0130_customer_displays.sql` (new), `db/tests/customer-display.test.cjs` (new) | the server |
 | `web/lib/printers.ts`, `web/lib/saves.ts`, `web/app/backoffice/printers/page.tsx`, categories page, importer | the back office |
 
 ---
@@ -93,17 +93,17 @@ Unit tests: `cd android && ./gradlew --priority low --max-workers 2 :app:testDeb
 - [ ] `PrinterEntity`: `device_id: String? = null`, `message: String? = null`. `TillDatabase` version 33, `V32_V33` (two `ALTER TABLE printers ADD COLUMN … TEXT`), registered after `V31_V32`; schema exported if the project exports. `PullApplier` maps `device_id` and `message`. Backup/restore: check it copies whole tables (no change if so).
 - [ ] Unit tests (the migration test, if there is one for 31→32, gets 32→33). Commit "till: Room 33, a printer row's till and message".
 
-### Task 7: the server (0129) and its suite
+### Task 7: the server (0130) and its suite
 
 - [ ] Read the live `push_printer_save` (0127 is the last to write it) and `printers_screen_check`; read `db/tests/kitchen-screens.test.cjs` for the suite's shape.
 - [ ] Write `db/tests/customer-display.test.cjs` (one transaction, rolled back): a display row inserted with address, code and a till of its store is kept; without code, without address, as receipt, or with a till of another store is refused; on a Standard and on an offline plan it is allowed (no plan trigger); `push_printer_save` with `kind: display` adds it, never as the receipt printer, and a later network printer of that store still becomes the receipt printer; an edit of a display by `push_printer_save` keeps it a display; `kind: screen` is still refused there; a display's `message` longer than 120 characters is cut.
-- [ ] Write `0129_customer_displays.sql`: kind check with `display`; `device_id uuid`, `message text`; `printers_display_check` (`kind <> 'display' or (not is_receipt and pair_code non-blank and address non-blank and device_id is not null)`); a trigger that checks `device_id` is a `pos_devices` row of the same tenant and store, not removed, on insert or when it changes; `push_printer_save` rebuilt from 0127 with `display` (code tidied as `PairCode.tidy`, `device_id`, `message` cut to 120) and `kind <> 'screen'` → `kind not in ('screen', 'display')`. Header names 0127 as the source.
-- [ ] Apply to dev from the worktree (`.env.local` copied in, `web/node_modules` linked; both removed after), run the suite once. Commit "server: customer displays (0129)".
+- [ ] Write `0130_customer_displays.sql`: kind check with `display`; `device_id uuid`, `message text`; `printers_display_check` (`kind <> 'display' or (not is_receipt and pair_code non-blank and address non-blank and device_id is not null)`); a trigger that checks `device_id` is a `pos_devices` row of the same tenant and store, not removed, on insert or when it changes; `push_printer_save` rebuilt from 0127 with `display` (code tidied as `PairCode.tidy`, `device_id`, `message` cut to 120) and `kind <> 'screen'` → `kind not in ('screen', 'display')`. Header names 0127 as the source.
+- [ ] Apply to dev from the worktree (`.env.local` copied in, `web/node_modules` linked; both removed after), run the suite once. Commit "server: customer displays (0130)".
 
 ### Task 8: a display added on an offline tablet
 
 - [ ] `LocalAnswersTest` (or its file's tests): `printer.save` with `kind: display`, address, code, device and message is kept as a display, never the receipt printer; without a code it is refused `bad-address`/`bad-code`; editing a kitchen screen is still refused.
-- [ ] `PrinterForm`: `DISPLAY`, read a display (name, address as a network printer's, code through `PairCode.tidy`, message ≤ 120); `refused` words for `bad-code`. `Service.savePrinter` puts `pair_code`, `device_id` (this tablet), `message` for a display. `LocalAnswers.printerSave` takes `display` as 0129 does, `!= "screen"` → `!Routing.silent`.
+- [ ] `PrinterForm`: `DISPLAY`, read a display (name, address as a network printer's, code through `PairCode.tidy`, message ≤ 120); `refused` words for `bad-code`. `Service.savePrinter` puts `pair_code`, `device_id` (this tablet), `message` for a display. `LocalAnswers.printerSave` takes `display` as 0130 does, `!= "screen"` → `!Routing.silent`.
 - [ ] `BusinessPages.kt`: `AddDisplayKey` (name, address, code, two message lines; "It faces this till."); `SettingsScreen.PrintersPage` shows it when `Journey.alone`, for restaurants and shops.
 - [ ] Unit tests. Commit "till: a customer display added on an offline tablet".
 

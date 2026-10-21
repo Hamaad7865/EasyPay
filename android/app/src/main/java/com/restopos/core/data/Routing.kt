@@ -28,7 +28,7 @@ object Routing {
     fun paper(all: List<PrinterEntity>): List<PrinterEntity> = all.filter { !silent(it.kind) }
     fun screens(all: List<PrinterEntity>): List<PrinterEntity> = all.filter { it.kind == SCREEN }
 
-    // A customer display (server 0129) is kept with the printers too, and is
+    // A customer display (server 0130) is kept with the printers too, and is
     // neither a printer nor a kitchen screen: a tablet that faces the
     // customer and shows one till's sale. A kind that prints nothing is never
     // in a list of paper, never the receipt printer, never ticked.

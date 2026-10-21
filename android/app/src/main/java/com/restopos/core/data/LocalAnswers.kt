@@ -494,7 +494,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         dao.putElements(dao.elements(store).filter { it.area == area }.map { it.copy(deleted_at = at) })
     }
 
-    // ---- push_printer_save (0089, 0088, 0127, 0129) ----
+    // ---- push_printer_save (0089, 0088, 0127, 0130) ----
     private suspend fun printerSave(p: JsonObject, tenant: String) {
         val id = p.id("id")
         val store = p.id("store_id")
@@ -507,7 +507,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
         if (name.isEmpty()) throw Refused("name-required")
         if ((kind in setOf("network", Routing.DISPLAY) && !IP.matches(address!!)) || (kind == "bluetooth" && (address!!.isEmpty() || IP.matches(address)))) throw Refused("bad-address")
         if (kind == "usb") address = null
-        // a customer display's (0129): its code as the display shows it, the till it faces, its message
+        // a customer display's (0130): its code as the display shows it, the till it faces, its message
         val display = kind == Routing.DISPLAY
         val code = if (display) PairCode.tidy(p.str("pair_code")) ?: throw Refused("bad-address") else null
         val device = if (display) p.str("device_id")?.takeIf { it.isNotBlank() } ?: throw Refused("bad-device") else null

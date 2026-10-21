@@ -657,7 +657,7 @@ class LocalAnswersTest {
         assertEquals(57, dao.printers[id(400)]!!.paper_mm)
     }
 
-    // A customer display added on a tablet that works alone (0129), as the server takes it.
+    // A customer display added on a tablet that works alone (0130), as the server takes it.
     @Test fun `a customer display, which prints nothing`() {
         dao.devices["till-1"] = store
         dao.devices["till-9"] = otherStore

@@ -184,7 +184,7 @@ class SettingsViewModel @Inject constructor(
         _testing.value = null
     }
 
-    // The customer displays facing this till (0129): tablets that face the
+    // The customer displays facing this till (0130): tablets that face the
     // customer and show this till's sale; and how each answered last.
     private val _displays = MutableStateFlow<List<PrinterEntity>>(emptyList())
     val displays: StateFlow<List<PrinterEntity>> = _displays
@@ -1262,7 +1262,7 @@ private fun PrintersPage(vm: SettingsViewModel, more: MoreViewModel, retail: Boo
         if (premium) Note("An order goes to its kitchen screens over the restaurant's own Wi-Fi the moment it is sent, with or without internet. One that a screen has not confirmed is sent again by itself until it has.")
     }
     // The customer displays: tablets that face the customer and show this
-    // till's sale, for restaurants and shops, on every plan (0129).
+    // till's sale, for restaurants and shops, on every plan (0130).
     val displays by vm.displays.collectAsState()
     val displayStatus by vm.displayStatus.collectAsState()
     var changing by remember { mutableStateOf<PrinterEntity?>(null) }

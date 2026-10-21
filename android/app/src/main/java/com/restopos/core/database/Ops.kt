@@ -35,7 +35,7 @@ data class PrinterEntity(
     // what it sends, and whether it shows every item or the ticked categories
     val pair_code: String? = null,
     val all_items: Boolean = false,
-    // a customer display's (server 0129): the till it faces, and its two lines for between sales
+    // a customer display's (server 0130): the till it faces, and its two lines for between sales
     val device_id: String? = null,
     val message: String? = null,
 )

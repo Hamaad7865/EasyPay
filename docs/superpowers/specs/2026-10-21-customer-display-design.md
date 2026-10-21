@@ -40,7 +40,9 @@ Words follow the till's language (English, French, Kreol), sent with each pictur
 
 The till's Settings, Printers lists the displays that face it, each with Answering / Not answering and Test, as it lists kitchen screens.
 
-## 4. The data (server migration 0129)
+## 4. The data (server migration 0130)
+
+(First written as 0129; renumbered on 2026-10-21 because the Sunwave Laundry work took 0129, `0129_sold_by.sql`, on dev first.)
 
 A display is a printer row, as a kitchen screen is (0086), so it is set up, synced, switched off and removed the way they are:
 
@@ -74,7 +76,7 @@ A display is a printer row, as a kitchen screen is (0086), so it is set up, sync
 A till built before this reads a `display` row as a network printer (`Routing.line` sends any kind it does not know to port 9100). It routes nothing to it (a display is never the receipt printer and never ticked for a category), but lists it under Printers, checks it and shows it as not answering. So, as with the kitchen screen:
 
 - The back office page says which EasyPay every till needs before a display is added.
-- The release that carries 0129 raises `MIN_TILL_VERSION` to its build. That is a release step for the owner; this work tags nothing and pushes nothing.
+- The release that carries 0130 raises `MIN_TILL_VERSION` to its build. That is a release step for the owner; this work tags nothing and pushes nothing.
 
 ## 8. My decisions the owner has not confirmed
 
@@ -88,10 +90,10 @@ A till built before this reads a `display` row as a network printer (`Routing.li
 ## 9. Testing, and what will not be seen
 
 - **Unit tests (JVM):** the picture from an order (lines, add-ons, discounts, service, VAT included and added, rounding, split), the paid picture and its 20 seconds, the wire (sign, refuse, version), `DisplayBook` (latest wins, idle after 60 s, the logo kept by its hash), `Routing.silent` and that no printing path takes a display, `LocalAnswers` taking a display and refusing a bad one. All existing tests pass.
-- **Database suite** (`db/tests/customer-display.test.cjs`, one transaction rolled back, never side by side with another suite on dev): 0129's checks, `push_printer_save` with a display (taken; not the receipt printer; refused without code or address; a till of another store refused), the back office's saves.
+- **Database suite** (`db/tests/customer-display.test.cjs`, one transaction rolled back, never side by side with another suite on dev): 0130's checks, `push_printer_save` with a display (taken; not the receipt printer; refused without code or address; a till of another store refused), the back office's saves.
 - **Two emulators**, per the emulator note: windows open, said before each step, the screen read before every tap. One set up as a customer display; the other a till with the made-up shop and then the made-up restaurant on the offline plan, the display added on the tablet (Settings, Printers). Seen: each line as it is added, the totals, the change after Pay, the idle screen, the display switched off and on again, and that none of it needs the internet (the offline plan's tablet has no server to reach).
 - **Not seen:** the back office page in a browser (it needs a login: covered by the suite and a build); two real tablets on a real Wi-Fi; a till older than this beside a display; a cloud till paired from the back office on a device.
 
 ## 10. Building beside the loyalty work
 
-The loyalty session is changing the same till in the main folder (migration 0128, Room 32). This work is done in its own worktree (`claude/customer-display`) and put on `restopos` by fast-forward after a rebase. The migration is 0129 and Room is 33. The parts that touch nothing of loyalty's go first (the wire, the display's mode, the picture and their tests); Room 33, `LocalAnswers` and Pay's one call come once loyalty's Room 32 is committed. Committed on `restopos`, not pushed, no tag, no version raised (the release does that).
+The loyalty session is changing the same till in the main folder (migration 0128, Room 32). This work is done in its own worktree (`claude/customer-display`) and put on `restopos` by fast-forward after a rebase. The migration is 0130 and Room is 33. The parts that touch nothing of loyalty's go first (the wire, the display's mode, the picture and their tests); Room 33, `LocalAnswers` and Pay's one call come once loyalty's Room 32 is committed. Committed on `restopos`, not pushed, no tag, no version raised (the release does that).

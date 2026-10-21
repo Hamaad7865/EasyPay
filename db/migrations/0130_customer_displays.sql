@@ -1,4 +1,4 @@
--- 0129: a customer display is a printer row of kind "display".
+-- 0130: a customer display is a printer row of kind "display".
 --
 -- The owner asked what is missing to beat Loyverse, which gives away a
 -- customer display: a second tablet, the same app, facing the customer,
@@ -81,7 +81,7 @@ AS $function$
 declare
   v_id uuid; v_store uuid; v_name text; v_kind text; v_address text; v_paper int;
   v_was record; v_first boolean; v_new boolean := false;
-  -- a display's (0129)
+  -- a display's (0130)
   v_code text; v_device uuid; v_message text;
   -- the back office's rule for an address (printers/page.tsx)
   ip constant text := '^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}(:\d{2,5})?$';

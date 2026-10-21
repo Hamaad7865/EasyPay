@@ -78,7 +78,7 @@ object PrinterForm {
         else -> "Check that the printer is switched on, on the same network as the tablet, and that the address is the one on its self-test page."
     }
 
-    // ---- a customer display (0129), added on a tablet that works on its own ----
+    // ---- a customer display (0130), added on a tablet that works on its own ----
     const val DISPLAY = "display"
 
     // Its name, its address on the Wi-Fi and the code it shows, and its two

@@ -427,7 +427,7 @@ class ServiceRepository @Inject constructor(
         })
     }
 
-    // A customer display added or changed on this till (0129): it faces this till.
+    // A customer display added or changed on this till (0130): it faces this till.
     suspend fun saveDisplay(id: String, d: PrinterForm.Display, approver: StaffMember? = null): Result<Unit> = runCatching {
         staff.allow("settings.device", "set this till up", approver)
         val store = session.storeId() ?: error("This till is not set up for a store yet.")

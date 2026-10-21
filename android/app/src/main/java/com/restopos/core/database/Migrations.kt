@@ -442,7 +442,7 @@ object Migrations {
         }
     }
 
-    // A customer display (server 0129) is a printer row of kind display: the
+    // A customer display (server 0130) is a printer row of kind display: the
     // till it faces and its message for between sales. Nothing else changes.
     val V32_V33 = object : Migration(32, 33) {
         override fun migrate(db: SupportSQLiteDatabase) {

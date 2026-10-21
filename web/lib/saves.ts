@@ -87,7 +87,7 @@ async function tableOf(c: PoolClient, tenantId: string, store: string, table: st
 export type PrinterForm = {
   name: string; kind: "network" | "usb" | "bluetooth" | "screen" | "display"; address: string | null; paper: number; feed: number; cut: boolean;
   pair?: string | null; all?: boolean;
-  // a customer display's (0129): the till it faces and its message
+  // a customer display's (0130): the till it faces and its message
   device?: string | null; message?: string | null;
 };
 
@@ -101,7 +101,7 @@ export async function addPrinter(c: PoolClient, tenantId: string, store: string,
   const st = await c.query(`select id from stores where tenant_id = $1 and id = $2 and deleted_at is null`, [tenantId, store]);
   if (st.rowCount !== 1) return null;
   const screen = v.kind === "screen";
-  // a kitchen screen or a customer display prints nothing (0129): never a store's first printer
+  // a kitchen screen or a customer display prints nothing (0130): never a store's first printer
   const silent = screen || v.kind === "display";
   const display = v.kind === "display";
   const first =
@@ -169,7 +169,7 @@ export async function savePrinter(c: PoolClient, tenantId: string, id: string, v
     const now = await c.query(`select is_receipt from printers where tenant_id = $1 and id = $2 and deleted_at is null`, [tenantId, id]);
     if (now.rows[0]?.is_receipt) return "receipt";
   }
-  // a display stays a display, and a printer or a kitchen screen is not made one (0129)
+  // a display stays a display, and a printer or a kitchen screen is not made one (0130)
   const r = await c.query(
     `update printers set name = $3, kind = $4, address = $5, paper_mm = $6, feed_lines = $7, cut = $8, is_active = $9, pair_code = $10, all_items = $11,
             device_id = $12, message = $13

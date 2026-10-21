@@ -168,7 +168,7 @@ class RoutingTest {
         assertEquals(listOf("curry", "beer", "platter", "gift card"), Routing.nowhere(order, emptyList(), onePrinter = true))
     }
 
-    // ---- customer displays (server 0129): a tablet that faces the customer ----
+    // ---- customer displays (server 0130): a tablet that faces the customer ----
 
     // A display sits among the printers too. It is never paper: not a
     // ticket's printer, not the receipt printer, not where one printer for

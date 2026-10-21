@@ -182,7 +182,7 @@ class BusinessViewModel @Inject constructor(db: TillDatabase, private val servic
         go("${p.name} is added. Tick the categories that print on it: Menu, Categories.", done) { by -> service.savePrinter(id, p, null, by) }
     }
 
-    // a customer display (0129): added on this till, it faces this till
+    // a customer display (0130): added on this till, it faces this till
     fun saveDisplay(id: String, name: String, address: String, code: String, first: String, second: String, done: () -> Unit) {
         val d = com.restopos.core.data.PrinterForm.readDisplay(name, address, code, first, second).getOrElse { Toaster.say(it.message ?: "That is not a display yet"); return }
         go("${d.name} is saved. This till shows its sale there within a few seconds.", done) { by -> service.saveDisplay(id, d, by) }
@@ -405,7 +405,7 @@ internal fun AddPrinterKey(vm: BusinessViewModel = hiltViewModel()) {
     }
 }
 
-// ---- Settings > Printers: a customer display (0129), on a tablet that works on its own ----
+// ---- Settings > Printers: a customer display (0130), on a tablet that works on its own ----
 @Composable
 internal fun AddDisplayKey() {
     var adding by remember { mutableStateOf<String?>(null) }

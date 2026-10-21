@@ -42,7 +42,7 @@ function screenFields(f: FormData): saves.PrinterForm {
   return { name, kind: "screen", address, paper: 80, feed: 3, cut: true, pair, all: f.get("shows") !== "ticked" };
 }
 
-// A customer display (0129): a tablet that faces the customer and shows the
+// A customer display (0130): a tablet that faces the customer and shows the
 // sale of one till, set up from EasyPay's first screen as a customer display.
 // The till reaches it as it reaches a kitchen screen, and signs what it sends
 // with the code the display shows. Free on every plan, for restaurants and
@@ -610,7 +610,7 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
         );
       })}
 
-      {/* A customer display: a tablet that faces the customer and shows one till's sale. Every plan (0129). */}
+      {/* A customer display: a tablet that faces the customer and shows one till's sale. Every plan (0130). */}
       <h2 style={{ marginTop: 28 }}>Customer displays</h2>
       <details className="card flush">
         <summary className="card-head" style={{ cursor: "pointer", listStyle: "none" }}>

@@ -1,4 +1,4 @@
-// customer-display.test.cjs — migration 0129: a customer display is a row in
+// customer-display.test.cjs — migration 0130: a customer display is a row in
 // printers of kind "display". A second tablet faces the customer and shows
 // the sale of the till it faces, over the shop's own Wi-Fi.
 //   - a display has its address, its pairing code and its till (a till of
