@@ -55,6 +55,16 @@ class DisplayWireTest {
         assertNotEquals(a, DisplayWire.hash("data:image/png;base64,AAAB"))
     }
 
+    // What Settings, Printers says of a display, by how it answered.
+    @Test
+    fun troubleInWords() {
+        assertNull(DisplayWire.trouble("Counter", "10.0.2.5", DisplayReply(ok = true)))
+        assertEquals(true, DisplayWire.trouble("Counter", "", null)!!.contains("no address"))
+        assertEquals(true, DisplayWire.trouble("Counter", "10.0.2.5", null)!!.startsWith("Counter is not answering"))
+        assertEquals(true, DisplayWire.trouble("Counter", "10.0.2.5", DisplayReply(false, DisplayWire.REFUSED))!!.contains("pairing code"))
+        assertEquals(true, DisplayWire.trouble("Counter", "10.0.2.5", DisplayReply(false, DisplayWire.OTHER_VERSION))!!.contains("version"))
+    }
+
     @Test
     fun anAddressWithoutAPortIsTheDisplays() {
         assertEquals("10.0.2.5" to 9311, DisplayWire.address("10.0.2.5"))
