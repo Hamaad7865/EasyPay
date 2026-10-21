@@ -41,6 +41,18 @@ test('the sign-in names the user, the EBS and the area in its header, and seals 
   assert.deepEqual(JSON.parse(opened), { username: 'dev@example.mu', password: 'not-a-real-one', encryptKey: aesKey.toString('base64'), refreshToken: 'false' });
 });
 
+// The owner's area code is not known yet: with none, the header has no areaCode
+// at all (not an empty one or "undefined"), and the MRA's answer says whether it
+// is needed.
+test('with no area code, neither request names one in its header', () => {
+  const { publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const none = { ...who, areaCode: '' };
+  const sign = api.tokenRequest({ ...none, aesKey: Buffer.alloc(32, 7), refresh: false, requestId: 'REQ-1' }, publicKey);
+  assert.deepEqual(sign.headers, { 'Content-Type': 'application/json', username: 'dev@example.mu', ebsMraId: 'EBS123' });
+  const send = api.transmitRequest({ ...none, token: 'tok', invoiceKey: Buffer.alloc(32, 3), invoices: [], requestId: 'REQ-2' });
+  assert.deepEqual(send.headers, { 'Content-Type': 'application/json', username: 'dev@example.mu', ebsMraId: 'EBS123', token: 'tok' });
+});
+
 test('a sign-in that asks for a new token says refreshToken "true"', (t) => {
   const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
   const r = api.tokenRequest({ ...who, aesKey: Buffer.alloc(32, 1), refresh: true, requestId: 'REQ-2' }, publicKey);

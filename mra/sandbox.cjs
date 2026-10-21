@@ -45,7 +45,10 @@ function readEnv() {
   return env;
 }
 
-const NEEDED = ['MRA_EBS_ID', 'MRA_USERNAME', 'MRA_PASSWORD', 'MRA_AREA_CODE', 'MRA_PUBLIC_KEY', 'MRA_SELLER_NAME', 'MRA_SELLER_TRADE_NAME', 'MRA_SELLER_TAN', 'MRA_SELLER_BRN', 'MRA_SELLER_ADDRESS', 'MRA_SELLER_VAT'];
+// MRA_AREA_CODE, MRA_SELLER_VAT and MRA_SELLER_PHONE may be left empty: with no area
+// code the MRA is asked without one; with no VAT status the seller is VATR, as the
+// MRA's test cases 1 and 4 need items with VAT
+const NEEDED = ['MRA_EBS_ID', 'MRA_USERNAME', 'MRA_PASSWORD', 'MRA_PUBLIC_KEY', 'MRA_SELLER_NAME', 'MRA_SELLER_TRADE_NAME', 'MRA_SELLER_TAN', 'MRA_SELLER_BRN', 'MRA_SELLER_ADDRESS'];
 
 const readJson = (f, fallback) => { try { return JSON.parse(fs.readFileSync(at(f), 'utf8')); } catch { return fallback; } };
 const writeJson = (f, v) => fs.writeFileSync(at(f), JSON.stringify(v, null, 2));
@@ -57,13 +60,13 @@ function outcome(name, v) {
 function ready(env) {
   const missing = NEEDED.filter((k) => !env[k]);
   if (missing.length) { console.log('Not filled in .claude/mra/sandbox.env: ' + missing.join(', ')); return null; }
-  if (!['VATR', 'NVTR'].includes(env.MRA_SELLER_VAT)) { console.log('MRA_SELLER_VAT is VATR or NVTR.'); return null; }
+  if (env.MRA_SELLER_VAT && !['VATR', 'NVTR'].includes(env.MRA_SELLER_VAT)) { console.log('MRA_SELLER_VAT is VATR, NVTR or empty.'); return null; }
   let key;
   try { key = publicKeyOf(fs.readFileSync(at(env.MRA_PUBLIC_KEY))); } catch (e) { console.log(`The MRA public key ${env.MRA_PUBLIC_KEY} could not be read: ${e.message}`); return null; }
   return {
-    who: { username: env.MRA_USERNAME, password: env.MRA_PASSWORD, ebsMraId: env.MRA_EBS_ID, areaCode: env.MRA_AREA_CODE },
+    who: { username: env.MRA_USERNAME, password: env.MRA_PASSWORD, ebsMraId: env.MRA_EBS_ID, areaCode: env.MRA_AREA_CODE || '' },
     key,
-    seller: { name: env.MRA_SELLER_NAME, tradeName: env.MRA_SELLER_TRADE_NAME, tan: env.MRA_SELLER_TAN, brn: env.MRA_SELLER_BRN, businessAddr: env.MRA_SELLER_ADDRESS, businessPhoneNo: env.MRA_SELLER_PHONE || '', vat: env.MRA_SELLER_VAT },
+    seller: { name: env.MRA_SELLER_NAME, tradeName: env.MRA_SELLER_TRADE_NAME, tan: env.MRA_SELLER_TAN, brn: env.MRA_SELLER_BRN, businessAddr: env.MRA_SELLER_ADDRESS, businessPhoneNo: env.MRA_SELLER_PHONE || '', vat: env.MRA_SELLER_VAT || 'VATR' },
   };
 }
 
@@ -72,7 +75,9 @@ function check() {
   const c = ready(env);
   if (!c) return;
   const cert = new crypto.X509Certificate(fs.readFileSync(at(env.MRA_PUBLIC_KEY)));
-  console.log(`Everything is filled in. The MRA certificate is valid from ${cert.validFrom} to ${cert.validTo}.`);
+  console.log(`Everything needed is filled in. The MRA certificate is valid from ${cert.validFrom} to ${cert.validTo}.`);
+  if (!env.MRA_AREA_CODE) console.log('No area code: the MRA is asked without one. If sign-in is refused for it, fill MRA_AREA_CODE.');
+  if (!env.MRA_SELLER_VAT) console.log('MRA_SELLER_VAT is empty: sent as VATR (VAT-registered).');
   const s = readJson('session.json', null);
   console.log(s && s.expiresAt > Date.now() ? `Signed in until ${s.expiryDate} (Mauritius time).` : 'Not signed in yet: run  node mra/sandbox.cjs sign-in');
   const st = readJson('state.json', null);
@@ -93,7 +98,7 @@ async function signIn() {
   const s = r.json ? api.readToken(r.json, aesKey) : { ok: false, errors: [`HTTP ${r.httpStatus}: ${r.text}`] };
   if (s.ok) writeJson('session.json', { token: s.token, invoiceKey: s.invoiceKey.toString('base64'), expiresAt: s.expiresAt, expiryDate: s.expiryDate });
   outcome('sign-in.json', { ok: s.ok, httpStatus: r.httpStatus, responseId: s.responseId || (r.json && r.json.responseId) || null, expiryDate: s.expiryDate || null, errors: s.errors || [] });
-  console.log(s.ok ? `Signed in. The token lasts until ${s.expiryDate} (Mauritius time).` : `Refused (HTTP ${r.httpStatus}): ${(s.errors || []).join('; ')}`);
+  console.log(s.ok ? `Signed in. The token lasts until ${s.expiryDate} (Mauritius time).` : `Refused (HTTP ${r.httpStatus}): ${(s.errors || []).join('; ')}` + (c.who.areaCode ? '' : '\nNo area code was sent: if the reason is about it, fill MRA_AREA_CODE.'));
 }
 
 // A note (DRN, CRN) corrects the last standard invoice the MRA fiscalised.

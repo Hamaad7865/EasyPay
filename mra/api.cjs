@@ -17,7 +17,8 @@ const TRANSMIT_URL = 'https://vfisc.mra.mu/realtime/invoice/transmit';
 
 const requestId = () => `EP${Date.now()}${crypto.randomBytes(4).toString('hex')}`;
 
-const header = (who) => ({ 'Content-Type': 'application/json', username: who.username, ebsMraId: who.ebsMraId, areaCode: who.areaCode });
+// the area code only when there is one: none, and the MRA says whether it needs it
+const header = (who) => ({ 'Content-Type': 'application/json', username: who.username, ebsMraId: who.ebsMraId, ...(who.areaCode ? { areaCode: who.areaCode } : {}) });
 
 function tokenRequest({ username, password, ebsMraId, areaCode, aesKey, refresh, requestId: id }, mraPublicKey) {
   const login = JSON.stringify({ username, password, encryptKey: aesKey.toString('base64'), refreshToken: refresh ? 'true' : 'false' });

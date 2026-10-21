@@ -156,3 +156,22 @@ test('forget after an unanswered batch skips every number in it', async (t) => {
   assert.equal(st.number, 17);
   assert.equal(st.unsure, null);
 });
+
+// The owner left the area code and the VAT status empty: check still passes,
+// says what will be sent instead, and the invoices go as VAT-registered (the
+// MRA's test cases 1 and 4 need items with VAT).
+test('the area code and the VAT status may be left empty', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mra-optional-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  try {
+    execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', path.join(dir, 'mra.key'), '-out', path.join(dir, 'mra.crt'), '-days', '2', '-subj', '/CN=stand-in'], { stdio: 'ignore' });
+  } catch (e) { if (e.code === 'ENOENT') { t.skip('openssl is not on this computer'); return; } throw e; }
+  fs.writeFileSync(path.join(dir, 'sandbox.env'), [
+    'MRA_EBS_ID=EBSTEST1', 'MRA_USERNAME=dev@example.mu', `MRA_PASSWORD=${PASSWORD}`, 'MRA_AREA_CODE=', 'MRA_PUBLIC_KEY=mra.crt',
+    'MRA_SELLER_NAME=Test Ltd', 'MRA_SELLER_TRADE_NAME=Test', 'MRA_SELLER_TAN=12345678', 'MRA_SELLER_BRN=C07012345', 'MRA_SELLER_ADDRESS=Bel Air', 'MRA_SELLER_VAT=',
+  ].join('\n'));
+  const out = await run({ MRA_DIR: dir }, 'check');
+  assert.match(out, /Everything needed is filled in/);
+  assert.match(out, /No area code: the MRA is asked without one/);
+  assert.match(out, /MRA_SELLER_VAT is empty: sent as VATR/);
+});
