@@ -39,6 +39,13 @@ object LoyaltyRules {
         return part.coerceIn(0, left)
     }
 
+    // The customer an exchange's new sale is for: the one whose points the
+    // returned goods earned, as the receipt says (the refund half takes them
+    // back from that customer). A receipt of another till's sale comes with
+    // the pull, its order never does; the order's customer only when the
+    // receipt names none.
+    fun exchangeCustomer(receipt: String?, order: String?): String? = receipt ?: order
+
     // A card made by EasyPay: EP and ten digits. A product's barcode is
     // digits only, so a card is never taken for one.
     fun newCard(random: java.util.Random = java.security.SecureRandom()): String =

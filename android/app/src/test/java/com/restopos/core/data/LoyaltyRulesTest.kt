@@ -97,6 +97,16 @@ class LoyaltyRulesTest {
         assertEquals(0L, com.restopos.core.sync.Fetched.customer(null, sent).points)
     }
 
+    // An exchange's new sale is the customer whose points the returned goods
+    // earned: the receipt says who (a sale of another till comes with its
+    // receipt, never its order); the order's customer only when it does not.
+    @Test fun `an exchange's new sale takes the customer of the receipt's points`() {
+        assertEquals("c-receipt", LoyaltyRules.exchangeCustomer(receipt = "c-receipt", order = null))
+        assertEquals("c-receipt", LoyaltyRules.exchangeCustomer(receipt = "c-receipt", order = "c-order"))
+        assertEquals("c-order", LoyaltyRules.exchangeCustomer(receipt = null, order = "c-order"))
+        assertEquals(null, LoyaltyRules.exchangeCustomer(receipt = null, order = null))
+    }
+
     @Test fun `points are said as rupees`() {
         com.restopos.core.common.Money.decimals = 2
         assertEquals("Rs 12.50", LoyaltyRules.say(1250))
