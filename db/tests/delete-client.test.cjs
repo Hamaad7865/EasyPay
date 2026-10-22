@@ -37,7 +37,10 @@ function check(name, cond, extra) {
     // it has pushed (which cannot be deleted: sync_ops_applied is guarded)
     for (const [t, code] of [[tid, 'DCS1'], [other, 'DCS2']]) {
       const store = (await q1(`insert into stores (tenant_id, name, code) values ($1,'Main',$2) returning id`, [t, code])).id;
-      await c.query(`insert into pos_devices (tenant_id, store_id, name, code) values ($1,$2,'T1','T1')`, [t, store]);
+      const till = (await q1(`insert into pos_devices (tenant_id, store_id, name, code) values ($1,$2,'T1','T1') returning id`, [t, store])).id;
+      // a training invoice its till sent the MRA (0132): kept for good, but by the purge of a whole client
+      await c.query(`insert into mra_records (id, tenant_id, store_id, device_id, ebs_id, doc_type, counter, identifier, previous_hash, invoice, issued_at)
+                     values (gen_random_uuid(), $1, $2, $3, 'EBS-PROBE', 'TRN', 1, 'TRN00000001', '0', '{}', now())`, [t, store, till]);
       const role = (await q1(`insert into roles (tenant_id, name, permissions) values ($1,'Owner','["*"]'::jsonb) returning id`, [t])).id;
       await c.query(`insert into employees (tenant_id, name, role_id, auth_user_id) values ($1,'Owner',$2,$3)`, [t, role, crypto.randomUUID()]);
       const category = (await q1(`insert into categories (tenant_id, name) values ($1,'Clothing') returning id`, [t])).id;
@@ -87,6 +90,8 @@ function check(name, cond, extra) {
     // D4 what was lifted is back
     const guarded = await fails(`delete from sync_ops_applied where tenant_id = $1`, [other]);
     check('D4 an op another client pushed still cannot be deleted', !!guarded, String(guarded).slice(0, 80));
+    const mraKept = await fails(`delete from mra_records where tenant_id = $1`, [other]);
+    check('D4 nor another client\'s MRA record', !!mraKept && /insert-only/.test(mraKept), String(mraKept).slice(0, 80));
     const off = (await q1(`select count(*)::int as n from pg_trigger where not tgisinternal and tgenabled = 'D' and tgname in ('trg_no_update','trg_draft_only','trg_open_only')`)).n;
     check('D4 no guard is left switched off', off === 0, String(off));
 
@@ -94,6 +99,15 @@ function check(name, cond, extra) {
     const again = run(short, 'DeleteClient-Probe', '--apply');
     check('D5 asked again, there is no such client and nothing is done', again.code === 1 && /no client has the ID/.test(again.err), again.code + ' ' + again.err.slice(0, 90));
   } finally {
+    // MRA records go only by a purge naming their client (block_update, 0051)
+    for (const t of [tid, other]) {
+      try {
+        await c.query('BEGIN');
+        await c.query(`select set_config('app.purge_tenant', $1, true)`, [t]);
+        await c.query('delete from mra_records where tenant_id = $1', [t]);
+        await c.query('COMMIT');
+      } catch (e) { await c.query('ROLLBACK'); console.log('cleanup of mra_records: ' + e.message); }
+    }
     await devguard.cleanupTenant(c, tid);
     await devguard.cleanupTenant(c, other);
     await c.end();

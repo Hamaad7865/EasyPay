@@ -26,6 +26,11 @@
 // in, for the length of the one transaction, which holds those tables against
 // other writers until it ends: under a second.
 //
+// What its tills sent the MRA (mra_records, 0132) is kept for good, but by the
+// purge of a whole client: the transaction names the client (app.purge_tenant)
+// and its training invoices go with it. A client that went live with the MRA
+// is refused: its sales were sent to the MRA and are kept.
+//
 // What it leaves:
 // - the client's logins, in the sign-in service, belonging to nobody. Such a
 //   login opens nothing; "New client" on /admin takes one over with a new
@@ -99,6 +104,9 @@ declare
   v_gone int;
 begin
   ${guards.map((g) => `alter table ${quoted(g.t)} disable trigger ${quoted(g.g)};`).join(' ')}
+  -- the purge of this one client (block_update, 0051): what its tills sent the
+  -- MRA in training goes with it (0132); a client that went live was refused above
+  perform set_config('app.purge_tenant', v_tenant::text, true);
   while coalesce(array_length(v_left, 1), 0) > 0 loop
     v_again := '{}';
     foreach v_table in array v_left loop
@@ -119,6 +127,7 @@ begin
   if v_gone <> 1 then
     raise exception 'the client''s own row: % deleted, 1 expected', v_gone;
   end if;
+  perform set_config('app.purge_tenant', '', true);
   ${guards.map((g) => `alter table ${quoted(g.t)} enable trigger ${quoted(g.g)};`).join(' ')}
 end
 $do$`);
