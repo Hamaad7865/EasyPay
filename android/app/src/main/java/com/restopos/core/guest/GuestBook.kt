@@ -1,5 +1,6 @@
 package com.restopos.core.guest
 
+import com.restopos.core.data.SellCheck
 import com.restopos.core.data.TicketRepository
 import com.restopos.core.database.GuestOrderEntity
 import com.restopos.core.database.TillDatabase
@@ -58,6 +59,8 @@ class GuestBook @Inject constructor(
     private val session: SessionStore,
     private val tickets: TicketRepository,
     private val kick: GuestKick,
+    // what takes an order waits for the day and a clocked-in person (SellGate)
+    private val sell: SellCheck,
 ) {
     suspend fun book(): MenuBook {
         val g = db.guest()
@@ -118,6 +121,11 @@ class GuestBook @Inject constructor(
                 is Checked.Fault -> error(c.why)
                 is Checked.Ready -> c
             }
+            // The gate before the answer: in Look only, with the day not open or
+            // closing by itself, putting the lines on fails, and an order written
+            // down as accepted by then would tell the guest so with nothing on
+            // the table. Refused here, it stays waiting.
+            sell.check("ticket.add_line")
             if (db.guest().answer(id, "accepted", null, System.currentTimeMillis()) == 0) error("This order was already answered.")
             try {
                 // The register is left first, with whatever order type was picked for
