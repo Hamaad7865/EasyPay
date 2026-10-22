@@ -71,7 +71,11 @@ export const UNSOLD_SQL = `
 // A receipt moves a product once, whatever its lines, so each line takes the
 // movement's cost per unit, not its total. Goods collected from a deposit
 // moved no stock on their receipt: they left the shelf with the deposit
-// (migration 0113), and cost what its movement says.
+// (migration 0113), and cost what its movement says. A dish made of others
+// (0112) moved its parts, not itself: one of it costs what its parts moved
+// at, each for its share, as the dish has them today. A part that is not
+// counted moved nothing and adds nothing; the dish has no cost when no part
+// moved, or one moved with none.
 // What a shop's till took off single lines, and what prices typed for one
 // sale came to against the listed ones (migration 0077). Both are kept on the
 // line, so a receipt's own discount holds neither: each line at its listed
@@ -118,6 +122,17 @@ export function itemSalesSql(receipts: string, group: "item" | "category" | "sup
            left join suppliers su on su.tenant_id = $1 and su.id = i.supplier_id`;
   const amount = `(line_amount(rl.unit_price, rl.qty) + coalesce((select sum(m.price) from receipt_line_modifiers m
                    where m.tenant_id = $1 and m.receipt_line_id = rl.id), 0))`;
+  // what one of a product cost when the line's receipt moved it, or its deposit
+  const moved = (item: string, variant: string) => `coalesce(
+                  (select m.unit_cost from stock_movements m
+                    where m.tenant_id = $1 and m.receipt_id = x.receipt_id and m.item_id = ${item}
+                      and m.variant_id is not distinct from ${variant} and m.reason in ('sale', 'refund') and m.deleted_at is null
+                    limit 1),
+                  (select m.unit_cost from deposit_lines dl
+                     join stock_movements m on m.tenant_id = dl.tenant_id and m.ref_type = 'deposit' and m.ref_id = dl.deposit_id
+                    where dl.tenant_id = $1 and dl.id = x.deposit_line_id and m.item_id = ${item}
+                      and m.variant_id is not distinct from ${variant} and m.reason = 'deposit' and m.deleted_at is null
+                    limit 1))`;
   if (!withCost) {
     return `with r as (${receipts})
          select ${by} as name, ${cat} as cat,
@@ -142,16 +157,12 @@ export function itemSalesSql(receipts: string, group: "item" | "category" | "sup
                 x.net - coalesce((select sum(case when t.type = 'added' then 0
                                         else (x.net * t.rate_bp + (10000 + t.rate_bp) / 2) / (10000 + t.rate_bp) end)
                                     from receipt_line_taxes t where t.tenant_id = $1 and t.receipt_line_id = x.line_id), 0) as ex_vat,
-                coalesce(
-                  (select m.unit_cost from stock_movements m
-                    where m.tenant_id = $1 and m.receipt_id = x.receipt_id and m.item_id = x.item_id
-                      and m.variant_id is not distinct from x.variant_id and m.reason in ('sale', 'refund') and m.deleted_at is null
-                    limit 1),
-                  (select m.unit_cost from deposit_lines dl
-                     join stock_movements m on m.tenant_id = dl.tenant_id and m.ref_type = 'deposit' and m.ref_id = dl.deposit_id
-                    where dl.tenant_id = $1 and dl.id = x.deposit_line_id and m.item_id = x.item_id
-                      and m.variant_id is not distinct from x.variant_id and m.reason = 'deposit' and m.deleted_at is null
-                    limit 1)) as unit_cost
+                coalesce(${moved("x.item_id", "x.variant_id")},
+                  (select case when bool_and(p.cost > 0) then sum(p.qty * p.cost) / 1000 end
+                     from (select (e->>'qty')::numeric as qty, ${moved("(e->>'item_id')::uuid", "null::uuid")} as cost
+                             from items d cross join lateral jsonb_array_elements(d.parts) e
+                            where d.tenant_id = $1 and d.id = x.item_id and jsonb_array_length(d.parts) > 0) p
+                    where p.cost is not null)) as unit_cost
            from x
        )
        select ${by.replace("rl.", "y.")} as name, ${cat} as cat,

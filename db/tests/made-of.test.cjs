@@ -4,10 +4,25 @@
 //   - a refund gives the parts back
 //   - the rules: one level only, no variants, no itself, a quantity above 0
 //   - a till's item.save carries parts; one that sends none leaves them
+//   - Item sales: a dish costs what its parts' movements cost, its refund too
 // Usage: node db/tests/made-of.test.cjs
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { Client } = require('pg');
 const devguard = require('./require-dev.cjs');
+
+// a module of web/lib, compiled from the TypeScript it lives in, as stock-reports.test.cjs does
+function lib(name, stubs = {}) {
+  const web = path.join(__dirname, '..', '..', 'web');
+  const ts = require(path.join(web, 'node_modules', 'typescript'));
+  const js = ts.transpileModule(fs.readFileSync(path.join(web, 'lib', name + '.ts'), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const mod = { exports: {} };
+  new Function('require', 'module', 'exports', js)((id) => (id in stubs ? stubs[id] : require(id)), mod, mod.exports);
+  return mod.exports;
+}
 
 let failures = 0;
 function check(name, cond, extra) {
@@ -123,6 +138,26 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     await push(sale([{ item: half, qty: 3000 }], rc2, 75000));
     mv = await moves(rc2);
     check('M5 three half plates take one and a half lamb', mv.length === 1 && mv[0].item_id === lamb && mv[0].qty === -1500, JSON.stringify(mv));
+
+    // M8 Item sales with cost: a dish moved its parts, not itself, so it costs what they did on its
+    // receipt (Rs 10.00 a chicken, Rs 10.00 a lamb; the sauce is not counted and adds nothing).
+    // Before the parts change in M6; the sales are dated 2 March 2026 by their tablet, the refund today.
+    {
+      const rep = lib('stock-reports');
+      const report = lib('report', { '@/lib/action': { UUID: /^[0-9a-f-]{36}$/i }, '@/lib/settings': { withDefaults: (x) => x }, '@/lib/day': lib('day') });
+      const sales = async (kind) => Object.fromEntries((await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true),
+        [tid, '2026-03-01', '2099-12-31', null, null, kind]))).rows.map((r) => [r.name, r]));
+      const fig = (r) => (r ? [r.qty, r.ex_vat, r.costed, r.cost].join('/') : 'none');
+      let r = await sales('sale');
+      check('M8 two Mix grills sold cost two chickens and two lambs', r['Mix grill']?.qty === 2000 && Number(r['Mix grill'].cost) === 4000
+        && Number(r['Mix grill'].costed) === Number(r['Mix grill'].ex_vat) && Number(r['Mix grill'].costed) > 0, fig(r['Mix grill']));
+      check('M8 a Chicken BBQ sold alone beside them costs one chicken', Number(r['Chicken BBQ']?.cost) === 1000, fig(r['Chicken BBQ']));
+      check('M8 three half lamb plates cost one and a half lamb', r['Half lamb plate']?.qty === 3000 && Number(r['Half lamb plate'].cost) === 1500, fig(r['Half lamb plate']));
+      r = await sales('refund');
+      check('M8 the Mix grill refunded gives back what one cost', r['Mix grill']?.qty === -1000 && Number(r['Mix grill'].cost) === -2000, fig(r['Mix grill']));
+      r = await sales('all');
+      check('M8 all told: one Mix grill, at the cost of one', r['Mix grill']?.qty === 1000 && Number(r['Mix grill'].cost) === 2000, fig(r['Mix grill']));
+    }
 
     // M6 a till's item.save: with parts, and without
     const t1 = await push([op('item.save', { id: half, name: 'Half lamb plate', price: 25000, parts: [{ item_id: chicken, qty: 1000 }] })]);
