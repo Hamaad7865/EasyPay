@@ -219,6 +219,8 @@ export default async function MraPage({ searchParams }: { searchParams: Search }
                           </summary>
                           <div style={{ display: "grid", gap: 6, paddingTop: 8 }}>
                             {r.irn && <span className="muted">IRN {r.irn}</span>}
+                            {/* the MRA's own PNG, as it came back: nothing for next/image to resize */}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             {r.qr && <img src={`data:image/png;base64,${r.qr}`} alt={`QR code of ${r.identifier}`} width={96} height={96} />}
                             {why && <span>The MRA said: {why}</span>}
                             {warned && <span className="muted">Warnings: {warned}</span>}
