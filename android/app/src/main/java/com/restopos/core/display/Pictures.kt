@@ -15,6 +15,8 @@ object Pictures {
         val vatIncluded: String = "VAT included",
         val vat: String = "VAT",
         val rounding: String = "Rounding",
+        // the customer's loyalty points used on the bill (0128)
+        val points: String = "Points",
     )
 
     // One line as it was rung up: how many (in thousandths), what, its
@@ -34,9 +36,11 @@ object Pictures {
     //   gross − discount + VAT added + service + rounding = left
     // On a split bill part paid, `left` is what dueOf says of the lines still
     // to pay, and the earlier receipts held their own service and VAT.
+    // `points`: the customer's points used on Pay (0128), as charged: inside
+    // `totals.discount`, after the order's discount, on a line of their own.
     fun sale(
         title: String, rung: List<Rung>, totals: Calc.Totals, vatIncluded: Long, discountName: String?,
-        servicePct: Int, paidSoFar: Long, words: Words = Words(), base: Picture = Picture(),
+        servicePct: Int, paidSoFar: Long, words: Words = Words(), base: Picture = Picture(), points: Long = 0,
     ): Picture {
         if (rung.isEmpty()) return idleOf(base)
         val lines = rung.map { r ->
@@ -52,7 +56,9 @@ object Pictures {
         val discount = lineOff + totals.discount
         val sums = ArrayList<PicSum>()
         sums += PicSum(words.subtotal, totals.subtotal)
-        if (totals.discount > 0) sums += PicSum(discountName?.takeIf { it.isNotBlank() } ?: "Discount", -totals.discount)
+        val used = points.coerceIn(0, totals.discount.coerceAtLeast(0))
+        if (totals.discount - used > 0) sums += PicSum(discountName?.takeIf { it.isNotBlank() } ?: "Discount", -(totals.discount - used))
+        if (used > 0) sums += PicSum(words.points, -used)
         if (totals.service > 0) sums += PicSum("${words.service} ${pct(servicePct)}", totals.service)
         if (vatIncluded > 0) sums += PicSum(words.vatIncluded, vatIncluded)
         if (added > 0) sums += PicSum(words.vat, added)

@@ -43,13 +43,18 @@ class DisplayFeed @Inject constructor(
     private val held = MutableStateFlow<Pair<Picture, Long>?>(null)
     // the last picture of the sale on the register, which the paid picture keeps
     @Volatile private var lastSale: Picture? = null
+    // the customer's points used on Pay (0128), and the order they are for:
+    // only Pay knows them until the sale is paid
+    private val points = MutableStateFlow<Pair<String, Long>?>(null)
 
     // Something the displays show may have changed: the order on the
-    // register, its lines, its discount, or a sale paid. The link sends the
-    // picture again at once; it also sends it every few seconds whatever.
+    // register, its lines, its discount, the points used on Pay, or a sale
+    // paid. The link sends the picture again at once; it also sends it every
+    // few seconds whatever.
     val changes: Flow<Unit> = merge(
         session.activeTicketFlow.flatMapLatest { id -> if (id == null) flowOf(Unit) else db.tickets().lines(id).map { } },
         session.pendingDiscountFlow.map { },
+        points.map { },
         held.map { },
     )
 
@@ -66,6 +71,11 @@ class DisplayFeed @Inject constructor(
 
     // the business's logo (a data URL, as on the receipts), for a cable screen; a Wi-Fi display is sent it
     val logo: Flow<String?> = db.ops().settingsFlow().map { PosSettings.parse(it).logo }.distinctUntilChanged()
+
+    // Pay: the customer's points used on this order's bill, 0 for none.
+    fun points(ticketId: String?, amount: Long) {
+        points.value = if (ticketId == null || amount <= 0) null else ticketId to amount
+    }
 
     // Pay: a sale has just been paid in full.
     fun paid(total: Long, change: Long, at: Long = System.currentTimeMillis()) {
@@ -95,11 +105,14 @@ class DisplayFeed @Inject constructor(
         if (lines.isEmpty()) return null
         val discount = tickets.pendingDiscount()
         val pct = service.servicePct(t)
-        val due = service.dueOf(lines, pct, discount)
-        val included = service.vatIncluded(lines, pct, discount)
+        val used = points.value?.takeIf { it.first == t.id }?.second ?: 0L
+        val due = service.dueOf(lines, pct, discount, used)
+        val included = service.vatIncluded(lines, pct, discount, used)
         val paid = db.receipts().paidForTicket(t.id)
         val rung = lines.map { Pictures.Rung(it.line.qty, it.line.name_snapshot, it.detail, it.amount, it.line.unit_price, it.line.list_price) }
-        return Pictures.sale(title(t, base.lang), rung, due, included, discount?.name, pct, paid, words(base.lang), base)
+        // the points as charged: the last of the discounts (Calc never takes more than is left)
+        val charged = if (used > 0) due.discountAmounts.lastOrNull() ?: 0L else 0L
+        return Pictures.sale(title(t, base.lang), rung, due, included, discount?.name, pct, paid, words(base.lang), base, points = charged)
     }
 
     // "Table 4", "Takeaway A-12", "Quick sale C-3"
@@ -116,6 +129,7 @@ class DisplayFeed @Inject constructor(
         vatIncluded = say(lang, "VAT included", "TVA incluse", "TVA inkli"),
         vat = say(lang, "VAT", "TVA", "TVA"),
         rounding = say(lang, "Rounding", "Arrondi", "Larondisman"),
+        points = say(lang, "Points", "Points", "Points"),
     )
 
     // L.t, for a language given rather than L's own

@@ -217,8 +217,10 @@ class PayViewModel @Inject constructor(
     private class Share(val type: String, val input: PayInput)
     private var shares: List<Share> = emptyList()
     private var discount: DiscountPick? = null
-    // the customer's points used on this bill (0128), as chosen; 0 is none
+    // the customer's points used on this bill (0128), as chosen; 0 is none.
+    // The customer displays are told each change: the bill they show is after them.
     private var points = 0L
+        set(v) { field = v; display.points(ticketId, v) }
     private fun pointsPick(): DiscountPick? = points.takeIf { it > 0 }?.let { DiscountPick(type = "amount", value = it, name = "Points", points = true) }
     private var servicePct = 0
     private var calc: Map<String, Calc.Line> = emptyMap()

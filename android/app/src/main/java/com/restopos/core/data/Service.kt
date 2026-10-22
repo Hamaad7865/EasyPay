@@ -117,7 +117,9 @@ class ServiceRepository @Inject constructor(
     }
 
     // What is still to pay on a set of lines, as the receipt will come to.
-    suspend fun dueOf(lines: List<LineInfo>, servicePct: Int, discount: DiscountPick? = null): Calc.Totals {
+    // points: the customer's loyalty points used on Pay (0128), after the
+    // order's discount, as Pay itself works them out (the customer display)
+    suspend fun dueOf(lines: List<LineInfo>, servicePct: Int, discount: DiscountPick? = null, points: Long = 0): Calc.Totals {
         val unpaid = lines.filter { !it.line.paid && it.line.voided_at == null }
         val taxes = HashMap<String, MutableList<Calc.TaxRate>>()
         unpaid.map { it.line.id }.chunked(800).forEach { ids ->
@@ -125,14 +127,19 @@ class ServiceRepository @Inject constructor(
         }
         return Calc.totalsRounded(
             unpaid.map { Calc.Line(it.amount, taxes[it.line.id].orEmpty()) },
-            listOfNotNull(discount?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) }),
+            discountsOf(discount, points),
             servicePct,
         )
     }
 
+    private fun discountsOf(discount: DiscountPick?, points: Long) = listOfNotNull(
+        discount?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) },
+        points.takeIf { it > 0 }?.let { Calc.Discount(null, it) },
+    )
+
     // Of the VAT dueOf comes to, the part already inside the prices (the rest
     // is added on top): the customer display says "VAT included" for it.
-    suspend fun vatIncluded(lines: List<LineInfo>, servicePct: Int, discount: DiscountPick? = null): Long {
+    suspend fun vatIncluded(lines: List<LineInfo>, servicePct: Int, discount: DiscountPick? = null, points: Long = 0): Long {
         val unpaid = lines.filter { !it.line.paid && it.line.voided_at == null }
         val taxes = HashMap<String, MutableList<Calc.TaxRate>>()
         unpaid.map { it.line.id }.chunked(800).forEach { ids ->
@@ -141,7 +148,7 @@ class ServiceRepository @Inject constructor(
         if (taxes.isEmpty()) return 0
         return Calc.totals(
             unpaid.map { Calc.Line(it.amount, taxes[it.line.id].orEmpty()) },
-            listOfNotNull(discount?.let { Calc.Discount(if (it.type == "percent") it.value.toInt() else null, it.value) }),
+            discountsOf(discount, points),
             servicePct,
         ).tax
     }

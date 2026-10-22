@@ -86,6 +86,31 @@ class PicturesTest {
         addsUp(p)
     }
 
+    // Points used on Pay (0128) come off after the order's discount, before
+    // VAT, as the receipt has them: a line of their own, the order discount
+    // keeping its name, the figures adding up to what is left; and once paid,
+    // the paid screen keeps the sale's lines (its total is the receipt's).
+    @Test
+    fun pointsUsedOnPayShowOnTheirOwnLine() {
+        val lines = listOf(Calc.Line(24000, vat15on), Calc.Line(5000, vat15on))
+        val d = listOf(Calc.Discount(10, 0), Calc.Discount(null, 5000))
+        val t = Calc.totals(lines, d, 1000)
+        val p = Pictures.sale("Table 4", listOf(burgers, cola), t, included(lines, d, 1000), "Staff", 1000, 0, points = 5000)
+        assertEquals(
+            listOf(PicSum("Subtotal", 29000), PicSum("Staff", -2900), PicSum("Points", -5000), PicSum("Service 10%", t.service), PicSum("VAT", t.tax)),
+            p.sums,
+        )
+        assertEquals(2900 + 5000L, p.discount)
+        assertEquals(t.total, p.left)
+        addsUp(p)
+        assertEquals(p.lines, Pictures.paid(t.total, 0, p).lines)
+        // points alone: the one line says Points, never the word for a discount
+        val alone = Calc.totals(lines, listOf(Calc.Discount(null, 5000)))
+        val q = Pictures.sale("Sale", listOf(burgers, cola), alone, 0, null, 0, 0, points = 5000)
+        assertEquals(listOf(PicSum("Subtotal", 29000), PicSum("Points", -5000), PicSum("VAT", alone.tax)), q.sums)
+        addsUp(q)
+    }
+
     @Test
     fun aLineDiscountAndAnOrderDiscountTogether() {
         val shirt = Pictures.Rung(1000, "Linen shirt", "", 116100, unit = 116100, listed = 129000)
