@@ -15,8 +15,9 @@ piece list in its section 12.
 |---|---|
 | Piece 1: the plan, the checklist, the fields | Live (0116, 0118). Premium MRA in `/admin`, `tenants.mra` (`off`, `setting_up`), the checklist, legal name, TAN, goods or services, tax codes, and each till's EBS MRA ID typed in `/admin`. Nothing is sent. |
 | Piece 2: the connection | Code on `restopos`, not pushed (from `1d19b75`): `mra/` (sign-in, encryption, the invoice, the hash chain) and `node mra/sandbox.cjs` with all seven MRA test cases, 31 tests against a stand-in for the MRA. **All seven passed against the MRA's sandbox on 2026-10-21** (phase 1, below). |
-| EasyPay's test EBS | Registered on the developer portal: EasyPayPos, Bel Air, **SANDBOX**. |
-| Phase 2: the till | **Built and run on the emulator** (2026-10-21, `d64064e`..): till 0.9.23 (build 35), Room 35, migration 0132 (on dev only), `/admin` training and live and the MRA connection. A sale, a refund, a training invoice, a line cut and test cases 1 to 7 answered by the sandbox as expected. Not pushed, not released. Next: Test Drive from the till (phase 4). |
+| EasyPay's test EBS | Registered on the developer portal: EasyPayPos, Bel Air. **Test Drive PASS, confirmed by the owner on 2026-10-22** (phase 4, below). |
+| Phase 2: the till | **Built, run on the emulator and released** (2026-10-21, `d64064e`..): migration 0132, `/admin` training and live and the MRA connection, till 0.9.23 (build 35), then 0.9.24 (build 36) with the three fixes and the TEST-or-LIVE check. |
+| Phase 4: approval | **Test Drive passed from the till and confirmed** (2026-10-22). Still the owner's: the Solution Provider registration and the certification form (phase 4, below). |
 
 ## Decided
 
@@ -154,12 +155,42 @@ The page is only for a client whose `mra` is not `off`. It is read-only: nothing
 
 ## Phase 4: approval (piece 4)
 
-1. Test Drive, run from the till on the emulator (see the decision above). One failure restarts it; only the
-   last 500 invoices count. **Case 5 (the wrong TAN, refused on purpose) goes last**: the till chains each
-   invoice to the last it issued, so an STD after a refused one names it as its previous.
+1. Test Drive, run from the till on the emulator (see the decision above). Only the last 500 invoices count.
+   **Case 5 (the wrong TAN, refused on purpose) goes last**: the till chains each invoice to the last it issued,
+   so an STD after a refused one names it as its previous.
 2. PASS, then Confirm, pressed by the owner.
 3. EasyPay registered with the MRA as an EBS Solution Provider (FAQ 15), so it appears on the MRA's list of
-   compliant systems.
+   compliant systems, and the make and model certified on the Director-General's form (FAQ 13).
+
+**Done 2026-10-22: all seven cases PASS, confirmed by the owner.** Run from the till (debug 0.9.24 on the
+emulator) for the dev client MRA Pilot, set up by the owner through the real flow, live on EasyPay and with the
+MRA, on EasyPay's test EBS:
+
+| Case | Invoice(s) | How |
+|---|---|---|
+| 7, training | TRN00000043 to 57 | sales while the client was in training |
+| 1, standard, 6 items, three times | MP-T1-000019 to 000026 | the six items of the test case, Rs 480.00 each |
+| 3, credit note | MP-T1-R000027, naming 000026 | a refund of one soft drink |
+| 4, ten in one request | MP-T1-000028 to 000038 | sales during a line cut, each Burger (TC01) and Milk (TC03); eleven went, in one request |
+| 6, pro forma | MP-T1-PRF000078 | the debug action |
+| 2, debit note | MP-T1-DRN000079, naming 000038 | the debug action |
+| 5, wrong TAN, last | MP-T1-STD000080, refused ERR0500 | the debug action |
+
+What it showed:
+
+- The portal judges each invoice against its case. A training invoice of one item showed FAIL ("min no. of
+  items should be 2"), yet case 7 went green once one passed: a failed invoice does not restart the Test
+  Drive. The portal's list lagged the fiscalising by more than ten minutes; Refresh shows it.
+- A client in training sends every sale as TRN, so case 1 needs it live with the MRA (STD). Receipt numbers do
+  not start again when the client goes live with the MRA.
+- The first training invoices were refused (ERR0600 seller BRN, ERR0500 TAN) while the company details were
+  wrong, and fiscalised once they were right.
+- The store code was changed from S1 to MP before going live, so that MRA Pilot's receipt numbers never
+  repeated those Testing sheik's till had already sent on the same test EBS. Whether the MRA refuses a
+  repeated invoice number was not tested.
+- A client never runs a Test Drive: it registers each till on the IFP and goes training, Go live, then live
+  with the MRA (MRA FAQ 8, 13 to 15). Whether the IFP's form picks EasyPay from a list will be seen with the
+  first client.
 
 ## Phase 5: the first client goes live
 
