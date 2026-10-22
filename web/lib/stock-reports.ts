@@ -71,7 +71,9 @@ export const UNSOLD_SQL = `
 // A receipt moves a product once, whatever its lines, so each line takes the
 // movement's cost per unit, not its total. Goods collected from a deposit
 // moved no stock on their receipt: they left the shelf with the deposit
-// (migration 0113), and cost what its movement says. A dish made of others
+// (migration 0113), and cost what its movement says, on their sale and on
+// their refund (whose own movement puts them back at the average of its
+// moment), whatever else of the product the receipt moved. A dish made of others
 // (0112) moved its parts, not itself: one of it costs what its parts moved
 // at, each for its share, as the dish has them today. A part that is not
 // counted moved nothing and adds nothing; the dish has no cost when no part
@@ -122,16 +124,17 @@ export function itemSalesSql(receipts: string, group: "item" | "category" | "sup
            left join suppliers su on su.tenant_id = $1 and su.id = i.supplier_id`;
   const amount = `(line_amount(rl.unit_price, rl.qty) + coalesce((select sum(m.price) from receipt_line_modifiers m
                    where m.tenant_id = $1 and m.receipt_line_id = rl.id), 0))`;
-  // what one of a product cost when the line's receipt moved it, or its deposit
+  // what one of a product cost when the line's deposit took it off the shelf,
+  // or else when the line's receipt moved it
   const moved = (item: string, variant: string) => `coalesce(
-                  (select m.unit_cost from stock_movements m
-                    where m.tenant_id = $1 and m.receipt_id = x.receipt_id and m.item_id = ${item}
-                      and m.variant_id is not distinct from ${variant} and m.reason in ('sale', 'refund') and m.deleted_at is null
-                    limit 1),
                   (select m.unit_cost from deposit_lines dl
                      join stock_movements m on m.tenant_id = dl.tenant_id and m.ref_type = 'deposit' and m.ref_id = dl.deposit_id
                     where dl.tenant_id = $1 and dl.id = x.deposit_line_id and m.item_id = ${item}
                       and m.variant_id is not distinct from ${variant} and m.reason = 'deposit' and m.deleted_at is null
+                    limit 1),
+                  (select m.unit_cost from stock_movements m
+                    where m.tenant_id = $1 and m.receipt_id = x.receipt_id and m.item_id = ${item}
+                      and m.variant_id is not distinct from ${variant} and m.reason in ('sale', 'refund') and m.deleted_at is null
                     limit 1))`;
   if (!withCost) {
     return `with r as (${receipts})

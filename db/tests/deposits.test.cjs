@@ -514,8 +514,9 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
       await push([o]);
       await c.query(`select stock_move($1,$2,$3,null,10000,'receive',4000,'delivery',$4,$5,null)`, [tid, store, rattle, id(), owner]);
       const L = await lineIds(did);
+      const ratLine = id();
       const r = await collect(num, [
-        { item_id: rattle, name_snapshot: 'Rattle', unit_price: 5000, deposit_line_id: L[0].id },
+        { id: ratLine, item_id: rattle, name_snapshot: 'Rattle', unit_price: 5000, deposit_line_id: L[0].id },
         { item_id: blanket, name_snapshot: 'Blanket', unit_price: 6000, deposit_line_id: L[1].id },
       ], [{ payment_type_id: cash, amount: 11000 }]);
       const rows = await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true), [tid, day, day, null, null, 'all']));
@@ -524,6 +525,17 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
         tags(r.out) === 'applied applied applied' && rat && Number(rat.cost) === 1000 && Number(rat.costed) === Number(rat.ex_vat) && Number(rat.costed) > 0, JSON.stringify(rat));
       check('T14 the rattle is not quiet any more, nor slow', !(await quiet()).includes('Rattle') && !(await slow()).includes('Rattle'), `${await quiet()} | ${await slow()}`);
       check('T14 and the blanket\'s promotion sold', !(await stale()).includes('Blanket'), String(await stale()));
+
+      // the rattle brought back: its refund gives back what it cost when it left with the deposit, not the
+      // shelf's average of the refund's moment (about Rs 20.34 since the dearer delivery)
+      seq++;
+      const rf = await push([op('refund.create', { id: id(), refund_of: r.rc, store_id: store, device_id: dev, number: 'DP-R' + seq, device_seq: seq, device_time: now(), reason: 'faulty',
+        lines: [{ ticket_line_id: ratLine, qty: 1000 }], payments: [{ payment_type_id: cash, amount: 5000 }] })]);
+      const back = (await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true), [tid, day, day, null, null, 'refund']))).rows.find((x) => x.name === 'Rattle');
+      check('T14 the rattle refunded gives back what it cost when it left the shelf',
+        tag(rf[0]) === 'applied' && back && back.qty === -1000 && Number(back.cost) === -1000 && Number(back.costed) === Number(back.ex_vat), tag(rf[0]) + ' ' + JSON.stringify(back));
+      const net = (await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true), [tid, day, day, null, null, 'all']))).rows.find((x) => x.name === 'Rattle');
+      check('T14 sold and refunded, the rattle cost nothing all told', net && net.qty === 0 && Number(net.cost) === 0 && Number(net.costed) === 0, JSON.stringify(net));
     }
   } catch (e) {
     failures++;
