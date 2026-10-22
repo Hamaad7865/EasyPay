@@ -76,6 +76,20 @@ function check(name, cond, extra) {
     await stock(beans, 2000); await stock(beans, -2000);
     check('S4 counted at zero, it changes', (await save({ id: beans, name: 'Beans', price: 5000, sold_by: 'weight' })) === 'done' && (await item(beans)).sold_by === 'weight');
 
+    // S4 and through the till's own sync, as a tablet sends it: the tablet is
+    // told unit-has-stock, not "error" (0134 puts it in sync_push's codes)
+    async function asApp(fn) {
+      await c.query('SET LOCAL ROLE app_user');
+      await c.query(`select set_config('app.tenant_id', $1, true)`, [tid]);
+      try { return await fn(); } finally { await c.query('RESET ROLE'); }
+    }
+    const flour = id();
+    await save({ id: flour, name: 'Flour', price: 4000, track_stock: true });
+    await stock(flour, 3000);
+    const synced = (await asApp(async () => (await c.query('select sync_push($1, $2::jsonb) as r',
+      [emp, JSON.stringify([{ op_id: id(), type: 'item.save', payload: { id: flour, name: 'Flour', price: 4000, sold_by: 'weight' } }])])).rows[0].r))[0];
+    check('S4 through sync_push the till is told unit-has-stock', synced.status === 'rejected' && synced.code === 'unit-has-stock', JSON.stringify(synced));
+
     // S5 a unit the server does not know
     check('S5 sold_by litre is a bad payload', /bad-payload/.test(await save({ id: id(), name: 'Milk', price: 4000, sold_by: 'litre' })));
 
