@@ -171,8 +171,6 @@ class StaffRepository @Inject constructor(
     suspend fun unclosed(): Boolean = cash.unclosed()
 
     // The drawer, opened for whoever is about to open the day to count it.
-    suspend fun openDrawerToCount(): Result<Boolean> = cash.openDrawerToCount()
-
     // Opening the day on this till: the cash in its drawer is counted, and it
     // sells from then on. One day at a time on a till.
     suspend fun open(float: Long): Result<ShiftEntity> = runCatching {
@@ -194,6 +192,8 @@ class StaffRepository @Inject constructor(
                 put("opened_at", Instant.ofEpochMilli(now).toString())
             }))
         }
+        // the drawer opens with the day, for the float
+        cash.drawerForTheDay()
         // a tablet working alone cancels by itself the deposits past their
         // date and grace, when its shop says so (0113); a connected one never does
         runCatching { deposits.get().expireAlone() }.getOrNull()?.takeIf { it > 0 }?.let { n ->

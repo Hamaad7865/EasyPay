@@ -109,20 +109,20 @@ class CashOps @Inject constructor(
         record("drawer", 0, null, staff.approvedBy("drawer.open_no_sale", approver))
     }
 
-    // The drawer opened as the day is being opened, so that what is in it can
-    // be counted. It belongs to opening the day and is not written down as a
-    // drawer opened with no sale: only someone who may open the day gets it,
-    // and only while this till has no day open. A till with no receipt
-    // printer has no drawer to open, and nothing is said. True when the
-    // drawer was told to open.
-    suspend fun openDrawerToCount(): Result<Boolean> = runCatching {
-        val who = staff.current.value ?: return@runCatching false
-        if (!who.can("shift.open_close")) return@runCatching false
-        val device = session.deviceId() ?: return@runCatching false
-        if (db.staff().openShift(device) != null) return@runCatching false
-        val p = printing.receiptPrinter() ?: return@runCatching false
-        printing.send(p, EscPos(EscPos.columnsFor(p.paper_mm)).drawer().bytes(), "Open cash drawer", again = null).getOrThrow()
-        true
+    // The drawer opens as the day is opened, when Open the day is pressed (the
+    // owner, 2026-10-23: "when clicking open the day, the drawer should open";
+    // it had opened as the screen came up, before the count). It belongs to
+    // opening the day and is not written down as a drawer opened with no
+    // sale. Not waited for: the screen moves on to the till, and a printer
+    // that does not answer is said. A till with no receipt printer has no
+    // drawer to open, and nothing is said.
+    fun drawerForTheDay() {
+        printing.scope.launch {
+            val p = printing.receiptPrinter() ?: return@launch
+            printing.send(p, EscPos(EscPos.columnsFor(p.paper_mm)).drawer().bytes(), "Open cash drawer", again = null).onFailure {
+                com.restopos.core.ui.Toaster.say("The day is open, but the drawer did not open. ${it.message ?: "The printer did not answer."}")
+            }
+        }
     }
 
     // Cash in or cash out: recorded first, then the slip for the drawer. The
