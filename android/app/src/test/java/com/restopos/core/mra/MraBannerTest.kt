@@ -42,6 +42,21 @@ class MraBannerTest {
         assertTrue(s.text, s.text.startsWith("3 invoices are waiting for the MRA since "))
     }
 
+    // A credit note waits for its sale, and that sale was sent twice with no
+    // answer: nothing after it goes until a manager checks it. The banner names
+    // the sale at once (it is not a line coming back), and never says they go.
+    @Test fun aSaleToCheckHoldingTheRestBackIsNamed() {
+        val held = MraCounts(4, 1, 0, now - 2 * 3_600_000, null, holdingBack = "S1-T1-000123")
+        val s = MraBanner.say(true, true, null, null, held, now, mu)!!
+        assertTrue(s.red)
+        assertTrue(s.text, s.text.contains("S1-T1-000123"))
+        assertTrue(s.text, s.text.endsWith("Settings, MRA."))
+        assertTrue(s.text, !s.text.contains("once the line is back"))
+        assertTrue(MraBanner.say(true, true, null, null, held.copy(oldestWaiting = now - 60_000), now, mu)!!.text.contains("S1-T1-000123"))
+        // a refused login still comes first: nothing at all goes then
+        assertTrue(MraBanner.say(true, true, "Invalid User", null, held, now, mu)!!.text.startsWith("The MRA refused this till's login"))
+    }
+
     // the MRA turned off with invoices still waiting: they still go, and it is said
     @Test fun whatWaitsAfterTheMraIsTurnedOff() =
         assertTrue(MraBanner.say(false, true, null, null, counts(1, now - 2 * 3_600_000), now, mu)!!.text.startsWith("1 invoice is waiting"))

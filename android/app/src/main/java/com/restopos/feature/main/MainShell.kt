@@ -254,8 +254,9 @@ class ShellViewModel @Inject constructor(
     val premium: StateFlow<Boolean> = db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).premium }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
     // What the strip under the top bar says of the MRA (a Premium MRA client's
-    // till): a refused login, no login, a request the MRA refuses, invoices
-    // waiting over an hour. Asked again every minute, for the hour.
+    // till): a refused login, no login, a request the MRA refuses, a sale to
+    // check that holds the rest back, invoices waiting over an hour. Asked
+    // again every minute, for the hour.
     val mraSay: StateFlow<com.restopos.core.mra.MraBanner.Say?> = kotlinx.coroutines.flow.combine(
         db.ops().settingsFlow().map { com.restopos.core.data.PosSettings.parse(it).mra },
         mraLogin.state,

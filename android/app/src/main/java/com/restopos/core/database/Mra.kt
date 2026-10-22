@@ -47,7 +47,10 @@ data class MraInvoiceEntity(
 data class MraIdStatus(val identifier: String, val status: String)
 
 // What waits, and what went wrong, for Settings, MRA and the banner.
-data class MraCounts(val waiting: Int, val check: Int, val refused: Int, val oldestWaiting: Long?, val lastFiscalised: Long?)
+// holdingBack: the sale a waiting credit note names that was sent twice with
+// no answer (check). MraQueue stops at that credit note, so it and every
+// invoice after it wait until a manager checks the sale.
+data class MraCounts(val waiting: Int, val check: Int, val refused: Int, val oldestWaiting: Long?, val lastFiscalised: Long?, val holdingBack: String? = null)
 
 @Dao
 interface MraDao {
@@ -87,7 +90,10 @@ interface MraDao {
         """SELECT COALESCE(SUM(status IN ('waiting', 'unsure')), 0) AS waiting, COALESCE(SUM(status = 'check'), 0) AS `check`,
                   COALESCE(SUM(status = 'refused'), 0) AS refused,
                   MIN(CASE WHEN status IN ('waiting', 'unsure') THEN issued_at END) AS oldestWaiting,
-                  MAX(CASE WHEN status = 'fiscalised' THEN answered_at END) AS lastFiscalised
+                  MAX(CASE WHEN status = 'fiscalised' THEN answered_at END) AS lastFiscalised,
+                  (SELECT s.identifier FROM mra_invoices c JOIN mra_invoices s ON s.identifier = c.ref_identifier
+                    WHERE c.type = 'CRN' AND c.status IN ('waiting', 'unsure') AND s.status = 'check'
+                    ORDER BY c.counter LIMIT 1) AS holdingBack
            FROM mra_invoices""",
     )
     fun counts(): Flow<MraCounts>

@@ -25,6 +25,10 @@ object MraBanner {
         if (testAtMra) return Say("The MRA answers this till as TEST: its sales are fiscalised but do not count. Its EBS is not live with the MRA yet. Settings, MRA.", true)
         if (mraOn && !hasLogin) return Say("This till is not connected to the MRA: sales wait and print Not Yet Fiscalised. Settings, MRA.", true)
         if (problem != null) return Say("The MRA refuses this till's invoices ($problem). Settings, MRA.", true)
+        // a credit note waits for its sale, sent twice with no answer: nothing after it goes by itself
+        counts?.holdingBack?.let { sale ->
+            return Say("Sale $sale was sent to the MRA twice with no answer: its credit note and every invoice after it wait until it is checked. Settings, MRA.", true)
+        }
         val oldest = counts?.oldestWaiting
         if (waiting > 0 && oldest != null && now - oldest > LATE_MS) {
             val since = HM.format(Instant.ofEpochMilli(oldest).atZone(zone))
