@@ -14,7 +14,8 @@ import kotlinx.serialization.json.JsonObject
 //   - each send is written down before it goes (MraDao.sending): an answer
 //     for an invoice settles it for good; no answer leaves it unsure, sent
 //     once more later, then left for a manager to check; a request that never
-//     reached the MRA, or that the MRA refused whole, puts it back as it was.
+//     reached the MRA (an error page in its place counts so), or that the
+//     MRA refused whole, puts it back as it was.
 object MraQueue {
     const val MAX = 500
 
@@ -40,7 +41,7 @@ object MraQueue {
     data class Answered(val each: Map<String, MraApi.Fiscal>, val responseId: String?, val environment: String? = null) : Read
     // the MRA refused the request as a whole: it answered for none of them
     data class RefusedWhole(val errors: List<String>, val token: Boolean) : Read
-    // the request never reached the MRA
+    // the request never reached the MRA, or an error page answered in its place
     data object NotReached : Read
     // it went, and nothing came back that says what became of it
     data object NoAnswer : Read
@@ -53,8 +54,13 @@ object MraQueue {
         is MraHttp.Out.Answered -> {
             val body = runCatching { json.parseToJsonElement(out.body) as? JsonObject }.getOrNull()
             if (body == null) {
-                // not the MRA's answer: a gateway's page, or a server falling over after taking it
-                if (out.http >= 500 || out.http == 0) NoAnswer else RefusedWhole(listOf("HTTP ${out.http}"), out.http == 401)
+                // Not the MRA's answer: an error page in its place, its gateway's
+                // during an outage. Taken as not reached, so what went is sent again
+                // on its own, never left for a manager to send one by one (the
+                // owner, 2026-10-23). The MRA's own errors are JSON (below).
+                if (out.http >= 500) NotReached
+                else if (out.http == 0) NoAnswer
+                else RefusedWhole(listOf("HTTP ${out.http}"), out.http == 401)
             } else {
                 val t = MraApi.readTransmit(body)
                 if (t.invoices.isNotEmpty()) Answered(t.invoices.associateBy { it.identifier }, t.responseId, t.environment?.trim()?.uppercase()?.ifEmpty { null })

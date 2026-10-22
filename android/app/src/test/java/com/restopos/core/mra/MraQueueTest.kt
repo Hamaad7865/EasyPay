@@ -57,11 +57,24 @@ class MraQueueTest {
         assertTrue((MraQueue.read(MraHttp.Out.Answered(401, "Unauthorized")) as MraQueue.RefusedWhole).token)
     }
 
-    // a server falling over, or a page that is not the MRA's, after the request went: it may have been fiscalised
+    // no answer at all after the request went: it may have been fiscalised
     @Test fun noAnswerThatSaysWhatBecameOfIt() {
-        assertEquals(MraQueue.NoAnswer, MraQueue.read(MraHttp.Out.Answered(502, "<html>Bad gateway</html>")))
         assertEquals(MraQueue.NoAnswer, MraQueue.read(MraHttp.Out.NoAnswer("SocketTimeoutException")))
         assertEquals(MraQueue.NotReached, MraQueue.read(MraHttp.Out.NotReached("UnknownHostException")))
+    }
+
+    // An error page in the MRA's place (its gateway during an outage): the
+    // invoices were not taken, and go again on their own, never left for a
+    // manager to send one by one (the owner, 2026-10-23).
+    @Test fun anErrorPageDuringAnOutageIsSentAgainOnItsOwn() {
+        assertEquals(MraQueue.NotReached, MraQueue.read(MraHttp.Out.Answered(502, "<html>Bad gateway</html>")))
+        assertEquals(MraQueue.NotReached, MraQueue.read(MraHttp.Out.Answered(503, "<html><body>Service Unavailable</body></html>")))
+        assertEquals(MraQueue.NotReached, MraQueue.read(MraHttp.Out.Answered(504, "")))
+        // the MRA's own error, as JSON, is still a refusal of the request with its reasons
+        assertEquals(
+            MraQueue.RefusedWhole(listOf("ERR0023: An internal server has occurred"), false),
+            MraQueue.read(MraHttp.Out.Answered(500, """{"status":"ERROR","errorMessages":[{"code":"ERR0023","description":"An internal server has occurred"}]}""")),
+        )
     }
 
     // MraDao.sending and notSent, as their SQL says: once unanswered is unsure (sent once more), twice is check
