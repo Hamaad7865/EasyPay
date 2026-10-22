@@ -76,18 +76,20 @@ function Count({ c }: { c: NavCount | undefined }) {
 // Over a page’s heading: the group the page sits in ("Insights" over Sales
 // patterns). Nothing on the day’s page, nor on a page that is its own line of
 // the menu.
-export function Over({ mode, premium }: { mode: Mode; premium: boolean }) {
-  const name = over(usePathname(), mode, premium);
+export function Over({ mode, premium, mra }: { mode: Mode; premium: boolean; mra: boolean }) {
+  const name = over(usePathname(), mode, premium, mra);
   return name ? <p className="bo-over">{name}</p> : null;
 }
 
 export function Side({
-  restaurant, id, employee, role, signOut, folded, opened, look, drawn, mode, premium,
+  restaurant, id, employee, role, signOut, folded, opened, look, drawn, mode, premium, mra,
 }: {
   // a restaurant or a shop: which pages the menu has, and what it calls them
   mode: Mode;
   // the plan carries the premium pages
   premium: boolean;
+  // a client on Premium MRA has its MRA page
+  mra: boolean;
   restaurant: string;
   // the start of the restaurant's id: what to quote to EasyPay support
   id: string;
@@ -106,9 +108,9 @@ export function Side({
   drawn: number;
 }) {
   const path = usePathname();
-  const here = groupOf(path, mode, premium);
-  const groups = useMemo(() => groupsFor(mode, premium), [mode, premium]);
-  const sections = useMemo(() => sectionsFor(mode, premium), [mode, premium]);
+  const here = groupOf(path, mode, premium, mra);
+  const groups = useMemo(() => groupsFor(mode, premium, mra), [mode, premium, mra]);
+  const sections = useMemo(() => sectionsFor(mode, premium, mra), [mode, premium, mra]);
   const key = useSearchKey();
   const [away, setAway] = useState(folded);
   // The group holding the page that is open is open, on the server and in the
@@ -357,7 +359,7 @@ export function Side({
         </div>
       </aside>
       {/* once, and outside the menu: it has to open with the menu folded away too */}
-      <SearchBox mode={mode} premium={premium} />
+      <SearchBox mode={mode} premium={premium} mra={mra} />
     </>
   );
 }

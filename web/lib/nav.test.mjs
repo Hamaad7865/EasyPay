@@ -60,5 +60,15 @@ check("the group that opens for Barcode labels is the catalog's, and the search 
   assert.ok(!pagesOf("restaurant").some((p) => p.label === "Barcode labels" || p.label === "Import products"));
 });
 
+check("the MRA page is in the menu for a client on MRA only", () => {
+  const has = (mra) => groupsFor("restaurant", true, mra).some((g) => g.links.some((l) => l.href === "/backoffice/mra"));
+  assert.equal(has(true), true);
+  assert.equal(has(false), false);
+  assert.equal(groupsFor("retail", true, true).some((g) => g.links.some((l) => l.href === "/backoffice/mra")), true);
+  assert.ok(pagesOf("retail", true, true).some((p) => p.label === "MRA e-invoicing"));
+  assert.ok(!pagesOf("retail", true).some((p) => p.label === "MRA e-invoicing"));
+  assert.equal(groupOf("/backoffice/mra", "restaurant", true, true), "finance");
+});
+
 console.log(failures === 0 ? "NAV PASS" : `NAV FAIL (${failures})`);
 process.exit(failures ? 1 : 0);

@@ -1,5 +1,6 @@
 import {
   ArrowLeftRight,
+  FileCheck,
   BadgePercent,
   BarChart3,
   Barcode,
@@ -50,6 +51,7 @@ import type { Mode } from "@/lib/mode";
 // `only`: the one kind of business that has this page (none: both have it).
 // `retail`: what a shop calls it, when that differs; `retailIcon`, its icon for a shop.
 // `premium`: a page of the premium tier, which another plan does not have.
+// `mra`: a page of a client on Premium MRA (setting up, training or live), which no other client has.
 //
 // The menu is in three sections under the day's page: Counter (what happens
 // at the counter: orders, bookings, customers, the menu), Finance and stock
@@ -57,7 +59,7 @@ import type { Mode } from "@/lib/mode";
 // section a line is either a page or a group that opens onto its pages. A
 // group marked `flat` is one page and is drawn as that page's own line; so is
 // a group left with one page for this business and plan.
-export type NavLink = { href: string; label: string; icon: LucideIcon; words?: string; only?: Mode; retail?: string; retailIcon?: LucideIcon; premium?: true };
+export type NavLink = { href: string; label: string; icon: LucideIcon; words?: string; only?: Mode; retail?: string; retailIcon?: LucideIcon; premium?: true; mra?: true };
 export type SectionId = "counter" | "money" | "admin";
 export type NavGroup = { id: string; section: SectionId; title: string; icon: LucideIcon; links: NavLink[]; retail?: string; retailIcon?: LucideIcon; flat?: true };
 export type NavSection = { id: SectionId; title: string; groups: NavGroup[] };
@@ -138,6 +140,7 @@ export const GROUPS: NavGroup[] = [
       { href: "/backoffice/reports/items", label: "Item sales", icon: ListOrdered, words: "reports products quantity sold categories cost profit margin" },
       { href: "/backoffice/reports/stock", label: "Stock reports", only: "retail", icon: PackageSearch, words: "stock value worth inventory valuation reorder list low to order losses damaged expired lost stolen shrinkage written off not selling slow dead stock" },
       { href: "/backoffice/receipts", label: "Receipts", icon: Receipt, words: "refund reprint payment correction bills paid orders" },
+      { href: "/backoffice/mra", label: "MRA e-invoicing", mra: true, icon: FileCheck, words: "mra e-invoicing einvoicing fiscal fiscalised irn qr code invoices tax authority ebs connected refused training test drive" },
       { href: "/backoffice/credit-notes", label: "Credit notes", only: "retail", icon: Ticket, words: "return exchange slip balance voucher cancel void" },
       { href: "/backoffice/deposits", label: "Deposits", only: "retail", icon: PackageCheck, words: "layaway lay-by layby reserve hold held put aside part payment collect overdue" },
       { href: "/backoffice/accounts", label: "Accounts", only: "retail", icon: BookUser, words: "customer accounts on account credit owe owed debt debtors receivables reconciliation statement aged balance overdue pay later" },
@@ -226,17 +229,17 @@ export const isOn = (href: string, path: string) =>
     : under(href, path) && !GROUPS.some((g) => g.links.some((l) => l.href.length > href.length && under(l.href, path)));
 // The group a page sits in, for this kind of business: one address can be in
 // two groups (Stock), one for each kind.
-export const groupOf = (path: string, mode: Mode, premium: boolean) =>
-  groupsFor(mode, premium).find((g) => g.links.some((l) => isOn(l.href, path)))?.id ?? null;
+export const groupOf = (path: string, mode: Mode, premium: boolean, mra = false) =>
+  groupsFor(mode, premium, mra).find((g) => g.links.some((l) => isOn(l.href, path)))?.id ?? null;
 
 // The groups one kind of business has on its plan, under the names it uses.
 // The menu and the search both draw from this, so they cannot disagree about
 // what exists. A group left with one page is drawn as that page (`flat`), under
 // the page's own name.
-export function groupsFor(mode: Mode, premium: boolean): NavGroup[] {
+export function groupsFor(mode: Mode, premium: boolean, mra = false): NavGroup[] {
   return GROUPS.map((g) => {
     const links = g.links
-      .filter((l) => (!l.only || l.only === mode) && (!l.premium || premium))
+      .filter((l) => (!l.only || l.only === mode) && (!l.premium || premium) && (!l.mra || mra))
       .map((l) => (mode === "retail" ? { ...l, label: l.retail ?? l.label, icon: l.retailIcon ?? l.icon } : l));
     const flat = g.flat || links.length === 1 ? (true as const) : undefined;
     return {
@@ -250,20 +253,20 @@ export function groupsFor(mode: Mode, premium: boolean): NavGroup[] {
 }
 
 // The menu's sections, each with the groups this business has in it.
-export function sectionsFor(mode: Mode, premium: boolean): NavSection[] {
-  const groups = groupsFor(mode, premium);
+export function sectionsFor(mode: Mode, premium: boolean, mra = false): NavSection[] {
+  const groups = groupsFor(mode, premium, mra);
   return SECTIONS.map((s) => ({ ...s, groups: groups.filter((g) => g.section === s.id) })).filter((s) => s.groups.length > 0);
 }
 
 // What a page's heading has above it: the group it sits in, where that is not
 // the page itself. Null on the day's page and on a page that is its own line.
-export function over(path: string, mode: Mode, premium: boolean): string | null {
-  const g = groupsFor(mode, premium).find((x) => x.links.some((l) => isOn(l.href, path)));
+export function over(path: string, mode: Mode, premium: boolean, mra = false): string | null {
+  const g = groupsFor(mode, premium, mra).find((x) => x.links.some((l) => isOn(l.href, path)));
   return g && !g.flat ? g.title : null;
 }
 
 // Every page with the group it sits in, for the search.
-export const pagesOf = (mode: Mode, premium: boolean): (NavLink & { group: string | null })[] => [
+export const pagesOf = (mode: Mode, premium: boolean, mra = false): (NavLink & { group: string | null })[] => [
   { ...HOME, group: null },
-  ...groupsFor(mode, premium).flatMap((g) => g.links.map((l) => ({ ...l, group: g.flat ? SECTIONS.find((x) => x.id === g.section)!.title : g.title }))),
+  ...groupsFor(mode, premium, mra).flatMap((g) => g.links.map((l) => ({ ...l, group: g.flat ? SECTIONS.find((x) => x.id === g.section)!.title : g.title }))),
 ];

@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { GROUPS } from "./nav";
 import { Over, Side } from "./side";
 import { words } from "@/lib/mode";
+import { onMra } from "@/lib/mra";
 import { THEME_COOKIE, themeOf } from "@/lib/theme";
 
 export default async function BackofficeLayout({ children }: { children: React.ReactNode }) {
@@ -32,6 +33,7 @@ export default async function BackofficeLayout({ children }: { children: React.R
       <Side
         mode={ctx.mode}
         premium={ctx.premium}
+        mra={onMra(ctx.mra)}
         drawn={Date.now()}
         folded={jar.get("bo-menu")?.value === "closed"}
         look={themeOf(jar.get(THEME_COOKIE)?.value)}
@@ -63,7 +65,7 @@ export default async function BackofficeLayout({ children }: { children: React.R
               here. Contact EasyPay to reactivate.
             </div>
           )}
-          <Over mode={ctx.mode} premium={ctx.premium} />
+          <Over mode={ctx.mode} premium={ctx.premium} mra={onMra(ctx.mra)} />
           {children}
         </main>
       </div>
