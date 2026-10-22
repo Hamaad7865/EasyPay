@@ -126,6 +126,29 @@ function loadPage() {
     check('P3 by branch: all seven are in its one branch, the gone till\'s too', (await list({ store })).length === 7);
     check('P3 dates are the branch\'s own: 21:30 UTC on the 21st is the 22nd', ids(await list({ from: '2026-10-22', to: '2026-10-22' })).join(',') === 'MRP1-TA-000005,MRP1-TA-000004,MRP1-TA-000003');
     check('P3 the page\'s limit holds', (await read(t, p.INVOICES_SQL, p.invoiceParams(t, none, 2, true))).length === 2);
+
+    // P4 the page itself, drawn for this business with no sign-in
+    const { open, text } = require('./page.cjs');
+    const owner = (await one(`select id from employees where tenant_id = $1 order by created_at limit 1`, [t])).id;
+    const ctx = {
+      userId: crypto.randomUUID(), employeeId: owner, tenantId: t, role: 'Owner', status: 'active', statusReason: null,
+      mode: 'restaurant', premium: true, mra: 'live', tenantName: 'MRA Page', employeeName: 'Owner', admin: false,
+    };
+    const draw = async (c2, sp) => {
+      await c.query('SAVEPOINT page');
+      try { return text(await open(c, c2, '/backoffice/mra', sp)); }
+      catch (e) { return 'ERROR ' + e.message; }
+      finally { await c.query('ROLLBACK TO SAVEPOINT page'); }
+    };
+    const says = await draw(ctx, {});
+    check('P4 the page draws', !says.startsWith('ERROR'), says.slice(0, 200));
+    check('P4 Till B is at the top: its login was refused', says.includes('Needs attention') && says.includes('The MRA refused its login: Wrong password'));
+    check('P4 Till A is at the top too: live, and the MRA counts it as TEST', says.includes('The MRA counts its sales as TEST'));
+    check('P4 every invoice is listed with its words', says.includes('MRP1-TA-R000002') && says.includes('Credit note') && says.includes('Sent twice, no answer: check it on the till'));
+    check('P4 the credit note reads with a minus', /[-−]\s?(Rs\s?)?57\.50/.test(says), (says.match(/.{0,12}57\.50/) || [''])[0]);
+    check('P4 the sign-in says until when, as of the sync', says.includes('Signed in until') && says.includes('as of'));
+    check('P4 a filter is applied', !(await draw(ctx, { type: 'TRN' })).includes('MRP1-TA-000001'));
+    check('P4 a client not on MRA has no such page', (await draw({ ...ctx, mra: 'off' }, {})).startsWith('ERROR not found'));
   } finally {
     await c.query('ROLLBACK');
     await c.end();
