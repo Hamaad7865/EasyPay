@@ -111,6 +111,16 @@ export const DEFAULT_SETTINGS: PosSettings = {
 // The time a day closes by itself (0133): hours and minutes, 00:00 to 23:59, as the server takes it.
 export const AUTO_CLOSE_TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
+// A setting a till carries out only from some build on (closing the day by
+// itself, loyalty points): the tills known to be on an older one, by name,
+// from what each last said of its build.
+export const olderThan = (tills: { name: string; till_version: number | null }[], build: number): string[] =>
+  tills.filter((t) => t.till_version !== null && t.till_version < build).map((t) => t.name);
+
+// And how the setting's line names them: nothing when there are none.
+export const notOnYet = (names: string[]): string =>
+  names.length === 0 ? "" : ` Not on ${names.join(", ")} until ${names.length === 1 ? "it is" : "they are"} updated.`;
+
 type Loose = Record<string, unknown>;
 const obj = (v: unknown): Loose => (v && typeof v === "object" && !Array.isArray(v) ? (v as Loose) : {});
 const str = (v: unknown, d: string) => (typeof v === "string" ? v : d);

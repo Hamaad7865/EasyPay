@@ -471,6 +471,11 @@ export const REQUEST_BUILD = 12;
 // The first build of the till that closes a day nobody closed by itself, at
 // the time POS settings set (0133). Older tills leave the day open.
 export const AUTO_CLOSE_BUILD = 35;
+
+// The first build of the till with loyalty points (0128, till 0.9.21). An
+// older till sells and refunds with no points: nothing earned, nothing taken
+// back when goods come back.
+export const LOYALTY_BUILD = 33;
 export const takesRequests = (t: { till_version: number | null; off: boolean }) => !t.off && t.till_version !== null && t.till_version >= REQUEST_BUILD;
 
 // What was asked of the tills, newest first. $1 tenant, $2 a till or null for

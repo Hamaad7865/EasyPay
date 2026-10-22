@@ -2,8 +2,8 @@ import Link from "next/link";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, int, on, Refused, text, uuid } from "@/lib/action";
-import { AUTO_CLOSE_TIME, loadSettings, money, saveSettings } from "@/lib/settings";
-import { AUTO_CLOSE_BUILD } from "@/lib/pos";
+import { AUTO_CLOSE_TIME, loadSettings, money, notOnYet, olderThan, saveSettings } from "@/lib/settings";
+import { AUTO_CLOSE_BUILD, LOYALTY_BUILD } from "@/lib/pos";
 import { PREMIUM_ONLY, TABLE_ORDERING_LIVE } from "@/lib/plan";
 import { Card, Flash, one, PageHead, type Search } from "../ui";
 import { Submit, Wait } from "../busy";
@@ -234,14 +234,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
         [ctx.tenantId],
       )
     ).rows as { id: string; name: string; kind: string; needs_table: boolean; kitchen: string; is_default: boolean }[],
-    // the tills on a build that does not close its day by itself (0133): known, active and older
-    oldTills: (
+    // every till's build as it last said (device_activity): the settings that need a newer till name the older ones
+    tillBuilds: (
       await c.query(
-        `select d.name from pos_devices d join device_activity a on a.tenant_id = d.tenant_id and a.device_id = d.id
-          where d.tenant_id = $1 and d.deleted_at is null and a.till_version is not null and a.till_version < $2 order by d.name`,
-        [ctx.tenantId, AUTO_CLOSE_BUILD],
+        `select d.name, a.till_version from pos_devices d join device_activity a on a.tenant_id = d.tenant_id and a.device_id = d.id
+          where d.tenant_id = $1 and d.deleted_at is null and a.till_version is not null order by d.name`,
+        [ctx.tenantId],
       )
-    ).rows.map((r) => r.name as string),
+    ).rows as { name: string; till_version: number }[],
     barcodes: shop
       ? ((await c.query(`select barcode_settings($1) as r`, [ctx.tenantId])).rows[0].r as {
           prefix: string; auto: boolean; next: string | null; left: number; made: number; without: number;
@@ -338,7 +338,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                 <small>
                   A day nobody closed is closed by the till at this time, as of this time. The drawer is marked not counted, and
                   orders still unpaid go on into the next day. Open past midnight? Pick an hour when you are closed, 05:00 say.
-                  {data.oldTills.length > 0 && ` Not on ${data.oldTills.join(", ")} until ${data.oldTills.length === 1 ? "it is" : "they are"} updated.`}
+                  {notOnYet(olderThan(data.tillBuilds, AUTO_CLOSE_BUILD))}
                 </small>
               </div>
               <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -559,7 +559,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
             <div className="setting">
               <div>
                 <strong>Loyalty points</strong>
-                <small>A customer named on a sale earns points on what they pay, and spends them on Pay with Use points: they come off the bill as a discount, before VAT. A point is worth Rs 1. Points never expire.</small>
+                <small>
+                  A customer named on a sale earns points on what they pay, and spends them on Pay with Use points: they come off the bill as a discount, before VAT. A point is worth Rs 1. Points never expire.
+                  {/* an older till sells and refunds with no points (0128) */}
+                  {notOnYet(olderThan(data.tillBuilds, LOYALTY_BUILD))}
+                </small>
               </div>
               <label className="check" style={{ margin: 0 }}>
                 <input type="checkbox" name="loyaltyOn" defaultChecked={s.loyalty === "on"} /> On
