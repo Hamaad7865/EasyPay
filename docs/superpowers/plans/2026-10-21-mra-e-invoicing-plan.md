@@ -17,6 +17,7 @@ piece list in its section 12.
 | Piece 2: the connection | Code on `restopos`, not pushed (from `1d19b75`): `mra/` (sign-in, encryption, the invoice, the hash chain) and `node mra/sandbox.cjs` with all seven MRA test cases, 31 tests against a stand-in for the MRA. **All seven passed against the MRA's sandbox on 2026-10-21** (phase 1, below). |
 | EasyPay's test EBS | Registered on the developer portal: EasyPayPos, Bel Air. **Test Drive PASS, confirmed by the owner on 2026-10-22** (phase 4, below). |
 | Phase 2: the till | **Built, run on the emulator and released** (2026-10-21, `d64064e`..): migration 0132, `/admin` training and live and the MRA connection, till 0.9.23 (build 35), then 0.9.24 (build 36) with the three fixes and the TEST-or-LIVE check. |
+| Phase 3: the back office's MRA page | **Built 2026-10-22** (`ed40e50a`..`c090b7c0`, plan `2026-10-22-mra-phase-3-back-office-page.md`): `/backoffice/mra` and its CSV, the menu line for a client on MRA only; drawn from MRA Pilot's real invoices on dev. On `restopos`, not pushed; live with the next `v*` tag (back office only, no till build). |
 | Phase 4: approval | **Test Drive passed from the till and confirmed** (2026-10-22). Still the owner's: the Solution Provider registration and the certification form (phase 4, below). |
 
 ## Decided

@@ -8,6 +8,8 @@
 
 **Tech Stack:** Next.js (App Router, server components) in `web/`, Postgres on Neon (dev), Node's own TypeScript for `web/lib/*.test.mjs`, `db/tests/*.test.cjs` against dev with `db/tests/page.cjs` to draw the page without a sign-in.
 
+**Built 2026-10-22** on `restopos` (`ed40e50a`..`c090b7c0`), with the four suggested choices, which the owner took. Seen: the page drawn from MRA Pilot's real invoices on dev in both looks, and the CSV route run read-only. Not seen: the menu line in a browser, the page behind a real sign-in.
+
 ---
 
 ## For the owner: what you will see
