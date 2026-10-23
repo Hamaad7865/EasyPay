@@ -529,13 +529,43 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
       // the rattle brought back: its refund gives back what it cost when it left with the deposit, not the
       // shelf's average of the refund's moment (about Rs 20.34 since the dearer delivery)
       seq++;
-      const rf = await push([op('refund.create', { id: id(), refund_of: r.rc, store_id: store, device_id: dev, number: 'DP-R' + seq, device_seq: seq, device_time: now(), reason: 'faulty',
+      const rfId = id();
+      const rf = await push([op('refund.create', { id: rfId, refund_of: r.rc, store_id: store, device_id: dev, number: 'DP-R' + seq, device_seq: seq, device_time: now(), reason: 'faulty',
         lines: [{ ticket_line_id: ratLine, qty: 1000 }], payments: [{ payment_type_id: cash, amount: 5000 }] })]);
       const back = (await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true), [tid, day, day, null, null, 'refund']))).rows.find((x) => x.name === 'Rattle');
       check('T14 the rattle refunded gives back what it cost when it left the shelf',
         tag(rf[0]) === 'applied' && back && back.qty === -1000 && Number(back.cost) === -1000 && Number(back.costed) === Number(back.ex_vat), tag(rf[0]) + ' ' + JSON.stringify(back));
       const net = (await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true), [tid, day, day, null, null, 'all']))).rows.find((x) => x.name === 'Rattle');
       check('T14 sold and refunded, the rattle cost nothing all told', net && net.qty === 0 && Number(net.cost) === 0 && Number(net.costed) === 0, JSON.stringify(net));
+      // and on the shelf (0135): it comes back at what it left at, so the average is as if it had never
+      // left: 29 at about Rs 20.34 and one at Rs 10.00 make thirty at Rs 20.00
+      const mvBack = await one(`select qty, unit_cost from stock_movements where tenant_id = $1 and receipt_id = $2 and item_id = $3`, [tid, rfId, rattle]);
+      const level = await one(`select qty, avg_cost from stock_levels where tenant_id = $1 and store_id = $2 and item_id = $3 and variant_id is null`, [tid, store, rattle]);
+      check('T14 the rattle goes back on the shelf at the deposit\'s cost, and the average follows',
+        mvBack && mvBack.qty === 1000 && Number(mvBack.unit_cost) === 1000 && level.qty === 30000 && Number(level.avg_cost) === 2000, JSON.stringify(mvBack) + ' ' + JSON.stringify(level));
+
+      // one rattle from a deposit (taken at Rs 20.00) and one off the shelf (Rs 27.69 after a dearer
+      // delivery) on one bill, both brought back on one refund: one movement holds one cost, so it is
+      // the sale's, as before 0135, and Item sales still nets each line to nothing
+      const [did2, num2, o2] = createOp([{ item_id: rattle, name: 'Rattle', unit_price: 5000 }], null);
+      await push([o2]);
+      await c.query(`select stock_move($1,$2,$3,null,10000,'receive',5000,'delivery',$4,$5,null)`, [tid, store, rattle, id(), owner]);
+      const depLine = id(), shelfLine = id();
+      const r2 = await collect(num2, [
+        { id: depLine, item_id: rattle, name_snapshot: 'Rattle', unit_price: 5000, deposit_line_id: (await lineIds(did2))[0].id },
+        { id: shelfLine, item_id: rattle, name_snapshot: 'Rattle', unit_price: 5000 },
+      ], [{ payment_type_id: cash, amount: 10000 }]);
+      seq++;
+      const rf2Id = id();
+      const rf2 = await push([op('refund.create', { id: rf2Id, refund_of: r2.rc, store_id: store, device_id: dev, number: 'DP-R' + seq, device_seq: seq, device_time: now(), reason: 'faulty',
+        lines: [{ ticket_line_id: depLine, qty: 1000 }, { ticket_line_id: shelfLine, qty: 1000 }], payments: [{ payment_type_id: cash, amount: 10000 }] })]);
+      const sold2 = await one(`select unit_cost from stock_movements where tenant_id = $1 and receipt_id = $2 and item_id = $3`, [tid, r2.rc, rattle]);
+      const back2 = await one(`select qty, unit_cost from stock_movements where tenant_id = $1 and receipt_id = $2 and item_id = $3`, [tid, rf2Id, rattle]);
+      const net2 = (await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true), [tid, day, day, null, null, 'all']))).rows.find((x) => x.name === 'Rattle');
+      check('T14 a deposit\'s rattle and the shelf\'s, refunded together, come back at the sale\'s cost and net to nothing',
+        tags(r2.out) === 'applied applied applied' && tag(rf2[0]) === 'applied' && sold2 && back2 && back2.qty === 2000
+          && Number(back2.unit_cost) === Number(sold2.unit_cost) && net2 && net2.qty === 0 && Number(net2.cost) === 0,
+        `${tags(r2.out)} ${tag(rf2[0])} sold ${JSON.stringify(sold2)} back ${JSON.stringify(back2)} ${JSON.stringify(net2)}`);
     }
   } catch (e) {
     failures++;
