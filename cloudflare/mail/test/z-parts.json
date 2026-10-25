@@ -1,0 +1,217 @@
+[
+    {
+        "k": "center",
+        "l": "Chez Ravi",
+        "s": "big"
+    },
+    {
+        "k": "center",
+        "l": "Royal Road, Curepipe"
+    },
+    {
+        "k": "center",
+        "l": "Tel: 5 123 4567"
+    },
+    {
+        "k": "center",
+        "l": "BRN: C12345678"
+    },
+    {
+        "k": "center",
+        "l": "VAT: VAT27000000"
+    },
+    {
+        "k": "rule"
+    },
+    {
+        "k": "center",
+        "l": "DAY CLOSING (Z) No. 12",
+        "b": true
+    },
+    {
+        "k": "row",
+        "l": "Till",
+        "r": "Till 1"
+    },
+    {
+        "k": "row",
+        "l": "Opened",
+        "r": "24/10/2026 04:00"
+    },
+    {
+        "k": "row",
+        "l": "Opened by",
+        "r": "Ben"
+    },
+    {
+        "k": "row",
+        "l": "From",
+        "r": "24/10/2026 04:00"
+    },
+    {
+        "k": "row",
+        "l": "To",
+        "r": "24/10/2026 15:06"
+    },
+    {
+        "k": "row",
+        "l": "Closed by",
+        "r": "Priya"
+    },
+    {
+        "k": "row",
+        "l": "First bill",
+        "r": "CT-T1-000101"
+    },
+    {
+        "k": "row",
+        "l": "Last bill",
+        "r": "CT-T1-000142"
+    },
+    {
+        "k": "rule"
+    },
+    {
+        "k": "row",
+        "l": "Receipts",
+        "r": "42"
+    },
+    {
+        "k": "row",
+        "l": "Sales",
+        "r": "18,650.00"
+    },
+    {
+        "k": "row",
+        "l": "Refunds (1)",
+        "r": "-250.00"
+    },
+    {
+        "k": "row",
+        "l": "TOTAL",
+        "r": "Rs 18,400.00",
+        "b": true,
+        "s": "tall"
+    },
+    {
+        "k": "row",
+        "l": "Of which tax",
+        "r": "2,432.61"
+    },
+    {
+        "k": "row",
+        "l": "Discounts given",
+        "r": "120.00"
+    },
+    {
+        "k": "rule"
+    },
+    {
+        "k": "text",
+        "l": "BY PAYMENT METHOD",
+        "b": true
+    },
+    {
+        "k": "row",
+        "l": "Cash (30)",
+        "r": "10,400.00"
+    },
+    {
+        "k": "row",
+        "l": "Card (12)",
+        "r": "8,000.00"
+    },
+    {
+        "k": "rule"
+    },
+    {
+        "k": "text",
+        "l": "BY CATEGORY",
+        "b": true
+    },
+    {
+        "k": "row",
+        "l": "Mains (40)",
+        "r": "12,000.00"
+    },
+    {
+        "k": "row",
+        "l": "Drinks (55)",
+        "r": "6,650.00"
+    },
+    {
+        "k": "rule"
+    },
+    {
+        "k": "text",
+        "l": "TAX",
+        "b": true
+    },
+    {
+        "k": "row",
+        "l": "VAT 15%",
+        "r": "2,432.61"
+    },
+    {
+        "k": "rule"
+    },
+    {
+        "k": "text",
+        "l": "CASH IN AND OUT",
+        "b": true
+    },
+    {
+        "k": "row",
+        "l": "Cash in",
+        "r": "500.00"
+    },
+    {
+        "k": "row",
+        "l": "Cash out",
+        "r": "-300.00"
+    },
+    {
+        "k": "row",
+        "l": "Out: Gas (Priya)",
+        "r": "300.00"
+    },
+    {
+        "k": "rule"
+    },
+    {
+        "k": "text",
+        "l": "CASH DRAWER",
+        "b": true
+    },
+    {
+        "k": "row",
+        "l": "Opening float",
+        "r": "2,000.00"
+    },
+    {
+        "k": "row",
+        "l": "Cash taken",
+        "r": "10,400.00"
+    },
+    {
+        "k": "row",
+        "l": "Expected in drawer",
+        "r": "12,600.00"
+    },
+    {
+        "k": "row",
+        "l": "COUNTED",
+        "r": "Rs 12,550.00",
+        "b": true
+    },
+    {
+        "k": "row",
+        "l": "SHORT",
+        "r": "-50.00",
+        "b": true
+    },
+    {
+        "k": "text",
+        "l": "Signature: _____________________________________"
+    }
+]

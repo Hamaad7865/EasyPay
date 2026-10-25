@@ -81,14 +81,18 @@ jobs:
       # a release's keys reads and refuses, and what the hourly reading of Neon's figures makes of
       # Neon's answers (each says ok per check, and stops on the first that fails); and of the
       # ordering site (cloudflare/relay), what it takes and refuses and how its deploy reads an answer;
+      # of the mail service (cloudflare/mail), the same, and the Z report and PDF it makes from the
+      # till's example (test/z-parts.json, which the till's own tests hold);
       # and the MRA e-invoicing connection (mra/), against fixed values and a stand-in for the MRA
       - name: unit tests
         run: |
+          npm ci --prefix cloudflare/mail --no-audit --no-fund
           node till-release.test.cjs
           node cloudflare/release-keys.test.cjs
           node db/scripts/read-usage.test.cjs
           node cloudflare/relay/deploy.test.cjs
           node --test cloudflare/relay/src/rules.test.mjs
+          node --test cloudflare/mail/deploy.test.cjs cloudflare/mail/src/rules.test.mjs cloudflare/mail/src/report.test.mjs
           node --test mra/crypto.test.cjs mra/invoice.test.cjs mra/api.test.cjs mra/sandbox.test.cjs
 
   till:

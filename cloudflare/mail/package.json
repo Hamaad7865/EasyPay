@@ -1,0 +1,13 @@
+{
+  "name": "easypay-mail",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test src/rules.test.mjs",
+    "dev": "wrangler dev --port 8789",
+    "flow": "node test/flow.mjs"
+  },
+  "dependencies": {
+    "pdf-lib": "1.17.1"
+  }
+}

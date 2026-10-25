@@ -1,0 +1,42 @@
+# mail.easypaypos.com: a till's Z report to the address its owner typed.
+#
+# A Worker of its own, apart from the back office, the site and the relay, so
+# that a deploy of one never carries another. EasyPay's database is never
+# asked (an offline tablet must not wake it): what the service keeps is in one
+# Durable Object with its own small store. See README.md.
+#
+#   wrangler dev --config cloudflare/mail/wrangler.toml --port 8789   try it on this PC: mail is written to files, never sent
+#   node cloudflare/mail/deploy.cjs --apply                            put it live, on the owner's word only
+name = "easypay-mail"
+main = "src/index.js"
+compatibility_date = "2026-07-30"
+# the address in every till is the only one that answers
+workers_dev = false
+preview_urls = false
+
+# The address the released till sends to. It cannot change once tills hold it.
+# Deploying creates it in the easypaypos.com zone.
+[[routes]]
+pattern = "mail.easypaypos.com"
+custom_domain = true
+
+# Cloudflare Email Service. The sender, reports@easypaypos.com, has to be on a
+# domain onboarded for sending (`wrangler email sending enable easypaypos.com`),
+# and sending to any address needs Workers Paid. Under `wrangler dev` the
+# binding is played locally: each mail is written to a file and nothing is sent.
+# The address the links in a mail (Confirm, Stop) are to. Under wrangler dev it
+# is given this PC's: --var SITE:http://localhost:8789
+[vars]
+SITE = "https://mail.easypaypos.com"
+
+[[send_email]]
+name = "EMAIL"
+allowed_sender_addresses = ["reports@easypaypos.com"]
+
+[[durable_objects.bindings]]
+name = "BOOK"
+class_name = "Book"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Book"]
