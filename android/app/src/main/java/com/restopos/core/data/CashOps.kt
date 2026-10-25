@@ -2,7 +2,9 @@ package com.restopos.core.data
 
 import android.content.Context
 import androidx.room.withTransaction
+import com.restopos.core.common.Money
 import com.restopos.core.common.Uuid7
+import com.restopos.core.common.tableLabel
 import com.restopos.core.database.CashMoveEntity
 import com.restopos.core.database.DayCloseEntity
 import com.restopos.core.database.DrawerCountEntity
@@ -395,10 +397,22 @@ class CashOps @Inject constructor(
         return db.ops().receiptsBetween(device, db.ops().lastDayClose(device)?.closed_at ?: 0, System.currentTimeMillis()).isNotEmpty()
     }
 
-    suspend fun unpaidOrders(): Long = db.tickets().unpaidOrderCount()
+    // The orders that hold the day open, each called what the till calls it.
+    suspend fun unpaidOrders(): List<UnpaidOrder> {
+        val rows = db.tickets().unpaidOrders()
+        if (rows.isEmpty()) return emptyList()
+        val shop = PosSettings.parse(db.ops().settings()).retail
+        val types = db.catalog().diningOptions().associateBy { it.id }
+        return rows.map { r ->
+            val table = r.table_id?.let { db.tables().table(it) }
+            val type = r.dining_option_id?.let { types[it] }
+            val kind = type?.kind ?: if (table != null) "dine" else "counter"
+            UnpaidOrder(r.id, unpaidLabel(kind, type?.name, r.order_no, table?.name, r.name, if (shop) "Sale" else com.restopos.core.ui.L.quick), r.due)
+        }
+    }
 
     // What holds the day open, said in the words of this business.
-    suspend fun unpaid(n: Long) = unpaidText(n, PosSettings.parse(db.ops().settings()).retail)
+    suspend fun unpaid(orders: List<UnpaidOrder>) = unpaidText(orders, PosSettings.parse(db.ops().settings()).retail)
 
     private suspend fun dayCloseOp(row: DayCloseEntity, z: ZDoc, approvedBy: String?) = op("day.close", buildJsonObject {
         put("id", row.id); put("store_id", row.store_id); put("device_id", row.device_id)
@@ -428,7 +442,7 @@ class CashOps @Inject constructor(
         val store = session.storeId() ?: error("no store")
         val device = session.deviceId() ?: error("no device")
         val open = db.staff().openShift(device) ?: error("The day is not open")
-        db.tickets().unpaidOrderCount().let { n -> require(n == 0L) { unpaid(n) } }
+        unpaidNow()?.let { throw IllegalArgumentException(it) }
         val now = System.currentTimeMillis()
         val by = staff.approvedBy("shift.open_close", approver)
         val closed = open.copy(closed_by = who.employee.id, closed_at = now, counted_cash = counted, expected_cash = expectedCash(open, now))
@@ -464,7 +478,7 @@ class CashOps @Inject constructor(
         val store = session.storeId() ?: error("no store")
         val device = session.deviceId() ?: error("no device")
         require(db.staff().openShift(device) == null) { "The day is open: it is closed from Cash drawer, where the drawer is counted first." }
-        if (!carryOrders) db.tickets().unpaidOrderCount().let { n -> require(n == 0L) { unpaid(n) } }
+        if (!carryOrders) unpaidNow()?.let { throw IllegalArgumentException(it) }
         val now = System.currentTimeMillis()
         val last = db.ops().lastDayClose(device)
         val z = dayDoc(now)
@@ -503,7 +517,7 @@ class CashOps @Inject constructor(
     }
 
     // Why the day cannot be closed at this moment, in this business's words, or null.
-    suspend fun unpaidNow(): String? = db.tickets().unpaidOrderCount().let { n -> if (n == 0L) null else unpaid(n) }
+    suspend fun unpaidNow(): String? = unpaidOrders().let { if (it.isEmpty()) null else unpaid(it) }
 
     // Whether this till wrote anything down after a moment of its own clock:
     // a sale, a refund, cash put in or taken out, a count. The drawer opened
@@ -667,11 +681,33 @@ class CashOps @Inject constructor(
     }
 }
 
-// Why the day cannot be closed yet. A restaurant has orders, and one that
-// will not be paid is voided. A shop has sales, the one on the screen and
-// those under Parked, and one that will not be paid is cleared.
-internal fun unpaidText(n: Long, shop: Boolean): String {
-    val them = if (n == 1L) "it" else "them"
-    return if (shop) "$n ${if (n == 1L) "sale is" else "sales are"} still unpaid, on the screen or under Parked. Take payment for $them, or clear $them, before closing the day."
-    else "$n ${if (n == 1L) "order is" else "orders are"} still unpaid. Take payment for $them, or void $them, before closing the day."
+// An order the day cannot be closed with: what the till calls it, and what
+// is still to pay on it (its lines and their add-ons, before any discount).
+data class UnpaidOrder(val id: String, val label: String, val due: Long)
+
+// What an order is called where it is shown: a table's by the table, a
+// counter order by its number after Quick sale (Sale in a shop), another type
+// by its own name; and the name it was given, after that.
+internal fun unpaidLabel(kind: String, typeName: String?, orderNo: String?, tableName: String?, name: String?, quick: String): String {
+    val base = tableName?.let { tableLabel(it) } ?: listOfNotNull(if (kind == "counter") quick else typeName ?: quick, orderNo).joinToString(" ")
+    return listOfNotNull(base, name?.trim()?.ifEmpty { null }).joinToString(" · ")
+}
+
+// Why the day cannot be closed yet, naming the orders, so the one to pay or
+// void is found. Star Grill, 2026-10-25: "1 order is still unpaid" named
+// nothing; the cashier found only the empty Quick sale on the register and
+// cancelled orders until the day closed. A restaurant has orders, and one
+// that will not be paid is voided. A shop has sales, the one on the screen
+// and those under Parked, and one that will not be paid is cleared.
+internal fun unpaidText(orders: List<UnpaidOrder>, shop: Boolean): String {
+    val n = orders.size
+    val them = if (n == 1) "it" else "them"
+    val named = orders.take(4).joinToString(", ") { "${it.label} (${Money.format(it.due)})" } + if (n > 4) " and ${n - 4} more" else ""
+    val todo = if (shop) "Take payment for $them, or clear $them, before closing the day." else "Take payment for $them, or void $them, before closing the day."
+    return when {
+        n == 1 && shop -> "$named is still unpaid, on the screen or under Parked. $todo"
+        n == 1 -> "$named is still unpaid. $todo"
+        shop -> "$n sales are still unpaid, on the screen or under Parked: $named. $todo"
+        else -> "$n orders are still unpaid: $named. $todo"
+    }
 }

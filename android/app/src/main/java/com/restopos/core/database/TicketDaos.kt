@@ -105,7 +105,29 @@ interface TicketDao {
            AND l.voided_at IS NULL AND l.deleted_at IS NULL AND l.paid = 0""",
     )
     suspend fun unpaidOrderCount(): Long
+
+    // The same orders, oldest first, each with what is still to pay on it
+    // (its lines and their add-ons, before any discount): what a refusal to
+    // close the day names, so the one to pay or void can be found.
+    @Query(
+        """SELECT t.id, t.order_no, t.name, t.table_id, t.dining_option_id,
+           SUM((l.unit_price * l.qty + 500) / 1000 + (SELECT COALESCE(SUM(m.price), 0) FROM ticket_line_modifiers m WHERE m.line_id = l.id)) AS due
+           FROM tickets t JOIN ticket_lines l ON l.ticket_id = t.id
+           WHERE t.status = 'open' AND t.deleted_at IS NULL
+           AND l.voided_at IS NULL AND l.deleted_at IS NULL AND l.paid = 0
+           GROUP BY t.id ORDER BY t.id""",
+    )
+    suspend fun unpaidOrders(): List<UnpaidOrderRow>
 }
+
+data class UnpaidOrderRow(
+    val id: String,
+    val order_no: String?,
+    val name: String?,
+    val table_id: String?,
+    val dining_option_id: String?,
+    val due: Long,
+)
 
 @Dao
 interface ReceiptDao {

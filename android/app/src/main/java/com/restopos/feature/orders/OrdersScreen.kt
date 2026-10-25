@@ -180,7 +180,11 @@ fun OrdersScreen(vm: OrdersViewModel = hiltViewModel(), onOpen: () -> Unit) {
     val now by produceState(System.currentTimeMillis()) {
         while (true) { delay(30_000); value = System.currentTimeMillis() }
     }
-    val option = picked?.takeIf { id -> ui.options.any { it.id == id } } ?: ui.options.firstOrNull()?.id
+    // the type picked, else the first with an order that has something to pay
+    // on it: opened on Dine-in, a counter sale left unpaid was never seen
+    val option = picked?.takeIf { id -> ui.options.any { it.id == id } }
+        ?: ui.options.firstOrNull { o -> ui.rows.any { it.dining == o.id && it.total > 0 } }?.id
+        ?: ui.options.firstOrNull()?.id
     val q = query.trim()
     val shown = remember(ui, option, q, sort, desc) {
         sorted(

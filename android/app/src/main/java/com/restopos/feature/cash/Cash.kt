@@ -46,9 +46,12 @@ import com.restopos.core.data.PosSettings
 import com.restopos.core.data.StaffMember
 import com.restopos.core.data.StaffRepository
 import com.restopos.core.data.StaffSession
+import com.restopos.core.data.TicketRepository
+import com.restopos.core.data.UnpaidOrder
 import com.restopos.core.database.ShiftEntity
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.print.ShiftDoc
+import com.restopos.core.sync.SessionStore
 import com.restopos.core.ui.Caps
 import com.restopos.core.ui.Field
 import com.restopos.core.ui.Gap
@@ -90,6 +93,8 @@ data class CashUi(
     val busy: Boolean = false,
     val cashNames: Set<String> = emptySet(), // what the cash payment types are called
     val unclosed: Boolean = false, // sales from before, with no day open, that no closing covers
+    val unpaid: List<UnpaidOrder> = emptyList(), // the orders that kept the day from closing, shown until one is opened
+    val shop: Boolean = false, // a shop's are sales, cleared rather than voided
 ) {
     // what the amount starts on: what the drawer should hold, for someone who may see it
     val start: Long? get() = DrawerCount.start(doc?.expected, figures)
@@ -111,6 +116,8 @@ class CashViewModel @Inject constructor(
     private val staff: StaffSession,
     private val db: TillDatabase,
     private val approvals: Approvals,
+    private val tickets: TicketRepository,
+    private val session: SessionStore,
 ) : ViewModel() {
     private val _ui = MutableStateFlow(CashUi())
     val ui: StateFlow<CashUi> = _ui
@@ -182,11 +189,26 @@ class CashViewModel @Inject constructor(
     }
 
     // Before the count is asked to be final: there is an amount, and every
-    // order has been paid.
+    // order has been paid. The orders that have not are shown by name, each
+    // with a key that puts it on the register: a count alone sent the cashier
+    // looking, and the register showed only the sale they were on (Star Grill,
+    // 2026-10-25).
     fun askClose(then: () -> Unit) = viewModelScope.launch {
         if (_ui.value.counted == null) { Toaster.say(NO_AMOUNT); return@launch }
-        val n = cash.unpaidOrders()
-        if (n > 0) Toaster.say(cash.unpaid(n)) else then()
+        val left = cash.unpaidOrders()
+        if (left.isEmpty()) { then(); return@launch }
+        _ui.value = _ui.value.copy(unpaid = left, shop = PosSettings.parse(db.ops().settings()).retail)
+    }
+
+    fun keepUnpaid() { _ui.value = _ui.value.copy(unpaid = emptyList()) }
+
+    // One of them onto the register, as Orders puts one there: a discount
+    // picked for the order that was there does not follow to this one.
+    fun openOrder(id: String, then: () -> Unit) = viewModelScope.launch {
+        _ui.value = _ui.value.copy(unpaid = emptyList())
+        if (id != session.activeTicket()) session.setPendingDiscount(null)
+        tickets.select(id)
+        then()
     }
 
     // Closes the day from the count: the drawer and the Z report in one step.
@@ -224,7 +246,7 @@ class CashViewModel @Inject constructor(
 }
 
 @Composable
-fun CashScreen(vm: CashViewModel, onOpenPeriod: () -> Unit, onClosed: () -> Unit) {
+fun CashScreen(vm: CashViewModel, onOpenPeriod: () -> Unit, onClosed: () -> Unit, onOrder: () -> Unit) {
     val ui by vm.ui.collectAsState()
     var moving by remember { mutableStateOf<String?>(null) }
     var closing by remember { mutableStateOf(false) }
@@ -338,6 +360,26 @@ fun CashScreen(vm: CashViewModel, onOpenPeriod: () -> Unit, onClosed: () -> Unit
             SheetHead("Close the day?", "Counted ${Money.format(ui.counted ?: 0)}. The count is final once the day is closed: its figures are fixed, the Z report prints, and the till goes back to the start screen.") { closing = false }
             VBtn("Close the day & print Z report", Modifier.fillMaxWidth(), V.Blue, Color.White, 64.dp, size = 16.sp, weight = 800) { closing = false; vm.close() }
             VBtn("Not yet", Modifier.fillMaxWidth(), height = 56.dp) { closing = false }
+        }
+    }
+    if (ui.unpaid.isNotEmpty()) {
+        val n = ui.unpaid.size
+        val what = if (ui.shop) "sale" else "order"
+        Sheet(onDismiss = { vm.keepUnpaid() }, width = 600.dp) {
+            SheetHead(
+                if (n > 1) "$n ${what}s are not paid" else if (ui.shop) "A sale is not paid" else "An order is not paid",
+                "The day closes once every $what is paid. Open " + (if (n == 1) "it" else "one") + " to take payment, or to " + (if (ui.shop) "clear" else "void") + " it if it will not be paid.",
+            ) { vm.keepUnpaid() }
+            ui.unpaid.forEach { o ->
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(V.Key2).padding(start = 18.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    T(o.label, 16.sp, 700, modifier = Modifier.weight(1f), lines = 2)
+                    T(Money.format(o.due), 16.sp, 700)
+                    VBtn("Open", bg = V.Blue, fg = Color.White, height = 48.dp, pad = 22.dp) { vm.openOrder(o.id, onOrder) }
+                }
+            }
         }
     }
 }

@@ -776,7 +776,7 @@ fun MainShell(
                     // the till's own reports, for a period: a receipt tapped in one opens where receipts are
                     Screen.Reports -> { val vm: com.restopos.feature.reports.ReportsViewModel = hiltViewModel(); com.restopos.feature.reports.ReportsScreen(vm, onReceipt = { id -> receipts.showId(id); shell.go(Screen.Receipts) }) }
                     Screen.Menu -> { val vm: MenuViewModel = hiltViewModel(); MenuStockScreen(vm) }
-                    Screen.Cash -> { val vm: CashViewModel = hiltViewModel(); CashScreen(vm, onOpenPeriod = onOpenPeriod, onClosed = onLock) }
+                    Screen.Cash -> { val vm: CashViewModel = hiltViewModel(); CashScreen(vm, onOpenPeriod = onOpenPeriod, onClosed = onLock, onOrder = { shell.go(if (retail) Screen.Sell else Screen.Order) }) }
                     Screen.Receipts -> Box(Modifier.padding(top = 12.dp)) { ReceiptsScreen(receipts, onExchange = { shell.go(Screen.Sell) }) }
                     Screen.Customers -> Box(Modifier.padding(top = 12.dp)) { CustomersScreen() }
                     Screen.Settings -> Box {
