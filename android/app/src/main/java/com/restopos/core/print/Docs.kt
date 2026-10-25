@@ -597,7 +597,15 @@ object Docs {
 
     // The day closing. With `detailed` off it shows the totals and the cash in
     // and out only, with no breakdown by category or tax.
-    fun z(d: ZDoc, shop: Shop, paper: Paper, decimals: Int, detailed: Boolean): ByteArray {
+    fun z(d: ZDoc, shop: Shop, paper: Paper, decimals: Int, detailed: Boolean): ByteArray = zPage(d, shop, paper, decimals, detailed).bytes()
+
+    // The same paper as lines of text, and as its parts: what the Z report's
+    // email carries, for its text and to be laid out again as a report and a PDF
+    // (core/data/ZMail, cloudflare/mail).
+    fun zLook(d: ZDoc, shop: Shop, paper: Paper, decimals: Int, detailed: Boolean): List<String> = zPage(d, shop, paper, decimals, detailed).look()
+    fun zParts(d: ZDoc, shop: Shop, paper: Paper, decimals: Int, detailed: Boolean): List<PagePart> = zPage(d, shop, paper, decimals, detailed).parts()
+
+    private fun zPage(d: ZDoc, shop: Shop, paper: Paper, decimals: Int, detailed: Boolean): EscPos {
         val p = page(paper)
         val n = { c: Long -> num(c, decimals) }
         p.head(shop, null)
@@ -671,7 +679,7 @@ object Docs {
             }
         }
         p.end(paper)
-        return p.bytes()
+        return p
     }
 
     // A period's deposits, under the payment methods: money in by method, and

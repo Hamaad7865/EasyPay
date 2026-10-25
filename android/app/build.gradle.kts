@@ -40,6 +40,10 @@ android {
         // the address on the table cards, order.easypaypos.com; a debug build can
         // be given the relay running on this PC: relayUrl=http://10.0.2.2:8787
         buildConfigField("String", "RELAY_URL", "\"${endpoint("relayUrl")}\"")
+        // Where the till mails its Z report (cloudflare/mail). Left out, it is
+        // mail.easypaypos.com; a debug build can be given the service running
+        // on this PC: mailUrl=http://10.0.2.2:8789
+        buildConfigField("String", "MAIL_URL", "\"${endpoint("mailUrl")}\"")
     }
     // The build that goes on a restaurant's tablets. It is signed with
     // RestoPOS's own key, which is never in the repository: these lines in

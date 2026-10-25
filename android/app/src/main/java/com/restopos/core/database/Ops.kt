@@ -182,6 +182,11 @@ interface OpsDao {
     @Query("SELECT * FROM day_closes WHERE device_id = :device AND deleted_at IS NULL ORDER BY closed_at DESC LIMIT :limit")
     suspend fun dayCloses(device: String, limit: Int = 10): List<DayCloseEntity>
 
+    // The days closed on a till after a moment, oldest first: the closings its
+    // Z report's email has still to send (core/data/ZMail).
+    @Query("SELECT * FROM day_closes WHERE device_id = :device AND deleted_at IS NULL AND closed_at > :after ORDER BY closed_at LIMIT :limit")
+    suspend fun dayClosesAfter(device: String, after: Long, limit: Int): List<DayCloseEntity>
+
     // The days closed on a till within a period, newest first: the Shift Record report.
     @Query("SELECT * FROM day_closes WHERE device_id = :device AND deleted_at IS NULL AND closed_at > :from AND closed_at <= :to ORDER BY closed_at DESC")
     suspend fun dayClosesBetween(device: String, from: Long, to: Long): List<DayCloseEntity>

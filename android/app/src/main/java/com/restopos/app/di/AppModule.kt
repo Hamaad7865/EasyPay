@@ -27,6 +27,11 @@ object AppModule {
     fun apiClient(auth: AuthClient): ApiClient =
         ApiClient(BuildConfig.FUNCTION_URL, auth, BuildConfig.VERSION_CODE)
 
+    // where the Z report is mailed (cloudflare/mail); a debug build may be given another (mailUrl)
+    @Provides @Singleton
+    fun mailClient(): com.restopos.core.network.MailClient =
+        com.restopos.core.network.MailClient(BuildConfig.MAIL_URL.ifBlank { com.restopos.core.network.MailClient.LIVE })
+
     @Provides @Singleton
     fun database(@ApplicationContext ctx: Context): TillDatabase =
         Room.databaseBuilder(ctx, TillDatabase::class.java, "till.db")

@@ -21,6 +21,7 @@ import com.restopos.core.print.Printing
 import com.restopos.core.print.ShiftDoc
 import com.restopos.core.print.ZDoc
 import com.restopos.core.sync.SessionStore
+import com.restopos.core.sync.ZMailWork
 import com.restopos.core.sync.pushNow
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
@@ -450,6 +451,7 @@ class CashOps @Inject constructor(
         clockedOut = leaving.mapNotNull { name(it) }
         session.dayClosed()
         pushNow(context)
+        ZMailWork.soon(context)
         z to printZ(z).exceptionOrNull()?.message
     }
 
@@ -473,6 +475,7 @@ class CashOps @Inject constructor(
         }
         session.dayClosed()
         pushNow(context)
+        ZMailWork.soon(context)
         z to printZ(z).exceptionOrNull()?.message
     }
 
@@ -545,6 +548,7 @@ class CashOps @Inject constructor(
         }
         session.dayClosed()
         pushNow(context)
+        ZMailWork.soon(context)
         printing.scope.launch { printZ(z).onFailure { printing.report(it.message ?: "The closing report did not print") } }
         return z
     }
@@ -609,6 +613,7 @@ class CashOps @Inject constructor(
         staff.current.value?.let { who -> if (who.employee.id in leaving) staff.signIn(who.copy(clockedInAt = null), lookOnly = true) }
         session.dayClosed()
         pushNow(context)
+        ZMailWork.soon(context)
         printing.scope.launch { runCatching { printZ(z) } }
         return z
     }
@@ -629,6 +634,7 @@ class CashOps @Inject constructor(
         }
         session.dayClosed()
         pushNow(context)
+        ZMailWork.soon(context)
         printing.scope.launch { runCatching { printZ(z) } }
         return z
     }

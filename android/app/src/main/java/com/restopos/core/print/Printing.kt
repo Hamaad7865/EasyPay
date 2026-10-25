@@ -92,6 +92,9 @@ class Printing @Inject constructor(
     init { scope.launch { com.restopos.core.data.settingUpFlow(db, session).collect { trial = it } } }
 
     fun paper(p: PrinterEntity) = Paper.of(p.paper_mm, p.feed_lines, p.cut, trial)
+    // A paper that is mailed, not printed (core/data/ZMail): an 80 mm roll's
+    // width, whatever this till's printer holds, and TEST while it is setting up.
+    fun mailPaper() = Paper(columns = 48, feed = 0, cut = false, trial = trial)
 
     suspend fun shop(): Shop = settings().shop(session.businessName() ?: "")
 

@@ -258,10 +258,14 @@ object SyncScheduler {
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.KEEP, req)
         // and the till's MRA work, which does nothing on a till that is not on the MRA
         com.restopos.core.mra.MraWork.start(context)
+        // and the Z report's email, which asks nothing while its setting is off; once now, for what waited over a restart
+        ZMailWork.start(context)
+        ZMailWork.soon(context)
     }
 
     fun stop(context: Context) {
         com.restopos.core.mra.MraWork.stop(context)
+        ZMailWork.stop(context)
         WorkManager.getInstance(context).cancelUniqueWork(NOW)
         WorkManager.getInstance(context).cancelUniqueWork(PERIODIC)
         WorkManager.getInstance(context).cancelUniqueWork(PUSH_WORK)
@@ -315,6 +319,8 @@ private val SETUP_CLOSED = booleanPreferencesKey("setup_closed")
 private val REGISTERED_AT = longPreferencesKey("registered_at")
 // set up before the business sold for real: what is rung up is for trying (core/data/GoLive)
 private val SETTING_UP = booleanPreferencesKey("setting_up")
+// the Z report by email, this till's own setting (core/data/ZMailRules), as one JSON value
+private val Z_MAIL = stringPreferencesKey("z_mail")
 private val Context.sessionPrefs by preferencesDataStore("device")
 
 // Which tenant, store and device this tablet is. Set once at device setup and
@@ -565,6 +571,19 @@ class SessionStore(private val context: Context) {
             it[PERIOD_SEQ] = 0
             it.remove(SEQ_CUSTOMER)
         }
+    }
+
+    // ---- the Z report by email (core/data/ZMail) ----
+    // This till's own: it goes into a backup and goes at sign-out (clear), so
+    // another business signed in on the tablet never mails the last one's owner.
+    // Every change is one edit of the whole setting, so what the mail service
+    // answered and what the owner saved never half-overwrite each other.
+    val zMail: Flow<com.restopos.core.data.ZMailSetting> = store.data.map { com.restopos.core.data.ZMailRules.read(it[Z_MAIL]) }.distinctUntilChanged()
+    suspend fun zMail(): com.restopos.core.data.ZMailSetting = zMail.first()
+    suspend fun editZMail(change: (com.restopos.core.data.ZMailSetting) -> com.restopos.core.data.ZMailSetting): com.restopos.core.data.ZMailSetting {
+        var out = com.restopos.core.data.ZMailSetting()
+        store.edit { out = change(com.restopos.core.data.ZMailRules.read(it[Z_MAIL])); it[Z_MAIL] = com.restopos.core.data.ZMailRules.write(out) }
+        return out
     }
 
     // What the till rang for before it was due (DueReminders), kept so a

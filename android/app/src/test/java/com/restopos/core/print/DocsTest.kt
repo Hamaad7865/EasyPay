@@ -458,4 +458,28 @@ class DocsTest {
         assertEquals("CafeTino", s.shop("Fallback").name)
         assertEquals("Fallback", PosSettings.parse("{}").shop("Fallback").name)
     }
+
+    // The Z report's email carries the paper as lines of text (core/data/ZMail):
+    // the same report, every line within the paper's width, nothing after its
+    // last line, and TEST at its head and foot while the tablet is setting up.
+    @Test
+    fun theDayClosingAsTextIsThePaperItPrints() {
+        val z = ZDoc(
+            8, "T1", 1_790_000_000_000, 1_790_000_300_000, "Priya", 6, 250000, 0, 0, 0, 32609,
+            listOf(DocAmount("Cash", 250000, 6)), emptyList(), emptyList(), 20000, 7000, emptyList(), "S1-T1-000113", "S1-T1-000118",
+        )
+        val mail = Paper(48, 0, false)
+        val look = Docs.zLook(z, shop, mail, 2, detailed = true)
+        val printed = read(Docs.z(z, shop, mail, 2, detailed = true)).lines.filter { it.isNotBlank() }
+        // the printer centres what the text has spaces in front of: the words are the same, line for line
+        assertEquals(printed.map { it.trim() }, look.map { it.trim() }.filter { it.isNotBlank() })
+        assertTrue(look.any { it.trim() == "DAY CLOSING (Z) No. 8" })
+        assertTrue(look.any { it.startsWith("TOTAL") && it.endsWith("Rs 2,500.00") })
+        assertTrue(look.all { it.length <= 48 })
+        assertTrue(look.last().isNotBlank())
+        assertFalse(look.any { it.contains(Docs.TRIAL_MARK) })
+        val trial = Docs.zLook(z, shop, mail.copy(trial = true), 2, detailed = true)
+        assertEquals(Docs.TRIAL_MARK, trial.first().trim())
+        assertEquals(Docs.TRIAL_MARK, trial.last().trim())
+    }
 }

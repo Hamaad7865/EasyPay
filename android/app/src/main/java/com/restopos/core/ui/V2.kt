@@ -468,7 +468,7 @@ fun ScreenHead(sub: String, title: String, modifier: Modifier = Modifier) {
 @Composable
 fun Field(
     value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier, height: Dp = 46.dp, bg: Color = V.Well,
-    number: Boolean = false, phone: Boolean = false, size: TextUnit = 15.sp, leading: (@Composable () -> Unit)? = null, onDone: (() -> Unit)? = null,
+    number: Boolean = false, phone: Boolean = false, size: TextUnit = 15.sp, email: Boolean = false, leading: (@Composable () -> Unit)? = null, onDone: (() -> Unit)? = null,
 ) {
     val focus = LocalFocusManager.current
     Row(
@@ -483,7 +483,7 @@ fun Field(
                 textStyle = TextStyle(color = V.Text, fontSize = size, fontWeight = FontWeight.Medium),
                 cursorBrush = SolidColor(V.Blue),
                 keyboardOptions = KeyboardOptions(
-                    keyboardType = if (number) KeyboardType.Number else if (phone) KeyboardType.Phone else KeyboardType.Text, imeAction = ImeAction.Done,
+                    keyboardType = if (number) KeyboardType.Number else if (phone) KeyboardType.Phone else if (email) KeyboardType.Email else KeyboardType.Text, imeAction = ImeAction.Done,
                 ),
                 keyboardActions = KeyboardActions(onDone = { focus.clearFocus(); onDone?.invoke() }),
             )

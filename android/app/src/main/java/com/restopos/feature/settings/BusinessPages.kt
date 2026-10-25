@@ -638,7 +638,7 @@ internal fun AutoClosePanel(vm: BusinessViewModel = hiltViewModel()) {
 // One setting with its choices as keys, the one picked lit.
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun Choice(label: String, options: List<Pair<String, String>>, picked: String, onPick: (String) -> Unit) {
+internal fun Choice(label: String, options: List<Pair<String, String>>, picked: String, onPick: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         T(label, 15.sp, 700)
         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

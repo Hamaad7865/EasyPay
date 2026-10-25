@@ -9,6 +9,13 @@ import java.nio.charset.Charset
 @kotlinx.serialization.Serializable
 data class Styled(val t: String, val size: String = "normal", val bold: Boolean = false, val align: String = "left", val bars: String? = null)
 
+// One part of a page as it was laid out, not as it wrapped: a row with its two
+// sides, a line of text (centred or not), a rule. What lays the page out again
+// somewhere wider than a roll reads it: the Z report's email and its PDF
+// (cloudflare/mail). `size` and `bold` are the printer's at the time.
+@kotlinx.serialization.Serializable
+data class PagePart(val kind: String, val left: String = "", val right: String = "", val bold: Boolean = false, val size: String = "normal")
+
 // The bytes a thermal printer understands (ESC/POS, the language of Epson
 // and of nearly every 58 mm and 80 mm receipt printer). Nothing here knows
 // about Android or about receipts: it lays text out in a fixed number of
@@ -60,6 +67,14 @@ class EscPos(val columns: Int, inWide: Boolean = false) {
     fun look(): List<String> = seen.dropLastWhile { it.isBlank() }
     fun styled(): List<Styled> = marked.dropLastWhile { it.t.isBlank() && it.bars == null }
 
+    // The page as its parts. A row, a centred text or a rule prints lines of its
+    // own; while it does (within), those lines are not parts of their own.
+    private val parts = ArrayList<PagePart>()
+    private var within = 0
+    private fun part(p: PagePart) { if (within == 0) parts.add(p) }
+    private inline fun inside(block: () -> Unit) { within++; try { block() } finally { within-- } }
+    fun parts(): List<PagePart> = parts.dropLastWhile { it.kind == "text" && it.left.isBlank() }
+
     fun align(a: Align) = raw(0x1B, 0x61, a.ordinal).also { centred = a == Align.Center; aligned = a }
     fun bold(on: Boolean) = raw(0x1B, 0x45, if (on) 1 else 0).also { bolded = on }
     // wide and tall: twice the size, half the columns
@@ -67,17 +82,18 @@ class EscPos(val columns: Int, inWide: Boolean = false) {
     fun tall(on: Boolean) = raw(0x1D, 0x21, if (on) 0x01 else 0x00).also { sized = if (on) "tall" else "normal" }
 
     fun text(s: String) = apply { out.write(encode(s)); cur.append(s) }
-    fun line(s: String = "") = text(s).newline()
+    fun line(s: String = "") = apply { part(PagePart(if (aligned == Align.Center) "center" else "text", s.trim(), bold = bolded, size = sized)); text(s).newline() }
 
     // A long line is wrapped at spaces, never cut in the middle of a word
     // unless the word alone is wider than the paper.
     fun wrapped(s: String, width: Int = columns, indent: String = "") = apply {
-        wrap(s, width - indent.length).forEach { line(indent + it) }
+        part(PagePart("text", s.trim(), bold = bolded, size = sized))
+        inside { wrap(s, width - indent.length).forEach { line(indent + it) } }
     }
 
-    fun center(s: String) = align(Align.Center).apply { wrap(s, columns).forEach { line(it) } }.align(Align.Left)
+    fun center(s: String) = align(Align.Center).apply { part(PagePart("center", s.trim(), bold = bolded, size = sized)); inside { wrap(s, columns).forEach { line(it) } } }.align(Align.Left)
 
-    fun rule(ch: Char = '-') = line(ch.toString().repeat(columns))
+    fun rule(ch: Char = '-') = apply { part(PagePart("rule")); inside { line(ch.toString().repeat(columns)) } }
 
     // "2 Dholl puri            100.00": the left text wraps, the right text
     // sits at the end of its first line. The left text's own leading spaces
@@ -86,17 +102,20 @@ class EscPos(val columns: Int, inWide: Boolean = false) {
     // the left text, at the right, wrapped: padding to less than nothing threw,
     // and the receipt and its drawer kick never went out.
     fun row(left: String, right: String, width: Int = columns, indent: String = "") = apply {
-        if (width - right.length - 1 - indent.length < 4) {
-            wrap(left, width - indent.length).forEach { line(indent + it) }
-            wrap(right, width).forEach { line(it.padStart(width)) }
-            return@apply
+        part(PagePart("row", left.trim(), right.trim(), bolded, sized))
+        inside {
+            if (width - right.length - 1 - indent.length < 4) {
+                wrap(left, width - indent.length).forEach { line(indent + it) }
+                wrap(right, width).forEach { line(it.padStart(width)) }
+                return@inside
+            }
+            val room = width - right.length - 1 - indent.length
+            val pieces = wrap(left, room)
+            pieces.forEachIndexed { i, p ->
+                if (i == 0) line((indent + p).padEnd(width - right.length) + right) else line(indent + p)
+            }
+            if (pieces.isEmpty()) line(right.padStart(width))
         }
-        val room = width - right.length - 1 - indent.length
-        val parts = wrap(left, room)
-        parts.forEachIndexed { i, p ->
-            if (i == 0) line((indent + p).padEnd(width - right.length) + right) else line(indent + p)
-        }
-        if (parts.isEmpty()) line(right.padStart(width))
     }
 
     fun feed(lines: Int) = apply { repeat(lines.coerceIn(0, 20)) { newline() } }
