@@ -111,6 +111,11 @@ class ZMailRulesTest {
         assertEquals(ZMailRules.REFUSED, ZMailRules.asked(s, Answer(422, error = "this address bounced"), now).state)
         assertEquals(ZMailRules.REFUSED, ZMailRules.asked(s, Answer(400, error = "that is not an email address"), now).state)
         assertEquals(ZMailRules.ASK, ZMailRules.asked(s, Answer(503), now).state)
+        // Cloudflare would not send it now: still to ask, and the service's words are on the page
+        val notNow = ZMailRules.asked(s, Answer(503, "none", "EasyPay's mail could not be sent just now"), now)
+        assertEquals(ZMailRules.ASK, notNow.state)
+        assertEquals("EasyPay's mail could not be sent just now", notNow.said)
+        assertEquals("EasyPay's mail could not be sent just now", ZMailRules.mailed(s.copy(state = ZMailRules.YES), now + 1, 1, now, Answer(503, "yes", "EasyPay's mail could not be sent just now")).said)
     }
 
     @Test

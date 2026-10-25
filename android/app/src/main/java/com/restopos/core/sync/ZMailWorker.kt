@@ -40,12 +40,15 @@ object ZMailWork {
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.KEEP, req)
     }
 
-    // Once the line is up. One that comes while another runs goes after it, so
-    // a closing made during a run is not left for the next six hours.
+    // Once the line is up, in place of one waiting to be tried again: a run
+    // waiting out its backoff (an address not confirmed yet, hours at the end)
+    // must not hold back a save or a closing behind it. A run cut off this way
+    // loses nothing: the closings are still after the mark, and the service
+    // takes a closing's id once (one cut off mid-send goes again after two minutes).
     fun soon(context: Context) {
         val req = OneTimeWorkRequestBuilder<ZMailWorker>().setConstraints(online)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES).build()
-        WorkManager.getInstance(context).enqueueUniqueWork(SOON, ExistingWorkPolicy.APPEND_OR_REPLACE, req)
+        WorkManager.getInstance(context).enqueueUniqueWork(SOON, ExistingWorkPolicy.REPLACE, req)
     }
 
     fun stop(context: Context) {

@@ -110,7 +110,8 @@ object ZMailRules {
         a.status == 200 -> s.copy(state = WAITING, said = null, asked = now)
         a.status == 429 -> s.copy(said = a.error) // still to be asked, tomorrow
         a.status in 400..499 -> s.copy(state = REFUSED, said = a.error)
-        else -> s
+        // the service could not send it now (Cloudflare's limits, or its own fault): tried again, and why is said
+        else -> s.copy(said = a.error ?: s.said)
     }
 
     // after asking whether the address has confirmed
@@ -132,7 +133,8 @@ object ZMailRules {
         a.status == 409 -> s
         // the service could not read this closing, and never will: it is passed over
         a.status in 400..499 -> s.copy(after = maxOf(s.after, closedAt), said = a.error)
-        else -> s
+        // the service could not send it now: tried again, and why is said
+        else -> s.copy(said = a.error ?: s.said)
     }
 
     // A paper's parts as the mail service reads them (cloudflare/mail/src/report.js,
