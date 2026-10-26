@@ -61,7 +61,7 @@ export const UNSOLD_SQL = `
    order by s.qty * s.avg_cost desc, s.name, s.variant`;
 
 // Item sales, ranked by what they brought in: by item, or by category.
-// `receipts` is RECEIPTS of ./report.ts and takes its six parameters.
+// `receipts` is RECEIPTS of ./report.ts and takes its seven parameters.
 // Without cost, this is the report as every business has it. With it (a
 // shop, for whoever may see costs), each row also has:
 //   ex_vat  its sales without VAT, after each line's share of the bill's

@@ -5,7 +5,9 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { money, withDefaults } from "@/lib/settings";
 import { basics, fmtQty, RECEIPTS } from "@/lib/report";
+import { pickedOf } from "@/lib/branch";
 import { Card, Empty, PageHead, type Search } from "../../ui";
+import { BranchPicker } from "../../branch-picker";
 import { Delta, Figure, SpanPicker, Standouts, pct, per, period, range } from "../parts";
 
 // What the menu is doing: which items carry the sales, which are selling
@@ -18,7 +20,7 @@ type Sold = { name: string; cat: string; qty: number; amount: number };
 type Idle = { name: string; cat: string | null; is_available: boolean };
 
 // One row per item name, add-ons included in its amount, refunds taken off.
-async function sold(c: PoolClient, tenantId: string, from: string, to: string): Promise<Sold[]> {
+async function sold(c: PoolClient, tenantId: string, from: string, to: string, store: string | null): Promise<Sold[]> {
   return (
     await c.query(
       `with r as (${RECEIPTS}),
@@ -33,7 +35,7 @@ async function sold(c: PoolClient, tenantId: string, from: string, to: string): 
        )
        select name, max(cat) as cat, sum(sign * qty)::float8 as qty, sum(sign * amount)::float8 as amount
          from il group by name order by 4 desc, 1`,
-      range(tenantId, from, to),
+      range(tenantId, from, to, store),
     )
   ).rows as Sold[];
 }
@@ -47,13 +49,16 @@ export default async function MenuPerformance({ searchParams }: { searchParams: 
     // the time zone, the right to see reports and the settings, in one trip
     const b = await basics(c, ctx.tenantId, ctx.employeeId);
     const p = period(sp, b.tz);
-    if (!b.ok) return { p, ok: false as const };
+    const br = (await pickedOf(b.stores))?.id ?? null;
+    if (!b.ok) return { p, ok: false as const, stores: b.stores, br };
     return {
       p,
       ok: true as const,
+      stores: b.stores,
+      br,
       s: withDefaults(b.settings),
-      now: await sold(c, ctx.tenantId, p.from, p.to),
-      before: await sold(c, ctx.tenantId, p.prevFrom, p.prevTo),
+      now: await sold(c, ctx.tenantId, p.from, p.to, br),
+      before: await sold(c, ctx.tenantId, p.prevFrom, p.prevTo, br),
       // on the menu today, and on no receipt in these days
       idle: (
         await c.query(
@@ -66,14 +71,16 @@ export default async function MenuPerformance({ searchParams }: { searchParams: 
              from items i left join categories k on k.tenant_id = i.tenant_id and k.id = i.category_id
             where i.tenant_id = $1 and i.deleted_at is null and i.id not in (select item_id from went)
             order by k.name nulls last, i.name`,
-          range(ctx.tenantId, p.from, p.to),
+          range(ctx.tenantId, p.from, p.to, br),
         )
       ).rows as Idle[],
     };
   });
 
   const head = (
-    <PageHead title="Menu performance" lede="Which items carry your sales, which are selling more or less than before, and which did not sell at all." />
+    <PageHead title="Menu performance" lede="Which items carry your sales, which are selling more or less than before, and which did not sell at all.">
+      <BranchPicker all={d.stores} picked={d.br} />
+    </PageHead>
   );
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;
   const { p } = d;

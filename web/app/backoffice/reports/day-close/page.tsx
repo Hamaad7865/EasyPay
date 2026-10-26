@@ -7,8 +7,10 @@ import { readTenant } from "@/lib/db";
 import { money } from "@/lib/settings";
 import { clock, filters, fmtQty, reportStart } from "@/lib/report";
 import { lineOffSql } from "@/lib/stock-reports";
+import { pickedOf } from "@/lib/branch";
 import { Empty, PageHead, type Search } from "../../ui";
 import { ReportFilters } from "../parts";
+import { BranchPicker } from "../../branch-picker";
 
 // A day on a till: opened by counting the cash in its drawer, closed by
 // counting it again, which fixes the day's figures (the Z report). This page
@@ -26,7 +28,7 @@ type Drawer = {
   float: string; expected: string | null; counted: string | null; counts: Count[];
 };
 type Close = {
-  id: string; number: number; from_time: string | null; closed_at: string; closed_by: string | null; till: string | null;
+  id: string; number: number; from_time: string | null; closed_at: string; closed_by: string | null; till: string | null; branch: string;
   auto: boolean; carried: number;
   totals: { sales: number; refunds: number; gross: number; refunded: number; discounts: number; changed: number; tax: number };
   payments: { name: string | null; amount: number; n: number }[];
@@ -42,7 +44,7 @@ type Close = {
 // a day not closed yet: open now, or (from before) counted and left open
 type Open = {
   id: string; opened_at: string; closed_at: string | null; opening_float: string; expected_cash: string | null; counted_cash: string | null;
-  opened_by: string | null; closed_by: string | null; till: string | null;
+  opened_by: string | null; closed_by: string | null; till: string | null; branch: string;
   payments: { name: string | null; kind: string | null; amount: number; n: number }[];
   notes: { issued: number; redeemed: number };
   deposits: DepositFigures;
@@ -84,7 +86,7 @@ const given = (shop: boolean) => `
                    'discounts', coalesce(sum(${SIGN} * (r.discount_total + ${lineOffSql(shop, "r", "discount", "r.tenant_id")})), 0),
                    'changed', coalesce(sum(${SIGN} * ${lineOffSql(shop, "r", "override", "r.tenant_id")}), 0)`;
 const closedSql = (shop: boolean) => `
-  select dc.id, dc.number, dc.from_time, dc.closed_at, e.name as closed_by, d.name as till,
+  select dc.id, dc.number, dc.from_time, dc.closed_at, e.name as closed_by, d.name as till, s.name as branch,
          -- closed by the till itself (0133), and the unpaid orders it carried into the next day
          dc.totals->>'auto' = 'true' as auto, coalesce((dc.totals->>'carried')::int, 0) as carried,
          (select json_build_object('sales', count(*) filter (where r.type = 'sale'), 'refunds', count(*) filter (where r.type = 'refund'),
@@ -137,6 +139,7 @@ ${given(shop)},
     left join pos_devices d on d.tenant_id = dc.tenant_id and d.id = dc.device_id
    where dc.tenant_id = $1 and dc.deleted_at is null
      and (dc.closed_at at time zone s.timezone)::date between $2::date and $3::date
+     and ($4::uuid is null or dc.store_id = $4::uuid)
    order by dc.closed_at desc`;
 
 // The days no closing covers: open now (shown whenever the dates reach
@@ -145,7 +148,7 @@ const WINDOW = `r.tenant_id = sh.tenant_id and r.device_id = sh.device_id and r.
   and coalesce(r.device_time, r.created_at) >= sh.opened_at and coalesce(r.device_time, r.created_at) <= coalesce(sh.closed_at, now())`;
 const openSql = (shop: boolean) => `
   select sh.id, sh.opened_at, sh.closed_at, sh.opening_float, sh.expected_cash, sh.counted_cash,
-         o.name as opened_by, cl.name as closed_by, d.name as till,
+         o.name as opened_by, cl.name as closed_by, d.name as till, s.name as branch,
          (select coalesce(json_agg(json_build_object('name', q.name, 'kind', q.kind, 'amount', q.amount, 'n', q.n) order by q.amount desc), '[]'::json)
             from (select pt.name, pt.kind, sum(case when r.type = 'refund' then -p.amount else p.amount end) as amount, count(*) as n
                     from receipts r join receipt_payments_effective p on p.tenant_id = r.tenant_id and p.receipt_id = r.id
@@ -179,6 +182,7 @@ ${given(shop)})
      and not exists (select 1 from day_closes dc where ${INSIDE})
      and case when sh.closed_at is null then $3::date >= (now() at time zone s.timezone)::date
               else (sh.opened_at at time zone s.timezone)::date between $2::date and $3::date end
+     and ($4::uuid is null or sh.store_id = $4::uuid)
    order by sh.closed_at is not null, sh.opened_at desc`;
 
 export default async function DayCloseReport({ searchParams }: { searchParams: Search }) {
@@ -186,22 +190,27 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
   const ctx = await tenantContext();
   const d = await readTenant(ctx.tenantId, async (c) => {
     const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
-    const f = filters(sp, l.tz);
+    const f = filters(sp, l.tz, (await pickedOf(l.stores))?.id ?? null);
     if (!ok) return { l, f, ok: false as const };
     // the two lists are asked for together: one trip
-    const [closed, open] = await Promise.all([c.query(closedSql(ctx.mode === "retail"), [ctx.tenantId, f.from, f.to]), c.query(openSql(ctx.mode === "retail"), [ctx.tenantId, f.from, f.to])]);
+    const at = [ctx.tenantId, f.from, f.to, f.store];
+    const [closed, open] = await Promise.all([c.query(closedSql(ctx.mode === "retail"), at), c.query(openSql(ctx.mode === "retail"), at)]);
     return { l, f, ok: true as const, s, rows: closed.rows as Close[], open: open.rows as Open[] };
   });
   const head = (
     <PageHead
       title="Day closing"
       lede="Each day on each till: opened by counting the cash in the drawer, closed by counting it again, which fixes the day's figures (the Z report). What was sold, how it was paid, the cash put in and taken out, and how the drawer counted. A day is opened and closed on the till."
-    />
+    >
+      <BranchPicker all={d.l.stores} picked={d.f.store} />
+    </PageHead>
   );
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;
   const m = (v: string | number | null) => money(Number(v ?? 0), d.s.decimals);
   const at = clock(d.l.tz);
   const detailed = d.s.dayCloseDetailed;
+  // All branches, of an account with several: each day says which branch it was at
+  const where = d.f.store === null && d.l.stores.length > 1;
   const signed = (n: number) => (n > 0 ? "+" : n < 0 ? "-" : "") + m(Math.abs(n));
   const balance = (diff: number | null) =>
     diff === null ? null : diff === 0 ? <span className="badge green">Drawer balanced</span> : <span className={"badge " + (diff < 0 ? "red" : "amber")}>{diff < 0 ? "Short " : "Over "}{m(Math.abs(diff))}</span>;
@@ -237,7 +246,7 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
           <section key={sh.id} className="card flush">
             <div className="card-head">
               <div>
-                <h2>{sh.closed_at ? "Day not closed" : "Day open now"} <span className="muted" style={{ fontWeight: 400 }}>· {sh.till ?? "Till"}</span></h2>
+                <h2>{sh.closed_at ? "Day not closed" : "Day open now"} <span className="muted" style={{ fontWeight: 400 }}>· {sh.till ?? "Till"}{where ? ` · ${sh.branch}` : ""}</span></h2>
                 <p>
                   Opened {at(sh.opened_at)}{sh.opened_by ? ` by ${sh.opened_by}` : ""}
                   {sh.closed_at ? `. Its drawer was counted ${at(sh.closed_at)}${sh.closed_by ? ` by ${sh.closed_by}` : ""}, and the day itself was left open: its sales go into the next closing on that till.` : ""}
@@ -315,7 +324,7 @@ export default async function DayCloseReport({ searchParams }: { searchParams: S
           <section key={z.id} className="card flush">
             <div className="card-head">
               <div>
-                <h2>Closing no. {z.number} <span className="muted" style={{ fontWeight: 400 }}>· {z.till ?? "Till"}</span></h2>
+                <h2>Closing no. {z.number} <span className="muted" style={{ fontWeight: 400 }}>· {z.till ?? "Till"}{where ? ` · ${z.branch}` : ""}</span></h2>
                 <p>
                   {z.drawers.length === 1 ? `Opened ${at(last.opened_at)}${last.opened_by ? ` by ${last.opened_by}` : ""}` : z.from_time ? `From ${at(z.from_time)}` : "From the first sale"}
                   {`, closed ${at(z.closed_at)}`}{z.auto ? ", automatically" : z.closed_by ? ` by ${z.closed_by}` : ""}

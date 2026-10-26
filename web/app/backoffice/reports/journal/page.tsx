@@ -7,7 +7,9 @@ import { money } from "@/lib/settings";
 import { fmtDay, reportStart, today } from "@/lib/report";
 import { journalData } from "@/lib/journal-db";
 import { buildJournal, COMPARISONS, type Compare, compareRange, type Filters, pctChange, presets, type Ref } from "@/lib/journal";
+import { pickedOf } from "@/lib/branch";
 import { Card, one, PageHead, type Search } from "../../ui";
+import { BranchPicker } from "../../branch-picker";
 import { Stat } from "../parts";
 import { PrintButton } from "../print-button";
 import { Submit } from "../../busy";
@@ -29,6 +31,7 @@ export default async function SalesJournal({ searchParams }: { searchParams: Sea
   const shop = ctx.mode === "retail";
   const d = await readTenant(ctx.tenantId, async (c) => {
     const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
+    const br = (await pickedOf(l.stores))?.id ?? null;
     const t = (await c.query(`select name, plan from tenants where id = $1`, [ctx.tenantId])).rows[0] as { name: string; plan: string | null };
     const now = today(l.tz);
     let from = isDay(one(sp.from)) ? one(sp.from) : now;
@@ -39,15 +42,19 @@ export default async function SalesJournal({ searchParams }: { searchParams: Sea
       device: one(sp.dev) || undefined, user: one(sp.usr) || undefined, item: one(sp.item) || undefined,
       from: minutes(one(sp.t0)), to: minutes(one(sp.t1)),
     };
-    if (!ok || !hasPremium(t.plan)) return { ok, offline: !hasPremium(t.plan), s, now, from, to, cmp, filters, t, l };
-    const data = await journalData(c, ctx.tenantId, from, to, shop);
+    if (!ok || !hasPremium(t.plan)) return { ok, offline: !hasPremium(t.plan), s, now, from, to, cmp, filters, t, l, br };
+    const data = await journalData(c, ctx.tenantId, from, to, shop, br);
     const label = shop ? `Sales [${t.name}]` : undefined;
     const j = buildJournal({ ...data, filters, shopLabel: label });
     const range = compareRange(cmp, { from, to });
-    const prior = range ? buildJournal({ ...(await journalData(c, ctx.tenantId, range.from, range.to, shop)), filters, shopLabel: label }) : null;
-    return { ok, offline: false, s, now, from, to, cmp, filters, t, l, j, prior, range, data };
+    const prior = range ? buildJournal({ ...(await journalData(c, ctx.tenantId, range.from, range.to, shop, br)), filters, shopLabel: label }) : null;
+    return { ok, offline: false, s, now, from, to, cmp, filters, t, l, br, j, prior, range, data };
   });
-  const head = <PageHead title="Sales journal" lede="One period's takings, broken down by sale method, tax, payment, category and person, every part adding up to the same money received." />;
+  const head = (
+    <PageHead title="Sales journal" lede="One period's takings, broken down by sale method, tax, payment, category and person, every part adding up to the same money received.">
+      <BranchPicker all={d.l.stores} picked={d.br} />
+    </PageHead>
+  );
   if (d.offline) return <div>{head}<div className="note">The sales journal comes with Premium. This business is on the offline plan: its sales are on its tablet.</div></div>;
   if (!d.ok || !("j" in d) || !d.j) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;
   const j = d.j;

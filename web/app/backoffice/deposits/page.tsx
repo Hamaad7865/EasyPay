@@ -19,6 +19,8 @@ const PATH = "/backoffice/deposits";
 
 type Row = {
   id: string;
+  // the branch it was taken at
+  branch: string;
   number: string;
   status: "open" | "collected" | "cancelled";
   collect_by: string;
@@ -81,13 +83,14 @@ export default async function DepositsPage({ searchParams }: { searchParams: Sea
                     -- what the goods not collected yet come to, less what is free on it (the till's DepositRules.toPay)
                     ${toPaySql("x")} as to_pay,
                     x.cancel_outcome, x.cancel_reason, x.auto_cancelled, x.device_time, x.cancelled_at, x.flags,
-                    cu.name as customer, cu.phone, pd.name as till, e.name as taken_by, cn.number as note_no,
+                    cu.name as customer, cu.phone, pd.name as till, e.name as taken_by, cn.number as note_no, st.name as branch,
                     greatest(0, deposit_today(x.tenant_id, x.store_id) - x.collect_by) as overdue
                from deposits x
                left join customers cu on cu.tenant_id = x.tenant_id and cu.id = x.customer_id
                left join pos_devices pd on pd.tenant_id = x.tenant_id and pd.id = x.device_id
                left join employees e on e.tenant_id = x.tenant_id and e.id = x.created_by
                left join credit_notes cn on cn.tenant_id = x.tenant_id and cn.id = x.credit_note_id
+               join stores st on st.tenant_id = x.tenant_id and st.id = x.store_id
               where x.tenant_id = $1 and x.deleted_at is null
                 and ($2 = 'all' or $3 <> '' or ${stillOpen("x")})
                 and ($3 = '' or x.number ilike '%' || $3 || '%' or cu.name ilike '%' || $3 || '%' or cu.phone ilike '%' || $3 || '%')
@@ -154,6 +157,8 @@ export default async function DepositsPage({ searchParams }: { searchParams: Sea
           : null;
   const href = (o: Record<string, string>) => `${PATH}?${new URLSearchParams({ ...(show === "all" ? { show } : {}), ...(q ? { q } : {}), ...o })}`;
   const open = d.rows.filter((r) => r.status === "open");
+  // a customer's deposit is the account's, whichever branch took it: with several, each says which (the spec's section 3)
+  const many = d.l.stores.length > 1;
   return (
     <div>
       <PageHead
@@ -200,6 +205,7 @@ export default async function DepositsPage({ searchParams }: { searchParams: Sea
                 <tr>
                   <th>Number</th>
                   <th>Customer</th>
+                  {many && <th>Branch</th>}
                   <th>Taken</th>
                   <th>Collect by</th>
                   <th className="num">Total</th>
@@ -218,6 +224,7 @@ export default async function DepositsPage({ searchParams }: { searchParams: Sea
                       {r.customer ?? <span className="muted">Not named</span>}
                       {r.phone && <span className="sub">{r.phone}</span>}
                     </td>
+                    {many && <td>{r.branch}</td>}
                     <td>
                       {at(r.device_time)}
                       <span className="sub">{[r.till, r.taken_by].filter(Boolean).join(" · ")}</span>

@@ -10,6 +10,8 @@ export type ReceiptHead = {
   id: string; number: string; type: string; at: string; subtotal: string; discount_total: string; tax_total: string; rounding: string;
   total: string; needs_review: boolean; order_name: string | null; covers: number | null; note: string | null;
   cashier: string | null; waiter: string | null; dining: string | null; table_name: string | null; refund_number: string | null;
+  // the branch it was made at, where a page reads it
+  store_name?: string | null;
 };
 type Line = {
   receipt_id: string; name: string; unit_price: string; qty: number; mods: string | null; mod_total: string; tax: string | null;

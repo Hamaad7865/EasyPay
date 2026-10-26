@@ -2,8 +2,10 @@ import { Clock } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { filters, fmtDay, reportStart } from "@/lib/report";
+import { pickedOf } from "@/lib/branch";
 import { Empty, PageHead, type Search } from "../../ui";
 import { ReportFilters, Stat } from "../parts";
+import { BranchPicker } from "../../branch-picker";
 
 // A spell at work is a clock-in and the clock-out that follows it. The till
 // records each punch as a row of its own and never changes one, so the spells
@@ -14,10 +16,11 @@ import { ReportFilters, Stat } from "../parts";
 //   - a clock-in with nothing after it is someone still at work;
 //   - a spell belongs to the day it started on, in the store's time zone, so
 //     a night that runs past midnight stays in one piece.
-// $1 tenant, $2 from day, $3 to day, $4 employee or null.
+//   - a spell is the branch's where it was clocked in.
+// $1 tenant, $2 from day, $3 to day, $4 employee or null, $5 branch or null.
 const SPELLS = `
   with p as (
-    select tp.employee_id, tp.kind, tp.device_time as at, s.timezone,
+    select tp.employee_id, tp.kind, tp.device_time as at, s.timezone, tp.store_id,
            lead(tp.kind) over w as next_kind, lead(tp.device_time) over w as next_at
       from timeclock_punches tp join stores s on s.tenant_id = tp.tenant_id and s.id = tp.store_id
      where tp.tenant_id = $1 and tp.deleted_at is null
@@ -35,6 +38,7 @@ const SPELLS = `
    where p.kind = 'in'
      and (p.at at time zone p.timezone)::date between $2::date and $3::date
      and ($4::uuid is null or p.employee_id = $4::uuid)
+     and ($5::uuid is null or p.store_id = $5::uuid)
    order by e.name, p.at`;
 
 type Spell = { employee_id: string; name: string | null; day: string; clock_in: string; clock_out: string | null; out_day: string | null; minutes: number | null; working: boolean };
@@ -49,16 +53,20 @@ export default async function TimeCards({ searchParams }: { searchParams: Search
   const d = await readTenant(ctx.tenantId, async (c) => {
     const { l, ok } = await reportStart(c, ctx.tenantId, ctx.employeeId);
     // a week is the usual question; one day would hide most of it
-    const f = filters(sp, l.tz);
+    const f = filters(sp, l.tz, (await pickedOf(l.stores))?.id ?? null);
     if (!sp.from && !sp.to) {
       const start = new Date(f.to + "T00:00:00Z");
       start.setUTCDate(start.getUTCDate() - 6);
       f.from = start.toISOString().slice(0, 10);
     }
     if (!ok) return { l, f, ok: false as const };
-    return { l, f, ok: true as const, spells: (await c.query(SPELLS, [ctx.tenantId, f.from, f.to, f.employee])).rows as Spell[] };
+    return { l, f, ok: true as const, spells: (await c.query(SPELLS, [ctx.tenantId, f.from, f.to, f.employee, f.store])).rows as Spell[] };
   });
-  const head = <PageHead title="Time cards" lede="Who clocked in and out on the tills, and the hours between. A spell counts for the day it started on. A clock-in that was never clocked out shows no hours." />;
+  const head = (
+    <PageHead title="Time cards" lede="Who clocked in and out on the tills, and the hours between. A spell counts for the day it started on. A clock-in that was never clocked out shows no hours.">
+      <BranchPicker all={d.l.stores} picked={d.f.store} />
+    </PageHead>
+  );
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;
 
   const people = new Map<string, { name: string; spells: Spell[] }>();

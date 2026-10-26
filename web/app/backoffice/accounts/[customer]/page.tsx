@@ -17,7 +17,7 @@ import { Stat } from "../../reports/parts";
 
 const LEDGER_LIMIT = 200;
 
-type Move = { bill_id: string; kind: "payment" | "return"; number: string; at: string; method: string | null; amount: string; who: string | null };
+type Move = { bill_id: string; kind: "payment" | "return"; number: string; at: string; method: string | null; amount: string; who: string | null; branch: string | null };
 
 export default async function AccountPage({ params, searchParams }: { params: Promise<{ customer: string }>; searchParams: Search }) {
   const { customer } = await params;
@@ -30,42 +30,48 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
       await c.query(`select name, phone, email, deleted_at is not null as removed from customers where tenant_id = $1 and id = $2`, [ctx.tenantId, customer])
     ).rows[0] as { name: string; phone: string | null; email: string | null; removed: boolean } | undefined;
     const s = await loadSettings(c, ctx.tenantId);
-    const tz = (await lists(c, ctx.tenantId)).tz;
-    if (!who || !may) return { may, who, s, tz, bills: [] as Bill[], moves: [] as Move[], lines: [] as Awaited<ReturnType<typeof ledger>> };
+    const l = await lists(c, ctx.tenantId);
+    const tz = l.tz;
+    // an account is the customer's at every branch: with several, each bill and payment says where (the spec's section 3)
+    const many = l.stores.length > 1;
+    if (!who || !may) return { may, who, s, tz, many, bills: [] as (Bill & { branch: string })[], moves: [] as Move[], lines: [] as Awaited<ReturnType<typeof ledger>> };
     // the bills that still owe, and those paid over; oldest first
     const bills = (
       await c.query(
-        `select b.id, b.number, b.day::text as day, b.amount, b.paid, b.returned, account_owed(b) as owed, ${ageSql("b")} as age, b.customer_id, b.flags
+        `select b.id, b.number, b.day::text as day, b.amount, b.paid, b.returned, account_owed(b) as owed, ${ageSql("b")} as age, b.customer_id, b.flags,
+                (select s.name from stores s where s.tenant_id = b.tenant_id and s.id = b.store_id) as branch
            from account_bills b
           where b.tenant_id = $1 and b.customer_id = $2 and b.deleted_at is null and account_owed(b) <> 0
           order by b.day, b.number`,
         [ctx.tenantId, customer],
       )
-    ).rows as Bill[];
+    ).rows as (Bill & { branch: string })[];
     const ids = bills.map((b) => b.id);
     const moves = ids.length
       ? ((
           await c.query(
-            `select l.bill_id, 'payment' as kind, q.number, q.device_time as at, pt.name as method, l.amount, e.name as who
+            `select l.bill_id, 'payment' as kind, q.number, q.device_time as at, pt.name as method, l.amount, e.name as who,
+                    (select s.name from stores s where s.tenant_id = q.tenant_id and s.id = q.store_id) as branch
                from account_payment_lines l
                join account_payments q on q.tenant_id = l.tenant_id and q.id = l.account_payment_id
                left join payment_types pt on pt.tenant_id = q.tenant_id and pt.id = q.payment_type_id
                left join employees e on e.tenant_id = q.tenant_id and e.id = q.employee_id
               where l.tenant_id = $1 and l.bill_id = any($2::uuid[])
              union all
-             select r.refund_of, 'return', r.number, coalesce(r.device_time, r.created_at), null, sum(p.amount), e.name
+             select r.refund_of, 'return', r.number, coalesce(r.device_time, r.created_at), null, sum(p.amount), e.name,
+                    (select s.name from stores s where s.tenant_id = r.tenant_id and s.id = r.store_id)
                from receipts r
                join receipt_payments_effective p on p.tenant_id = r.tenant_id and p.receipt_id = r.id
                join payment_types pt on pt.tenant_id = p.tenant_id and pt.id = p.payment_type_id and pt.kind = 'account'
                left join employees e on e.tenant_id = r.tenant_id and e.id = r.employee_id
               where r.tenant_id = $1 and r.type = 'refund' and r.refund_of = any($2::uuid[]) and r.deleted_at is null
-              group by r.refund_of, r.number, r.device_time, r.created_at, e.name
+              group by r.refund_of, r.number, r.device_time, r.created_at, e.name, r.tenant_id, r.store_id
               order by 4`,
             [ctx.tenantId, ids],
           )
         ).rows as Move[])
       : [];
-    return { may, who, s, tz, bills, moves, lines: await ledger(c, ctx.tenantId, customer) };
+    return { may, who, s, tz, many, bills, moves, lines: await ledger(c, ctx.tenantId, customer) };
   });
   if (!d.who) notFound();
   const m = (v: string | number) => money(Number(v), d.s.decimals);
@@ -122,7 +128,7 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
         ) : (
           <table>
             <thead>
-              <tr><th>Bill</th><th>Day</th><th className="num">On account</th><th className="num">Paid</th><th className="num">Returned</th><th className="num">Still owed</th></tr>
+              <tr><th>Bill</th>{d.many && <th>Branch</th>}<th>Day</th><th className="num">On account</th><th className="num">Paid</th><th className="num">Returned</th><th className="num">Still owed</th></tr>
             </thead>
             <tbody>
               {d.bills.map((b) => {
@@ -133,6 +139,7 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
                       <Link href={`/backoffice/receipts?q=${encodeURIComponent(b.number)}`}>{b.number}</Link>
                       {b.flags.length > 0 && <span className="sub">Check: {[...new Set(b.flags.map((f) => FLAG[f.why] ?? f.why))].join("; ")}</span>}
                     </td>
+                    {d.many && <td>{b.branch}</td>}
                     <td className={b.age > days && Number(b.owed) > 0 ? "neg" : undefined}>{fmtDay(b.day)} · {b.age} {b.age === 1 ? "day" : "days"}</td>
                     <td className="num">{m(b.amount)}</td>
                     <td className="num">{Number(b.paid) ? m(b.paid) : ""}</td>
@@ -141,9 +148,9 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
                   </tr>,
                   ...mv.map((x, i) => (
                     <tr key={b.id + "-" + i}>
-                      <td colSpan={2} style={{ paddingLeft: 32 }}>
+                      <td colSpan={d.many ? 3 : 2} style={{ paddingLeft: 32 }}>
                         <span className="muted">{x.kind === "payment" ? `Paid, ${x.method ?? "Unknown"} · ${x.number}` : `Returned goods · ${x.number}`}</span>
-                        <span className="sub">{[at(x.at), x.who].filter(Boolean).join(" · ")}</span>
+                        <span className="sub">{[at(x.at), x.who, d.many ? x.branch : null].filter(Boolean).join(" · ")}</span>
                       </td>
                       <td />
                       <td className="num muted">{x.kind === "payment" ? m(x.amount) : ""}</td>
@@ -155,7 +162,7 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
               })}
             </tbody>
             <tfoot>
-              <tr><td colSpan={5}>Balance owed</td><td className="num">{m(balance)}</td></tr>
+              <tr><td colSpan={d.many ? 6 : 5}>Balance owed</td><td className="num">{m(balance)}</td></tr>
             </tfoot>
           </table>
         )}

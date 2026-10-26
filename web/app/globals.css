@@ -750,6 +750,9 @@ body {
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
 .page-head .lede { margin-bottom: 0 !important; }
 .page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* the branch picker (branch-picker.tsx): a label over its list, as in a report's filters */
+.branch-pick { display: block; font-size: 12.5px; font-weight: 500; color: var(--ink3); }
+.branch-pick > select { display: block; margin-top: 5px; min-width: 170px; }
 .crumb { margin: 0 0 6px !important; font-size: 12.5px; color: var(--ink3); }
 
 /* a white panel on the paper: a fine line round it and next to no shadow */
@@ -1472,6 +1475,12 @@ span.pd-icon { color: var(--ink3); }
   .tcards { grid-template-columns: repeat(3, 1fr); gap: 0; }
   .tcard { border: 1px dashed #999; border-radius: 0; }
   .rail, .bo-side, .filters, .page-actions, .no-print { display: none !important; }
+  /* the branch a report is for stays on paper, in words (branch-picker.tsx) */
+  .page-actions:has(.branch-pick) { display: block !important; }
+  .page-actions:has(.branch-pick) > :not(.branch-pick) { display: none !important; }
+  .branch-pick { font-size: 0 !important; }
+  .branch-pick select { display: none !important; }
+  .branch-pick::after { content: "Branch: " attr(data-branch); font-size: 13px; color: #000; }
   .bo { display: block; padding: 0; background: #fff; }
   .bo-main { padding: 0; max-width: none; }
   body { background: #fff; }

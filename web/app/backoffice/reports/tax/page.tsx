@@ -3,8 +3,10 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { money } from "@/lib/settings";
 import { args, filters, fmtDay, RECEIPTS, reportStart } from "@/lib/report";
+import { pickedOf } from "@/lib/branch";
 import { Empty, PageHead, type Search } from "../../ui";
 import { ReportFilters, Stat } from "../parts";
+import { BranchPicker } from "../../branch-picker";
 
 type Row = { name: string; rate_bp: number; type: string; receipts: number; amount: string; tax: string };
 
@@ -26,7 +28,7 @@ const SQL = `
                 when t.type = 'added' then (x.net * t.rate_bp + 5000) / 10000
                 else (x.net * t.rate_bp + (10000 + t.rate_bp) / 2) / (10000 + t.rate_bp) end), 0)::bigint as tax
     from x left join receipt_line_taxes t on t.tenant_id = $1 and t.receipt_line_id = x.line_id
-   where ($7::uuid is null or t.tax_id = $7::uuid)
+   where ($8::uuid is null or t.tax_id = $8::uuid)
    group by 1, 2, 3 order by 2 desc, 1`;
 
 export default async function TaxReport({ searchParams }: { searchParams: Search }) {
@@ -34,13 +36,17 @@ export default async function TaxReport({ searchParams }: { searchParams: Search
   const ctx = await tenantContext();
   const d = await readTenant(ctx.tenantId, async (c) => {
     const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
-    const f = { ...filters(sp, l.tz), kind: "all" as const };
+    const f = { ...filters(sp, l.tz, (await pickedOf(l.stores))?.id ?? null), kind: "all" as const };
     if (!ok) return { l, f, ok: false as const };
     const rows = (await c.query(SQL, [...args(ctx.tenantId, f), f.tax])).rows as Row[];
     const t = (await c.query(`select name, brn, vat_number from tenants where id = $1`, [ctx.tenantId])).rows[0] as { name: string; brn: string | null; vat_number: string | null };
     return { l, f, ok: true as const, s, rows, t };
   });
-  const head = <PageHead title="Tax" lede="Sales and the VAT in them, split by tax type: what the VAT return asks for. Refunds are taken off." />;
+  const head = (
+    <PageHead title="Tax" lede="Sales and the VAT in them, split by tax type: what the VAT return asks for. Refunds are taken off.">
+      <BranchPicker all={d.l.stores} picked={d.f.store} />
+    </PageHead>
+  );
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;
   const m = (v: string | number) => money(Number(v), 2);
   const rows = d.rows.map((r) => {

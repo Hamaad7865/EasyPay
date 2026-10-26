@@ -35,12 +35,13 @@ export type JournalData = Omit<Input, "filters" | "shopLabel"> & {
   facets: { devices: string[]; users: string[]; items: string[] };
 };
 
-export async function journalData(c: PoolClient, tenantId: string, from: string, to: string, shop: boolean): Promise<JournalData> {
+// `store`: the branch picked (lib/branch.ts), or null for every branch
+export async function journalData(c: PoolClient, tenantId: string, from: string, to: string, shop: boolean, store: string | null = null): Promise<JournalData> {
   const toDoc = (r: DocRow, inPeriod: boolean): Doc => ({
     id: r.id, number: r.number, type: r.type, total: Number(r.total), tax: Number(r.tax_total), day: r.day, minute: r.minute,
     device: r.device, employee: r.employee, customer: r.customer_id, method: shop ? null : (r.method ?? "Not set"), inPeriod,
   });
-  const own = (await c.query(`${DOCS} and (coalesce(v.device_time, v.created_at) at time zone st.timezone)::date between $2::date and $3::date`, [tenantId, from, to])).rows as DocRow[];
+  const own = (await c.query(`${DOCS} and (coalesce(v.device_time, v.created_at) at time zone st.timezone)::date between $2::date and $3::date and ($4::uuid is null or v.store_id = $4::uuid)`, [tenantId, from, to, store])).rows as DocRow[];
   const ids = own.map((r) => r.id);
   const refundOf = new Map(own.filter((r) => r.refund_of).map((r) => [r.id, r.refund_of as string]));
 
@@ -53,8 +54,9 @@ export async function journalData(c: PoolClient, tenantId: string, from: string,
          join stores st on st.tenant_id = q.tenant_id and st.id = q.store_id
          left join payment_types pt on pt.tenant_id = q.tenant_id and pt.id = q.payment_type_id
          left join employees e on e.tenant_id = q.tenant_id and e.id = q.employee_id
-        where l.tenant_id = $1 and (q.device_time at time zone st.timezone)::date between $2::date and $3::date`,
-      [tenantId, from, to],
+        where l.tenant_id = $1 and (q.device_time at time zone st.timezone)::date between $2::date and $3::date
+          and ($4::uuid is null or q.store_id = $4::uuid)`,
+      [tenantId, from, to, store],
     )
   ).rows as { bill_id: string; amount: string; method: string | null; by: string | null }[];
   const inPeriod = new Set(ids);
@@ -140,8 +142,9 @@ export async function journalData(c: PoolClient, tenantId: string, from: string,
           `select coalesce(sum(q.amount) filter (where q.kind = 'in'), 0) as taken, coalesce(-sum(q.amount) filter (where q.kind = 'back'), 0) as back
              from deposit_payments q join deposits d on d.tenant_id = q.tenant_id and d.id = q.deposit_id
              join stores st on st.tenant_id = d.tenant_id and st.id = d.store_id
-            where q.tenant_id = $1 and (q.device_time at time zone st.timezone)::date between $2::date and $3::date`,
-          [tenantId, from, to],
+            where q.tenant_id = $1 and (q.device_time at time zone st.timezone)::date between $2::date and $3::date
+              and ($4::uuid is null or d.store_id = $4::uuid)`,
+          [tenantId, from, to, store],
         )
       ).rows[0] as { taken: string; back: string })
     : { taken: "0", back: "0" };

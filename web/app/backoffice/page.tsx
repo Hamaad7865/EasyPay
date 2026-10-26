@@ -10,6 +10,8 @@ import { lineOffSql } from "@/lib/stock-reports";
 import { Go, Submit, Wait } from "./busy";
 import { SalesChart, type Day } from "./dash-chart";
 import { Card } from "./ui";
+import { BranchPicker } from "./branch-picker";
+import { type Branch, branches, pickedOf, wanted } from "@/lib/branch";
 
 // ---- dates: plain calendar days (YYYY-MM-DD), never a JS local time ----
 const parse = (s: string) => new Date(s + "T00:00:00Z");
@@ -56,8 +58,10 @@ function presets(today: string) {
 //     same time on the clock, so a half-finished day is set against half a
 //     day and not against a whole one;
 //   - the money is for those who may see reports. Everyone else gets the
-//     counts.
-// $1 tenant, $2 the employee looking.
+//     counts;
+//   - with a branch picked (lib/branch.ts), that branch's alone; with All
+//     branches, the account's, and each branch's part in by_branch.
+// $1 tenant, $2 the employee looking, $3 the branch or null.
 const NOW = `
   with clk as (
     select z.tz, (now() at time zone z.tz)::date as today, (now() at time zone z.tz)::time as nowt,
@@ -66,7 +70,7 @@ const NOW = `
                             'Indian/Mauritius') as tz) z
   ),
   ot as (
-    select t.id, t.created_at, t.table_id,
+    select t.id, t.created_at, t.table_id, t.store_id,
            (select count(*) from ticket_lines l
              where l.tenant_id = t.tenant_id and l.ticket_id = t.id and l.voided_at is null and l.deleted_at is null and l.paid is not true) as live,
            (select coalesce(sum(line_amount(l.unit_price, l.qty)
@@ -76,21 +80,31 @@ const NOW = `
              where l.tenant_id = t.tenant_id and l.ticket_id = t.id and l.voided_at is null and l.deleted_at is null and l.paid is not true) as amount
       from tickets t
      where t.tenant_id = $1 and t.status = 'open' and t.deleted_at is null
+       and ($3::uuid is null or t.store_id = $3::uuid)
   ),
   oo as (select * from ot where live > 0 or table_id is not null),
+  -- where the head says it is: the branch picked, or the account's only branch
+  wh as (
+    select s.name, s.address from stores s
+     where s.tenant_id = $1 and s.deleted_at is null
+       and (s.id = $3::uuid or ($3::uuid is null and (select count(*) from stores z where z.tenant_id = $1 and z.deleted_at is null) = 1))
+     order by s.created_at limit 1
+  ),
   rv as (
-    select v.id, v.type, v.ticket_id, v.signed_total,
+    select v.id, v.type, v.ticket_id, v.signed_total, v.store_id,
            coalesce(v.device_time, v.created_at) at time zone s.timezone as lt
       from receipt_revenue v
       join stores s on s.tenant_id = v.tenant_id and s.id = v.store_id
      cross join clk
      where clk.can and v.tenant_id = $1 and v.counts_as_sale
        and coalesce(v.device_time, v.created_at) > now() - interval '9 days'
+       and ($3::uuid is null or v.store_id = $3::uuid)
   ),
   bk as (
     select b.name, b.size, b.status, b.booked_for, to_char(b.booked_for at time zone clk.tz, 'HH24:MI') as clock
       from bookings b cross join clk
      where b.tenant_id = $1 and b.deleted_at is null and b.status in ('pending', 'confirmed', 'seated')
+       and ($3::uuid is null or b.store_id = $3::uuid)
        and (b.booked_for at time zone clk.tz)::date = clk.today
   ),
   -- the bookings still to come, today or later: the next few are listed, and
@@ -102,6 +116,7 @@ const NOW = `
       from bookings b cross join clk
       left join tables tb on tb.tenant_id = b.tenant_id and tb.id = b.table_id and tb.deleted_at is null
      where b.tenant_id = $1 and b.deleted_at is null and b.status in ('pending', 'confirmed')
+       and ($3::uuid is null or b.store_id = $3::uuid)
        and b.booked_for > now() - interval '15 minutes'
   ),
   st as (
@@ -111,12 +126,21 @@ const NOW = `
      where i.tenant_id = $1 and i.deleted_at is null
   )
   select clk.today::text as today, clk.tz, extract(hour from clk.nowt)::int as hour, clk.can,
-         (select s.name from stores s where s.tenant_id = $1 and s.deleted_at is null order by s.created_at limit 1) as store,
-         (select s.address from stores s where s.tenant_id = $1 and s.deleted_at is null order by s.created_at limit 1) as address,
+         -- the branch picked, or the only one: All branches of several names none
+         (select s.name from wh s) as store,
+         (select s.address from wh s) as address,
+         coalesce((select json_agg(json_build_object('id', s.id, 'name', s.name, 'address', s.address, 'phone', s.phone) order by s.created_at, s.id)
+                    from stores s where s.tenant_id = $1 and s.deleted_at is null), '[]'::json) as stores,
+         case when $3::uuid is null then
+           (select json_agg(json_build_object('name', s.name,
+                   'today', (select coalesce(sum(signed_total), 0)::float8 from rv where rv.store_id = s.id and lt::date = clk.today),
+                   'open', (select count(*)::int from oo where oo.store_id = s.id)) order by s.created_at, s.id)
+              from stores s where s.tenant_id = $1 and s.deleted_at is null) end as by_branch,
          (select e.name from employees e where e.tenant_id = $1 and e.id = $2) as me,
          -- flagged = still open: no recorded reason yet, or a reason not resolved
          (select count(*)::int from receipts r
            where r.deleted_at is null and r.tenant_id = $1 and r.needs_review
+             and ($3::uuid is null or r.store_id = $3::uuid)
              and (not exists (select 1 from receipt_reviews v
                                where v.tenant_id = r.tenant_id and v.receipt_id = r.id and v.deleted_at is null)
                or exists (select 1 from receipt_reviews v
@@ -126,7 +150,7 @@ const NOW = `
          (select count(*)::int from oo where table_id is not null) as open_tables,
          case when clk.can then (select coalesce(sum(amount), 0)::float8 from oo) end as open_amount,
          (select (extract(epoch from now() - min(created_at)) / 60)::int from oo) as open_oldest,
-         (select count(*)::int from tables tb where tb.tenant_id = $1 and tb.deleted_at is null) as tables,
+         (select count(*)::int from tables tb where tb.tenant_id = $1 and tb.deleted_at is null and ($3::uuid is null or tb.store_id = $3::uuid)) as tables,
          (select count(*)::int from bk) as book_n,
          (select coalesce(sum(size), 0)::int from bk) as book_guests,
          (select json_build_object('name', name, 'clock', clock, 'size', size) from bk
@@ -146,9 +170,11 @@ const NOW = `
                                      from up order by booked_for limit 5) x) as up_list,
          (select json_build_object('since', sh.opened_at, 'by', e.name)
             from shifts sh left join employees e on e.tenant_id = sh.tenant_id and e.id = sh.opened_by
-           where sh.tenant_id = $1 and sh.deleted_at is null and sh.closed_at is null order by sh.opened_at limit 1) as shift,
+           where sh.tenant_id = $1 and sh.deleted_at is null and sh.closed_at is null and ($3::uuid is null or sh.store_id = $3::uuid)
+           order by sh.opened_at limit 1) as shift,
          -- a day is open on a till from its opening count to its closing count; with two tills there can be two
-         (select count(*)::int from shifts sh where sh.tenant_id = $1 and sh.deleted_at is null and sh.closed_at is null) as days_open,
+         (select count(*)::int from shifts sh where sh.tenant_id = $1 and sh.deleted_at is null and sh.closed_at is null
+            and ($3::uuid is null or sh.store_id = $3::uuid)) as days_open,
          (select coalesce(sum(signed_total), 0)::float8 from rv where lt::date = clk.today) as today_total,
          (select count(distinct ticket_id)::int from rv where lt::date = clk.today and type = 'sale') as today_orders,
          (select coalesce(sum(case when rv.type = 'refund' then -rl.qty else rl.qty end), 0)::int
@@ -158,6 +184,7 @@ const NOW = `
 
 type Now = {
   today: string; tz: string; hour: number; can: boolean; store: string | null; address: string | null; me: string | null; flagged: number;
+  stores: Branch[]; by_branch: { name: string; today: number; open: number }[] | null;
   open_n: number; open_tables: number; open_amount: number | null; open_oldest: number | null; tables: number;
   book_n: number; book_guests: number; book_next: { name: string; clock: string; size: number } | null;
   sold_out: number; sold_out_names: string[] | null; tracked: number; low: number; low_names: string[] | null;
@@ -187,7 +214,7 @@ type Range = {
   hours: { hour: number; n: number; amount: number }[];
 };
 
-async function loadRange(c: PoolClient, tenantId: string, from: string, to: string, full: boolean, shop: boolean): Promise<Range> {
+async function loadRange(c: PoolClient, tenantId: string, from: string, to: string, full: boolean, shop: boolean, store: string | null): Promise<Range> {
   // the days before are only compared in total, so their breakdowns are left out
   const part = (sql: string) => (full ? `(select json_agg(t) from (${sql}) t)` : "null::json");
   const row = (
@@ -235,7 +262,7 @@ async function loadRange(c: PoolClient, tenantId: string, from: string, to: stri
               ${part(`select extract(hour from (r.at at time zone r.timezone))::int as hour,
                              count(*) filter (where type = 'sale')::int as n, sum(signed_total)::bigint as amount
                         from r group by 1 order by 1`)} as hours`,
-      [tenantId, from, to, null, null, "all"],
+      [tenantId, from, to, null, null, "all", store],
     )
   ).rows[0];
   const t = row.totals as Record<string, number>;
@@ -260,7 +287,7 @@ const RECENT = `
     left join tickets t on t.tenant_id = v.tenant_id and t.id = v.ticket_id
     left join tables tb on tb.tenant_id = v.tenant_id and tb.id = t.table_id
     left join employees e on e.tenant_id = v.tenant_id and e.id = v.employee_id
-   where v.tenant_id = $1 and v.counts_as_sale
+   where v.tenant_id = $1 and v.counts_as_sale and ($2::uuid is null or v.store_id = $2::uuid)
    order by coalesce(v.device_time, v.created_at) desc limit 6`;
 
 function change(now: number, before: number) {
@@ -381,25 +408,32 @@ export default async function BackofficeHome({
     const prevFrom = addDays(prevTo, -(span(from, to) - 1));
     return { options, from, to, prevFrom, prevTo };
   };
+  // the branch this browser picked: read against the account's branches only when there is one, so the page
+  // with nothing picked still asks the database once
+  const want = await wanted();
   const data = await readTenant(ctx.tenantId, async (c) => {
+    const br = want ? ((await pickedOf(await branches(c, ctx.tenantId)))?.id ?? null) : null;
     const range = (d: { from: string; to: string; prevFrom: string; prevTo: string }) =>
-      Promise.all([loadRange(c, ctx.tenantId, d.from, d.to, true, ctx.mode === "retail"), compare ? loadRange(c, ctx.tenantId, d.prevFrom, d.prevTo, false, ctx.mode === "retail") : null]);
+      Promise.all([
+        loadRange(c, ctx.tenantId, d.from, d.to, true, ctx.mode === "retail", br),
+        compare ? loadRange(c, ctx.tenantId, d.prevFrom, d.prevTo, false, ctx.mode === "retail", br) : null,
+      ]);
     // Everything is asked for at once: one trip to the database and back for
     // the lot, instead of one each (see `pipeline` in lib/db.ts). The days
     // depend on what day it is at the store, which only the database's answer
     // says for sure, so they are worked out first from this server's clock.
     const guess = picked(today(zones.get(ctx.tenantId) ?? "Indian/Mauritius"));
-    const [first, last, guessed] = await Promise.all([c.query(NOW, [ctx.tenantId, ctx.employeeId]), c.query(RECENT, [ctx.tenantId]), range(guess)]);
+    const [first, last, guessed] = await Promise.all([c.query(NOW, [ctx.tenantId, ctx.employeeId, br]), c.query(RECENT, [ctx.tenantId, br]), range(guess)]);
     const now = first.rows[0] as Now;
     zones.set(ctx.tenantId, now.tz);
     const d = picked(now.today);
     // the money is for those who may see reports: for anyone else what came back is dropped here
-    if (!now.can) return { now, ...d, cur: null, prev: null, recent: [] as Recent[] };
+    if (!now.can) return { now, ...d, br, cur: null, prev: null, recent: [] as Recent[] };
     // Another day at the store than this server took it for (midnight has just
     // passed, or a store in another time zone seen for the first time), and
     // other days for it: those are asked for again.
     const [cur, prev] = d.from === guess.from && d.to === guess.to ? guessed : await range(d);
-    return { now, ...d, cur, prev, recent: last.rows as Recent[] };
+    return { now, ...d, br, cur, prev, recent: last.rows as Recent[] };
   });
   const { now, from, to, cur, prev } = data;
   const href = (f: string, t: string, cmp: boolean) => `/backoffice?from=${f}&to=${t}${cmp ? "&compare=1" : ""}`;
@@ -505,6 +539,7 @@ export default async function BackofficeHome({
             </span>
           </div>
           <div className="home-actions no-print">
+            <BranchPicker all={now.stores} picked={data.br} />
             <Link href="/backoffice/reports/day-close" className="btn-quiet btn-lg">
               Day closing
             </Link>
@@ -515,6 +550,20 @@ export default async function BackofficeHome({
           </div>
         </div>
       </header>
+
+      {/* All branches, of an account with several: what each is doing now */}
+      {now.by_branch && now.stores.length > 1 && (
+        <Card title="By branch" flush>
+          <table>
+            <thead><tr><th>Branch</th>{now.can && <th className="num">Sales today</th>}<th className="num">Open orders</th></tr></thead>
+            <tbody>
+              {now.by_branch.map((b) => (
+                <tr key={b.name}><td>{b.name}</td>{now.can && <td className="num strong">{fmtRs(b.today)}</td>}<td className="num">{b.open}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
 
       <div className="home-top">
         <section className="pane rise" style={rise(1)}>

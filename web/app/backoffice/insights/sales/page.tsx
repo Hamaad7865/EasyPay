@@ -4,7 +4,9 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { money, withDefaults } from "@/lib/settings";
 import { basics, RECEIPTS } from "@/lib/report";
+import { pickedOf } from "@/lib/branch";
 import { Card, Empty, PageHead, type Search } from "../../ui";
+import { BranchPicker } from "../../branch-picker";
 import { Figure, SpanPicker, Standouts, WEEKDAYS, change, longDay, pct, per, period, range, totals } from "../parts";
 
 // When the restaurant sells: which days of the week, which hours of the day,
@@ -21,14 +23,17 @@ export default async function SalesPatterns({ searchParams }: { searchParams: Se
     // the time zone, the right to see reports and the settings, in one trip
     const b = await basics(c, ctx.tenantId, ctx.employeeId);
     const p = period(sp, b.tz);
-    if (!b.ok) return { p, ok: false as const };
-    const q = async <T,>(sql: string) => (await c.query(`with r as (${RECEIPTS}) ${sql}`, range(ctx.tenantId, p.from, p.to))).rows as T[];
+    const br = (await pickedOf(b.stores))?.id ?? null;
+    if (!b.ok) return { p, ok: false as const, stores: b.stores, br };
+    const q = async <T,>(sql: string) => (await c.query(`with r as (${RECEIPTS}) ${sql}`, range(ctx.tenantId, p.from, p.to, br))).rows as T[];
     return {
       p,
       ok: true as const,
+      stores: b.stores,
+      br,
       s: withDefaults(b.settings),
-      now: await totals(c, ctx.tenantId, p.from, p.to),
-      before: await totals(c, ctx.tenantId, p.prevFrom, p.prevTo),
+      now: await totals(c, ctx.tenantId, p.from, p.to, br),
+      before: await totals(c, ctx.tenantId, p.prevFrom, p.prevTo, br),
       // the weekday and the hour are the restaurant's own, not the server's
       cells: await q<Cell>(
         `select extract(isodow from day)::int as dow, extract(hour from (at at time zone timezone))::int as hour,
@@ -40,7 +45,9 @@ export default async function SalesPatterns({ searchParams }: { searchParams: Se
   });
 
   const head = (
-    <PageHead title="Sales patterns" lede="When you sell: the days of the week and the hours of the day that bring the money in, and how these days stand against the ones before." />
+    <PageHead title="Sales patterns" lede="When you sell: the days of the week and the hours of the day that bring the money in, and how these days stand against the ones before.">
+      <BranchPicker all={d.stores} picked={d.br} />
+    </PageHead>
   );
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;
   const { p, now, before } = d;

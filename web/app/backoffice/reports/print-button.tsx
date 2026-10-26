@@ -35,8 +35,10 @@ export function CsvButton() {
     if (!main) return;
     const title = (main.querySelector("h1")?.textContent ?? "Report").trim();
     const days = ["from", "to"].map((n) => (main.querySelector(`.filters input[name="${n}"]`) as HTMLInputElement | null)?.value ?? "").filter(Boolean);
+    // the branch it was made for, when the account has several (branch-picker.tsx)
+    const branch = main.querySelector("[data-branch-picker]")?.getAttribute("data-branch") ?? "";
     const out: string[] = [];
-    out.push([title, ...days].map((v) => (/[",]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v)).join(","));
+    out.push([title, ...(branch ? [branch] : []), ...days].map((v) => (/[",]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v)).join(","));
     // the figures above the tables, with their notes: a list that is cut short says so there
     const stats = [...main.querySelectorAll(".stats .stat")];
     if (stats.length > 0) out.push("");
@@ -63,7 +65,7 @@ export function CsvButton() {
     const blob = new Blob(["﻿" + out.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = [title, ...days].join(" ").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + ".csv";
+    a.download = [title, ...(branch ? [branch] : []), ...days].join(" ").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + ".csv";
     document.body.appendChild(a);
     a.click();
     a.remove();

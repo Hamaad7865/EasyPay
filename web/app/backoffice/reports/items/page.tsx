@@ -5,7 +5,9 @@ import { money } from "@/lib/settings";
 import { args, filters, fmtQty, RECEIPTS, reportStart } from "@/lib/report";
 import { margin } from "@/lib/stock";
 import { itemSalesSql } from "@/lib/stock-reports";
+import { pickedOf } from "@/lib/branch";
 import { Empty, PageHead, type Search } from "../../ui";
+import { BranchPicker } from "../../branch-picker";
 import { ReportFilters, Stat } from "../parts";
 
 // ex_vat, costed and cost: a shop's, for whoever may see costs (see itemSalesSql)
@@ -18,7 +20,7 @@ export default async function ItemRank({ searchParams }: { searchParams: Search 
   const shop = ctx.mode === "retail";
   const d = await readTenant(ctx.tenantId, async (c) => {
     const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
-    const f = filters(sp, l.tz);
+    const f = filters(sp, l.tz, (await pickedOf(l.stores))?.id ?? null);
     if (!ok) return { l, f, ok: false as const };
     // a shop's cost and profit, for whoever may see them. A restaurant's page asks what it always asked.
     const costs = shop && Boolean((await c.query(`select has_perm($1, 'costs.view') as ok`, [ctx.employeeId])).rows[0]?.ok);
@@ -35,7 +37,9 @@ export default async function ItemRank({ searchParams }: { searchParams: Search 
           ? "What sells, ranked by what it brought in. Sales are what each line was charged (a discount on the line itself is already off), before any discount on the whole sale; refunds are taken off."
           : "What sells, ranked by what it brought in. Amounts are menu prices with add-ons, before any discount on the bill; refunds are taken off."
       }
-    />
+    >
+      <BranchPicker all={d.l.stores} picked={d.f.store} />
+    </PageHead>
   );
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;
   const m = (v: string | number) => money(Number(v), d.s.decimals);

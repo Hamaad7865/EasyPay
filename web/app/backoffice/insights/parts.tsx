@@ -27,14 +27,15 @@ export function period(sp: Record<string, string | string[] | undefined>, tz: st
   return { days, from, to, prevFrom: shift(from, -days), prevTo: shift(from, -1) };
 }
 
-// RECEIPTS' arguments for everyone, every order type, sales and refunds.
-export const range = (tenantId: string, from: string, to: string) => [tenantId, from, to, null, null, "all"];
+// RECEIPTS' arguments for everyone, every order type, sales and refunds, at the
+// branch picked (lib/branch.ts) or at all of them.
+export const range = (tenantId: string, from: string, to: string, store: string | null = null) => [tenantId, from, to, null, null, "all", store];
 
 export type Totals = { net: number; orders: number; covers: number; seated: number };
 
 // The restaurant's totals for some days. An order is an account: a bill split
 // in three is one order. Sales with no order behind them count one each.
-export async function totals(c: PoolClient, tenantId: string, from: string, to: string): Promise<Totals> {
+export async function totals(c: PoolClient, tenantId: string, from: string, to: string, store: string | null = null): Promise<Totals> {
   const r = (
     await c.query(
       `with r as (${RECEIPTS})
@@ -46,7 +47,7 @@ export async function totals(c: PoolClient, tenantId: string, from: string, to: 
               (select coalesce(sum(z.covers), 0)::int
                  from (select distinct on (ticket_id) ticket_id, covers from r where type = 'sale' and ticket_id is not null) z) as covers
          from r`,
-      range(tenantId, from, to),
+      range(tenantId, from, to, store),
     )
   ).rows[0] as { net: number; accounts: number; loose: number; seated: number; covers: number };
   return { net: r.net, orders: r.accounts + r.loose, covers: r.covers, seated: r.seated };

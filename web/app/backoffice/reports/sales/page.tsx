@@ -4,7 +4,9 @@ import { readTenant } from "@/lib/db";
 import { money } from "@/lib/settings";
 import { args, filters, fmtDay, RECEIPTS, reportStart } from "@/lib/report";
 import { linePricesSql } from "@/lib/stock-reports";
+import { pickedOf } from "@/lib/branch";
 import { Card, Empty, PageHead, type Search } from "../../ui";
+import { BranchPicker } from "../../branch-picker";
 import { ReportFilters, Stat } from "../parts";
 
 type Totals = { sales: number; refunds: number; orders: number; gross: string; refunded: string; discounts: string; tax: string; total: string };
@@ -17,7 +19,7 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
   const ctx = await tenantContext();
   const d = await readTenant(ctx.tenantId, async (c) => {
     const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
-    const f = filters(sp, l.tz);
+    const f = filters(sp, l.tz, (await pickedOf(l.stores))?.id ?? null);
     if (!ok) return { l, f, ok: false as const };
     const a = args(ctx.tenantId, f);
     const q = async <T,>(sql: string) => (await c.query(`with r as (${RECEIPTS}) ${sql}`, a)).rows as T[];
@@ -26,6 +28,15 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
       f,
       ok: true as const,
       s,
+      // All branches, of an account that has several: each branch's part (the spec's section 4)
+      branches:
+        f.store === null && l.stores.length > 1
+          ? await q<Split & { refunds: string }>(
+              `select r.store_name as name, count(*) filter (where r.type = 'sale')::int as n,
+                      coalesce(sum(r.total) filter (where r.type = 'refund'), 0) as refunds, sum(r.signed_total) as amount
+                 from r group by r.store_id, r.store_name order by sum(r.signed_total) desc, r.store_name`,
+            )
+          : [],
       totals: (
         await q<Totals>(
           `select count(*) filter (where type = 'sale')::int as sales, count(*) filter (where type = 'refund')::int as refunds,
@@ -67,16 +78,20 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
                 `with r as (${RECEIPTS})
                  select coalesce((select sum(q.amount) from deposit_payments q join deposits d on d.tenant_id = q.tenant_id and d.id = q.deposit_id
                                     join stores s on s.tenant_id = d.tenant_id and s.id = d.store_id
-                                   where q.tenant_id = $1 and q.kind = 'in' and (q.device_time at time zone s.timezone)::date between $2::date and $3::date), 0) as taken,
+                                   where q.tenant_id = $1 and q.kind = 'in' and (q.device_time at time zone s.timezone)::date between $2::date and $3::date
+                                     and ($7::uuid is null or d.store_id = $7::uuid)), 0) as taken,
                         coalesce((select -sum(q.amount) from deposit_payments q join deposits d on d.tenant_id = q.tenant_id and d.id = q.deposit_id
                                     join stores s on s.tenant_id = d.tenant_id and s.id = d.store_id
-                                   where q.tenant_id = $1 and q.kind = 'back' and (q.device_time at time zone s.timezone)::date between $2::date and $3::date), 0) as back,
+                                   where q.tenant_id = $1 and q.kind = 'back' and (q.device_time at time zone s.timezone)::date between $2::date and $3::date
+                                     and ($7::uuid is null or d.store_id = $7::uuid)), 0) as back,
                         coalesce((select sum(r.sign * p.amount) from r join receipt_payments_effective p on p.tenant_id = $1 and p.receipt_id = r.id
                                     join payment_types pt on pt.tenant_id = $1 and pt.id = p.payment_type_id and pt.kind = 'deposit'), 0) as used,
                         coalesce((select sum(d.noted) from deposits d join stores s on s.tenant_id = d.tenant_id and s.id = d.store_id
-                                   where d.tenant_id = $1 and (d.cancelled_at at time zone s.timezone)::date between $2::date and $3::date), 0) as noted,
+                                   where d.tenant_id = $1 and (d.cancelled_at at time zone s.timezone)::date between $2::date and $3::date
+                                     and ($7::uuid is null or d.store_id = $7::uuid)), 0) as noted,
                         coalesce((select sum(d.kept) from deposits d join stores s on s.tenant_id = d.tenant_id and s.id = d.store_id
-                                   where d.tenant_id = $1 and (d.cancelled_at at time zone s.timezone)::date between $2::date and $3::date), 0) as kept`,
+                                   where d.tenant_id = $1 and (d.cancelled_at at time zone s.timezone)::date between $2::date and $3::date
+                                     and ($7::uuid is null or d.store_id = $7::uuid)), 0) as kept`,
                 a,
               )
             ).rows[0] as { taken: string; back: string; used: string; noted: string; kept: string })
@@ -93,7 +108,8 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
                                     join payment_types pt on pt.tenant_id = $1 and pt.id = p.payment_type_id and pt.kind = 'account'), 0) as on_account,
                         coalesce((select sum(q.amount) from account_payments q join stores s on s.tenant_id = q.tenant_id and s.id = q.store_id
                                    where q.tenant_id = $1 and (q.device_time at time zone s.timezone)::date between $2::date and $3::date
-                                     and ($4::uuid is null or q.employee_id = $4::uuid)), 0) as paid_in`,
+                                     and ($4::uuid is null or q.employee_id = $4::uuid)
+                                     and ($7::uuid is null or q.store_id = $7::uuid)), 0) as paid_in`,
                 a,
               )
             ).rows[0] as { on_account: string; paid_in: string })
@@ -113,7 +129,11 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
   });
   // a shop's sales are all rung up at the counter: it has no order types to split by, or to pick
   const shop = ctx.mode === "retail";
-  const head = <PageHead title="Sales summary" lede={`What was sold, refunded and collected over the days you pick, and how it splits by payment method${shop ? "" : ", order type"} and member of staff.`} />;
+  const head = (
+    <PageHead title="Sales summary" lede={`What was sold, refunded and collected over the days you pick, and how it splits by payment method${shop ? "" : ", order type"} and member of staff.`}>
+      <BranchPicker all={d.l.stores} picked={d.f.store} />
+    </PageHead>
+  );
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;
   const m = (v: string | number) => money(Number(v), d.s.decimals);
   const t = d.totals;
@@ -174,6 +194,24 @@ export default async function SalesSummary({ searchParams }: { searchParams: Sea
               <tfoot><tr><td>Total</td><td className="num">{t.sales}</td><td className="num">{Number(t.refunded) ? m(t.refunded) : ""}</td><td className="num">{m(t.total)}</td></tr></tfoot>
             </table>
           </Card>
+          {d.branches.length > 0 && (
+            <Card title="By branch" flush>
+              <table>
+                <thead><tr><th>Branch</th><th className="num">Receipts</th><th className="num">Refunds</th><th className="num">Total</th><th>Share</th></tr></thead>
+                <tbody>
+                  {d.branches.map((r) => (
+                    <tr key={r.name}>
+                      <td>{r.name}</td>
+                      <td className="num">{r.n}</td>
+                      <td className="num">{Number(r.refunds) ? m(r.refunds) : ""}</td>
+                      <td className="num strong">{m(r.amount)}</td>
+                      <td><span className="bar"><i style={{ width: `${Number(t.total) > 0 ? Math.max(0, Math.min(100, (Number(r.amount) / Number(t.total)) * 100)) : 0}%` }} /></span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          )}
           {shop ? (
             <>
               <div className="grid-2">

@@ -31,6 +31,10 @@ function loader(client, ctx, route) {
       redirect: (to) => { throw new Error('redirect ' + to); }, notFound: () => { throw new Error('not found'); }, unstable_rethrow() {},
     },
     'next/cache': { revalidatePath() {} },
+    // the branch picked in the back office (web/lib/branch.ts): the caller says which with ctx.branch
+    'next/headers': {
+      cookies: async () => ({ get: (k) => (k === 'bo-branch' && ctx.branch ? { value: ctx.branch } : undefined), set() {} }),
+    },
     '@/lib/tenant': {
       tenantContext: async () => ctx, requirePerm: async () => ctx, isSuspended: () => false,
       onlyFor: async (mode) => { if (ctx.mode !== mode) throw new Error('not found'); return ctx; },

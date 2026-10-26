@@ -3,8 +3,10 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { money, withDefaults } from "@/lib/settings";
 import { basics, RECEIPTS } from "@/lib/report";
+import { pickedOf } from "@/lib/branch";
 import { lineOffSql } from "@/lib/stock-reports";
 import { Card, Empty, PageHead, type Search } from "../../ui";
+import { BranchPicker } from "../../branch-picker";
 import { Delta, Figure, SpanPicker, Standouts, pct, per, period, range, totals } from "../parts";
 
 // How each member of staff sells, beside the restaurant as a whole. A sale is
@@ -33,13 +35,16 @@ export default async function StaffPerformance({ searchParams }: { searchParams:
     // the time zone, the right to see reports and the settings, in one trip
     const b = await basics(c, ctx.tenantId, ctx.employeeId);
     const p = period(sp, b.tz);
-    if (!b.ok) return { p, ok: false as const };
+    const br = (await pickedOf(b.stores))?.id ?? null;
+    if (!b.ok) return { p, ok: false as const, stores: b.stores, br };
     return {
       p,
       ok: true as const,
+      stores: b.stores,
+      br,
       s: withDefaults(b.settings),
-      all: await totals(c, ctx.tenantId, p.from, p.to),
-      before: await totals(c, ctx.tenantId, p.prevFrom, p.prevTo),
+      all: await totals(c, ctx.tenantId, p.from, p.to, br),
+      before: await totals(c, ctx.tenantId, p.prevFrom, p.prevTo, br),
       rows: (
         await c.query(
           `with r as (${RECEIPTS}),
@@ -68,14 +73,16 @@ export default async function StaffPerformance({ searchParams }: { searchParams:
                   (select count(*) from tt where tt.employee_id is not distinct from per.employee_id)::int as turns
              from per left join employees e on e.tenant_id = $1 and e.id = per.employee_id
             order by per.net desc, e.name`,
-          range(ctx.tenantId, p.from, p.to),
+          range(ctx.tenantId, p.from, p.to, br),
         )
       ).rows as Row[],
     };
   });
 
   const head = (
-    <PageHead title="Staff performance" lede="What each member of staff sold, their average check and what they gave away, beside the restaurant as a whole." />
+    <PageHead title="Staff performance" lede="What each member of staff sold, their average check and what they gave away, beside the restaurant as a whole.">
+      <BranchPicker all={d.stores} picked={d.br} />
+    </PageHead>
   );
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;
   const { p, all, before } = d;

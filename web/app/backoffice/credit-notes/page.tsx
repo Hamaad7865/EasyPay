@@ -20,6 +20,8 @@ const PATH = "/backoffice/credit-notes";
 type Row = {
   id: string;
   number: string;
+  // the branch that issued it
+  branch: string;
   amount: string;
   balance: string;
   valid_to: string | null;
@@ -65,7 +67,7 @@ export default async function CreditNotesPage({ searchParams }: { searchParams: 
     rows: (
       await c.query(
         `select n.id, n.number, n.amount, n.balance, n.valid_to::text as valid_to, n.status, n.created_at, n.void_reason, n.used_at,
-                r.number as refund_no, o.number as receipt_no, dp.number as deposit_no, cu.name as customer, e.name as issued_by,
+                r.number as refund_no, o.number as receipt_no, dp.number as deposit_no, cu.name as customer, e.name as issued_by, st.name as branch,
                 (n.status = 'open' and n.valid_to is not null and n.valid_to < current_date) as expired,
                 (select count(*) from receipt_payments rp
                    join receipts s on s.tenant_id = rp.tenant_id and s.id = rp.receipt_id and s.type = 'sale' and s.deleted_at is null
@@ -77,6 +79,7 @@ export default async function CreditNotesPage({ searchParams }: { searchParams: 
            left join deposits dp on dp.tenant_id = n.tenant_id and dp.id = n.deposit_id
            left join customers cu on cu.tenant_id = n.tenant_id and cu.id = n.customer_id
            left join employees e on e.tenant_id = n.tenant_id and e.id = n.issued_by
+           join stores st on st.tenant_id = n.tenant_id and st.id = n.store_id
           where n.tenant_id = $1 and n.deleted_at is null
             and (case when $2 = 'open' then n.status = 'open' and (n.valid_to is null or n.valid_to >= current_date)
                       else not (n.status = 'open' and (n.valid_to is null or n.valid_to >= current_date)) end)
@@ -89,6 +92,8 @@ export default async function CreditNotesPage({ searchParams }: { searchParams: 
   const at = clock(d.l.tz);
   const m = (v: string | number) => money(Number(v), d.s.decimals);
   const open = d.rows.reduce((a, r) => a + (show === "open" ? Number(r.balance) : 0), 0);
+  // a note is spent at any branch: with several, each says which issued it (the spec's section 3)
+  const many = d.l.stores.length > 1;
   const state = (r: Row) =>
     r.status === "void" ? `Cancelled: ${r.void_reason ?? ""}` : r.status === "used" ? `Used up${r.used_at ? " " + at(r.used_at) : ""}` : r.expired ? `Expired on ${r.valid_to}` : r.valid_to ? `Valid to ${r.valid_to}` : "Does not expire";
   return (
@@ -123,6 +128,7 @@ export default async function CreditNotesPage({ searchParams }: { searchParams: 
             <tr>
               <th>Number</th>
               <th>Issued</th>
+              {many && <th>Branch</th>}
               <th>From</th>
               <th>Customer</th>
               <th className="num">Amount</th>
@@ -137,6 +143,7 @@ export default async function CreditNotesPage({ searchParams }: { searchParams: 
               <tr key={r.id}>
                 <td className="strong">{r.number}</td>
                 <td>{at(r.created_at)}{r.issued_by && <span className="sub">{r.issued_by}</span>}</td>
+                {many && <td>{r.branch}</td>}
                 <td>
                   {r.deposit_no ? (
                     <>
