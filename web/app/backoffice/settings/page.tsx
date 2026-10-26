@@ -459,7 +459,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                   <small>A promotion with no sale for this long since it was applied is listed again under Still not selling, to be reduced further.</small>
                 </div>
                 <label className="check" style={{ margin: 0 }}>
-                  <input type="number" name="promoStillDays" min={1} max={365} defaultValue={s.promoStillDays} style={{ width: 80 }} /> days on promotion
+                  <input type="number" name="promoStillDays" min={1} max={365} defaultValue={s.promoStillDays} style={{ width: 80 }} /> days
                 </label>
               </div>
             </Card>
