@@ -25,6 +25,8 @@ the staff and the prices are shared.
 - A branch is added by EasyPay only, in /admin, as now.
 - No extra charge: any account with a back office (trial or Premium) can have branches. An offline account has one
   branch: /admin does not offer Add store for it, and `platform.add_store` refuses it (`offline-one-branch`).
+- An account with two or more branches cannot be moved to the offline plan: /admin refuses it and says why. This is
+  a default taken while writing the plan, not one of the owner's answers; the owner was told.
 - Restaurants and shops get the same design. No client is waiting for it.
 
 ## 3. What stays shared

@@ -79,6 +79,11 @@ done, no tag ever.
   - B4: a branch id from another tenant, or not a UUID, reads as All branches (Rs 345.00).
   - B5: the dashboard with Port Louis picked names Port Louis.
   - B6: a one-branch tenant's Sales shows no picker and no By branch table.
+  - B0: every page that uses `RECEIPTS`, `args`, `reportStart` or `basics` opens without an error, once for a
+    one-branch tenant and once for the two-branch one with each pick. Found by grep, among them
+    `customers/[customer]`, `mra/page.tsx`, `pos/page.tsx`, `pos/[till]/page.tsx` and the Sales page's
+    `linePricesSql`, beside the reports and Insights. Adding `$7` breaks any of them that passes its own parameter
+    array ("there is no parameter $7"), and neither `tsc` nor `next build` runs SQL.
 - [ ] **Step 3:** `node db/tests/multi-branch.test.cjs`. Expected: B1 to B5 FAIL (no picker, no filter).
 
 ### Task 1.2: the branch, the cookie and the picker
@@ -159,7 +164,9 @@ export async function pickBranch(id: string, path: string) {
   - Insights (menu, sales, staff): through `insights/parts.tsx`, which reads `RECEIPTS` and `args`.
 - [ ] **Step 4:** a download (`CsvButton`, `PrintButton`) gets the branch name in its file name and title when one is
   picked.
-- [ ] **Step 5:** `node db/tests/multi-branch.test.cjs`. Expected: B1 to B4 and B6 PASS.
+- [ ] **Step 5:** every other caller of `RECEIPTS` or `args` that B0 lists passes `$7` (the picked branch, or null
+  where the page has no picker).
+- [ ] **Step 6:** `node db/tests/multi-branch.test.cjs`. Expected: B0 to B4 and B6 PASS.
 
 ### Task 1.4: the dashboard
 
@@ -199,6 +206,10 @@ export async function pickBranch(id: string, path: string) {
 
 ### Task 2.2: migration 0136
 
+- [ ] **Step 0:** before naming it: dev is shared with other sessions, cloud ones too. Check the highest migration
+  dev has applied (`select max(name) from schema_migrations` or what `db/migrate.cjs` keeps), the highest in
+  `github/restopos`, and `git branch -a --no-merged restopos`, so 0136 to 0138 and Room 36 are still free. Take the
+  next free numbers if not.
 - [ ] **Step 1:** read the live definition: `select pg_get_functiondef('platform.add_store(uuid,uuid,text,text)'::regprocedure)`.
 - [ ] **Step 2:** create `db/migrations/0136_branches.sql`, with the usual header (what changes, the source, "Never
   edit after merge"), redefining it with two changes:
@@ -228,7 +239,8 @@ export async function pickBranch(id: string, path: string) {
   then soft-deletes the rows not ticked (`deleted_at = now()`) and inserts or revives the ticked ones, so the tills
   get the change by sequence. The notice: "Saved. The tills get the change at their next sync."
 - [ ] **Step 2:** in `web/app/admin/tenants/[id]/view.tsx`, an offline client's page shows no Add store form, and says
-  "An offline client has one branch."
+  "An offline client has one branch." In `page.tsx`, `setPlan` refuses the offline plan for a client with two or
+  more branches: "This client has 2 branches. The offline plan runs one tablet's branch only." S5 in the suite.
 - [ ] **Step 3:** run the suite: S1, S2 PASS. Run `platform`, `backoffice-saves`. `tsc`. Commit: "staff: which
   branches each person works at; a new branch takes only those who work at every branch (0136)".
 
@@ -270,7 +282,9 @@ export async function pickBranch(id: string, path: string) {
   - `stock-movements/page.tsx`, `moves.ts`, `export/route.ts`;
   - `reports/stock/page.tsx` and `web/lib/stock-reports.ts`;
   - `items/[id]/page.tsx`: a table of each branch's stock and reorder point; `stock_set_reorder` per branch;
-  - `items/import/**`: a branch list on the import page, sent as the store of `catalog_import`.
+  - `items/import/**`: a branch list on the import page, sent as the store of `catalog_import`;
+  - the dashboard (`page.tsx`, the `st` part of `NOW`): its stock warnings read `items.stock_qty`, the total; they
+    read the picked branch's level, or each branch's against its own reorder point with All branches.
 - [ ] **Step 3:** `node db/migrate.cjs`; the suite; then one at a time `stock-reports`, `purchase-orders`,
   `catalog-import`, `made-of`, `promotions`, `deposits`, `retail-till`, `count-from-alone`. `tsc`, `next build`.
 - [ ] **Step 4:** commit: "stock per branch in the back office (0137)".
@@ -291,6 +305,10 @@ export async function pickBranch(id: string, path: string) {
   - T7: two movements under one reference: `transfer_out` at Main, `transfer_in` at Port Louis.
   - T8: Port Louis's till pull after the transfer has the new level.
   - T9: the Transfers page lists it; its note page shows both branches and the line.
+  - T10: the same product on two lines of one transfer moves both, and is checked against the From branch's stock
+    for the two together.
+  - T11: a product sold by the kilo moves in the unit the stock pages use for it (0131): 1.5 kg sent is 1.5 kg at
+    both branches.
 - [ ] Run. Expected: FAIL.
 
 ### Task 4.2: migration 0138
@@ -322,30 +340,58 @@ begin
     raise exception 'unknown-store';
   end if;
   if jsonb_array_length(coalesce(p_lines, '[]'::jsonb)) = 0 then raise exception 'no-lines'; end if;
+
+  -- 1. Every level this transfer touches is locked before any item's row is. The engine's rule (0067): nothing
+  --    may lock an item's row and then ask for a level, and stock_move updates items.stock_qty. So all the levels
+  --    first, both branches, in one fixed order (item, variant, store), and the checks under those locks: a sale
+  --    at either branch waits for this, never the other way round. The same product on two lines is summed.
+  for v_line in
+    select l.item, l.variant, sum(l.qty)::int as qty
+      from jsonb_to_recordset(p_lines) as l(item uuid, variant uuid, qty int)
+     group by l.item, l.variant
+     order by l.item, l.variant nulls first
+  loop
+    -- the checks of stock_adjust (0073), from its live definition: the product exists and counts stock, a
+    -- variant is picked where it has variants and is one of them; a quantity above 0
+    ...
+    for v_store in select unnest(array[p_from, p_to]) order by 1 loop
+      perform stock_level_for(p_tenant, v_store, v_line.item, v_line.variant);
+    end loop;
+    select * into v_level from stock_levels
+     where tenant_id = p_tenant and store_id = p_from and item_id = v_line.item
+       and variant_id is not distinct from v_line.variant;
+    if v_level.qty < v_line.qty then raise exception 'not-enough-stock:%:%', v_line.item, v_level.qty; end if;
+  end loop;
+
   insert into stock_transfers (id, tenant_id, from_store, to_store, number, note, employee_id)
     values (v_id, p_tenant, p_from, p_to, next_transfer_number(p_tenant), nullif(btrim(coalesce(p_note, '')), ''), p_emp);
-  for v_line in select * from jsonb_array_elements(p_lines) loop
-    -- the same checks as stock_adjust (0073): counted, the variant, enough at the From branch
-    ...
-    v_level := stock_level_for(p_tenant, p_from, (v_line->>'item')::uuid, (v_line->>'variant')::uuid);
-    if v_level.qty < (v_line->>'qty')::int then raise exception 'not-enough-stock:%', (v_line->>'item'); end if;
-    v_out := stock_move(p_tenant, p_from, (v_line->>'item')::uuid, (v_line->>'variant')::uuid, -(v_line->>'qty')::int,
+
+  -- 2. Then the moves, line by line, under the locks taken above.
+  for v_line in
+    select l.item, l.variant, sum(l.qty)::int as qty
+      from jsonb_to_recordset(p_lines) as l(item uuid, variant uuid, qty int)
+     group by l.item, l.variant
+     order by l.item, l.variant nulls first
+  loop
+    v_out := stock_move(p_tenant, p_from, v_line.item, v_line.variant, -v_line.qty,
       'transfer_out', null, 'transfer', v_id, p_emp, p_note);
     select unit_cost into v_cost from stock_movements where id = v_out;
-    perform stock_move(p_tenant, p_to, (v_line->>'item')::uuid, (v_line->>'variant')::uuid, (v_line->>'qty')::int,
+    perform stock_move(p_tenant, p_to, v_line.item, v_line.variant, v_line.qty,
       'transfer_in', v_cost, 'transfer', v_id, p_emp, p_note);
     insert into stock_transfer_lines (tenant_id, transfer_id, item_id, variant_id, qty, unit_cost)
-      values (p_tenant, v_id, (v_line->>'item')::uuid, (v_line->>'variant')::uuid, (v_line->>'qty')::int, v_cost);
+      values (p_tenant, v_id, v_line.item, v_line.variant, v_line.qty, v_cost);
   end loop;
   return v_id;
 end $fn$;
 ```
 
-  The `...` is the body of `stock_adjust`'s checks, copied from its live definition (it raises `not-counted`,
-  `pick-variant`, `unknown-line`, `unknown-item`). A line with a quantity of 0 or less raises `bad-quantity`.
-  `next_transfer_number` follows how stock counts are numbered (read `count_start`'s numbering in 0075 and use the
-  same form with a T prefix). `stock_move`'s "a document moves a product in a shop once" holds: the reference is the
-  same, the branches differ.
+  `v_line` is a `record` and `v_store` a `uuid` in `declare`. The `...` is the body of `stock_adjust`'s checks,
+  copied from its live definition (it raises `not-counted`, `pick-variant`, `unknown-line`, `unknown-item`); a
+  quantity of 0 or less raises `bad-quantity`. `next_transfer_number` follows how stock counts are numbered (read
+  `count_start`'s numbering in 0075 and use the same form with a T prefix). `stock_move`'s "a document moves a
+  product in a shop once" holds: the reference is the same, the branches differ, and the lines are summed so one
+  product moves once each way. Quantities are in the unit `stock_levels.qty` holds (for a kilo product, as 0131
+  keeps it); the page converts as the stock adjust page does.
 - [ ] **Step 3:** `node db/migrate.cjs`; the suite: T1 to T8 PASS; `rls_coverage.sql`; `delete-client`.
 
 ### Task 4.3: the pages
@@ -354,8 +400,9 @@ end $fn$;
   who), New transfer for a role with `stock.adjust`. `nav.ts`: Transfers under Stock, only with two or more
   branches (`nav.test.mjs` updated).
 - [ ] **Step 2:** `transfers/new/page.tsx`: From (starts on the picked branch), To, then lines added with the
-  product search the stock count page uses, each with its quantity and what the From branch holds. Save calls
-  `stock_transfer` and goes to the note. Refusals in words: "Only 6 of Mix grill are at Main." "Pick two different
+  product search the stock count page uses, each with its quantity and what the From branch holds. Save is a server
+  action guarded by `requirePerm("stock.adjust")`, as the other stock actions are, and calls `stock_transfer` and
+  goes to the note. Refusals in words: "Only 6 of Mix grill are at Main." "Pick two different
   branches."
 - [ ] **Step 3:** `transfers/[id]/page.tsx`: the note, printable (`PrintButton`): number, date, from, to, who, the
   lines with their quantities, and lines to sign for sent and received.
@@ -387,9 +434,11 @@ end $fn$;
   company's.
 - [ ] **Step 5:** `Docs.kt`: the receipt head (around line 356) prints `shop.branch` under the name when it is set;
   the Z report and day-close heads (around lines 502, 523, 548) print the branch line, the address and the phone
-  under the name. `PaperWalk.kt`: a `branch` block beside `address` and `phone`, drawn by the receipt designer's
-  head, with the fixtures in `db/tests/fixtures/papers` and the back office preview (`web/lib/papers.ts`) given the
-  same block. Find where the till builds the emailed Z report it sends to the mail service (`POST /v1/z`) and give
+  under the name. `PaperWalk.kt`: no new block. The `name` block prints the name and then `shop.branch` when it is
+  set, so every saved receipt design gets the branch with no change by the owner, and a till not yet updated draws
+  the design as before (an unknown block would be skipped too: `else -> emptyList()`). The back office preview
+  (`web/lib/papers.ts`) draws the name block the same way; the `db/tests/fixtures/papers` fixtures, all one branch,
+  stay as they are, and one with two branches is added. Find where the till builds the emailed Z report it sends to the mail service (`POST /v1/z`) and give
   it the same head; the mail Worker (`cloudflare/mail`) is not changed unless the head is built there.
 - [ ] **Step 6:** version 0.9.29, versionCode 41. `gradlew testDebugUnitTest`, then `assembleDebug`. `MIN_TILL_VERSION`
   unchanged.
