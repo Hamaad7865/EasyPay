@@ -30,6 +30,9 @@ export type OnHandRow = {
   cost_shown: string | null;
   value: number | null;
   value_shown: string | null;
+  // All branches of several: each branch's quantity as read, by branch id, and the branches where it is not ok
+  at?: Record<string, string>;
+  lowAt?: string[];
 };
 type Action = (f: FormData) => Promise<void>;
 
@@ -45,7 +48,7 @@ const TONE: Record<StockStatus, string> = { negative: "badge red", out: "badge r
 // scanned barcode; tapping a line opens it to take stock out, or put found
 // stock back, with a reason.
 export function OnHandTable({
-  rows, suppliers, start, adjust, mayAdjust, showCost,
+  rows, suppliers, start, adjust, mayAdjust, showCost, side = [], store,
 }: {
   rows: OnHandRow[];
   suppliers: [string, string][];
@@ -53,6 +56,9 @@ export function OnHandTable({
   adjust: Action;
   mayAdjust: boolean;
   showCost: boolean;
+  // All branches of several, side by side; and the branch an adjustment is for, null until one is picked (multi-branch)
+  side?: { id: string; name: string }[];
+  store: string | null;
 }) {
   const t = useTable("/backoffice/stock", start);
   const show = t.get("show");
@@ -72,7 +78,7 @@ export function OnHandTable({
     },
     { reorder: (r) => r.reorder === null },
   );
-  const cols = showCost ? 9 : 7;
+  const cols = (showCost ? 9 : 7) + side.length;
 
   return (
     <section className="card flush">
@@ -80,7 +86,7 @@ export function OnHandTable({
         <div>
           <h2>Products and variants</h2>
           <p>
-            {shown.length !== rows.length ? `${shown.length} of ${rows.length}` : rows.length} {rows.length === 1 ? "line" : "lines"}. Tap one to adjust it or see its movements.
+            {shown.length !== rows.length ? `${shown.length} of ${rows.length}` : rows.length} {rows.length === 1 ? "line" : "lines"}. {store ? "Tap one to adjust it or see its movements." : "Tap one to see its movements; pick a branch at the top to adjust it."}
           </p>
         </div>
         <TableSearch t={t} placeholder="Name, SKU or scan a barcode" label="Search stock" />
@@ -105,7 +111,8 @@ export function OnHandTable({
               <th />
               <SortTh t={t} k="name" label="Product" />
               <th>Variant</th>
-              <SortTh t={t} k="stock" label="On hand" num />
+              <SortTh t={t} k="stock" label={side.length ? "All branches" : "On hand"} num />
+              {side.map((b) => <th key={b.id} className="num">{b.name}</th>)}
               {showCost && <th className="num">Avg cost</th>}
               {showCost && <SortTh t={t} k="value" label="Value" num />}
               <SortTh t={t} k="reorder" label="Reorder at" num />
@@ -127,21 +134,23 @@ export function OnHandTable({
                   <td className="strong">{r.name}</td>
                   <td>{r.variant ?? <span className="muted">One size</span>}</td>
                   <td className="num strong" style={r.qty <= 0 ? { color: "var(--red)" } : undefined}>{r.qty_shown}</td>
+                  {side.map((b) => <td key={b.id} className="num">{r.at?.[b.id] ?? "0"}</td>)}
                   {showCost && <td className="num">{r.cost_shown}</td>}
                   {showCost && <td className="num">{r.value_shown}</td>}
                   <td className="num">{r.reorder_shown ?? <span className="muted">Not set</span>}</td>
                   <td className="num">{r.sold30 !== 0 ? r.sold_shown : <span className="muted">None</span>}</td>
                   <td>
-                    <span className={TONE[r.status]}>{STATUS_LABEL[r.status]}</span>
+                    <span className={TONE[r.status]}>{STATUS_LABEL[r.status]}{r.lowAt?.length ? ` at ${r.lowAt.join(", ")}` : ""}</span>
                   </td>
                 </tr>,
                 on && (
                   <tr key={r.id + "-open"} className="open-body">
                     <td colSpan={cols}>
                       <div className="open-panel">
-                        {mayAdjust ? (
+                        {mayAdjust && store ? (
                           <form action={adjust} className="bo-toolbar" style={{ margin: 0 }}>
                             <input type="hidden" name="item" value={r.item} />
+                            <input type="hidden" name="store" value={store} />
                             <input type="hidden" name="variant" value={r.variant_id ?? ""} />
                             <Back t={t} id={r.id} />
                             <select name="reason" defaultValue="damaged" aria-label="Reason">
@@ -163,7 +172,7 @@ export function OnHandTable({
                         )}
                         <p className="muted open-hint">
                           {r.qty_shown} on hand now.{" "}
-                          {mayAdjust ? "To add stock, receive a delivery, so its cost is recorded." : "Your role cannot adjust stock."}
+                          {!mayAdjust ? "Your role cannot adjust stock." : store ? "To add stock, receive a delivery, so its cost is recorded." : "Pick a branch at the top to adjust its stock."}
                         </p>
                       </div>
                     </td>

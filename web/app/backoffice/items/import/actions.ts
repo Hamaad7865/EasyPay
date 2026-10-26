@@ -5,6 +5,7 @@ import { unstable_rethrow } from "next/navigation";
 import { requirePerm } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
 import { barcodesForNewLines } from "@/lib/saves";
+import { branches, pickedOf, workingBranch } from "@/lib/branch";
 import type { CatalogRow } from "@/lib/catalog-rows";
 
 // One line of the file as the database takes it: see lib/catalog-rows.
@@ -30,7 +31,12 @@ export async function importCatalog(rows: ImportRow[], dry: boolean): Promise<{ 
     if (!Array.isArray(rows) || rows.length === 0) return { ok: false, message: "The file has no rows." };
     if (rows.length > 5000) return { ok: false, message: "A file can hold 5,000 rows at most. Split it in two." };
     const result = await withTenant(ctx.tenantId, async (c) => {
-      const r = await c.query(`select catalog_import($1, first_store($1), $2, $3::jsonb, $4) as r`, [ctx.tenantId, ctx.employeeId, JSON.stringify(rows), dry]);
+      // opening stock and reorder levels are a branch's (multi-branch): the one picked at the top, or the only one.
+      // Products alone are the whole account's, and need no branch.
+      const all = await branches(c, ctx.tenantId);
+      const store = workingBranch(all, await pickedOf(all))?.id ?? null;
+      if (!store && rows.some((x) => (x.stock ?? 0) > 0 || x.reorder != null || x.order_qty != null)) throw new Error("pick-branch");
+      const r = await c.query(`select catalog_import($1, $2, $3, $4::jsonb, $5) as r`, [ctx.tenantId, store ?? all[0].id, ctx.employeeId, JSON.stringify(rows), dry]);
       const out = r.rows[0].r as ImportResult;
       if (dry) return out;
       // a shop that has its barcodes made automatically: the lines this file added with none get theirs
@@ -47,7 +53,9 @@ export async function importCatalog(rows: ImportRow[], dry: boolean): Promise<{ 
         ? "You are not allowed to change the catalog."
         : said.includes("suspended")
           ? said
-          : "The file could not be read into the catalog. Nothing was changed.",
+          : said === "pick-branch"
+            ? "The file has stock or reorder levels: pick the branch they are for at the top of the page, then import it again."
+            : "The file could not be read into the catalog. Nothing was changed.",
     };
   }
 }

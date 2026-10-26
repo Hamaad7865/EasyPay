@@ -4,6 +4,8 @@ import { onlyFor } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { act, Refused, text, UUID, uuid } from "@/lib/action";
 import { units } from "@/lib/stock";
+import { branches, formBranch, pickedOf, workingBranch } from "@/lib/branch";
+import { BranchPicker } from "../../branch-picker";
 import { Card, Empty, Flash, PageHead, type Search } from "../../ui";
 import { Submit } from "../../busy";
 import { type LineOption, LinesEditor } from "../lines-editor";
@@ -26,10 +28,13 @@ async function receive(f: FormData) {
       const day = String(f.get("arrived") ?? "");
       if (!DAY.test(day)) throw new Refused("Pick the day it arrived.");
       const lines = linesOf(f);
+      // the branch it arrived at (multi-branch): the one picked, or the one chosen here
+      const store = await formBranch(c, ctx.tenantId, f.get("store"));
+      if (!store) throw new Refused("Pick the branch the delivery arrived at.");
       return ruled(async () => {
         const r = (
-          await c.query(`select delivery_receive($1, $2, $3, first_store($1), null, $4, $5, $6, $7, $8::jsonb) as r`, [
-            ctx.tenantId, ctx.employeeId, delivery, UUID.test(supplier) ? supplier : null, day, text(f, "invoice", 60) || null, text(f, "note", 200) || null, JSON.stringify(lines),
+          await c.query(`select delivery_receive($1, $2, $3, $9, null, $4, $5, $6, $7, $8::jsonb) as r`, [
+            ctx.tenantId, ctx.employeeId, delivery, UUID.test(supplier) ? supplier : null, day, text(f, "invoice", 60) || null, text(f, "note", 200) || null, JSON.stringify(lines), store,
           ])
         ).rows[0].r as { number: string; units: number; already: boolean };
         if (r.already) return `${r.number} was already received: nothing was added twice.`;
@@ -47,13 +52,20 @@ export default async function ReceivePage({ searchParams }: { searchParams: Sear
   const sp = await searchParams;
   const ctx = await onlyFor("retail");
   const d = await readTenant(ctx.tenantId, async (c) => {
+    const all = await branches(c, ctx.tenantId);
+    const picked = await pickedOf(all);
+    // what is offered, and its cost: the branch picked, or the first while none is
+    const at = workingBranch(all, picked)?.id ?? all[0]?.id ?? null;
     const [may, stock, suppliers, shop] = await Promise.all([
       c.query(`select has_perm($1, 'stock.receive') as receive`, [ctx.employeeId]),
-      c.query(`select * from stock_on_hand($1, first_store($1))`, [ctx.tenantId]),
+      c.query(`select * from stock_on_hand($1, $2)`, [ctx.tenantId, at]),
       c.query(`select id, name from suppliers where tenant_id = $1 and deleted_at is null order by lower(name)`, [ctx.tenantId]),
-      c.query(`select to_char(now() at time zone timezone, 'YYYY-MM-DD') as today from stores where tenant_id = $1 and id = first_store($1)`, [ctx.tenantId]),
+      c.query(`select to_char(now() at time zone timezone, 'YYYY-MM-DD') as today from stores where tenant_id = $1 and id = $2`, [ctx.tenantId, at]),
     ]);
     return {
+      all,
+      picked,
+      working: workingBranch(all, picked),
       receive: may.rows[0].receive as boolean,
       stock: stock.rows as StockLine[],
       suppliers: suppliers.rows as { id: string; name: string }[],
@@ -62,6 +74,7 @@ export default async function ReceivePage({ searchParams }: { searchParams: Sear
   });
   const head = (
     <PageHead title="Receive without an order" lede="For a delivery that was never ordered here: what arrived, and what it cost. It goes into stock at once. A delivery for an order is received on the order's own page.">
+      <BranchPicker all={d.all} picked={d.picked?.id ?? null} />
       <Link href={LIST} className="btn btn-quiet">All orders</Link>
     </PageHead>
   );
@@ -91,6 +104,18 @@ export default async function ReceivePage({ searchParams }: { searchParams: Sear
           <input type="hidden" name="delivery" value={crypto.randomUUID()} />
           <Card title="This delivery">
             <div className="grid-3" style={{ gap: "0 20px" }}>
+              {/* the branch it arrived at: the one picked, or chosen here with All branches */}
+              {d.working ? (
+                <input type="hidden" name="store" value={d.working.id} />
+              ) : (
+                <label className="field">
+                  Arrived at
+                  <select name="store" required defaultValue="">
+                    <option value="" disabled>Which branch</option>
+                    {d.all.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </label>
+              )}
               <label className="field">
                 Supplier
                 <select name="supplier" defaultValue="">

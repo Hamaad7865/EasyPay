@@ -119,6 +119,17 @@ const NOW = `
        and ($3::uuid is null or b.store_id = $3::uuid)
        and b.booked_for > now() - interval '15 minutes'
   ),
+  -- what is low, branch by branch (multi-branch): with one branch the item's total, as ever; with several, each
+  -- branch's own level, the picked one's or every one's, named by its branch with All branches
+  lw as (
+    select i.name || case when $3::uuid is null and nb.n > 1 then ' at ' || s.name else '' end as name,
+           case when nb.n = 1 then coalesce(i.stock_qty, 0)
+                else coalesce((select sum(l.qty) from stock_levels l where l.tenant_id = i.tenant_id and l.item_id = i.id and l.store_id = s.id), 0) end as q
+      from items i left join categories c on c.tenant_id = i.tenant_id and c.id = i.category_id
+      join stores s on s.tenant_id = i.tenant_id and s.deleted_at is null and ($3::uuid is null or s.id = $3::uuid)
+      cross join (select count(*) as n from stores z where z.tenant_id = $1 and z.deleted_at is null) nb
+     where i.tenant_id = $1 and i.deleted_at is null and (i.track_stock or coalesce(c.is_stock, false))
+  ),
   st as (
     select i.name, i.is_available, coalesce(i.stock_qty, 0) as q, (i.track_stock or coalesce(c.is_stock, false)) as tracked,
            exists (select 1 from item_taxes it where it.tenant_id = i.tenant_id and it.item_id = i.id and it.deleted_at is null) as taxed
@@ -158,8 +169,8 @@ const NOW = `
          (select count(*)::int from st where not is_available) as sold_out,
          (select json_agg(x.name) from (select name from st where not is_available order by name limit 3) x) as sold_out_names,
          (select count(*)::int from st where tracked) as tracked,
-         (select count(*)::int from st where tracked and q <= 5000) as low,
-         (select json_agg(x.name) from (select name from st where tracked and q <= 5000 order by q, name limit 3) x) as low_names,
+         (select count(*)::int from lw where q <= 5000) as low,
+         (select json_agg(x.name) from (select name from lw where q <= 5000 order by q, name limit 3) x) as low_names,
          (select count(*)::int from st where not taxed) as no_tax,
          (select json_agg(x.name) from (select name from st where not taxed order by name limit 3) x) as no_tax_names,
          (select count(*)::int from up) as up_n,

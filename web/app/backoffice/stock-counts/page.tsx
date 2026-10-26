@@ -7,6 +7,8 @@ import { UUID } from "@/lib/action";
 import { loadSettings, money } from "@/lib/settings";
 import { COUNT_STATUS, COUNT_TONE, countProblem, type CountStatus } from "@/lib/counts";
 import { units } from "@/lib/stock";
+import { branches, formBranch, pickedOf, workingBranch } from "@/lib/branch";
+import { BranchPicker } from "../branch-picker";
 import { Card, Empty, Flash, PageHead, type Search } from "../ui";
 import { Submit } from "../busy";
 
@@ -25,54 +27,71 @@ async function newCount(f: FormData) {
     const kind = cut < 0 ? what : what.slice(0, cut);
     const rest = cut < 0 ? "" : what.slice(cut + 1);
     const scope = (kind === "category" || kind === "supplier") && UUID.test(rest) ? rest : null;
-    const made = await withTenant(ctx.tenantId, async (c) =>
-      (await c.query(`select count_start($1, $2, first_store($1), $3, $4, $5) as r`, [ctx.tenantId, ctx.employeeId, kind, scope, kind === "brand" ? rest.slice(0, 80) : null])).rows[0].r as { id: string },
-    );
+    const made = await withTenant(ctx.tenantId, async (c) => {
+      // a count is of one branch's shelves (multi-branch): the one picked, or the one chosen here
+      const store = await formBranch(c, ctx.tenantId, f.get("store"));
+      if (!store) throw new Error("pick-branch");
+      return (await c.query(`select count_start($1, $2, $3, $4, $5, $6) as r`, [ctx.tenantId, ctx.employeeId, store, kind, scope, kind === "brand" ? rest.slice(0, 80) : null])).rows[0].r as { id: string };
+    });
     to = `${PATH}/${made.id}`;
   } catch (e) {
     unstable_rethrow(e);
     const said = e instanceof Error ? e.message : "";
-    const why = said.startsWith("Forbidden") ? "Your role cannot run stock counts." : said.includes("suspended") ? said : (countProblem(said) ?? "The count could not be started. Nothing was saved.");
+    const why = said.startsWith("Forbidden")
+      ? "Your role cannot run stock counts."
+      : said.includes("suspended")
+        ? said
+        : said === "pick-branch"
+          ? "Pick which branch to count."
+          : (countProblem(said) ?? "The count could not be started. Nothing was saved.");
     redirect(`${PATH}?err=${encodeURIComponent(why)}`);
   }
   redirect(to);
 }
 
-type Row = { id: string; number: string; title: string; status: CountStatus; day: string; by: string | null; lines: number; counted: number; units: number; value: string };
+type Row = { id: string; number: string; title: string; status: CountStatus; day: string; by: string | null; lines: number; counted: number; units: number; value: string; branch: string };
 
 // The shop's counts: the ones being counted, and the ones that were applied.
 export default async function CountsPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await onlyFor("retail");
   const d = await readTenant(ctx.tenantId, async (c) => {
+    const all = await branches(c, ctx.tenantId);
+    const picked = await pickedOf(all);
+    const working = workingBranch(all, picked);
     const [may, rows, scopes, settings] = await Promise.all([
       c.query(`select has_perm($1, 'stock.view') as view, has_perm($1, 'stock.count') as count, has_perm($1, 'costs.view') as costs`, [ctx.employeeId]),
       c.query(
-        `select c.id, c.number, c.title, c.status, to_char(c.created_at at time zone s.timezone, 'FMDD FMMonth YYYY') as day, e.name as by,
+        `select c.id, c.number, c.title, c.status, to_char(c.created_at at time zone s.timezone, 'FMDD FMMonth YYYY') as day, e.name as by, s.name as branch,
                 coalesce(l.lines, 0)::int as lines, coalesce(l.counted, 0)::int as counted, coalesce(l.units, 0)::int as units, coalesce(l.value, 0)::bigint as value
            from stock_counts c
            join stores s on s.tenant_id = c.tenant_id and s.id = c.store_id
            left join employees e on e.tenant_id = c.tenant_id and e.id = c.started_by
            left join lateral (select count(*) as lines, count(x.counted) as counted, sum(x.diff) as units, round(sum(x.diff * x.unit_cost) / 1000) as value
                                 from stock_count_lines x where x.tenant_id = c.tenant_id and x.count_id = c.id) l on true
-          where c.tenant_id = $1 and c.store_id = first_store($1) and c.deleted_at is null
+          where c.tenant_id = $1 and ($2::uuid is null or c.store_id = $2::uuid) and c.deleted_at is null
           order by c.created_at desc limit 200`,
-        [ctx.tenantId],
+        [ctx.tenantId, working?.id ?? null],
       ),
-      // what a count can be of: the categories, suppliers and brands that have lines of stock in this shop
+      // what a count can be of: the categories, suppliers and brands that have lines of stock in this branch (or any)
       c.query(
-        `select 'category' as kind, s.category_id::text as id, s.category as name from stock_on_hand($1, first_store($1)) s where s.category_id is not null group by 2, 3
+        `with s as (select x.* from stores st cross join lateral stock_on_hand($1, st.id) x
+                     where st.tenant_id = $1 and st.deleted_at is null and ($2::uuid is null or st.id = $2::uuid))
+         select 'category' as kind, s.category_id::text as id, s.category as name from s where s.category_id is not null group by 2, 3
          union all
-         select 'supplier', s.supplier_id::text, s.supplier from stock_on_hand($1, first_store($1)) s where s.supplier_id is not null group by 2, 3
+         select 'supplier', s.supplier_id::text, s.supplier from s where s.supplier_id is not null group by 2, 3
          union all
-         select 'brand', min(btrim(i.brand)), min(btrim(i.brand)) from stock_on_hand($1, first_store($1)) s join items i on i.tenant_id = $1 and i.id = s.item_id
+         select 'brand', min(btrim(i.brand)), min(btrim(i.brand)) from s join items i on i.tenant_id = $1 and i.id = s.item_id
           where btrim(coalesce(i.brand, '')) <> '' group by lower(btrim(i.brand))
          order by 1, 3`,
-        [ctx.tenantId],
+        [ctx.tenantId, working?.id ?? null],
       ),
       loadSettings(c, ctx.tenantId),
     ]);
     return {
+      all,
+      picked,
+      working,
       may: may.rows[0] as { view: boolean; count: boolean; costs: boolean },
       rows: rows.rows as Row[],
       scopes: scopes.rows as { kind: string; id: string; name: string }[],
@@ -80,7 +99,9 @@ export default async function CountsPage({ searchParams }: { searchParams: Searc
     };
   });
   const head = (
-    <PageHead title="Counts" lede="Counting the shelves, all of them or a part, without closing the shop. A count is scanned or typed, reviewed, and then applied: every line that differs is put right, and the difference is kept." />
+    <PageHead title="Counts" lede="Counting the shelves, all of them or a part, without closing the shop. A count is scanned or typed, reviewed, and then applied: every line that differs is put right, and the difference is kept.">
+      <BranchPicker all={d.all} picked={d.picked?.id ?? null} />
+    </PageHead>
   );
   if (!d.may.view) {
     return (
@@ -109,8 +130,17 @@ export default async function CountsPage({ searchParams }: { searchParams: Searc
       {d.may.count && (
         <Card title="New count">
           <form action={newCount} className="bo-toolbar" style={{ margin: 0 }}>
+            {/* a count is of one branch: the one picked, or chosen here with All branches */}
+            {d.working ? (
+              <input type="hidden" name="store" value={d.working.id} />
+            ) : (
+              <select name="store" defaultValue="" aria-label="Branch to count" required>
+                <option value="" disabled>Which branch</option>
+                {d.all.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            )}
             <select name="what" defaultValue="all" aria-label="What to count">
-              <option value="all">The whole shop</option>
+              <option value="all">{d.all.length > 1 ? "The whole branch" : "The whole shop"}</option>
               {group("category", "One category")}
               {group("supplier", "One supplier")}
               {group("brand", "One brand")}
@@ -130,6 +160,7 @@ export default async function CountsPage({ searchParams }: { searchParams: Searc
                 <tr>
                   <th>Count</th>
                   <th>What</th>
+                  {!d.working && <th>Branch</th>}
                   <th>Status</th>
                   <th>Started</th>
                   <th className="num">Lines counted</th>
@@ -144,6 +175,7 @@ export default async function CountsPage({ searchParams }: { searchParams: Searc
                       <Link href={`${PATH}/${r.id}`}>{r.number}</Link>
                     </td>
                     <td>{r.title}</td>
+                    {!d.working && <td>{r.branch}</td>}
                     <td>
                       <span className={COUNT_TONE[r.status]}>{COUNT_STATUS[r.status]}</span>
                     </td>

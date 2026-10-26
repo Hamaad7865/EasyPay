@@ -8,6 +8,8 @@ import { one, PageHead, type Search } from "../../ui";
 import { Go, Submit, Wait } from "../../busy";
 import { ReportFilters } from "../parts";
 import { CsvButton, PrintButton } from "../print-button";
+import { pickedOf, workingBranch } from "@/lib/branch";
+import { BranchPicker } from "../../branch-picker";
 import { type Counted, type Line, type Loss, Losses, type Quiet, Reorder, Unsold, Value } from "./views";
 
 const PATH = "/backoffice/reports/stock";
@@ -25,8 +27,9 @@ type OnHand = {
   price: string; qty: number; avg_cost: string; reorder_point: number | null; reorder_qty: number | null; sold30: number;
 };
 
-// A shop's stock reports, four views of one page (the first shop: stock is
-// kept per shop and one shop is shown). Seeing them takes "See reports" and
+// A shop's stock reports, four views of one page, at the branch picked or at
+// every branch (multi-branch: each branch is asked in turn and the answers put
+// together; a line to reorder or not selling is a branch's, and says which). Seeing them takes "See reports" and
 // "See stock"; every figure in rupees also takes "See cost and profit".
 export default async function StockReports({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
@@ -36,34 +39,63 @@ export default async function StockReports({ searchParams }: { searchParams: Sea
   const days = DAYS.includes(Number(one(sp.days))) ? Number(one(sp.days)) : 60;
   const d = await readTenant(ctx.tenantId, async (c) => {
     const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
-    const may = (await c.query(`select has_perm($1, 'stock.view') as stock, has_perm($1, 'costs.view') as costs, first_store($2) as store`, [ctx.employeeId, ctx.tenantId])).rows[0] as {
-      stock: boolean; costs: boolean; store: string | null;
+    const may = (await c.query(`select has_perm($1, 'stock.view') as stock, has_perm($1, 'costs.view') as costs`, [ctx.employeeId])).rows[0] as {
+      stock: boolean; costs: boolean;
     };
+    const picked = await pickedOf(l.stores);
+    const working = workingBranch(l.stores, picked);
+    // the branches asked: the one worked on, or every one of several; `tag` names a branch's line among the others'
+    const asked = working ? [working] : l.stores;
+    const tag = (name: string, store: string) => (working ? name : `${name} · ${l.stores.find((b) => b.id === store)?.name ?? ""}`);
     // losses open on this month so far, not on today alone
-    const f = filters({ ...sp, from: one(sp.from) || today(l.tz).slice(0, 8) + "01" }, l.tz);
+    const f = filters({ ...sp, from: one(sp.from) || today(l.tz).slice(0, 8) + "01" }, l.tz, picked?.id ?? null);
     const base = { l, f, s, costs: Boolean(may.costs) };
-    if (!ok || !may.stock || !may.store) return { ...base, ok: false as const };
+    if (!ok || !may.stock || asked.length === 0) return { ...base, ok: false as const };
     // what the view picked asks, and nothing else
     const got: { losses?: Loss[]; counted?: Counted; quiet?: Quiet[]; lines?: Line[] } = {};
     if (view === "losses") {
-      const [rows, counted] = await Promise.all([c.query(LOSSES_SQL, [ctx.tenantId, may.store, f.from, f.to]), c.query(COUNTED_SQL, [ctx.tenantId, may.store, f.from, f.to])]);
-      got.losses = rows.rows as Loss[];
-      got.counted = counted.rows[0] as Counted;
+      // a loss is a loss wherever it was: the branches' are added up, product by product
+      const losses = new Map<string, Loss>();
+      const counted: Counted = { qty: 0, counts: 0, value: "0" };
+      for (const b of asked) {
+        const [rows, cnt] = await Promise.all([c.query(LOSSES_SQL, [ctx.tenantId, b.id, f.from, f.to]), c.query(COUNTED_SQL, [ctx.tenantId, b.id, f.from, f.to])]);
+        for (const r of rows.rows as Loss[]) {
+          const k = [r.reason, r.name, r.variant ?? ""].join("|");
+          const was = losses.get(k);
+          if (!was) losses.set(k, { ...r });
+          else {
+            was.qty += r.qty;
+            was.times += r.times;
+            was.value = was.value === null && r.value === null ? null : String(Number(was.value ?? 0) + Number(r.value ?? 0));
+          }
+        }
+        const k = cnt.rows[0] as Counted;
+        counted.qty += Number(k.qty);
+        counted.counts += Number(k.counts);
+        counted.value = String(Number(counted.value) + Number(k.value));
+      }
+      got.losses = [...losses.values()].sort((a, b) => a.reason.localeCompare(b.reason) || Number(b.value ?? 0) - Number(a.value ?? 0) || a.name.localeCompare(b.name));
+      got.counted = counted;
     } else if (view === "unsold") {
-      got.quiet = (await c.query(UNSOLD_SQL, [ctx.tenantId, may.store, days])).rows as Quiet[];
+      got.quiet = [];
+      for (const b of asked) got.quiet.push(...((await c.query(UNSOLD_SQL, [ctx.tenantId, b.id, days])).rows as Quiet[]).map((r) => ({ ...r, name: tag(r.name, b.id) })));
     } else if (view === "reorder" || may.costs) {
       // (stock value is nothing but rupees: without the right to see them there is nothing to ask)
-      const rows = (await c.query(`select * from stock_on_hand($1, $2)`, [ctx.tenantId, may.store])).rows as OnHand[];
-      got.lines = rows.map((r) => ({
-        item_id: r.item_id, variant_id: r.variant_id, name: r.name, variant: r.variant, category: r.category, supplierId: r.supplier_id, supplier: r.supplier,
-        qty: r.qty, avgCost: Number(r.avg_cost), price: Number(r.price), reorderPoint: r.reorder_point, reorderQty: r.reorder_qty, sold30: r.sold30,
-      }));
+      got.lines = [];
+      for (const b of asked) {
+        const rows = (await c.query(`select * from stock_on_hand($1, $2)`, [ctx.tenantId, b.id])).rows as OnHand[];
+        got.lines.push(...rows.map((r) => ({
+          item_id: r.item_id, variant_id: r.variant_id, name: tag(r.name, b.id), variant: r.variant, category: r.category, supplierId: r.supplier_id, supplier: r.supplier,
+          qty: r.qty, avgCost: Number(r.avg_cost), price: Number(r.price), reorderPoint: r.reorder_point, reorderQty: r.reorder_qty, sold30: r.sold30,
+        })));
+      }
     }
     return { ...base, ok: true as const, ...got };
   });
   const [, title, lede] = VIEWS.find(([v]) => v === view)!;
   const head = (
     <PageHead title={title} lede={lede}>
+      <BranchPicker all={d.l.stores} picked={d.f.store} />
       {d.ok && view !== "losses" && !(view === "value" && !d.costs) && (
         <>
           <CsvButton />

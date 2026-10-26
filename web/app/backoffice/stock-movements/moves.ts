@@ -3,9 +3,9 @@ import { isDay } from "@/lib/day";
 import { MOVE_LABEL } from "@/lib/stock";
 
 // The movements of a shop's stock, as the Movements page and its CSV both
-// read them: one question, so the file holds what the page showed. The shop
-// is the first one (stock is kept per shop and one shop is shown); a movement
-// written before stock had shops belongs to it too.
+// read them: one question, so the file holds what the page showed. At the
+// branch picked, or at every branch (multi-branch); a movement written before
+// stock had branches belongs to the first.
 
 export type MoveFilters = { item: string | null; variant: string | null; reason: string | null; who: string | null; from: string | null; to: string | null };
 
@@ -27,20 +27,21 @@ export function moveQuery(f: MoveFilters): string {
 
 export type Move = {
   id: string; at: string; item: string; variant: string | null; qty: number; reason: string;
-  unit_cost: string | null; who: string | null; note: string | null; receipt: string | null;
+  unit_cost: string | null; who: string | null; note: string | null; receipt: string | null; branch: string;
 };
 
-// $1 tenant, $2 product, $3 variant, $4 reason, $5 person, $6 from, $7 to (days in the shop's time zone), $8 how many
+// $1 tenant, $2 product, $3 variant, $4 reason, $5 person, $6 from, $7 to (days in the shop's time zone), $8 how many,
+// $9 the branch or null
 export const MOVES_SQL = `
   select m.id, m.created_at as at, i.name as item, v.name as variant, m.qty, m.reason, m.unit_cost, e.name as who, m.note,
-         case when m.ref_type = 'receipt' then r.number end as receipt
+         case when m.ref_type = 'receipt' then r.number end as receipt, s.name as branch
     from stock_movements m
-    join stores s on s.tenant_id = m.tenant_id and s.id = first_store($1)
+    join stores s on s.tenant_id = m.tenant_id and s.id = coalesce(m.store_id, first_store($1))
     join items i on i.tenant_id = m.tenant_id and i.id = m.item_id
     left join item_variants v on v.tenant_id = m.tenant_id and v.id = m.variant_id
     left join employees e on e.tenant_id = m.tenant_id and e.id = m.employee_id
     left join receipts r on r.tenant_id = m.tenant_id and r.id = m.receipt_id
-   where m.tenant_id = $1 and m.deleted_at is null and (m.store_id = s.id or m.store_id is null)
+   where m.tenant_id = $1 and m.deleted_at is null and ($9::uuid is null or s.id = $9::uuid)
      and ($2::uuid is null or m.item_id = $2::uuid)
      and ($3::uuid is null or m.variant_id = $3::uuid)
      and ($4::text is null or m.reason = $4::text)
@@ -50,4 +51,4 @@ export const MOVES_SQL = `
    order by m.created_at desc, m.id desc
    limit $8`;
 
-export const moveParams = (tenantId: string, f: MoveFilters, limit: number) => [tenantId, f.item, f.variant, f.reason, f.who, f.from, f.to, limit];
+export const moveParams = (tenantId: string, f: MoveFilters, limit: number, store: string | null = null) => [tenantId, f.item, f.variant, f.reason, f.who, f.from, f.to, limit, store];

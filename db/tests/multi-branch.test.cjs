@@ -265,6 +265,88 @@ const id = () => crypto.randomUUID();
     p = await see(soloCtx, '/backoffice/staff', {});
     check('S6 one branch: no Works at', !p.error && !p.says.includes('Works at'), p.error);
     void gb;
+
+    // ---- K: stock per branch (piece 3) ----
+    const level = async (tenant, store, item) => Number((await one(`select coalesce(sum(qty), 0) as q from stock_levels where tenant_id = $1 and store_id = $2 and item_id = $3`, [tenant, store, item])).q);
+    const itemTotal = async (item) => Number((await one(`select coalesce(stock_qty, 0) as q from items where id = $1`, [item])).q);
+    const cola = (await one(`insert into items (tenant_id, name, price, category_id, track_stock) values ($1,'Cola',5000,$2,true) returning id`, [tid, cat])).id;
+    await asApp(tid, `select stock_move($1,$2,$3,null,10000,'adjust',null,null,null,$4,null)`, [tid, main, cola, owner]);
+    await asApp(tid, `select stock_move($1,$2,$3,null,4000,'adjust',null,null,null,$4,null)`, [tid, pl, cola, owner]);
+    r = await asApp(tid, `select stock_count_item($1,$2,$3,3000,$4,null) as d`, [tid, pl, cola, owner]);
+    check('K1 a count of 3 at Port Louis writes -1 there', !r.error && Number(r.rows[0].d) === -1000, r.error || r.rows[0].d);
+    check('K1 Main keeps its 10, Port Louis has 3, the total is 13', (await level(tid, main, cola)) === 10000 && (await level(tid, pl, cola)) === 3000 && (await itemTotal(cola)) === 13000,
+      `${await level(tid, main, cola)} ${await level(tid, pl, cola)} ${await itemTotal(cola)}`);
+    // a shop: opening stock from a file, at Curepipe and then at Rose Hill
+    const curepipe = shopMade.store_id;
+    const mug = [{ n: 1, name: 'Ceramic mug', price: 32000, cost: 14000, stock: 26000 }];
+    r = await asApp(sid, `select catalog_import($1,$2,$3,$4::jsonb,false) as r`, [sid, curepipe, sowner, JSON.stringify(mug)]);
+    const mugId = (await one(`select id from items where tenant_id = $1 and name = 'Ceramic mug'`, [sid])).id;
+    r = await asApp(sid, `select catalog_import($1,$2,$3,$4::jsonb,false) as r`, [sid, rh, sowner, JSON.stringify([{ ...mug[0], stock: 5000 }])]);
+    check('K5 opening stock at Rose Hill, though Curepipe holds some', !r.error && (await level(sid, rh, mugId)) === 5000 && (await level(sid, curepipe, mugId)) === 26000, r.error || `${await level(sid, rh, mugId)} ${await level(sid, curepipe, mugId)}`);
+    r = await asApp(sid, `select catalog_import($1,$2,$3,$4::jsonb,false) as r`, [sid, rh, sowner, JSON.stringify([{ ...mug[0], stock: 7000 }])]);
+    check('K5 and not twice at the same branch', !r.error && (await level(sid, rh, mugId)) === 5000, r.error || await level(sid, rh, mugId));
+
+    // a table's cell by its column's heading: branches sit in the order they were made, which one transaction does not fix
+    const cell = (html, rowHas, head) => {
+      const rows = rowsOf(html);
+      const at = (rows[0] || '').split(' | ').indexOf(head);
+      const row = rows.find((x) => x.includes(rowHas)) || '';
+      return at < 0 ? undefined : row.split(' | ')[at];
+    };
+    // the restaurant's Stock page: Cola, 10 at Main and 3 at Port Louis
+    p = await see({ ...base, branch: pl }, '/backoffice/stock', {});
+    let colaRow = rowsOf(p.html).find((x) => x.includes('Cola')) || '';
+    check('K2 a restaurant\'s Stock with Port Louis picked: its 3', !p.error && colaRow.split(' | ')[3] === '3', p.error || colaRow);
+    p = await see(base, '/backoffice/stock', {});
+    colaRow = rowsOf(p.html).find((x) => x.includes('Cola')) || '';
+    check('K2 with All branches: 13, then 10 and 3 under each branch', !p.error && cell(p.html, 'Cola', 'All branches') === '13' && cell(p.html, 'Cola', 'Main') === '10' && cell(p.html, 'Cola', 'Port Louis') === '3', p.error || colaRow);
+    check('K3 a restaurant\'s low stock is judged at each branch', /Low at .*Port Louis/.test(colaRow) && !/Low at .*Main/.test(colaRow), colaRow);
+    // the shop's Stock on hand: the mug, 26 at Curepipe and 5 at Rose Hill, reordered at Rose Hill below 6
+    await asApp(sid, `select stock_set_reorder($1,$2,$3,6000,null)`, [sid, rh, mugId]);
+    const shopBase = { tenantId: sid, employeeId: sowner, mode: 'retail', premium: true, mra: 'off' };
+    p = await see({ ...shopBase, branch: rh }, '/backoffice/stock', {});
+    let mugRow = rowsOf(p.html).find((x) => x.includes('Ceramic mug')) || '';
+    check('K2 a shop\'s Stock on hand with Rose Hill picked: its 5, low', !p.error && mugRow.includes('| 5 |') && /Low/.test(mugRow), p.error || mugRow);
+    p = await see(shopBase, '/backoffice/stock', {});
+    mugRow = rowsOf(p.html).find((x) => x.includes('Ceramic mug')) || '';
+    check('K2 with All branches: 31, then 26 and 5', !p.error && cell(p.html, 'Ceramic mug', 'All branches') === '31' && cell(p.html, 'Ceramic mug', 'Curepipe') === '26' && cell(p.html, 'Ceramic mug', 'Rose Hill') === '5', p.error || mugRow);
+    check('K3 low at Rose Hill only', /Low at Rose Hill/.test(mugRow) && !/Curepipe/.test(mugRow.split(' | ').slice(-1)[0]), mugRow);
+    check('K3 and nothing is adjusted from All branches', !p.html.includes('Save adjustment'), '');
+    p = await see(shopBase, '/backoffice/reports/stock', { view: 'reorder' });
+    check('K3 the reorder list with All branches names the branch', !p.error && p.says.includes('Ceramic mug · Rose Hill') && !p.says.includes('Ceramic mug · Curepipe'), p.error || p.says.slice(0, 300));
+    await c.query(`insert into suppliers (tenant_id, name) values ($1, 'Textiles Ocean')`, [sid]);
+    // a new order, and receiving without one: the branch is the one picked, or chosen
+    p = await see({ ...shopBase, branch: rh }, '/backoffice/purchase-orders', {});
+    check('K4 a new order with Rose Hill picked goes to Rose Hill', !p.error && p.html.includes(`name="store" value="${rh}"`), p.error);
+    p = await see(shopBase, '/backoffice/purchase-orders', {});
+    check('K4 with All branches the order asks which branch', !p.error && /<select name="store"/.test(p.html), p.error);
+    const dv = id();
+    r = await asApp(sid, `select delivery_receive($1,$2,$3,$4,null,null,current_date,null,null,$5::jsonb) as r`,
+      [sid, sowner, dv, rh, JSON.stringify([{ item_id: mugId, variant_id: null, qty: 4000, unit_cost: 15000 }])]);
+    check('K4 a delivery received at Rose Hill adds there', !r.error && (await level(sid, rh, mugId)) === 9000 && (await level(sid, curepipe, mugId)) === 26000, r.error || `${await level(sid, rh, mugId)} ${await level(sid, curepipe, mugId)}`);
+    // movements, one branch's and all of them
+    p = await see({ ...shopBase, branch: curepipe }, '/backoffice/stock-movements', {});
+    check('K6 Movements with Curepipe picked: Curepipe\'s alone', !p.error && rowsOf(p.html).filter((x) => x.includes('Ceramic mug')).length === 1, p.error || rowsOf(p.html).filter((x) => x.includes('Ceramic mug')).join(' || '));
+    p = await see(shopBase, '/backoffice/stock-movements', {});
+    check('K6 with All branches every one, each with its branch', !p.error && rowsOf(p.html).filter((x) => x.includes('Ceramic mug')).length === 3 && p.says.includes('Rose Hill'), p.error || rowsOf(p.html).filter((x) => x.includes('Ceramic mug')).length);
+    // every stock page opens, at each pick
+    const stockBroke = [];
+    for (const pick of [null, curepipe, rh]) {
+      for (const [href, sp, more] of [
+        ['/backoffice/stock', {}], ['/backoffice/stock-counts', {}], ['/backoffice/purchase-orders', {}], ['/backoffice/purchase-orders/receive', {}],
+        ['/backoffice/stock-movements', {}], ['/backoffice/reports/stock', { view: 'value' }], ['/backoffice/reports/stock', { view: 'reorder' }],
+        ['/backoffice/reports/stock', { view: 'losses' }], ['/backoffice/reports/stock', { view: 'unsold' }], ['/backoffice/items/import', {}],
+        ['/backoffice/items/' + mugId, {}, { params: { id: mugId }, file: 'backoffice/items/[id]' }], ['/backoffice', {}],
+      ]) {
+        const q = await see({ ...shopBase, branch: pick ?? undefined }, href, sp, more);
+        if (q.error) stockBroke.push(`${href} ${JSON.stringify(sp)} [${pick ?? 'all'}]: ${q.error}`);
+      }
+    }
+    check('K7 every stock page opens for a shop with two branches, at each pick', stockBroke.length === 0, stockBroke.join(' || '));
+    p = await see(shopBase, '/backoffice/items/' + mugId, {}, { params: { id: mugId }, file: 'backoffice/items/[id]' });
+    check('K7 the product page says each branch\'s stock and has its reorder level', !p.error && p.says.includes('Curepipe 26') && p.says.includes('Rose Hill 9') && p.html.includes(`name="reorder_${rh}"`), p.error || p.says.slice(0, 200));
+
+
   } catch (e) {
     console.log('FAIL the test itself: ' + ((e && e.stack) || e));
     failures++;

@@ -108,7 +108,7 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
     const day = report.today(tz);
     // byCategory: false for each product, true for each category, or 'supplier' / 'brand'
     const sales = async (byCategory, withCost, as = tid) => {
-      const rows = await ask(rep.itemSalesSql(report.RECEIPTS, byCategory === true ? 'category' : byCategory || 'item', withCost), [tid, day, day, null, null, 'all'], as);
+      const rows = await ask(rep.itemSalesSql(report.RECEIPTS, byCategory === true ? 'category' : byCategory || 'item', withCost), [tid, day, day, null, null, 'all', null], as);
       return Object.fromEntries(rows.map((r) => [r.name, { qty: r.qty, amount: Number(r.amount), ex: r.ex_vat == null ? null : Number(r.ex_vat), costed: r.costed == null ? null : Number(r.costed), cost: r.cost == null ? null : Number(r.cost) }]));
     };
     const fig = (r) => (r ? [r.qty, r.amount, r.ex, r.costed, r.cost].join('/') : 'none');
@@ -247,7 +247,7 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
 
     // ---- discounts given on one line, and prices typed for one sale ----
     // (last: these sales would change what the reports above are asked about)
-    const prices = async (as = tid, kind = 'all') => { const x = (await ask(rep.linePricesSql(report.RECEIPTS), [tid, day, day, null, null, kind], as))[0]; sold = Number(x.sold_off) + '/' + Number(x.sold_changed); return Number(x.off) + '/' + Number(x.changed); };
+    const prices = async (as = tid, kind = 'all') => { const x = (await ask(rep.linePricesSql(report.RECEIPTS), [tid, day, day, null, null, kind, null], as))[0]; sold = Number(x.sold_off) + '/' + Number(x.sold_changed); return Number(x.off) + '/' + Number(x.changed); };
     let sold = '';
     check('D1 with nothing changed on a line, nothing is counted (a discount on the bill is the receipt\'s own)', (await prices()) === '0/0', await prices());
     // two belts at Rs 100.00 instead of Rs 115.00 (Rs 30.00 off), a mug typed at Rs 100.00 (Rs 15.00 under), a scarf typed at Rs 125.00 (Rs 10.00 over)

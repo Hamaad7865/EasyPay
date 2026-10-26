@@ -146,7 +146,7 @@ const op = (type, payload) => ({ op_id: crypto.randomUUID(), type, payload });
       const rep = lib('stock-reports');
       const report = lib('report', { '@/lib/action': { UUID: /^[0-9a-f-]{36}$/i }, '@/lib/settings': { withDefaults: (x) => x }, '@/lib/day': lib('day') });
       const sales = async (kind) => Object.fromEntries((await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true),
-        [tid, '2026-03-01', '2099-12-31', null, null, kind]))).rows.map((r) => [r.name, r]));
+        [tid, '2026-03-01', '2099-12-31', null, null, kind, null]))).rows.map((r) => [r.name, r]));
       const fig = (r) => (r ? [r.qty, r.ex_vat, r.costed, r.cost].join('/') : 'none');
       let r = await sales('sale');
       check('M8 two Mix grills sold cost two chickens and two lambs', r['Mix grill']?.qty === 2000 && Number(r['Mix grill'].cost) === 4000

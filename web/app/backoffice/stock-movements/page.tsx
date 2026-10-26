@@ -6,6 +6,8 @@ import { loadSettings, money } from "@/lib/settings";
 import { MOVE_LABEL, units } from "@/lib/stock";
 import { Card, Empty, one, PageHead, type Search } from "../ui";
 import { type Move, moveFilters, moveParams, moveQuery, MOVES_SQL } from "./moves";
+import { branches, pickedOf } from "@/lib/branch";
+import { BranchPicker } from "../branch-picker";
 
 const PATH = "/backoffice/stock-movements";
 const MOST = 500;
@@ -17,9 +19,11 @@ export default async function MovementsPage({ searchParams }: { searchParams: Se
   const ctx = await onlyFor("retail");
   const f = moveFilters((k) => one(sp[k]));
   const d = await readTenant(ctx.tenantId, async (c) => {
+    const all = await branches(c, ctx.tenantId);
+    const branch = await pickedOf(all);
     const [may, moves, people, picked, shop, settings] = await Promise.all([
       c.query(`select has_perm($1, 'stock.view') as view, has_perm($1, 'costs.view') as costs`, [ctx.employeeId]),
-      c.query(MOVES_SQL, moveParams(ctx.tenantId, f, MOST + 1)),
+      c.query(MOVES_SQL, moveParams(ctx.tenantId, f, MOST + 1, branch?.id ?? null)),
       c.query(`select id, name from employees where tenant_id = $1 and deleted_at is null order by lower(name)`, [ctx.tenantId]),
       c.query(
         `select i.name, v.name as variant
@@ -31,6 +35,8 @@ export default async function MovementsPage({ searchParams }: { searchParams: Se
       loadSettings(c, ctx.tenantId),
     ]);
     return {
+      all,
+      branch,
       may: may.rows[0] as { view: boolean; costs: boolean },
       moves: moves.rows as Move[],
       people: people.rows as { id: string; name: string }[],
@@ -43,7 +49,9 @@ export default async function MovementsPage({ searchParams }: { searchParams: Se
     <PageHead
       title="Movements"
       lede="Every change to the shop's stock: sold, received, counted, adjusted or returned, with who did it. Nothing here is ever edited: a mistake is put right by another movement."
-    />
+    >
+      <BranchPicker all={d.all} picked={d.branch?.id ?? null} />
+    </PageHead>
   );
   if (!d.may.view) {
     return (
@@ -56,6 +64,8 @@ export default async function MovementsPage({ searchParams }: { searchParams: Se
   const when = new Intl.DateTimeFormat("en-GB", { timeZone: d.tz, day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const shown = d.moves.slice(0, MOST);
   const filtered = Boolean(f.item || f.reason || f.who || f.from || f.to);
+  // All branches of several: each movement says where
+  const where = d.all.length > 1 && !d.branch;
   return (
     <div>
       {head}
@@ -112,6 +122,7 @@ export default async function MovementsPage({ searchParams }: { searchParams: Se
                   <th>When</th>
                   <th>Product</th>
                   <th>Variant</th>
+                  {where && <th>Branch</th>}
                   <th>What</th>
                   <th className="num">Quantity</th>
                   {d.may.costs && <th className="num">Unit cost</th>}
@@ -126,6 +137,7 @@ export default async function MovementsPage({ searchParams }: { searchParams: Se
                     <td>{when.format(new Date(m.at))}</td>
                     <td className="strong">{m.item}</td>
                     <td>{m.variant ?? <span className="muted">One size</span>}</td>
+                    {where && <td>{m.branch}</td>}
                     <td>{MOVE_LABEL[m.reason] ?? m.reason}</td>
                     <td className="num strong" style={m.qty < 0 ? { color: "var(--red)" } : undefined}>
                       {m.qty > 0 ? "+" : ""}

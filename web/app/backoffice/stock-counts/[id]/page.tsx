@@ -59,7 +59,7 @@ async function cancelCount(f: FormData) {
   });
 }
 
-type Head = { number: string; title: string; status: CountStatus; uncounted: string | null; started: string; by: string | null; completed: string | null; completed_by: string | null };
+type Head = { branch: string | null; number: string; title: string; status: CountStatus; uncounted: string | null; started: string; by: string | null; completed: string | null; completed_by: string | null };
 type Row = {
   line_id: string; item_id: string; variant_id: string | null; name: string; variant: string | null; sku: string | null; barcode: string | null;
   counted: number | null; counted_at: string | null; left_out: boolean; expected: number | null; diff: number | null; value: string | null; state: LineState;
@@ -83,6 +83,8 @@ export default async function CountPage({ params, searchParams }: { params: Prom
       c.query(`select has_perm($1, 'stock.view') as view, has_perm($1, 'stock.count') as count, has_perm($1, 'costs.view') as costs`, [ctx.employeeId]),
       c.query(
         `select c.number, c.title, c.status, c.uncounted,
+                -- the branch, named when the account has several (multi-branch)
+                case when (select count(*) from stores z where z.tenant_id = c.tenant_id and z.deleted_at is null) > 1 then s.name end as branch,
                 to_char(c.created_at at time zone s.timezone, 'FMDD FMMonth YYYY, HH24:MI') as started, e.name as by,
                 to_char(c.completed_at at time zone s.timezone, 'FMDD FMMonth YYYY, HH24:MI') as completed, e2.name as completed_by
            from stock_counts c
@@ -133,7 +135,7 @@ export default async function CountPage({ params, searchParams }: { params: Prom
   return (
     <div>
       <PageHead
-        title={`Count ${h.number}: ${h.title}`}
+        title={`Count ${h.number}: ${h.title}${h.branch ? `, ${h.branch}` : ""}`}
         lede={
           open
             ? `Started ${h.started}${h.by ? " by " + h.by : ""}. ${totals.counted} of ${totals.lines} lines counted${totals.leftOut ? `, ${totals.leftOut} left out` : ""}.`

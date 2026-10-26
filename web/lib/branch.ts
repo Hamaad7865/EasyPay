@@ -27,3 +27,16 @@ export async function pickedOf(all: Branch[]): Promise<Branch | null> {
   const want = await wanted();
   return all.find((b) => b.id === want) ?? null;
 }
+
+// The branch a stock page works on: the one picked, or the account's only one. null is All branches of several,
+// where a page shows the branches side by side and a change asks which branch it is for.
+export const workingBranch = (all: Branch[], picked: Branch | null): Branch | null => picked ?? (all.length === 1 ? all[0] : null);
+
+// The branch a form names (field "store"), read against the account's own; an account with one branch needs none.
+// null when it is not one of them: the action says so in its own words.
+export async function formBranch(c: PoolClient, tenantId: string, v: FormDataEntryValue | null): Promise<string | null> {
+  const all = await branches(c, tenantId);
+  if (all.length === 1) return all[0].id;
+  const id = typeof v === "string" ? v : "";
+  return all.find((b) => b.id === id)?.id ?? null;
+}

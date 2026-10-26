@@ -4,8 +4,12 @@ import { useMemo } from "react";
 import { Back, Chev, fold, NoMatch, Seg, SortTh, type Start, TableSearch, useTable } from "../table-kit";
 import { Submit } from "../busy";
 
-// quantities are thousandths; `q_shown` and `sold7_shown` are the same as people read them
-export type StockRow = { id: string; name: string; cat: string | null; cat_order: number; q: number; q_shown: string; sold7: number; sold7_shown: string };
+// quantities are thousandths; `q_shown` and `sold7_shown` are the same as people read them. With All branches of
+// several, `at` is each branch's quantity as read, by branch id, and `lowAt` the branches where it is low or out.
+export type StockRow = {
+  id: string; name: string; cat: string | null; cat_order: number; q: number; q_shown: string; sold7: number; sold7_shown: string;
+  at?: Record<string, string>; lowAt?: string[];
+};
 type Action = (f: FormData) => Promise<void>;
 
 const LOW = 5000; // five or fewer left is "low"
@@ -17,12 +21,14 @@ const SHOW = [
 
 // What is left of the items that are counted, as one table. Tapping a line
 // opens it to add a delivery or to set the quantity after counting the shelf.
-export function StockTable({ rows, start, change }: { rows: StockRow[]; start: Start; change: Action }) {
+// `side`: All branches of several, each in a column of its own; nothing is changed from there, a branch is picked
+// first. `store`: the branch a change is for (multi-branch, the spec's section 6).
+export function StockTable({ rows, start, change, side = [], store }: { rows: StockRow[]; start: Start; change: Action; side?: { id: string; name: string }[]; store: string | null }) {
   const t = useTable("/backoffice/stock", start);
   const show = t.get("show");
   const hay = useMemo(() => new Map(rows.map((r) => [r.id, fold(`${r.name} ${r.cat ?? ""}`)])), [rows]);
   const shown = t.sorted(
-    rows.filter((r) => (!show || (show === "low" ? r.q <= LOW : show === "out" ? r.q <= 0 : true)) && t.finds(hay.get(r.id)!)),
+    rows.filter((r) => (!show || (show === "low" ? r.q <= LOW || (r.lowAt?.length ?? 0) > 0 : show === "out" ? r.q <= 0 : true)) && t.finds(hay.get(r.id)!)),
     {
       name: (a, b) => a.name.localeCompare(b.name),
       category: (a, b) => a.cat_order - b.cat_order || (a.cat ?? "").localeCompare(b.cat ?? "") || a.name.localeCompare(b.name),
@@ -37,7 +43,7 @@ export function StockTable({ rows, start, change }: { rows: StockRow[]; start: S
         <div>
           <h2>Counted items</h2>
           <p>
-            {shown.length !== rows.length ? `${shown.length} of ${rows.length}` : rows.length} {rows.length === 1 ? "item" : "items"}. Tap one to add a delivery or set its quantity.
+            {shown.length !== rows.length ? `${shown.length} of ${rows.length}` : rows.length} {rows.length === 1 ? "item" : "items"}. {store ? "Tap one to add a delivery or set its quantity." : "Pick a branch at the top to add a delivery or set a quantity."}
           </p>
         </div>
         <TableSearch t={t} placeholder="Search item or category" label="Search stock" />
@@ -52,13 +58,14 @@ export function StockTable({ rows, start, change }: { rows: StockRow[]; start: S
               <th />
               <SortTh t={t} k="name" label="Item" />
               <SortTh t={t} k="category" label="Category" />
-              <SortTh t={t} k="stock" label="In stock" num />
+              <SortTh t={t} k="stock" label={side.length ? "All branches" : "In stock"} num />
+              {side.map((b) => <th key={b.id} className="num">{b.name}</th>)}
               <th>Status</th>
               <SortTh t={t} k="sold" label="Sold in 7 days" num />
             </tr>
           </thead>
           <tbody>
-            {shown.length === 0 && <NoMatch t={t} cols={6} what="item" filters={["show"]} />}
+            {shown.length === 0 && <NoMatch t={t} cols={6 + side.length} what="item" filters={["show"]} />}
             {shown.map((r) => {
               const on = t.isOpen(r.id);
               return [
@@ -69,15 +76,28 @@ export function StockTable({ rows, start, change }: { rows: StockRow[]; start: S
                   <td className="strong">{r.name}</td>
                   <td>{r.cat ?? <span className="muted">None</span>}</td>
                   <td className="num strong">{r.q_shown}</td>
-                  <td>{r.q <= 0 ? <span className="badge red">Out</span> : r.q <= LOW ? <span className="badge amber">Low</span> : <span className="badge green">In stock</span>}</td>
+                  {side.map((b) => <td key={b.id} className="num">{r.at?.[b.id] ?? "0"}</td>)}
+                  <td>
+                    {r.q <= 0 ? (
+                      <span className="badge red">Out</span>
+                    ) : r.lowAt?.length ? (
+                      <span className="badge amber">Low at {r.lowAt.join(", ")}</span>
+                    ) : r.q <= LOW ? (
+                      <span className="badge amber">Low</span>
+                    ) : (
+                      <span className="badge green">In stock</span>
+                    )}
+                  </td>
                   <td className="num">{r.sold7 > 0 ? r.sold7_shown : <span className="muted">None</span>}</td>
                 </tr>,
                 on && (
                   <tr key={r.id + "-open"} className="open-body">
-                    <td colSpan={6}>
+                    <td colSpan={6 + side.length}>
                       <div className="open-panel">
+                        {store ? (
                         <form action={change} className="bo-toolbar" style={{ margin: 0 }}>
                           <input type="hidden" name="id" value={r.id} />
+                          <input type="hidden" name="store" value={store} />
                           <Back t={t} id={r.id} />
                           <select name="mode" defaultValue="add" aria-label="How">
                             <option value="add">Add (a delivery; minus to take away)</option>
@@ -89,8 +109,9 @@ export function StockTable({ rows, start, change }: { rows: StockRow[]; start: S
                             Save
                           </Submit>
                         </form>
+                        ) : null}
                         <p className="muted open-hint">
-                          {r.q_shown} in stock now. Every change is kept under Latest movements, with who made it.
+                          {r.q_shown} in stock now{store ? "" : " at all branches. Pick a branch at the top to change its stock"}. Every change is kept under Latest movements, with who made it.
                         </p>
                       </div>
                     </td>

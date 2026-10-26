@@ -6,6 +6,7 @@ import { act, on, Refused, text, UUID } from "@/lib/action";
 import { parseRs } from "@/lib/money";
 import { fmtQty } from "@/lib/report";
 import { saveProductRow, saveVariantLines, setItemTax } from "@/lib/saves";
+import { branches } from "@/lib/branch";
 import { Card, Flash, PageHead, type Search } from "../../ui";
 import { Submit } from "../../busy";
 import { PriceFields, type TaxChoice } from "./price-fields";
@@ -113,7 +114,15 @@ async function saveProduct(f: FormData) {
         }
       });
       if (!(await setItemTax(c, ctx.tenantId, id, tax))) throw new Refused("That tax is no longer there. Pick the tax this product carries.");
-      await c.query(`select stock_set_reorder($1, first_store($1), $2, $3, $4)`, [ctx.tenantId, id, reorder, orderQty]);
+      // the reorder level is a branch's (multi-branch): the one pair of boxes with one branch, a pair per branch with several
+      const all = await branches(c, ctx.tenantId);
+      if (all.length === 1) await c.query(`select stock_set_reorder($1, $2, $3, $4, $5)`, [ctx.tenantId, all[0].id, id, reorder, orderQty]);
+      else {
+        for (const b of all) {
+          if (!f.has("reorder_" + b.id)) continue;
+          await c.query(`select stock_set_reorder($1, $2, $3, $4, $5)`, [ctx.tenantId, b.id, id, units(f, "reorder_" + b.id), units(f, "order_qty_" + b.id)]);
+        }
+      }
       return `${name} saved.`;
     },
     `${PATH}/${editing ? id : "new"}`,
@@ -229,6 +238,17 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   const isNew = id === "new";
   if (!isNew && !UUID.test(id)) notFound();
   const d = await readTenant(ctx.tenantId, async (c) => {
+    const all = await branches(c, ctx.tenantId);
+    // each branch's stock of it and its reorder level there (multi-branch)
+    const levels = isNew
+      ? []
+      : ((
+          await c.query(
+            `select l.store_id, coalesce(sum(l.qty), 0)::int as qty, max(l.reorder_point) as reorder_point, max(l.reorder_qty) as reorder_qty
+               from stock_levels l where l.tenant_id = $1 and l.item_id = $2 group by l.store_id`,
+            [ctx.tenantId, id],
+          )
+        ).rows as { store_id: string; qty: number; reorder_point: number | null; reorder_qty: number | null }[]);
     const [item, variants, cats, taxes, suppliers, may] = await Promise.all([
       isNew
         ? Promise.resolve({ rows: [] as ItemRow[] })
@@ -257,6 +277,8 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
       c.query(`select has_perm($1, 'costs.view') as costs`, [ctx.employeeId]),
     ]);
     return {
+      all,
+      levels,
       item: (item.rows[0] as ItemRow | undefined) ?? null,
       variants: variants.rows as VariantRow[],
       cats: cats.rows as { id: string; name: string }[],
@@ -271,6 +293,8 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   const lines = d.variants;
   const hasLines = lines.length > 0;
   const onHand = hasLines ? lines.reduce((a, v) => a + v.qty, 0) : (item?.stock_qty ?? 0);
+  const many = d.all.length > 1;
+  const at = (store: string) => d.levels.find((l) => l.store_id === store);
   // each option with the values its lines already use, in the order they first appear
   const options = [0, 1, 2].map((n) => ({
     name: item?.option_names[n] ?? "",
@@ -286,7 +310,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
         title={item ? item.name : "New product"}
         lede={
           item
-            ? `${hasLines ? `${lines.length} ${lines.length === 1 ? "variant" : "variants"}, ` : ""}${fmtQty(onHand)} on hand.`
+            ? `${hasLines ? `${lines.length} ${lines.length === 1 ? "variant" : "variants"}, ` : ""}${fmtQty(onHand)} on hand${many ? `: ${d.all.map((b) => `${b.name} ${fmtQty(at(b.id)?.qty ?? 0)}`).join(", ")}` : ""}.`
             : "What it is, what it costs and sells for, and who supplies it. Sizes and colours are added once it is saved."
         }
       >
@@ -366,6 +390,21 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                 </label>
               </div>
             )}
+            {many ? (
+              // a reorder level for each branch: each judges its own stock against it
+              d.all.map((b) => (
+                <div key={b.id} className="form-row">
+                  <label className="field">
+                    {b.name}: reorder when at or below
+                    <input name={"reorder_" + b.id} defaultValue={qtyUnits(at(b.id)?.reorder_point ?? null)} inputMode="decimal" placeholder="No level set" />
+                  </label>
+                  <label className="field">
+                    Usual order quantity
+                    <input name={"order_qty_" + b.id} defaultValue={qtyUnits(at(b.id)?.reorder_qty ?? null)} inputMode="decimal" />
+                  </label>
+                </div>
+              ))
+            ) : (
             <div className="form-row">
               <label className="field">
                 Reorder when at or below
@@ -376,6 +415,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                 <input name="order_qty" defaultValue={qtyUnits(item?.reorder_qty ?? null)} inputMode="decimal" />
               </label>
             </div>
+            )}
             <label className="check">
               <input type="checkbox" name="track_stock" defaultChecked={item?.track_stock ?? true} />
               <span>

@@ -519,7 +519,7 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
         { id: ratLine, item_id: rattle, name_snapshot: 'Rattle', unit_price: 5000, deposit_line_id: L[0].id },
         { item_id: blanket, name_snapshot: 'Blanket', unit_price: 6000, deposit_line_id: L[1].id },
       ], [{ payment_type_id: cash, amount: 11000 }]);
-      const rows = await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true), [tid, day, day, null, null, 'all']));
+      const rows = await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true), [tid, day, day, null, null, 'all', null]));
       const rat = rows.rows.find((x) => x.name === 'Rattle');
       check('T14 collected: the rattle sold costs what it cost when it left the shelf, and its sale is in the profit',
         tags(r.out) === 'applied applied applied' && rat && Number(rat.cost) === 1000 && Number(rat.costed) === Number(rat.ex_vat) && Number(rat.costed) > 0, JSON.stringify(rat));
@@ -532,10 +532,10 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
       const rfId = id();
       const rf = await push([op('refund.create', { id: rfId, refund_of: r.rc, store_id: store, device_id: dev, number: 'DP-R' + seq, device_seq: seq, device_time: now(), reason: 'faulty',
         lines: [{ ticket_line_id: ratLine, qty: 1000 }], payments: [{ payment_type_id: cash, amount: 5000 }] })]);
-      const back = (await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true), [tid, day, day, null, null, 'refund']))).rows.find((x) => x.name === 'Rattle');
+      const back = (await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true), [tid, day, day, null, null, 'refund', null]))).rows.find((x) => x.name === 'Rattle');
       check('T14 the rattle refunded gives back what it cost when it left the shelf',
         tag(rf[0]) === 'applied' && back && back.qty === -1000 && Number(back.cost) === -1000 && Number(back.costed) === Number(back.ex_vat), tag(rf[0]) + ' ' + JSON.stringify(back));
-      const net = (await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true), [tid, day, day, null, null, 'all']))).rows.find((x) => x.name === 'Rattle');
+      const net = (await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true), [tid, day, day, null, null, 'all', null]))).rows.find((x) => x.name === 'Rattle');
       check('T14 sold and refunded, the rattle cost nothing all told', net && net.qty === 0 && Number(net.cost) === 0 && Number(net.costed) === 0, JSON.stringify(net));
       // and on the shelf (0135): it comes back at what it left at, so the average is as if it had never
       // left: 29 at about Rs 20.34 and one at Rs 10.00 make thirty at Rs 20.00
@@ -561,7 +561,7 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
         lines: [{ ticket_line_id: depLine, qty: 1000 }, { ticket_line_id: shelfLine, qty: 1000 }], payments: [{ payment_type_id: cash, amount: 10000 }] })]);
       const sold2 = await one(`select unit_cost from stock_movements where tenant_id = $1 and receipt_id = $2 and item_id = $3`, [tid, r2.rc, rattle]);
       const back2 = await one(`select qty, unit_cost from stock_movements where tenant_id = $1 and receipt_id = $2 and item_id = $3`, [tid, rf2Id, rattle]);
-      const net2 = (await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true), [tid, day, day, null, null, 'all']))).rows.find((x) => x.name === 'Rattle');
+      const net2 = (await asApp(() => c.query(rep.itemSalesSql(report.RECEIPTS, 'item', true), [tid, day, day, null, null, 'all', null]))).rows.find((x) => x.name === 'Rattle');
       check('T14 a deposit\'s rattle and the shelf\'s, refunded together, come back at the sale\'s cost and net to nothing',
         tags(r2.out) === 'applied applied applied' && tag(rf2[0]) === 'applied' && sold2 && back2 && back2.qty === 2000
           && Number(back2.unit_cost) === Number(sold2.unit_cost) && net2 && net2.qty === 0 && Number(net2.cost) === 0,
