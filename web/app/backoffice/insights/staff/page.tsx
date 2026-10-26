@@ -1,5 +1,6 @@
 import { UserRoundCheck } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
+import { words } from "@/lib/mode";
 import { readTenant } from "@/lib/db";
 import { money, withDefaults } from "@/lib/settings";
 import { basics, RECEIPTS } from "@/lib/report";
@@ -9,9 +10,10 @@ import { Card, Empty, PageHead, type Search } from "../../ui";
 import { BranchPicker } from "../../branch-picker";
 import { Delta, Figure, SpanPicker, Standouts, pct, per, period, range, totals } from "../parts";
 
-// How each member of staff sells, beside the restaurant as a whole. A sale is
+// How each member of staff sells, beside the business as a whole. A sale is
 // counted for whoever took the payment, as in the Sales summary; an order
-// that was paid in parts is counted for whoever took the last one.
+// that was paid in parts is counted for whoever took the last one. A shop
+// counts no guests and serves no tables: it has neither of those figures.
 
 type Row = {
   name: string | null;
@@ -31,6 +33,8 @@ type Row = {
 export default async function StaffPerformance({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
+  const shop = ctx.mode === "retail";
+  const place = words(ctx.mode).place;
   const d = await readTenant(ctx.tenantId, async (c) => {
     // the time zone, the right to see reports and the settings, in one trip
     const b = await basics(c, ctx.tenantId, ctx.employeeId);
@@ -80,7 +84,7 @@ export default async function StaffPerformance({ searchParams }: { searchParams:
   });
 
   const head = (
-    <PageHead title="Staff performance" lede="What each member of staff sold, their average check and what they gave away, beside the restaurant as a whole.">
+    <PageHead title="Staff performance" lede={`What each member of staff sold, their average check and what they gave away, beside the ${place} as a whole.`}>
       <BranchPicker all={d.stores} picked={d.br} />
     </PageHead>
   );
@@ -126,8 +130,12 @@ export default async function StaffPerformance({ searchParams }: { searchParams:
       <div className="stats">
         <Figure label="Net sales" value={m(all.net)} now={all.net} before={before.net} note={`on the ${p.days} days before`} none={`No sales in the ${p.days} days before`} />
         <Figure label="Average check" value={m(check)} now={check} before={per(before.net, before.orders)} note="per order, everyone" />
-        <Figure label="Sales per guest" value={all.covers > 0 ? m(guest) : "No guests counted"} now={all.covers > 0 ? guest : undefined} before={per(before.seated, before.covers)} note={all.covers > 0 ? "on orders with a guest count" : undefined} />
-        <Figure label="Send to payment" value={turns > 0 ? mins(turn) : "Nothing sent"} note={turns > 0 ? `on average, over ${turns} table ${turns === 1 ? "order" : "orders"}` : "no table order went to the kitchen"} />
+        {!shop && (
+          <>
+            <Figure label="Sales per guest" value={all.covers > 0 ? m(guest) : "No guests counted"} now={all.covers > 0 ? guest : undefined} before={per(before.seated, before.covers)} note={all.covers > 0 ? "on orders with a guest count" : undefined} />
+            <Figure label="Send to payment" value={turns > 0 ? mins(turn) : "Nothing sent"} note={turns > 0 ? `on average, over ${turns} table ${turns === 1 ? "order" : "orders"}` : "no table order went to the kitchen"} />
+          </>
+        )}
       </div>
 
       <Standouts
@@ -139,7 +147,7 @@ export default async function StaffPerformance({ searchParams }: { searchParams:
           ),
           bestCheck && check > 0 && bestCheck.check > check && (
             <>
-              <b>{bestCheck.name}</b> has the highest average check: {m(bestCheck.check)}, {pct(bestCheck.check / check - 1)} above the restaurant&apos;s {m(check)}.
+              <b>{bestCheck.name}</b> has the highest average check: {m(bestCheck.check)}, {pct(bestCheck.check / check - 1)} above the {place}&apos;s {m(check)}.
             </>
           ),
           gave && (
@@ -162,7 +170,7 @@ export default async function StaffPerformance({ searchParams }: { searchParams:
         ]}
       />
 
-      <Card title="By member of staff" lede="The chip beside a figure is how it stands against the restaurant's own" flush>
+      <Card title="By member of staff" lede={`The chip beside a figure is how it stands against the ${place}'s own`} flush>
         <div className="table-scroll table-tight">
           <table>
             <thead>
@@ -172,10 +180,10 @@ export default async function StaffPerformance({ searchParams }: { searchParams:
                 <th>Share of sales</th>
                 <th className="num">Orders</th>
                 <th className="num">Average check</th>
-                <th className="num">Per guest</th>
+                {!shop && <th className="num">Per guest</th>}
                 <th className="num">Discounts</th>
                 <th className="num">Refunds</th>
-                <th className="num">To payment</th>
+                {!shop && <th className="num">To payment</th>}
               </tr>
             </thead>
             <tbody>
@@ -196,49 +204,55 @@ export default async function StaffPerformance({ searchParams }: { searchParams:
                     {m(r.check)}
                     <small className="cell-sub">{rows.length > 1 && r.orders > 0 ? <Delta now={r.check} before={check} /> : null}</small>
                   </td>
-                  <td className="num">
-                    {r.covers > 0 ? m(r.guest) : <span className="muted">None</span>}
-                    <small className="cell-sub">
-                      {r.covers > 0 ? (
-                        <>
-                          {r.covers} {r.covers === 1 ? "guest" : "guests"} {rows.length > 1 && <Delta now={r.guest} before={guest} />}
-                        </>
-                      ) : (
-                        "no guests counted"
-                      )}
-                    </small>
-                  </td>
+                  {!shop && (
+                    <td className="num">
+                      {r.covers > 0 ? m(r.guest) : <span className="muted">None</span>}
+                      <small className="cell-sub">
+                        {r.covers > 0 ? (
+                          <>
+                            {r.covers} {r.covers === 1 ? "guest" : "guests"} {rows.length > 1 && <Delta now={r.guest} before={guest} />}
+                          </>
+                        ) : (
+                          "no guests counted"
+                        )}
+                      </small>
+                    </td>
+                  )}
                   <td className="num">{r.discounts > 0 ? m(r.discounts) : <span className="muted">None</span>}</td>
                   <td className="num">
                     {r.refunds > 0 ? m(r.refunded) : <span className="muted">None</span>}
                     {r.refunds > 0 && <small className="cell-sub">{r.refunds === 1 ? "1 refund" : `${r.refunds} refunds`}</small>}
                   </td>
-                  <td className="num">
-                    {r.turns > 0 && r.turn !== null ? mins(r.turn) : <span className="muted">None</span>}
-                    {r.turns > 0 && <small className="cell-sub">{r.turns === 1 ? "1 order" : `${r.turns} orders`}</small>}
-                  </td>
+                  {!shop && (
+                    <td className="num">
+                      {r.turns > 0 && r.turn !== null ? mins(r.turn) : <span className="muted">None</span>}
+                      {r.turns > 0 && <small className="cell-sub">{r.turns === 1 ? "1 order" : `${r.turns} orders`}</small>}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr>
-                <td>Restaurant</td>
+                <td>{words(ctx.mode).Place}</td>
                 <td className="num">{m(all.net)}</td>
                 <td />
                 <td className="num">{all.orders}</td>
                 <td className="num">{m(check)}</td>
-                <td className="num">{all.covers > 0 ? m(guest) : ""}</td>
+                {!shop && <td className="num">{all.covers > 0 ? m(guest) : ""}</td>}
                 <td className="num">{m(rows.reduce((a, r) => a + r.discounts, 0))}</td>
                 <td className="num">{refunds > 0 ? m(refunded) : ""}</td>
-                <td className="num">{turns > 0 ? mins(turn) : ""}</td>
+                {!shop && <td className="num">{turns > 0 ? mins(turn) : ""}</td>}
               </tr>
             </tfoot>
           </table>
         </div>
       </Card>
-      <p className="muted insight-foot">
-        Send to payment is the time from a table order&apos;s first send to the kitchen until it is paid; takeaway, delivery and counter sales are left out of it. Guests are the covers entered on orders served at a table.
-      </p>
+      {!shop && (
+        <p className="muted insight-foot">
+          Send to payment is the time from a table order&apos;s first send to the kitchen until it is paid; takeaway, delivery and counter sales are left out of it. Guests are the covers entered on orders served at a table.
+        </p>
+      )}
     </div>
   );
 }

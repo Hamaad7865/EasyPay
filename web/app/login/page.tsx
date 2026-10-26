@@ -121,7 +121,7 @@ export default function LoginPage() {
           {busy ? "Signing in…" : "Sign in"}
         </button>
       </form>
-      <p className="auth-foot">No login yet? Restaurants are set up by EasyPay. Contact us.</p>
+      <p className="auth-foot">No login yet? Businesses are set up by EasyPay. Contact us.</p>
     </AuthCard>
   );
 }

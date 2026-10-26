@@ -73,26 +73,29 @@ export function paperName(mm: number): string {
 const SEEN = "they show on the kitchen display only";
 const UNSEEN = "and this plan has no kitchen display for them to show on. The till names them when the order is sent";
 
-// `display`: the restaurant's plan has the kitchen display.
-export function printerWarnings(rows: PrinterRow[], cats: PrinterCat[], one: boolean, stores: { id: string; name: string }[], display = true): string[] {
+// `display`: the restaurant's plan has the kitchen display. `shop`: a shop,
+// which prints receipts only: it has no bills and no kitchen orders, so its
+// categories print nowhere and nothing is said about them.
+export function printerWarnings(rows: PrinterRow[], cats: PrinterCat[], one: boolean, stores: { id: string; name: string }[], display = true, shop = false): string[] {
   const many = stores.length > 1;
   return stores.flatMap((s) =>
-    storeWarnings(rows.filter((p) => p.store_id === s.id), cats, one, display).map((line) => (many ? `${s.name}: ${line}` : line)),
+    storeWarnings(rows.filter((p) => p.store_id === s.id), cats, one, display, shop).map((line) => (many ? `${s.name}: ${line}` : line)),
   );
 }
 
-function storeWarnings(rows: PrinterRow[], cats: PrinterCat[], one: boolean, display: boolean): string[] {
+function storeWarnings(rows: PrinterRow[], cats: PrinterCat[], one: boolean, display: boolean, shop: boolean): string[] {
   const out: string[] = [];
   if (rows.length === 0) return out;
   const live = rows.filter((p) => p.is_active);
   const receipt = rows.find((p) => p.is_receipt);
   const byId = new Map(rows.map((p) => [p.id, p]));
-  if (!receipt) out.push("No printer prints the receipts and bills. Choose one in step 2: until then nothing prints at the till and the cash drawer does not open.");
-  else if (!receipt.is_active) out.push(`${receipt.name} prints the receipts and bills, and it is switched off.`);
-  if (one && (!receipt || !receipt.is_active)) {
+  const what = shop ? "the receipts" : "the receipts and bills";
+  if (!receipt) out.push(`No printer prints ${what}. Choose one in step 2: until then nothing prints at the till and the cash drawer does not open.`);
+  else if (!receipt.is_active) out.push(`${receipt.name} prints ${what}, and it is switched off.`);
+  if (!shop && one && (!receipt || !receipt.is_active)) {
     out.push("One printer for everything is on, but that printer is missing or switched off. Kitchen orders follow the ticks in step 2 until it is back.");
   }
-  if (!one) {
+  if (!shop && !one) {
     const nowhere = cats.filter((k) => !k.printer_ids.some((id) => byId.get(id)?.is_active));
     if (nowhere.length === cats.length && cats.length > 0) {
       const what = display ? `No category is ticked, so kitchen orders do not print: ${SEEN}.` : `No category is ticked, so kitchen orders do not print, ${UNSEEN}.`;

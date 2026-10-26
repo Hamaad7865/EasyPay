@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { PoolClient } from "pg";
 import { TrendingUp } from "lucide-react";
 import { tenantContext } from "@/lib/tenant";
+import { words } from "@/lib/mode";
 import { readTenant } from "@/lib/db";
 import { money, withDefaults } from "@/lib/settings";
 import { basics, fmtQty, RECEIPTS } from "@/lib/report";
@@ -14,7 +15,8 @@ import { Delta, Figure, SpanPicker, Standouts, pct, per, period, range } from ".
 // more or less than in the days before, and which did not sell at all. An
 // item's figures are the Item sales report's for the same days. There is
 // nothing about profit here: the back office has no place to enter what a
-// dish costs to make, and a sale does not keep it.
+// dish costs to make, and a sale does not keep it. A shop's page says
+// products and the catalog (Product performance).
 
 type Sold = { name: string; cat: string; qty: number; amount: number };
 type Idle = { name: string; cat: string | null; is_available: boolean };
@@ -77,8 +79,15 @@ export default async function MenuPerformance({ searchParams }: { searchParams: 
     };
   });
 
+  const shop = ctx.mode === "retail";
+  const w = words(ctx.mode);
+  // where the items are: on the menu, or in the shop's catalog
+  const onIt = shop ? "in the catalog" : "on the menu";
   const head = (
-    <PageHead title="Menu performance" lede="Which items carry your sales, which are selling more or less than before, and which did not sell at all.">
+    <PageHead
+      title={shop ? "Product performance" : "Menu performance"}
+      lede={`Which ${w.items} carry your sales, which are selling more or less than before, and which did not sell at all.`}
+    >
       <BranchPicker all={d.stores} picked={d.br} />
     </PageHead>
   );
@@ -93,7 +102,7 @@ export default async function MenuPerformance({ searchParams }: { searchParams: 
         {head}
         {picker}
         <Empty icon={TrendingUp} title="Nothing sold in these days">
-          <p>Once the till has taken payments, the items that sell best show here.</p>
+          <p>Once the till has taken payments, the {w.items} that sell best show here.</p>
         </Empty>
       </div>
     );
@@ -143,20 +152,20 @@ export default async function MenuPerformance({ searchParams }: { searchParams: 
       {head}
       {picker}
       <div className="stats">
-        <Figure label="Items that sold" value={String(now.length)} now={now.length} before={d.before.filter((r) => r.qty > 0).length} note={`on the ${p.days} days before`} none={`None in the ${p.days} days before`} />
+        <Figure label={`${w.Items} that sold`} value={String(now.length)} now={now.length} before={d.before.filter((r) => r.qty > 0).length} note={`on the ${p.days} days before`} none={`None in the ${p.days} days before`} />
         <Figure label="Units sold" value={fmtQty(units)} now={units} before={d.before.reduce((a, r) => a + r.qty, 0)} />
-        <Figure label="From the top five" value={total > 0 ? pct(top5 / total) : "0%"} note="of menu sales" />
-        <Figure label="Did not sell" value={String(d.idle.length)} note={d.idle.length === 1 ? "item on the menu" : "items on the menu"} />
+        <Figure label="From the top five" value={total > 0 ? pct(top5 / total) : "0%"} note={shop ? "of all sales" : "of menu sales"} />
+        <Figure label="Did not sell" value={String(d.idle.length)} note={`${d.idle.length === 1 ? w.item : w.items} ${onIt}`} />
       </div>
 
       <Standouts
         lines={[
           <>
-            <b>{top.name}</b> brings in the most: {m(top.amount)}, {total > 0 ? pct(top.amount / total) : "0%"} of what the menu sold.
+            <b>{top.name}</b> brings in the most: {m(top.amount)}, {total > 0 ? pct(top.amount / total) : "0%"} of what the {shop ? "shop" : "menu"} sold.
           </>,
           mostOrdered.name !== top.name && (
             <>
-              <b>{mostOrdered.name}</b> is ordered the most: {fmtQty(mostOrdered.qty)} times.
+              <b>{mostOrdered.name}</b> {shop ? "sells the most" : "is ordered the most"}: {fmtQty(mostOrdered.qty)} {shop ? "sold" : "times"}.
             </>
           ),
           rising[0] && (
@@ -173,9 +182,9 @@ export default async function MenuPerformance({ searchParams }: { searchParams: 
           d.idle.length > 0 && (
             <>
               <b>
-                {d.idle.length} {d.idle.length === 1 ? "item" : "items"}
+                {d.idle.length} {d.idle.length === 1 ? w.item : w.items}
               </b>{" "}
-              on the menu did not sell once in these {p.days} days.
+              {onIt} did not sell once in these {p.days} days.
             </>
           ),
         ]}
@@ -183,7 +192,7 @@ export default async function MenuPerformance({ searchParams }: { searchParams: 
 
       <Card
         title="Ranking"
-        lede={now.length > SHOWN ? `The ${SHOWN} items that brought in the most, of ${now.length}` : "Every item that sold, by what it brought in"}
+        lede={now.length > SHOWN ? `The ${SHOWN} ${w.items} that brought in the most, of ${now.length}` : `Every ${w.item} that sold, by what it brought in`}
         action={
           <Link href={`/backoffice/reports/items?from=${p.from}&to=${p.to}`} className="card-link">
             Item sales
@@ -195,10 +204,10 @@ export default async function MenuPerformance({ searchParams }: { searchParams: 
           <thead>
             <tr>
               <th className="num">#</th>
-              <th>Item</th>
+              <th>{shop ? "Product" : "Item"}</th>
               <th className="num">Sold</th>
               <th className="num">Sales</th>
-              <th>Share of menu sales</th>
+              <th>{shop ? "Share of sales" : "Share of menu sales"}</th>
               <th className="num">Against before</th>
             </tr>
           </thead>
@@ -239,7 +248,7 @@ export default async function MenuPerformance({ searchParams }: { searchParams: 
       </div>
 
       {d.idle.length > 0 && (
-        <Card title="Did not sell" lede={`On the menu today, and on no receipt in these ${p.days} days`}>
+        <Card title="Did not sell" lede={`${shop ? "In the catalog" : "On the menu"} today, and on no receipt in these ${p.days} days`}>
           <div className="idle">
             {idleShown.map((i) => (
               <span key={i.name + (i.cat ?? "")} className={i.is_available ? undefined : "off"}>

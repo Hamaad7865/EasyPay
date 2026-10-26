@@ -57,6 +57,8 @@ export default async function TaxesPage({ searchParams }: { searchParams: Search
   const sp = await searchParams;
   const ctx = await tenantContext();
   const mra = onMra(ctx.mra);
+  // what a shop calls its prices: it has no menu
+  const prices = ctx.mode === "retail" ? "Prices" : "Menu prices";
   const rows = await readTenant(ctx.tenantId, (c) =>
     c
       .query(
@@ -79,7 +81,7 @@ export default async function TaxesPage({ searchParams }: { searchParams: Search
         <form action={addTax} className="bo-toolbar" style={{ margin: 0 }}>
           <input name="name" placeholder="Name" required maxLength={30} />
           <input name="rate" placeholder="Rate %" required className="narrow" inputMode="decimal" />
-          <select name="type" defaultValue="included" aria-label="Menu prices">
+          <select name="type" defaultValue="included" aria-label={prices}>
             <option value="included">Prices include it</option>
             <option value="added">Added on top</option>
           </select>
@@ -91,7 +93,7 @@ export default async function TaxesPage({ searchParams }: { searchParams: Search
           <tr>
             <th>Tax</th>
             <th>Rate %</th>
-            <th>Menu prices</th>
+            <th>{prices}</th>
             <th className="num">Items</th>
             {mra && <th>MRA code</th>}
             <th>New items</th>
@@ -104,7 +106,7 @@ export default async function TaxesPage({ searchParams }: { searchParams: Search
               <td><input form={"t" + t.id} name="name" defaultValue={t.name} required maxLength={30} aria-label="Name" /></td>
               <td><input form={"t" + t.id} name="rate" defaultValue={(t.rate_bp / 100).toString()} className="narrow" inputMode="decimal" aria-label="Rate" /></td>
               <td>
-                <select form={"t" + t.id} name="type" defaultValue={t.type} aria-label="Menu prices">
+                <select form={"t" + t.id} name="type" defaultValue={t.type} aria-label={prices}>
                   <option value="included">Include this tax</option>
                   <option value="added">Have it added on top</option>
                 </select>

@@ -162,7 +162,11 @@ export default async function CustomersPage({ searchParams }: { searchParams: Se
     <div>
       <PageHead
         title="Customers"
-        lede="The people the restaurant knows by name. A cashier puts one on an order with Assign customer; their name then prints on the bill and the receipt. They can be added here or on the till."
+        lede={
+          ctx.mode === "retail"
+            ? "The people the shop knows by name. A cashier puts one on a sale with Add customer on the Sell screen; their name then prints on the receipt. They can be added here or on the till."
+            : "The people the restaurant knows by name. A cashier puts one on an order with Assign customer; their name then prints on the bill and the receipt. They can be added here or on the till."
+        }
       />
       <Flash sp={sp} />
       <Card title="Add a customer">

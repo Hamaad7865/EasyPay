@@ -194,6 +194,27 @@ const id = () => crypto.randomUUID();
       if (got.error || got.html.length < 200) broken.push(href + (sp.view ? '?view=' + sp.view : '') + ': ' + (got.error || 'drew nothing'));
     }
     check(`M1 the other ${menu.length} pages of a shop's menu open on a shop that has traded`, broken.length === 0, broken.join(' || '));
+    // A page both kinds of business have calls a shop a shop (2026-10-27):
+    // nothing about a restaurant, its menu, kitchen, guests, tables or
+    // bookings. With a receipt printer, so Printers has its warnings to say.
+    {
+      await c.query('SAVEPOINT w1');
+      await c.query(`insert into printers (tenant_id, store_id, name, is_receipt) values ($1, $2, 'Counter', true)`, [shop.tid, shop.store]);
+      const shared = [
+        ['/backoffice', range], ['/backoffice/data', {}], ['/backoffice/customers', {}], ['/backoffice/company', {}], ['/backoffice/printers', {}],
+        ['/backoffice/taxes', {}], ['/backoffice/reports/tax', range], ['/backoffice/insights/menu', range], ['/backoffice/insights/staff', range],
+      ];
+      const said = [];
+      for (const [href, sp] of shared) {
+        const got = await see(shop, href, sp);
+        const hit = got.says.match(/.{0,40}\b(restaurant|menu|kitchen|guests?|tables?|bookings?)\b.{0,40}/i);
+        if (got.error || hit) said.push(href + ': ' + (got.error || hit[0]));
+      }
+      check(`W1 the ${shared.length} pages a shop shares with a restaurant say nothing of a restaurant, menu, kitchen, guests, tables or bookings`, said.length === 0, said.join(' || '));
+      const data = await see(shop, '/backoffice/data', {});
+      check('W1 Backup and data asks for the shop\'s name and deletes the catalog', data.says.includes("Type the shop's name to confirm") && data.says.includes('Delete the catalog'), data.error || data.says.slice(0, 300));
+      await c.query('ROLLBACK TO SAVEPOINT w1');
+    }
     const one1 = await see(shop, '/backoffice/purchase-orders/' + po.id, {}, { params: { id: po.id }, file: 'backoffice/purchase-orders/[id]' });
     const one2 = await see(shop, '/backoffice/stock-counts/' + countId, {}, { params: { id: countId }, file: 'backoffice/stock-counts/[id]' });
     check('M2 a purchase order and a count open', !one1.error && !one2.error && one1.says.includes('Shirt') && one2.html.length > 500, [one1.error, one2.error].filter(Boolean).join(' || '));
@@ -521,6 +542,9 @@ const id = () => crypto.randomUUID();
     check('R3 the dashboard for a restaurant', !p.error && /After Rs 23 of discounts and Rs 0 of refunds/i.test(p.says) && p.says.includes('Order types'), p.error || (p.says.match(/After Rs [\d.,]+ of discounts[^.]{0,40}/i) || [])[0]);
     p = await see(rest, '/backoffice/insights/staff', rrange);
     check('R4 Staff performance for a restaurant', !p.error && p.says.includes('gave the most in discounts: Rs 23.00'), p.error || (p.says.match(/gave the most in discounts: Rs [\d.,]+/) || [])[0]);
+    check('R4 with its guests and its time to payment, beside the restaurant', p.says.includes('Sales per guest') && p.says.includes('Send to payment') && p.says.includes('beside the restaurant as a whole'));
+    p = await see(rest, '/backoffice/data', {});
+    check('R10 a restaurant\'s Backup and data asks for the restaurant\'s name and deletes the menu', !p.error && p.says.includes("Type the restaurant's name to confirm") && p.says.includes('Delete the menu'), p.error || p.says.slice(0, 300));
     p = await see(rest, '/backoffice/reports/items', { ...rrange, group: 'supplier' });
     check('R4 a restaurant is not offered Item sales by supplier or brand, and asked for one gets its items', !p.error && !p.html.includes('value="supplier"') && rowsOf(p.html).some((r) => r.includes('| Soup |')), p.error);
     p = await see(rest, '/backoffice/reports/orders', rrange);

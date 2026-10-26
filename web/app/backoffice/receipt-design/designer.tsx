@@ -95,6 +95,16 @@ const SAYS: Record<string, string> = {
   pickup: "PICK UP 18:30, on a takeaway.",
   station: "KITCHEN, BAR …, or VOID - KITCHEN.",
 };
+// what a shop's receipt has instead: no bill, no table, no waiter, no guests
+const SHOP_SAYS: Record<string, string> = {
+  title: "RECEIPT or REFUND, then COPY on a reprint and REFUNDED once it is.",
+  receipt_no: "No. S1-T1-000128.",
+  date_order: "The date and time, and the sale's own number.",
+  served_by: "Who took the payment.",
+  customer: "The customer's name, when the sale has one.",
+  subtotal: "Only when there is a discount or rounding.",
+  remark: "The sale's remark, when it has one.",
+};
 
 // what the owner can set on each kind
 const WORDS = new Set(["name", "address", "phone", "brn", "vat", "header", "title", "customer_no", "bill_note", "remark", "footer", "text", "station", "heading", "pickup", "type_guests"]);
@@ -275,7 +285,7 @@ export function Designer({
     const items = b.k === "items";
     return (
       <div className="pd-settings">
-        {SAYS[b.k] && <p className="help" style={{ marginTop: 0 }}>{SAYS[b.k]}</p>}
+        {((shop && SHOP_SAYS[b.k]) || SAYS[b.k]) && <p className="help" style={{ marginTop: 0 }}>{(shop && SHOP_SAYS[b.k]) || SAYS[b.k]}</p>}
         {b.k === "text" && (
           <div className="field" style={{ maxWidth: "none" }}>
             <textarea ref={textRef} value={b.text} rows={3} maxLength={300} placeholder={paper === "kitchen" ? "No. {customer_no}, for {order}" : "Wi-Fi: CafeTino, password 12345678"} onChange={(e) => change(id, { text: e.target.value })} disabled={!canEdit} />

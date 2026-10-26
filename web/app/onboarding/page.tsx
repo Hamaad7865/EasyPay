@@ -46,10 +46,10 @@ export default async function NotLinkedPage() {
           </>
         ) : (
           <>
-            <h1>No restaurant on this login</h1>
+            <h1>No business on this login</h1>
             <p className="auth-lede">
-              {data.user.email} is signed in, but it is not linked to a restaurant, or its access was switched off.
-              Restaurants are set up by EasyPay. Contact us to get access.
+              {data.user.email} is signed in, but it is not linked to a business, or its access was switched off.
+              Businesses are set up by EasyPay. Contact us to get access.
             </p>
           </>
         )}

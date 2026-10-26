@@ -85,7 +85,14 @@ export default async function CompanyPage({ searchParams }: { searchParams: Sear
   const lines = checklistWords(d.checklist);
   return (
     <div>
-      <PageHead title="Company details" lede="Who the restaurant is on paper. These print at the top of every receipt, bill and closing report." />
+      <PageHead
+        title="Company details"
+        lede={
+          ctx.mode === "retail"
+            ? "Who the shop is on paper. These print at the top of every receipt and closing report."
+            : "Who the restaurant is on paper. These print at the top of every receipt, bill and closing report."
+        }
+      />
       <Flash sp={sp} />
       {mra && (
         <Card title="Moving to the MRA">

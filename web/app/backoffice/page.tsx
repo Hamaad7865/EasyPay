@@ -585,7 +585,11 @@ export default async function BackofficeHome({
                 Needs attention
                 {needs.length > 0 && <span className="pane-count">{needs.length}</span>}
               </h2>
-              <p>Across the menu, the stock, the bookings and every till. Most pressing first.</p>
+              <p>
+                {ctx.mode === "retail"
+                  ? "Across the catalog, the stock and every till. Most pressing first."
+                  : "Across the menu, the stock, the bookings and every till. Most pressing first."}
+              </p>
             </div>
           </div>
           <div className="pane-in">
@@ -596,7 +600,11 @@ export default async function BackofficeHome({
                 </span>
                 <div>
                   <b>Nothing needs attention</b>
-                  <span>No receipt to review, no booking to confirm, nothing sold out or running low.</span>
+                  <span>
+                    {ctx.mode === "retail"
+                      ? "No receipt to review, nothing out of stock or running low."
+                      : "No receipt to review, no booking to confirm, nothing sold out or running low."}
+                  </span>
                 </div>
               </div>
             ) : (
@@ -749,15 +757,23 @@ export default async function BackofficeHome({
 
   const net = (r: Range) => r.gross - r.tax;
   const avg = (r: Range) => (r.accounts > 0 ? Math.round(r.gross / r.accounts) : 0);
-  const kpis = [
+  // a shop has no accounts at tables and counts no guests: its own words, and its refunds in their place
+  const shop = ctx.mode === "retail";
+  const kpis: { label: string; value: string; now: number; before: number | null | undefined; money: boolean; note: string; lower?: true }[] = [
     { label: "Total gross sales", value: fmtRs(cur.gross), now: cur.gross, before: prev?.gross, money: true,
       note: cur.discounts !== 0 || cur.refunds !== 0 ? `After ${fmtRs(cur.discounts)} of discounts and ${fmtRs(cur.refunds)} of refunds` : "Paid by customers, after discounts and refunds" },
     { label: "Total net sales", value: fmtRs(net(cur)), now: net(cur), before: prev && net(prev), money: true, note: "Gross sales less VAT" },
     { label: "Total taxes", value: fmtRs(cur.tax), now: cur.tax, before: prev?.tax, money: true, note: "VAT inside those sales" },
-    { label: "Closed accounts", value: String(cur.accounts), now: cur.accounts, before: prev?.accounts, money: false, note: "Orders paid in the period" },
-    { label: "Average per order", value: fmtRs(avg(cur)), now: avg(cur), before: prev && avg(prev), money: true, note: "Gross sales over closed accounts" },
-    { label: "Guests served", value: String(cur.covers), now: cur.covers, before: prev?.covers, money: false,
-      note: cur.covers > 0 ? `${fmtRs(Math.round(cur.seated / cur.covers))} a guest, on the orders that say how many` : "Guests entered on the orders paid" },
+    shop
+      ? { label: "Sales", value: String(cur.accounts), now: cur.accounts, before: prev?.accounts, money: false, note: "Sales paid in the period" }
+      : { label: "Closed accounts", value: String(cur.accounts), now: cur.accounts, before: prev?.accounts, money: false, note: "Orders paid in the period" },
+    shop
+      ? { label: "Average per sale", value: fmtRs(avg(cur)), now: avg(cur), before: prev && avg(prev), money: true, note: "Gross sales over the sales paid" }
+      : { label: "Average per order", value: fmtRs(avg(cur)), now: avg(cur), before: prev && avg(prev), money: true, note: "Gross sales over closed accounts" },
+    shop
+      ? { label: "Refunds", value: fmtRs(cur.refunds), now: cur.refunds, before: prev?.refunds, money: true, note: "Given back on refund receipts", lower: true }
+      : { label: "Guests served", value: String(cur.covers), now: cur.covers, before: prev?.covers, money: false,
+          note: cur.covers > 0 ? `${fmtRs(Math.round(cur.seated / cur.covers))} a guest, on the orders that say how many` : "Guests entered on the orders paid" },
   ];
 
   const itemsTop = Math.max(1, ...cur.top.map((r) => r.amount));
@@ -819,7 +835,8 @@ export default async function BackofficeHome({
               {k.before != null && (
                 <div className="kpi-prev">
                   Before: {k.money ? fmtRs(k.before) : k.before}
-                  {delta && <span className={delta.up ? "up" : "down"}> {delta.text}</span>}
+                  {/* more refunds is worse: its rise is drawn as a fall */}
+                  {delta && <span className={delta.up !== Boolean(k.lower) ? "up" : "down"}> {delta.text}</span>}
                 </div>
               )}
             </div>

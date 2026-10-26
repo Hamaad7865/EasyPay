@@ -114,7 +114,7 @@ async function addPrinter(f: FormData) {
   await act("settings.device", PATH, async (c, ctx) => {
     const v = fields(f);
     const store = String(f.get("store_id") ?? "");
-    if (!UUID.test(store)) throw new Refused("This restaurant has no store yet.");
+    if (!UUID.test(store)) throw new Refused("This business has no store yet.");
     // the first printer of a store is where its receipts come out, until step 2 says otherwise
     const added = await saves.addPrinter(c, ctx.tenantId, store, v);
     if (!added) throw new Refused("That store is gone. Reload the page.");
@@ -142,10 +142,11 @@ async function savePrinter(f: FormData) {
 async function addScreen(f: FormData) {
   "use server";
   await act("settings.device", PATH, async (c, ctx) => {
+    if (ctx.mode === "retail") throw new Refused("A shop has no kitchen screens.");
     if (!ctx.premium) throw new Refused(NOT_PREMIUM);
     const v = screenFields(f);
     const store = String(f.get("store_id") ?? "");
-    if (!UUID.test(store)) throw new Refused("This restaurant has no store yet.");
+    if (!UUID.test(store)) throw new Refused("This business has no store yet.");
     if (!(await saves.addPrinter(c, ctx.tenantId, store, v))) throw new Refused("That store is gone. Reload the page.");
     return v.all
       ? `${v.name} added. It shows every order once the tills have synced.`
@@ -171,7 +172,8 @@ async function saveScreen(f: FormData) {
 }
 
 // Step 2, saved as a whole: each store's receipt printer, the one-printer
-// switch, and the printers of every category.
+// switch, and the printers of every category. A shop's form has only the
+// receipt printers: its switch and its categories' printers are left as they are.
 async function saveRoutes(f: FormData) {
   "use server";
   await act("settings.device", PATH, async (c, ctx) => {
@@ -189,6 +191,7 @@ async function saveRoutes(f: FormData) {
       if (set === "no-printer") throw new Refused("That printer is no longer there. Reload the page.");
       if (set === "screen") throw new Refused("A kitchen screen cannot print receipts. Choose a printer.");
     }
+    if (ctx.mode === "retail") return "Saved. The tills follow once they have synced.";
     await saveSettings(c, ctx.tenantId, { onePrinter: one });
     // each category's printers are the ones ticked for it; a category that did not change is left alone
     await c.query(
@@ -204,14 +207,16 @@ async function saveRoutes(f: FormData) {
   });
 }
 
-function Hardware({ p }: { p?: Row }) {
+function Hardware({ p, shop }: { p?: Row; shop: boolean }) {
   return (
     <>
       <div className="form-row">
         <label className="field">
           Name
-          <input name="name" defaultValue={p?.name} required maxLength={40} placeholder="Kitchen" />
-          <span className="help">Where it stands: Cashier, Kitchen, Bar. It is what the kitchen display calls its station.</span>
+          <input name="name" defaultValue={p?.name} required maxLength={40} placeholder={shop ? "Counter" : "Kitchen"} />
+          <span className="help">
+            {shop ? "Where it stands: Counter, Front desk." : "Where it stands: Cashier, Kitchen, Bar. It is what the kitchen display calls its station."}
+          </span>
         </label>
         <label className="field">
           Connection
@@ -388,6 +393,8 @@ function DisplayFields({ p, tills }: { p?: Row; tills: Till[] }) {
 export default async function PrintersPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
+  // a shop prints receipts only: no bills, no kitchen orders, no kitchen screens
+  const shop = ctx.mode === "retail";
   const { stores, all, cats, one, tills } = await readTenant(ctx.tenantId, async (c) => ({
     stores: (await c.query(`select id, name from stores where tenant_id = $1 and deleted_at is null order by created_at`, [ctx.tenantId])).rows as { id: string; name: string }[],
     all: (
@@ -412,9 +419,9 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
   const displays = all.filter((p) => p.kind === "display");
   const tillName = new Map(tills.map((t) => [t.id, t.name === t.code ? t.name : `${t.name} (${t.code})`]));
   // what the grid of step 2 has a column for: every printer, and each screen that goes by its ticks
-  const ticked = [...rows, ...screens.filter((p) => !p.all_items)];
+  const ticked = shop ? rows : [...rows, ...screens.filter((p) => !p.all_items)];
   const notes = [
-    ...printerWarnings(rows, cats, one, stores, ctx.premium),
+    ...printerWarnings(rows, cats, one, stores, ctx.premium, shop),
     ...stores.flatMap((s) => displaysSharing(displays.filter((d) => d.store_id === s.id)).map((line) => (stores.length > 1 ? `${s.name}: ${line}` : line))),
   ];
   // with several stores, a printer is added to the store it stands in and is named with it
@@ -429,7 +436,7 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
       <Flash sp={sp} />
       {notes.length > 0 && (
         <div className="note warn" role="status">
-          <strong>Worth a look before service</strong>
+          <strong>{shop ? "Worth a look before opening" : "Worth a look before service"}</strong>
           {notes.map((n) => (
             <div key={n}>{n}</div>
           ))}
@@ -442,7 +449,7 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
         <summary className="card-head" style={{ cursor: "pointer", listStyle: "none" }}>
           <div>
             <h2>Add a printer</h2>
-            <p>One for each printer in the restaurant, even if there is only one. What it prints is said in step 2.</p>
+            <p>One for each printer in the {shop ? "shop" : "restaurant"}, even if there is only one. What it prints is said in step 2.</p>
           </div>
           <span className="btn-quiet btn-sm">Open</span>
         </summary>
@@ -459,13 +466,13 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
                       </option>
                     ))}
                   </select>
-                  <span className="help">The store this printer stands in. A store&apos;s first printer prints its receipts and bills.</span>
+                  <span className="help">The store this printer stands in. A store&apos;s first printer prints its {shop ? "receipts" : "receipts and bills"}.</span>
                 </label>
               </div>
             ) : (
               stores.length === 1 && <input type="hidden" name="store_id" value={stores[0].id} />
             )}
-            <Hardware />
+            <Hardware shop={shop} />
           </div>
           <div className="card-foot">
             <Submit>Add printer</Submit>
@@ -474,7 +481,7 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
       </details>
       {rows.length === 0 && (
         <Empty icon={Printer} title="No printers yet">
-          Add the printer at the till first. If it is the only one, it can print the kitchen orders too.
+          {shop ? "Add the printer at the till first." : "Add the printer at the till first. If it is the only one, it can print the kitchen orders too."}
         </Empty>
       )}
       {rows.map((p) => {
@@ -494,8 +501,8 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
                   <span className="badge blue">Everything</span>
                 ) : (
                   <>
-                    {p.is_receipt && <span className="badge blue">Receipts and bills</span>}
-                    {!one && prints > 0 && <span className="badge">Kitchen orders</span>}
+                    {p.is_receipt && <span className="badge blue">{shop ? "Receipts" : "Receipts and bills"}</span>}
+                    {!shop && !one && prints > 0 && <span className="badge">Kitchen orders</span>}
                   </>
                 )}
                 <span className={"badge " + (p.is_active ? "green" : "red")}>{p.is_active ? "On" : "Off"}</span>
@@ -504,7 +511,7 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
             <form action={savePrinter}>
               <input type="hidden" name="id" value={p.id} />
               <div className="card-body">
-                <Hardware p={p} />
+                <Hardware p={p} shop={shop} />
               </div>
               <div className="card-foot">
                 <Submit name="remove" value="1" className="btn-danger" formNoValidate>
@@ -517,14 +524,14 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
         );
       })}
 
-      {/* A kitchen screen: a tablet in the kitchen that shows the orders. The premium tier's. */}
-      <h2 style={{ marginTop: 28 }}>Kitchen screens</h2>
-      {!ctx.premium && screens.length === 0 && (
+      {/* A kitchen screen: a tablet in the kitchen that shows the orders. The premium tier's, and a restaurant's: a shop sees one only to remove it. */}
+      {(!shop || screens.length > 0) && <h2 style={{ marginTop: 28 }}>Kitchen screens</h2>}
+      {!shop && !ctx.premium && screens.length === 0 && (
         <p className="muted">
           A tablet in the kitchen that shows each order the moment it is sent is {PREMIUM_ONLY}. Kitchen orders print on the printers above on every plan.
         </p>
       )}
-      {ctx.premium && (
+      {!shop && ctx.premium && (
         <details className="card flush">
           <summary className="card-head" style={{ cursor: "pointer", listStyle: "none" }}>
             <div>
@@ -580,7 +587,9 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
                 </p>
               </div>
               <span className="row-actions">
-                {ctx.premium ? (
+                {shop ? (
+                  <span className="badge red">Off: a shop has no kitchen</span>
+                ) : ctx.premium ? (
                   <span className={"badge " + (p.is_active ? "green" : "red")}>{p.is_active ? "On" : "Off"}</span>
                 ) : (
                   <span className="badge red">Off: {PREMIUM_ONLY}</span>
@@ -590,7 +599,11 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
             <form action={saveScreen}>
               <input type="hidden" name="id" value={p.id} />
               <div className="card-body">
-                {ctx.premium ? (
+                {shop ? (
+                  <p className="muted" style={{ margin: 0 }}>
+                    A shop sends no orders to a kitchen, so the tills send nothing to this screen. It can be removed.
+                  </p>
+                ) : ctx.premium ? (
                   <ScreenFields p={p} />
                 ) : (
                   <p className="muted" style={{ margin: 0 }}>
@@ -603,7 +616,7 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
                 <Submit name="remove" value="1" className="btn-danger" formNoValidate>
                   Remove
                 </Submit>
-                {ctx.premium && <Submit>Save kitchen screen</Submit>}
+                {!shop && ctx.premium && <Submit>Save kitchen screen</Submit>}
               </div>
             </form>
           </details>
@@ -701,7 +714,7 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
                 .filter(({ own }) => own.length > 0)
                 .map(({ s, own }) => (
                   <label className="field" key={s.id}>
-                    Receipts and bills{many ? ` · ${s.name}` : ""}
+                    {shop ? "Receipts" : "Receipts and bills"}{many ? ` · ${s.name}` : ""}
                     <select name={receiptField(s.id)} defaultValue={own.find((p) => p.is_receipt)?.id ?? ""}>
                       <option value="">No printer</option>
                       {own.map((p) => (
@@ -711,32 +724,40 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
                         </option>
                       ))}
                     </select>
-                    <span className="help">Receipts, bills, cash slips and closing reports come out here, and it opens the cash drawer.</span>
+                    <span className="help">
+                      {shop ? "Receipts, cash slips and closing reports" : "Receipts, bills, cash slips and closing reports"} come out here, and it opens the cash
+                      drawer.
+                    </span>
                   </label>
                 ))}
-              <label className="check">
-                <input type="checkbox" name="one" defaultChecked={one} />
-                <span>
-                  One printer for everything
-                  <small>
-                    For a restaurant with a single printer. Kitchen orders print on the same printer as the receipts and bills, each on its own slip headed
-                    KITCHEN ORDER, and a category added later is covered without doing anything. The printers&apos; ticks below are kept, but not used while this
-                    is on; a kitchen screen still goes by its own.
-                  </small>
-                </span>
-              </label>
+              {!shop && (
+                <label className="check">
+                  <input type="checkbox" name="one" defaultChecked={one} />
+                  <span>
+                    One printer for everything
+                    <small>
+                      For a restaurant with a single printer. Kitchen orders print on the same printer as the receipts and bills, each on its own slip headed
+                      KITCHEN ORDER, and a category added later is covered without doing anything. The printers&apos; ticks below are kept, but not used while
+                      this is on; a kitchen screen still goes by its own.
+                    </small>
+                  </span>
+                </label>
+              )}
             </div>
-            <div className="card-head" style={{ borderTop: "1px solid var(--glass-line)" }}>
-              <div>
-                <h2>Kitchen orders, by category</h2>
-                <p>
-                  Tick where each category&apos;s items come out when an order is sent: food in the kitchen, drinks at the bar. A category can print in more than
-                  one place, and each printer ticked here is a station on the till&apos;s kitchen display. A kitchen screen that shows only its ticked categories
-                  has a column here too; one that shows everything needs none.
-                </p>
+            {/* a shop's categories print nowhere: it has no kitchen */}
+            {!shop && (
+              <div className="card-head" style={{ borderTop: "1px solid var(--glass-line)" }}>
+                <div>
+                  <h2>Kitchen orders, by category</h2>
+                  <p>
+                    Tick where each category&apos;s items come out when an order is sent: food in the kitchen, drinks at the bar. A category can print in more
+                    than one place, and each printer ticked here is a station on the till&apos;s kitchen display. A kitchen screen that shows only its ticked
+                    categories has a column here too; one that shows everything needs none.
+                  </p>
+                </div>
               </div>
-            </div>
-            {cats.length === 0 ? (
+            )}
+            {shop ? null : cats.length === 0 ? (
               <div className="card-body">
                 <span className="muted">
                   No categories yet. Add them under <Link href="/backoffice/categories">Categories</Link> first.
@@ -786,8 +807,13 @@ export default async function PrintersPage({ searchParams }: { searchParams: Sea
         </>
       )}
       <p className="muted">
-        A test print for each printer is on the tablet, under Settings, Printers: it also shows whether each one is answering. Where a category prints can be set
-        from its side too, under <Link href="/backoffice/categories">Categories</Link>.
+        A test print for each printer is on the tablet, under Settings, Printers: it also shows whether each one is answering.
+        {!shop && (
+          <>
+            {" "}
+            Where a category prints can be set from its side too, under <Link href="/backoffice/categories">Categories</Link>.
+          </>
+        )}
       </p>
     </div>
   );

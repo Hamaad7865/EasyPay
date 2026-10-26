@@ -34,6 +34,8 @@ const SQL = `
 export default async function TaxReport({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
+  // what a shop calls its prices: it has no menu
+  const prices = ctx.mode === "retail" ? "Prices" : "Menu prices";
   const d = await readTenant(ctx.tenantId, async (c) => {
     const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
     const f = { ...filters(sp, l.tz, (await pickedOf(l.stores))?.id ?? null), kind: "all" as const };
@@ -73,7 +75,7 @@ export default async function TaxReport({ searchParams }: { searchParams: Search
           </div>
           <table>
             <thead>
-              <tr><th>VAT type</th><th className="num">Rate</th><th>Menu prices</th><th className="num">Receipts</th><th className="num">Excluding VAT</th><th className="num">VAT</th><th className="num">Including VAT</th></tr>
+              <tr><th>VAT type</th><th className="num">Rate</th><th>{prices}</th><th className="num">Receipts</th><th className="num">Excluding VAT</th><th className="num">VAT</th><th className="num">Including VAT</th></tr>
             </thead>
             <tbody>
               {rows.map((r, i) => (
