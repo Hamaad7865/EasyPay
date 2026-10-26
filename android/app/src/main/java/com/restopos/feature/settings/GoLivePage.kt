@@ -61,6 +61,8 @@ class GoLiveViewModel @Inject constructor(
     private val approvals: Approvals,
 ) : ViewModel() {
     val settingUp: StateFlow<Boolean> = settingUpFlow(db, session).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    // a shop: what stays is its products and suppliers, not a menu and tables
+    val shop: StateFlow<Boolean> = db.ops().settingsFlow().map { PosSettings.parse(it).retail }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     // the sheet, open with what would go
     val rung = MutableStateFlow<GoLive.Rung?>(null)
     val busy = MutableStateFlow(false)
@@ -111,6 +113,7 @@ internal fun SettingUpCard(onLive: () -> Unit, vm: GoLiveViewModel = hiltViewMod
     val on by vm.settingUp.collectAsState()
     val rung by vm.rung.collectAsState()
     val busy by vm.busy.collectAsState()
+    val shop by vm.shop.collectAsState()
     if (!on) return
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(V.AmberWash).padding(horizontal = 18.dp, vertical = 14.dp),
@@ -118,11 +121,11 @@ internal fun SettingUpCard(onLive: () -> Unit, vm: GoLiveViewModel = hiltViewMod
     ) {
         Column(Modifier.weight(1f).padding(end = 14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             T("This till is being set up", 16.sp, 800, V.AmberText)
-            T("What is rung up here is for trying: it prints TEST, and goes when the business goes live. The menu, the staff, the stock and all that is set up stay.", 13.sp, 500, V.Text2, lines = 3)
+            T("What is rung up here is for trying: it prints TEST, and goes when the business goes live. The ${if (shop) "products" else "menu"}, the staff, the stock and all that is set up stay.", 13.sp, 500, V.Text2, lines = 3)
         }
         VBtn("Go live", bg = V.Blue, fg = Color.White, height = 46.dp, weight = 800) { vm.ask() }
     }
-    rung?.let { r -> GoLiveSheet(r, busy, onClose = vm::close, onGo = { vm.go(onLive) }) }
+    rung?.let { r -> GoLiveSheet(r, busy, shop, onClose = vm::close, onGo = { vm.go(onLive) }) }
 }
 
 // Settings, This till, on an offline tablet that is live: the way back to
@@ -135,6 +138,7 @@ internal fun BackToSettingUp(vm: GoLiveViewModel = hiltViewModel()) {
     val alone by vm.alone.collectAsState()
     val again by vm.again.collectAsState()
     val busy by vm.busy.collectAsState()
+    val shop by vm.shop.collectAsState()
     if (on || !alone) return
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(V.Panel).padding(horizontal = 18.dp, vertical = 14.dp),
@@ -142,7 +146,7 @@ internal fun BackToSettingUp(vm: GoLiveViewModel = hiltViewModel()) {
     ) {
         Column(Modifier.weight(1f).padding(end = 14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             T("Back to setting up", 15.sp, 700)
-            T("Only before the business sells for real: everything rung up on this tablet so far becomes trying, and goes at Go live. The menu, the staff and all that is set up stay.", 13.sp, 500, V.Text2, lines = 3)
+            T("Only before the business sells for real: everything rung up on this tablet so far becomes trying, and goes at Go live. The ${if (shop) "products" else "menu"}, the staff and all that is set up stay.", 13.sp, 500, V.Text2, lines = 3)
         }
         VBtn("Back to setting up", height = 46.dp) { vm.askAgain() }
     }
@@ -181,6 +185,7 @@ fun GoLiveFromStart(modifier: Modifier = Modifier, link: Boolean = false, color:
     val on by vm.settingUp.collectAsState()
     val rung by vm.rung.collectAsState()
     val busy by vm.busy.collectAsState()
+    val shop by vm.shop.collectAsState()
     if (!on) return
     val key = @Composable { T("Go live", 15.sp, 600, color, Modifier.press(0.97f) { vm.ask(fromStart = true) }.padding(10.dp)) }
     if (link) key()
@@ -188,17 +193,28 @@ fun GoLiveFromStart(modifier: Modifier = Modifier, link: Boolean = false, color:
         T("This till is being set up: what is rung up on it is for trying, and goes when the business goes live.", 13.sp, 500, V.AmberText, lines = 3, align = androidx.compose.ui.text.style.TextAlign.Center)
         key()
     }
-    rung?.let { r -> GoLiveSheet(r, busy, onClose = vm::close, onGo = { vm.go {} }) }
+    rung?.let { r -> GoLiveSheet(r, busy, shop, onClose = vm::close, onGo = { vm.go {} }) }
 }
 
+// `shop`: deposits, credit notes, account bills and suppliers are a shop's; the menu and the tables a restaurant's
 @Composable
-private fun GoLiveSheet(r: GoLive.Rung, busy: Boolean, onClose: () -> Unit, onGo: () -> Unit) {
+private fun GoLiveSheet(r: GoLive.Rung, busy: Boolean, shop: Boolean, onClose: () -> Unit, onGo: () -> Unit) {
     Sheet(onDismiss = onClose, width = 600.dp, pad = 24.dp, gap = 12.dp) {
         SheetHead("Go live?", "From now on what is sold here is real: its receipts, its days and its stock.", onClose)
         Caps("What goes", V.Text2)
-        T(listOf(many(r.receipts, "receipt"), many(r.orders, "order"), many(r.days, "day")).joinToString(", ") + ", with their payments, refunds, cash in and out, clock-ins, deposits, credit notes and account bills.", 15.sp, 600, lines = 4)
+        T(
+            listOf(many(r.receipts, "receipt"), many(r.orders, "order"), many(r.days, "day")).joinToString(", ") +
+                if (shop) ", with their payments, refunds, cash in and out, clock-ins, deposits, credit notes and account bills."
+                else ", with their payments, refunds, cash in and out and clock-ins.",
+            15.sp, 600, lines = 4,
+        )
         Caps("What stays", V.Text2)
-        T("The menu, the staff and their PINs, the tables, the printers, the settings, the customers, the suppliers and the stock. What sales rung up while setting up took off the shelf goes back on it; sales from before Back to setting up do not.", 15.sp, 500, lines = 4)
+        T(
+            (if (shop) "The products, the staff and their PINs, the printers, the settings, the customers, the suppliers and the stock."
+            else "The menu, the staff and their PINs, the tables, the printers, the settings, the customers and the stock.") +
+                " What sales rung up while setting up took off the shelf goes back on it; sales from before Back to setting up do not.",
+            15.sp, 500, lines = 4,
+        )
         T("Receipts start again at 1. This cannot be undone.", 13.sp, 600, V.AmberText, lines = 2)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f))
