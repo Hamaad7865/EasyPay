@@ -214,6 +214,57 @@ const id = () => crypto.randomUUID();
       p = await see(shopCtx, href, sp, more);
       check(`B7 ${href} opens for a shop with two branches`, !p.error, p.error);
     }
+
+    // ---- S: staff per branch (piece 2) ----
+    // what the back office runs, as the back office runs it: the tenant's role, inside a savepoint
+    const asApp = async (tenant, sql, params) => {
+      await c.query('SAVEPOINT s');
+      try {
+        await c.query('SET LOCAL ROLE app_user');
+        await c.query(`select set_config('app.tenant_id', $1, true)`, [tenant]);
+        const r = await c.query(sql, params);
+        await c.query('RESET ROLE');
+        await c.query('RELEASE SAVEPOINT s');
+        return { rows: r.rows };
+      } catch (e) {
+        await c.query('ROLLBACK TO SAVEPOINT s');
+        return { error: e.message };
+      }
+    };
+    const role = (await one(`select id from roles where tenant_id = $1 and name = 'Cashier'`, [tid])) || (await one(`select id from roles where tenant_id = $1 limit 1`, [tid]));
+    const cara = (await one(`insert into employees (tenant_id, name, role_id) values ($1,'Cara',$2) returning id`, [tid, role.id])).id;
+    await c.query(`insert into employee_stores (tenant_id, employee_id, store_id) select $1, $2, s.id from stores s where s.tenant_id = $1`, [tid, cara]);
+    const worksAt = async (emp) => (await c.query(`select s.name from employee_stores es join stores s on s.id = es.store_id where es.employee_id = $1 and es.deleted_at is null order by s.name`, [emp])).rows.map((r) => r.name).join(', ');
+    let r = await asApp(tid, `select employee_set_stores($1, $2, $3::uuid[]) as n`, [tid, cara, [pl]]);
+    check('S1 Cara kept to Port Louis', !r.error && (await worksAt(cara)) === 'Port Louis', r.error || (await worksAt(cara)));
+    r = await asApp(tid, `select employee_set_stores($1, $2, $3::uuid[]) as n`, [tid, cara, []]);
+    check('S2 no branch at all is refused', r.error === 'no-branch' && (await worksAt(cara)) === 'Port Louis', r.error);
+    r = await asApp(tid, `select employee_set_stores($1, $2, $3::uuid[]) as n`, [tid, cara, [pl, solo.store_id]]);
+    check('S2 another account\'s branch is refused', r.error === 'unknown-store' && (await worksAt(cara)) === 'Port Louis', r.error);
+    r = await asApp(tid, `select employee_set_stores($1, $2, $3::uuid[]) as n`, [tid, cara, [main, pl]]);
+    check('S1 and back to both: the removed row comes back', !r.error && (await worksAt(cara)) === 'Main, Port Louis', r.error || (await worksAt(cara)));
+    await asApp(tid, `select employee_set_stores($1, $2, $3::uuid[]) as n`, [tid, cara, [pl]]);
+    const gb = (await one(`select platform.add_store($1,$2,'Grand Baie','GB') as s`, [admin, tid])).s;
+    check('S3 a new branch takes the staff who work at every branch', (await worksAt(owner)).includes('Grand Baie'), await worksAt(owner));
+    check('S3 and not Cara, kept to Port Louis', (await worksAt(cara)) === 'Port Louis', await worksAt(cara));
+    const off = (await one(`select platform.create_tenant_of_type($1,'Offline Cafe','Main','MB4','Owner',$2,'offline','restaurant') as r`, [admin, id()])).r;
+    await c.query('SAVEPOINT s');
+    let err = null;
+    try { await c.query(`select platform.add_store($1,$2,'Second','SC')`, [admin, off.tenant_id]); } catch (e) { err = e.message; }
+    await c.query('ROLLBACK TO SAVEPOINT s');
+    check('S4 an offline account has one branch', err === 'offline-one-branch', err);
+    await c.query('SAVEPOINT s');
+    err = null;
+    try { await c.query(`select platform.set_tenant_plan($1,$2,'offline')`, [admin, tid]); } catch (e) { err = e.message; }
+    await c.query('ROLLBACK TO SAVEPOINT s');
+    check('S5 an account with branches cannot go offline', err === 'offline-one-branch', err);
+    p = await see(base, '/backoffice/staff', {});
+    const caraRow = rowsOf(p.html).find((x) => x.startsWith('Cara')) || '';
+    check('S6 Staff has Works at, with each branch', !p.error && rowsOf(p.html)[0].includes('Works at') && p.says.includes('Grand Baie'), p.error || rowsOf(p.html)[0]);
+    check('S6 Cara works at Port Louis; the owner everywhere', caraRow.split(' | ')[5] === 'Port Louis' && (rowsOf(p.html).find((x) => x.startsWith('Owner')) || '').split(' | ')[5] === 'Every branch', caraRow);
+    p = await see(soloCtx, '/backoffice/staff', {});
+    check('S6 one branch: no Works at', !p.error && !p.says.includes('Works at'), p.error);
+    void gb;
   } catch (e) {
     console.log('FAIL the test itself: ' + ((e && e.stack) || e));
     failures++;

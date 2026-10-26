@@ -212,16 +212,21 @@ export function TenantView({
               <div>
                 <h2>Stores and tills</h2>
                 <p>
-                  {count(stores.length, "store")}, {count(tills.length, "till")}. Every login of this client can use every store.
+                  {count(stores.length, "store")}, {count(tills.length, "till")}. Every login of this client can use every store; its staff work where its Staff page says.
                 </p>
               </div>
             </div>
-            <form action={actions.addStore} className="table-filters">
-              {which}
-              <input name="name" placeholder="Store name" aria-label="Store name" required />
-              <input name="code" placeholder="Store code, e.g. S2" aria-label="Store code" required />
-              <Submit>Add store</Submit>
-            </form>
+            {/* the offline plan runs one tablet's branch (0136) */}
+            {offline ? (
+              <p className="muted" style={{ padding: "0 20px" }}>An offline client has one branch. Make it Premium to add another.</p>
+            ) : (
+              <form action={actions.addStore} className="table-filters">
+                {which}
+                <input name="name" placeholder="Store name" aria-label="Store name" required />
+                <input name="code" placeholder="Store code, e.g. S2" aria-label="Store code" required />
+                <Submit>Add store</Submit>
+              </form>
+            )}
             <div className="adm-scroll">
               <table className="adm-nowrap">
                 <thead>

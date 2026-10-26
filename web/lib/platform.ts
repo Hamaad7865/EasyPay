@@ -79,6 +79,8 @@ const MESSAGES: Record<string, string> = {
   "bad-mra-url": "The MRA's address starts with https://, as https://vfisc.mra.mu.",
   "bad-mra-certificate": "That is not a certificate. Open the .crt from the MRA's portal as text and paste all of it, from -----BEGIN CERTIFICATE----- to -----END CERTIFICATE-----.",
   "code-in-use": "That code is a tablet at work. It goes when its till is removed, and ends when a code for a replacement is made.",
+  // the offline plan runs one tablet's branch (0136)
+  "offline-one-branch": "The offline plan runs one branch, on its tablet. A client with two or more branches stays on Premium or Trial, and an offline client gets a second branch once it is Premium.",
 };
 
 export function adminMessage(e: unknown): string {

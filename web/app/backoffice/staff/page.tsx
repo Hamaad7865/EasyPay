@@ -3,6 +3,8 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { requirePerm, tenantContext } from "@/lib/tenant";
 import { readTenant, withTenant } from "@/lib/db";
 import { hashPin, isPin } from "@/lib/pin";
+import { UUID } from "@/lib/action";
+import { branches } from "@/lib/branch";
 import { Submit } from "../busy";
 
 type Staff = {
@@ -12,6 +14,8 @@ type Staff = {
   has_pin: boolean;
   has_login: boolean;
   is_active: boolean;
+  // the branches they work at; none is every branch, as the tills read it (Staff.kt)
+  stores: string[];
 };
 
 // Messages only: a PIN never goes in a URL.
@@ -73,6 +77,28 @@ async function setPin(formData: FormData) {
   back("notice", `PIN set for ${name}. The tills get it at their next sync.`);
 }
 
+// Works at (multi-branch, 0136): the branches someone may use the tills of.
+// Shown only to an account with two or more branches. At least one stays ticked.
+async function setStores(formData: FormData) {
+  "use server";
+  const ctx = await guard();
+  const id = String(formData.get("id") ?? "");
+  const stores = formData.getAll("store").map(String).filter((s) => UUID.test(s));
+  if (stores.length === 0) back("error", "Tick at least one branch.");
+  let name: string | null = null;
+  try {
+    name = await withTenant(ctx.tenantId, async (c) => {
+      await c.query(`select employee_set_stores($1, $2, $3::uuid[])`, [ctx.tenantId, id, stores]);
+      return ((await c.query(`select name from employees where tenant_id = $1 and id = $2`, [ctx.tenantId, id])).rows[0]?.name as string | undefined) ?? null;
+    });
+  } catch (e) {
+    unstable_rethrow(e);
+    back("error", e instanceof Error && e.message === "unknown-employee" ? "That member of staff was not found." : "That branch is not one of yours. Nothing was changed.");
+  }
+  revalidatePath("/backoffice/staff");
+  back("notice", `Saved where ${name ?? "they"} work. The tills get the change at their next sync.`);
+}
+
 // Only staff who have no login of their own: a login is switched on and off by
 // EasyPay, and switching off your own would lock you out of this page.
 async function setActive(formData: FormData) {
@@ -104,21 +130,31 @@ export default async function StaffPage({
   const data = await readTenant(ctx.tenantId, async (c) => {
     const staff = await c.query(
       `select e.id, e.name, r.name as role, e.pin_hash is not null as has_pin,
-              e.auth_user_id is not null as has_login, e.is_active
+              e.auth_user_id is not null as has_login, e.is_active,
+              array(select es.store_id::text from employee_stores es
+                     where es.tenant_id = e.tenant_id and es.employee_id = e.id and es.deleted_at is null) as stores
          from employees e left join roles r on r.tenant_id = e.tenant_id and r.id = e.role_id
         where e.tenant_id = $1 and e.deleted_at is null
         order by e.is_active desc, e.name`,
       [ctx.tenantId],
     );
     const roles = await c.query(`select id, name from roles where tenant_id = $1 and deleted_at is null order by name`, [ctx.tenantId]);
+    const stores = await branches(c, ctx.tenantId);
     const may = await c.query(`select has_perm($1, 'employees.edit') as ok`, [ctx.employeeId]);
     return {
       staff: staff.rows as Staff[],
       roles: roles.rows as { id: string; name: string }[],
+      stores,
       may: Boolean(may.rows[0]?.ok),
     };
   });
   const withPin = data.staff.filter((s) => s.is_active && s.has_pin).length;
+  const many = data.stores.length > 1;
+  // the branches someone works at, in words; none, or all of them, is every branch
+  const works = (s: Staff) => {
+    const at = data.stores.filter((b) => s.stores.includes(b.id));
+    return at.length === 0 || at.length === data.stores.length ? "Every branch" : at.map((b) => b.name).join(", ");
+  };
   const pinInput = (label: string) => (
     <input
       name="pin"
@@ -178,6 +214,7 @@ export default async function StaffPage({
             <th>PIN</th>
             <th>Back office login</th>
             <th>At the tills</th>
+            {many && <th>Works at</th>}
             {data.may && <th>Change</th>}
           </tr>
         </thead>
@@ -189,6 +226,7 @@ export default async function StaffPage({
               <td>{s.has_pin ? "Set" : <span className="flag">Not set</span>}</td>
               <td>{s.has_login ? "Yes" : "No"}</td>
               <td>{s.is_active ? "Active" : <span className="muted">Switched off</span>}</td>
+              {many && <td>{works(s)}</td>}
               {data.may && (
                 <td>
                   <div className="bo-toolbar" style={{ margin: 0 }}>
@@ -199,6 +237,21 @@ export default async function StaffPage({
                         {s.has_pin ? "Change PIN" : "Set PIN"}
                       </Submit>
                     </form>
+                    {many && (
+                      <details>
+                        <summary className="btn-quiet" style={{ cursor: "pointer" }}>Branches</summary>
+                        <form action={setStores} style={{ marginTop: 8 }}>
+                          <input type="hidden" name="id" value={s.id} />
+                          {data.stores.map((b) => (
+                            <label key={b.id} className="check">
+                              <input type="checkbox" name="store" value={b.id} defaultChecked={s.stores.length === 0 || s.stores.includes(b.id)} />
+                              {b.name}
+                            </label>
+                          ))}
+                          <Submit className="btn-quiet">Save</Submit>
+                        </form>
+                      </details>
+                    )}
                     {!s.has_login && (
                       <form action={setActive}>
                         <input type="hidden" name="id" value={s.id} />
