@@ -58,7 +58,7 @@ export function CustomersTable({ rows, capped, start, save, remove, shop = false
           <h2>All customers</h2>
           <p>
             {shown.length !== rows.length ? `${shown.length} of ${rows.length}` : rows.length} {rows.length === 1 ? "customer" : "customers"}
-            {capped && " (the first of a longer list, by name)"}. Tap one to change their details.
+            {capped && " (the first of a longer list, by name)"}. Tap a name for their visits and receipts, or the line to change their details.
           </p>
         </div>
         <TableSearch t={t} placeholder={loyal ? "Search name, phone, email, note, card" : "Search name, phone, email, note"} label="Search customers" />
@@ -91,7 +91,9 @@ export function CustomersTable({ rows, capped, start, save, remove, shop = false
                   <td>
                     <Chev open={on} name={r.name} onClick={() => t.toggle(r.id)} />
                   </td>
-                  <td className="strong">{r.name}</td>
+                  <td className="strong">
+                    <Link href={`/backoffice/customers/${r.id}`} onClick={(e) => e.stopPropagation()}>{r.name}</Link>
+                  </td>
                   <td>{r.phone ?? <span className="muted">None</span>}</td>
                   <td>{r.email ?? <span className="muted">None</span>}</td>
                   <td className="clip-note">{r.note ?? <span className="muted">None</span>}</td>
@@ -146,6 +148,9 @@ export function CustomersTable({ rows, capped, start, save, remove, shop = false
                             Save
                           </Submit>
                         </form>
+                        <p style={{ margin: "10px 0 0" }}>
+                          <Link href={`/backoffice/customers/${r.id}`}>History: {r.name}&apos;s visits and receipts</Link>
+                        </p>
                         {loyal && (
                           <div className="muted" style={{ margin: "10px 0 0" }}>
                             <strong>Points: {r.points_shown}</strong>

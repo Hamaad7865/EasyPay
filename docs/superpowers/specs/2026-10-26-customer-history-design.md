@@ -19,11 +19,10 @@ the customer's name in the table is a link, and the row's open panel has a Histo
   - Deposits: Deposits, all of them, found by their name;
   - Credit notes: Credit notes, found by their name.
 - **Figures**, over every receipt and not only the ones listed:
-  - Visits: the orders they paid for. A split bill is one visit.
-  - Spent: sales less refunds.
+  - Visits: the orders they paid for. A split bill is one visit. Under it, the first visit.
+  - Spent: sales less refunds. Under it, where loyalty is kept, the points to spend.
   - Average per visit: Spent divided by Visits.
-  - First visit and last visit.
-  - Points: the balance, where loyalty is kept.
+  - Last visit.
 - **Buys most:** the five items with the most taken home, returns taken off.
 - **Receipts:** every sale and refund, newest first, the latest 200. Each opens to the same card as on the Orders
   report: the items, discounts, tax, total and payments. It also gives the cashier, the store (only when the
@@ -58,10 +57,27 @@ at the top of the box, not beside it. The `check` label holds a checkbox and its
 a time or a list given the same label inherited that. Such a label now centres its words on the box. Every page
 that used the label that way is checked.
 
-## 8. Checked
+The line over a total (`.kv`, the receipt card and other pages) broke at the gap between its two columns. It now
+runs on.
 
-- `tsc` and `next build`;
-- the page opened through `db/tests/page.cjs` for the dev clients, both as the owner and as a role without
-  `reports.view`;
-- for every customer with an order on those clients, the page's Spent against the Spent column on Customers;
-- the settings and other pages with the label, drawn with the real stylesheet and looked at, light and dark.
+## 8. Checked (2026-10-26 and 27)
+
+- `tsc` is clean, and `next build` passes; `/backoffice/customers/[customer]` is among its routes.
+- `db/tests/customer-history.test.cjs`, new, passes 23 of 23. It uses a made-up restaurant in a rolled-back
+  transaction, with a split bill, a refund and two items. The page's Spent of Rs 575.00 equals the Customers column.
+  A role without `reports.view` sees the name only. A customer who bought nothing, a removed customer and an
+  unknown id are each handled. Orders draws the same six receipts with the same figures as before the move.
+- `seats-customers` passes. `shop-pages` passes except A4. That check is on the Accounts list, which this change
+  does not touch. Its test bill was made about 40 minutes earlier and the clock had passed midnight, so the page
+  said "1 day" where the check expects "0 days".
+- No dev client has a customer with an order, so Spent could not be compared on real data. The suite stands in for
+  that.
+- 73 back office pages were drawn read-only for Hamaad Retail and Saheer Resto, with the real stylesheet. A script
+  in headless Chrome measured the middle of each word against the box or button beside it, at 512 pixels (the
+  narrowest headless Chrome draws, under the 640-pixel phone rules) and at 1280.
+  - With the old style, it found every word after a number box 11 pixels high: 13 on POS settings.
+  - With the new style, it found none.
+  - What it still reports are checkboxes beside a title and a description on two lines, held to the top on
+    purpose.
+- The history page was looked at light and dark, at 1280 and 512, and as the role without reports.
+- Not seen: the page signed in, in a real browser.

@@ -74,6 +74,7 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
   const head = (
     <PageHead title={d.who.name} lede={[d.who.phone, d.who.email, d.who.removed ? "removed from Customers; their account stays" : null].filter(Boolean).join(" · ") || undefined}>
       <Link href="/backoffice/accounts" className="btn-quiet">All accounts</Link>
+      <Link href={`/backoffice/customers/${customer}`} className="btn-quiet">History</Link>
       <Link href={`/backoffice/accounts/${customer}/statement`} className="btn">Statement</Link>
     </PageHead>
   );
