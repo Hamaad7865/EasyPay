@@ -28,6 +28,8 @@ const KEPT = [
   // the stock that was entered, and the papers it came in on
   'stock_levels', 'purchase_orders', 'purchase_order_lines', 'deliveries', 'delivery_lines',
   'stock_counts', 'stock_count_lines', 'doc_counters',
+  // stock sent between branches (0138): entered in the back office, as a delivery is
+  'stock_transfers', 'stock_transfer_lines',
   // a shop's promotions (0110) are prices it decided on, not its trying
   'promotions',
   // what a till wrote down when it stopped: EasyPay's own, not the client's trying

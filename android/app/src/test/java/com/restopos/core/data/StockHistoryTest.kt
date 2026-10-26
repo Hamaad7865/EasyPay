@@ -7,8 +7,9 @@ import org.junit.Test
 // The stock history's words: every reason the server writes a movement with
 // has its own, and a quantity is said in units with its sign.
 class StockHistoryTest {
-    // stock_movements.reason, as migration 0067 allows it
-    private val reasons = listOf("sale", "refund", "adjust", "count", "receive", "supplier_return", "opening", "damaged", "expired", "lost", "internal", "found")
+    // stock_movements.reason, as migrations 0067, 0113 (deposits) and 0138 (transfers) allow it
+    private val reasons = listOf("sale", "refund", "adjust", "count", "receive", "supplier_return", "opening", "damaged", "expired", "lost", "internal", "found",
+        "deposit", "deposit_release", "transfer_out", "transfer_in")
 
     @Test fun `every reason the server allows has words of its own`() {
         val said = reasons.map { StockHistory.says(it) }

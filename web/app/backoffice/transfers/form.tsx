@@ -57,7 +57,17 @@ export function TransferForm({
           <div className="grid-3" style={{ gap: "0 20px" }}>
             <label className="field">
               From
-              <select name="from" value={from} onChange={(e) => setFrom(e.target.value)} required>
+              <select
+                name="from"
+                value={from}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setFrom(v);
+                  // To is never From: picking To's branch as From moves To to another one
+                  if (to === v) setTo(branches.find((b) => b.id !== v)?.id ?? "");
+                }}
+                required
+              >
                 {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </label>

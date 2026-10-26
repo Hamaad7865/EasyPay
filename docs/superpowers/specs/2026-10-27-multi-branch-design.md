@@ -115,3 +115,49 @@ the staff and the prices are shared.
 
 Back office logins that see only their own branch (later). A different menu, catalog or price per branch. Transfers
 from a till, or with an "in transit" step. Adding a branch from the back office.
+
+## 11. Built and checked (2026-10-27)
+
+Commits on `restopos`: piece 1 `8af22c78`, piece 2 `cee3141e` (0136), piece 3 `d4cb2fa0` (0137), piece 4 `9019e5ab`
+(0138), piece 5 `35afe5d3` (till 0.9.29, build 41, Room 36). Migrations 0136 to 0138 are on dev only.
+
+- **Found while building:**
+  - `stock_count_item` wrote -7 at Port Louis for a count of 3 there with 10 at Main (fixed in 0137).
+  - `catalog_import` skipped opening stock at a second branch (fixed in 0137).
+  - Three suites (stock-reports, made-of, deposits) passed six parameters to `RECEIPTS` and broke once it took the
+    branch; they pass it now.
+- **What was decided while building:**
+  - With All branches of several, the stock pages are read-only: a count, an order, a delivery, an adjustment or a
+    transfer is for one branch, picked at the top or chosen in its form.
+  - A branch's line on paper is in the name block's style (big) on a designed receipt, and normal size on the other
+    papers.
+  - A transfer of a product whose cost is not known (0) leaves the receiving branch's average as it was.
+  - An account with two or more branches cannot be put on the offline plan (told to the owner).
+- **Run:**
+  - `db/tests/multi-branch.test.cjs`: 71 PASS. It uses a restaurant with two then three branches, a one-branch
+    restaurant and a two-branch shop, with sales through `sync_push`. It opens every report, Insights, the
+    dashboard and every stock page at each pick, then exercises staff, stock, transfers and Company details.
+  - One at a time: customer-history 26, journal 17, shop-pages 116, pos-pages 126, platform 38, backoffice-saves 75,
+    business-type 16, stock-reports 38, purchase-orders 45, catalog-import 25, made-of 30, promotions 31,
+    deposits 86, retail-till 49, count-from-alone 15, sold-by 33, isolation (row security) 11, delete-client 14,
+    remove-test-clients 14. All PASS.
+  - setting-up: the transfer tables are listed with what "Clear test activity" keeps, as deliveries and counts are
+    (their movements were already kept). Its X6 still fails on `mra_records` (0132), a table left off its lists
+    before this work; which list it belongs on is for whoever owns the MRA records.
+  - Removing a client: the transfer tables are write-once (`block_update`), and removal deletes under
+    `app.purge_tenant`, which `block_update` lets through; delete-client passes.
+  - A till before 0.9.29 that pulls a transfer's movements says "Correction" (an unknown reason falls through);
+    0.9.29 says "Sent to a branch" and "Arrived from a branch".
+  - `nav.test` and `papers.test` PASS. `tsc` is clean, and `next build` passes.
+  - Android: `testDebugUnitTest` (901 tests) and `assembleDebug` pass. The shared paper example `branch-80.json`
+    prints the same lines on the till and in the back office preview.
+- **Looked at:** Sales, the dashboard, New transfer and a transfer's note, drawn read-only with the real stylesheet
+  in headless Chrome.
+- **Not seen:**
+  - any page signed in, in a real browser;
+  - the till on a tablet or an emulator (no emulator was running, and none was started);
+  - a paper from a real printer;
+  - a till pulling a transfer's stock levels, beyond the level's sequence moving on.
+- **Another session in the same checkout:** another session edited this folder at the same time ("a shop's own
+  words", `75050cc6`, which touched the company page, the dashboard and Insights). Each commit here was staged file
+  by file, and the company page was staged from that commit plus this change.

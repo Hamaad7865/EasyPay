@@ -30,6 +30,9 @@ object StockHistory {
         // a shop's deposits (0113): held for a customer, and back when not collected
         "deposit" -> "Held for a deposit"
         "deposit_release" -> "Back from a deposit"
+        // stock sent between branches (server 0138); a till before 0.9.29 says Correction
+        "transfer_out" -> "Sent to a branch"
+        "transfer_in" -> "Arrived from a branch"
         else -> "Correction"
     }
 
