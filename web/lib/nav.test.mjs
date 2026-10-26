@@ -70,5 +70,14 @@ check("the MRA page is in the menu for a client on MRA only", () => {
   assert.equal(groupOf("/backoffice/mra", "restaurant", true, true), "finance");
 });
 
+check("Transfers is under Stock for an account with two or more branches only, a restaurant's and a shop's", () => {
+  for (const mode of ["restaurant", "retail"]) {
+    const has = (many) => groupsFor(mode, true, false, many).some((g) => g.links.some((l) => l.href === "/backoffice/transfers"));
+    assert.equal(has(true), true);
+    assert.equal(has(false), false);
+    assert.equal(groupOf("/backoffice/transfers", mode, true, false, true), "stock");
+  }
+});
+
 console.log(failures === 0 ? "NAV PASS" : `NAV FAIL (${failures})`);
 process.exit(failures ? 1 : 0);

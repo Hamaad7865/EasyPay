@@ -25,6 +25,8 @@ export type TenantContext = {
   employeeName: string | null;
   // EasyPay's platform admin is in here, standing in for the business's owner (adminInside, below)
   admin: boolean;
+  // two or more branches: the menu has the pages that only mean something then (Transfers; multi-branch)
+  branches?: boolean;
 };
 
 export const isSuspended = (ctx: TenantContext) => ctx.status !== "active";
@@ -116,7 +118,8 @@ export const tenantContext = cache(async (): Promise<TenantContext> => {
   }
   const found = await ask(
     `select e.id, e.tenant_id, e.name as employee_name, r.name as role, t.status, t.status_reason, t.name as tenant_name, t.business_type, t.plan, t.mra,
-            has_perm(e.id, 'backoffice.access') as may_enter
+            has_perm(e.id, 'backoffice.access') as may_enter,
+            (select count(*) from stores s where s.tenant_id = t.id and s.deleted_at is null) > 1 as branches
        from employees e
        join tenants t on t.id = e.tenant_id
        left join roles r on r.id = e.role_id
@@ -139,6 +142,7 @@ export const tenantContext = cache(async (): Promise<TenantContext> => {
     tenantName: (row.tenant_name as string | null) ?? null,
     employeeName: (row.employee_name as string | null) ?? null,
     admin: false,
+    branches: Boolean(row.branches),
   };
 });
 

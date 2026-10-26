@@ -113,6 +113,9 @@ export const MOVE_LABEL: Record<string, string> = {
   // a shop's deposits (migration 0113)
   deposit: "Held for a deposit",
   deposit_release: "Back from a deposit",
+  // sent between branches (multi-branch, 0138): the note names the other branch
+  transfer_out: "Sent to a branch",
+  transfer_in: "Arrived from a branch",
 };
 
 export const units = (q: number) => (q / 1000).toLocaleString("en-US", { maximumFractionDigits: 3 });

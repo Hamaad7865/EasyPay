@@ -125,7 +125,7 @@ export default async function StockPage({ searchParams }: { searchParams: Search
   }));
   const start = startOf(sp, "q", "show", "sort", "open");
   const when = new Intl.DateTimeFormat("en-GB", { timeZone: d.tz, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-  const REASON: Record<string, string> = { sale: "Sold", refund: "Refunded", adjust: "Added", count: "Counted" };
+  const REASON: Record<string, string> = { sale: "Sold", refund: "Refunded", adjust: "Added", count: "Counted", transfer_out: "Sent to a branch", transfer_in: "Arrived from a branch" };
   return (
     <div>
       <PageHead title="Stock" lede="What is left of the items you count. A sale takes from the quantity, a refund puts it back. Set a quantity after counting the shelf, or add a delivery.">

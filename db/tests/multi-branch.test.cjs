@@ -346,6 +346,59 @@ const id = () => crypto.randomUUID();
     p = await see(shopBase, '/backoffice/items/' + mugId, {}, { params: { id: mugId }, file: 'backoffice/items/[id]' });
     check('K7 the product page says each branch\'s stock and has its reorder level', !p.error && p.says.includes('Curepipe 26') && p.says.includes('Rose Hill 9') && p.html.includes(`name="reorder_${rh}"`), p.error || p.says.slice(0, 200));
 
+    // ---- T: transfers between branches (piece 4) ----
+    const avg = async (tenant, store, item) => Number((await one(`select avg_cost from stock_levels where tenant_id = $1 and store_id = $2 and item_id = $3 and variant_id is null`, [tenant, store, item])).avg_cost);
+    const send = (from, to, lines, emp = sowner) => asApp(sid, `select stock_transfer($1,$2,$3,$4,$5::jsonb,$6) as id`, [sid, emp, from, to, JSON.stringify(lines), 'by van']);
+    const [cBefore, rBefore, cAvg, rAvg, totBefore] = [await level(sid, curepipe, mugId), await level(sid, rh, mugId), await avg(sid, curepipe, mugId), await avg(sid, rh, mugId), await itemTotal(mugId)];
+    const rhSeq = Number((await one(`select server_seq from stock_levels where tenant_id = $1 and store_id = $2 and item_id = $3`, [sid, rh, mugId])).server_seq);
+    r = await send(curepipe, rh, [{ item: mugId, variant: null, qty: 4000 }]);
+    const t1 = r.rows?.[0]?.id;
+    check('T1 4 sent: Curepipe 4 fewer, Rose Hill 4 more, the total the same', !r.error && (await level(sid, curepipe, mugId)) === cBefore - 4000 && (await level(sid, rh, mugId)) === rBefore + 4000 && (await itemTotal(mugId)) === totBefore,
+      r.error || `${await level(sid, curepipe, mugId)} ${await level(sid, rh, mugId)} ${await itemTotal(mugId)}`);
+    const want = (rBefore * rAvg + 4000 * cAvg) / (rBefore + 4000);
+    check('T2 they arrive at Curepipe\'s cost, and Rose Hill\'s average moves with them', Math.abs((await avg(sid, rh, mugId)) - want) < 0.001 && (await avg(sid, curepipe, mugId)) === cAvg, `${await avg(sid, rh, mugId)} want ${want}`);
+    const moved = (await c.query(`select reason, store_id, qty, note from stock_movements where ref_type = 'transfer' and ref_id = $1 order by qty`, [t1])).rows;
+    check('T7 two movements under the transfer: out at Curepipe, in at Rose Hill, each naming the other', moved.length === 2 && moved[0].reason === 'transfer_out' && moved[0].store_id === curepipe && /to Rose Hill/.test(moved[0].note)
+      && moved[1].reason === 'transfer_in' && moved[1].store_id === rh && /from Curepipe/.test(moved[1].note), JSON.stringify(moved));
+    check('T8 Rose Hill\'s level moved on, so its till pulls it', Number((await one(`select server_seq from stock_levels where tenant_id = $1 and store_id = $2 and item_id = $3`, [sid, rh, mugId])).server_seq) > rhSeq);
+    const cNow = await level(sid, curepipe, mugId);
+    r = await send(curepipe, rh, [{ item: mugId, variant: null, qty: cNow + 1000 }]);
+    check('T3 more than Curepipe holds is refused, and says how many it holds', /^not-enough-stock:/.test(r.error || '') && r.error.endsWith(':' + cNow) && (await level(sid, curepipe, mugId)) === cNow, r.error);
+    r = await send(rh, rh, [{ item: mugId, variant: null, qty: 1000 }]);
+    check('T4 a branch to itself is refused', r.error === 'same-branch', r.error);
+    r = await send(curepipe, solo.store_id, [{ item: mugId, variant: null, qty: 1000 }]);
+    check('T4 another account\'s branch is refused', r.error === 'unknown-store', r.error);
+    const wrap = (await one(`insert into items (tenant_id, name, price, track_stock) values ($1,'Gift wrapping',5000,false) returning id`, [sid])).id;
+    r = await send(curepipe, rh, [{ item: wrap, variant: null, qty: 1000 }]);
+    check('T5 a product that does not count stock is refused', r.error === 'not-counted', r.error);
+    const shirtV = (await one(`insert into items (tenant_id, name, price, track_stock, option_names) values ($1,'Linen shirt',90000,true,array['Size']) returning id`, [sid])).id;
+    const sizeM = (await one(`insert into item_variants (tenant_id, item_id, name, option_values, price) values ($1,$2,'M',array['M'],90000) returning id`, [sid, shirtV])).id;
+    r = await send(curepipe, rh, [{ item: shirtV, variant: null, qty: 1000 }]);
+    check('T5 a product with sizes needs its size', r.error === 'pick-variant', r.error);
+    await asApp(sid, `select stock_move($1,$2,$3,$4,3000,'adjust',null,null,null,$5,null)`, [sid, curepipe, shirtV, sizeM, sowner]);
+    r = await send(curepipe, rh, [{ item: shirtV, variant: sizeM, qty: 1000 }, { item: shirtV, variant: sizeM, qty: 2000 }]);
+    const mAt = async (store) => Number((await one(`select coalesce(sum(qty), 0) as q from stock_levels where store_id = $1 and variant_id = $2`, [store, sizeM])).q);
+    check('T10 the same size on two lines moves once, both together', !r.error && (await mAt(curepipe)) === 0 && (await mAt(rh)) === 3000, r.error || `${await mAt(curepipe)} ${await mAt(rh)}`);
+    r = await send(rh, curepipe, [{ item: shirtV, variant: sizeM, qty: 2000 }, { item: shirtV, variant: sizeM, qty: 2000 }]);
+    check('T10 and the two together are held to what is there', /^not-enough-stock:/.test(r.error || ''), r.error);
+    const rice = (await one(`insert into items (tenant_id, name, price, track_stock, sold_by) values ($1,'Basmati rice',12000,true,'weight') returning id`, [sid])).id;
+    await asApp(sid, `select stock_move($1,$2,$3,null,10000,'adjust',null,null,null,$4,null)`, [sid, curepipe, rice, sowner]);
+    r = await send(curepipe, rh, [{ item: rice, variant: null, qty: 1500 }]);
+    check('T11 1.5 kg sent is 1.5 kg at both', !r.error && (await level(sid, curepipe, rice)) === 8500 && (await level(sid, rh, rice)) === 1500, r.error || `${await level(sid, curepipe, rice)} ${await level(sid, rh, rice)}`);
+    const viewer = (await one(`insert into roles (tenant_id, name, permissions) values ($1,'Viewer','["backoffice.access","stock.view"]'::jsonb) returning id`, [sid])).id;
+    const vic = (await one(`insert into employees (tenant_id, name, role_id) values ($1,'Vic',$2) returning id`, [sid, viewer])).id;
+    r = await send(curepipe, rh, [{ item: mugId, variant: null, qty: 1000 }], vic);
+    check('T6 a role without Adjust stock may not send', r.error === 'forbidden', r.error);
+    r = await asApp(sid, `update stock_transfers set note = 'changed' where id = $1`, [t1]);
+    check('T6 a transfer is not changed afterwards', !!r.error, r.error);
+    p = await see(shopBase, '/backoffice/transfers', {});
+    check('T9 Transfers lists it, from Curepipe to Rose Hill', !p.error && (rowsOf(p.html).find((x) => x.includes('T-0001')) || '').includes('Curepipe') && (rowsOf(p.html).find((x) => x.includes('T-0001')) || '').includes('Rose Hill'), p.error || rowsOf(p.html).join(' || '));
+    p = await see(shopBase, '/backoffice/transfers/' + t1, {}, { params: { id: t1 }, file: 'backoffice/transfers/[id]' });
+    check('T9 its note: both branches, the product and how many', !p.error && p.says.includes('Curepipe') && p.says.includes('Rose Hill') && (rowsOf(p.html).find((x) => x.includes('Ceramic mug')) || '').includes('4'), p.error || p.says.slice(0, 300));
+    p = await see(shopBase, '/backoffice/transfers/new', {});
+    check('T9 a new transfer asks From and To', !p.error && /name="from"/.test(p.html) && /name="to"/.test(p.html), p.error);
+    p = await see(soloCtx, '/backoffice/transfers', {});
+    check('T9 one branch: nothing to transfer', !p.error && p.says.includes('one branch'), p.error || p.says.slice(0, 200));
 
   } catch (e) {
     console.log('FAIL the test itself: ' + ((e && e.stack) || e));

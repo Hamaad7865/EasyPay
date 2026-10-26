@@ -34,6 +34,7 @@ export default async function BackofficeLayout({ children }: { children: React.R
         mode={ctx.mode}
         premium={ctx.premium}
         mra={onMra(ctx.mra)}
+        many={Boolean(ctx.branches)}
         drawn={Date.now()}
         folded={jar.get("bo-menu")?.value === "closed"}
         look={themeOf(jar.get(THEME_COOKIE)?.value)}
@@ -65,7 +66,7 @@ export default async function BackofficeLayout({ children }: { children: React.R
               here. Contact EasyPay to reactivate.
             </div>
           )}
-          <Over mode={ctx.mode} premium={ctx.premium} mra={onMra(ctx.mra)} />
+          <Over mode={ctx.mode} premium={ctx.premium} mra={onMra(ctx.mra)} many={Boolean(ctx.branches)} />
           {children}
         </main>
       </div>

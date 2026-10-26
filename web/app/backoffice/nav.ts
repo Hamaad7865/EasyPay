@@ -1,5 +1,6 @@
 import {
   ArrowLeftRight,
+  ArrowRightLeft,
   FileCheck,
   BadgePercent,
   BarChart3,
@@ -59,7 +60,8 @@ import type { Mode } from "@/lib/mode";
 // section a line is either a page or a group that opens onto its pages. A
 // group marked `flat` is one page and is drawn as that page's own line; so is
 // a group left with one page for this business and plan.
-export type NavLink = { href: string; label: string; icon: LucideIcon; words?: string; only?: Mode; retail?: string; retailIcon?: LucideIcon; premium?: true; mra?: true };
+// branches: only for an account with two or more branches (multi-branch)
+export type NavLink = { href: string; label: string; icon: LucideIcon; words?: string; only?: Mode; retail?: string; retailIcon?: LucideIcon; premium?: true; mra?: true; branches?: true };
 export type SectionId = "counter" | "money" | "admin";
 export type NavGroup = { id: string; section: SectionId; title: string; icon: LucideIcon; links: NavLink[]; retail?: string; retailIcon?: LucideIcon; flat?: true };
 export type NavSection = { id: SectionId; title: string; groups: NavGroup[] };
@@ -162,6 +164,7 @@ export const GROUPS: NavGroup[] = [
       { href: "/backoffice/suppliers", label: "Suppliers", only: "retail", icon: Truck, words: "vendors wholesalers contacts who we buy from" },
       { href: "/backoffice/stock-counts", label: "Counts", only: "retail", icon: ClipboardCheck, words: "stocktake stock take count inventory audit shelves scan difference variance" },
       { href: "/backoffice/stock-movements", label: "Movements", only: "retail", icon: ArrowLeftRight, words: "history log stock in out sold received adjusted counted" },
+      { href: "/backoffice/transfers", label: "Transfers", branches: true, icon: ArrowRightLeft, words: "send move stock between branches shops another branch transfer note" },
     ],
   },
   // ---- Admin ----
@@ -229,17 +232,17 @@ export const isOn = (href: string, path: string) =>
     : under(href, path) && !GROUPS.some((g) => g.links.some((l) => l.href.length > href.length && under(l.href, path)));
 // The group a page sits in, for this kind of business: one address can be in
 // two groups (Stock), one for each kind.
-export const groupOf = (path: string, mode: Mode, premium: boolean, mra = false) =>
-  groupsFor(mode, premium, mra).find((g) => g.links.some((l) => isOn(l.href, path)))?.id ?? null;
+export const groupOf = (path: string, mode: Mode, premium: boolean, mra = false, many = false) =>
+  groupsFor(mode, premium, mra, many).find((g) => g.links.some((l) => isOn(l.href, path)))?.id ?? null;
 
 // The groups one kind of business has on its plan, under the names it uses.
 // The menu and the search both draw from this, so they cannot disagree about
 // what exists. A group left with one page is drawn as that page (`flat`), under
 // the page's own name.
-export function groupsFor(mode: Mode, premium: boolean, mra = false): NavGroup[] {
+export function groupsFor(mode: Mode, premium: boolean, mra = false, many = false): NavGroup[] {
   return GROUPS.map((g) => {
     const links = g.links
-      .filter((l) => (!l.only || l.only === mode) && (!l.premium || premium) && (!l.mra || mra))
+      .filter((l) => (!l.only || l.only === mode) && (!l.premium || premium) && (!l.mra || mra) && (!l.branches || many))
       .map((l) => (mode === "retail" ? { ...l, label: l.retail ?? l.label, icon: l.retailIcon ?? l.icon } : l));
     const flat = g.flat || links.length === 1 ? (true as const) : undefined;
     return {
@@ -253,20 +256,20 @@ export function groupsFor(mode: Mode, premium: boolean, mra = false): NavGroup[]
 }
 
 // The menu's sections, each with the groups this business has in it.
-export function sectionsFor(mode: Mode, premium: boolean, mra = false): NavSection[] {
-  const groups = groupsFor(mode, premium, mra);
+export function sectionsFor(mode: Mode, premium: boolean, mra = false, many = false): NavSection[] {
+  const groups = groupsFor(mode, premium, mra, many);
   return SECTIONS.map((s) => ({ ...s, groups: groups.filter((g) => g.section === s.id) })).filter((s) => s.groups.length > 0);
 }
 
 // What a page's heading has above it: the group it sits in, where that is not
 // the page itself. Null on the day's page and on a page that is its own line.
-export function over(path: string, mode: Mode, premium: boolean, mra = false): string | null {
-  const g = groupsFor(mode, premium, mra).find((x) => x.links.some((l) => isOn(l.href, path)));
+export function over(path: string, mode: Mode, premium: boolean, mra = false, many = false): string | null {
+  const g = groupsFor(mode, premium, mra, many).find((x) => x.links.some((l) => isOn(l.href, path)));
   return g && !g.flat ? g.title : null;
 }
 
 // Every page with the group it sits in, for the search.
-export const pagesOf = (mode: Mode, premium: boolean, mra = false): (NavLink & { group: string | null })[] => [
+export const pagesOf = (mode: Mode, premium: boolean, mra = false, many = false): (NavLink & { group: string | null })[] => [
   { ...HOME, group: null },
-  ...groupsFor(mode, premium, mra).flatMap((g) => g.links.map((l) => ({ ...l, group: g.flat ? SECTIONS.find((x) => x.id === g.section)!.title : g.title }))),
+  ...groupsFor(mode, premium, mra, many).flatMap((g) => g.links.map((l) => ({ ...l, group: g.flat ? SECTIONS.find((x) => x.id === g.section)!.title : g.title }))),
 ];
