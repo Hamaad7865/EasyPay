@@ -131,6 +131,37 @@ const id = () => crypto.randomUUID();
     p = await see(ctx, '/backoffice/reports/orders', { from: d.from, to: d.to });
     check('H9 Orders opens and draws every receipt', !p.error && (p.html.match(/<details/g) || []).length === 6 && p.says.includes('Paid by Cash'), p.error || (p.html.match(/<details/g) || []).length);
     check('H9 its figures', stats(p.html).join(' | ') === 'Receipts shown: 6 | Sales: 5 | Refunds: 1 | Total: Rs 690.00', stats(p.html).join(' | '));
+
+    // ---- a shop: a customer who bought on account, with the shop's own buttons ----
+    const shopMade = (await one(`select platform.create_tenant_of_type($1,'History Shop','Main','CH2','Owner',$2,'offline','retail') as r`, [admin, id()])).r;
+    const sid = shopMade.tenant_id, sstore = shopMade.store_id, sowner = shopMade.employee_id;
+    await c.query(`select platform.set_tenant_features($1,$2,array['accounts'])`, [admin, sid]);
+    const spush = async (ops) => {
+      await c.query('SET LOCAL ROLE app_user');
+      await c.query(`select set_config('app.tenant_id', $1, true)`, [sid]);
+      try {
+        const out = (await c.query('select sync_push($1, $2::jsonb) as r', [sowner, JSON.stringify(ops)])).rows[0].r;
+        const bad = out.filter((o) => o.status !== 'applied');
+        if (bad.length) throw new Error('the server refused ' + JSON.stringify(bad));
+      } finally { await c.query('RESET ROLE'); }
+    };
+    const sdev = (await one(`insert into pos_devices (tenant_id, store_id, name, code) values ($1,$2,'Counter','T1') returning id`, [sid, sstore])).id;
+    const acct = (await one(`select id from payment_types where tenant_id = $1 and kind = 'account' and deleted_at is null`, [sid])).id;
+    const shirt = (await one(`insert into items (tenant_id, name, price) values ($1,'Shirt',50000) returning id`, [sid])).id;
+    const priya = (await one(`insert into customers (tenant_id, name, phone) values ($1,'Priya','52509999') returning id`, [sid])).id;
+    const stk = id();
+    await spush([op('shift.open', { id: id(), device_id: sdev, opening_float: 0, opened_at: at(30) }),
+      op('ticket.create', { id: stk, store_id: sstore }), op('ticket.update_meta', { ticket_id: stk, customer_id: priya }),
+      op('ticket.add_line', { id: id(), ticket_id: stk, item_id: shirt, qty: 1000 }),
+      op('receipt.create', { id: id(), ticket_id: stk, store_id: sstore, device_id: sdev, number: 'CH2-1', device_seq: 1, device_time: at(20),
+        payments: [{ payment_type_id: acct, amount: 50000 }] })]);
+    const sctx = { tenantId: sid, employeeId: sowner, mode: 'retail' };
+    p = await history(sctx, priya);
+    check('H11 a shop customer\'s page opens', !p.error && p.says.includes('Priya') && stats(p.html).join(' | ').includes('Spent: Rs 500.00'), p.error || stats(p.html).join(' | '));
+    check('H11 with a button to their account, and none for deposits or credit notes they do not have',
+      p.html.includes(`href="/backoffice/accounts/${priya}"`) && !p.html.includes('/backoffice/deposits?') && !p.html.includes('/backoffice/credit-notes?'));
+    p = await see(sctx, '/backoffice/accounts/' + priya, {}, { params: { customer: priya }, file: 'backoffice/accounts/[customer]' });
+    check('H11 and the account page has a button back to the history', !p.error && p.html.includes(`href="/backoffice/customers/${priya}"`), p.error);
   } finally {
     await c.query('ROLLBACK');
     await c.end();

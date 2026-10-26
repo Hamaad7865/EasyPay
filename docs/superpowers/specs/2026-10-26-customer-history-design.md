@@ -57,16 +57,29 @@ at the top of the box, not beside it. The `check` label holds a checkbox and its
 a time or a list given the same label inherited that. Such a label now centres its words on the box. Every page
 that used the label that way is checked.
 
-The line over a total (`.kv`, the receipt card and other pages) broke at the gap between its two columns. It now
-runs on.
+Three more faults of the same kind, found while checking:
+
+- **Boxes out of line.** Each box sat wherever its word ended, so the boxes of one card zigzagged: 7, 6, 30 and 14
+  at different places. Such a label now takes at least 150 pixels, so the boxes share one column. "days on
+  promotion" became "days", to fit that column. The setting's title already says "still unsold after".
+- **Choices squeezed on a phone.** Below 640 pixels, a list of choices stacked one over another ("A credit note for
+  it / Given back / Kept by the shop") was squeezed until its words ran over each other. On a phone, a setting's
+  control now goes under its words. A choice that wraps now grows taller instead of spilling out.
+- **A broken line over a total.** The line over a total (`.kv`, used by the receipt card and other pages) broke at
+  the gap between its two columns. It now runs on.
 
 ## 8. Checked (2026-10-26 and 27)
 
 - `tsc` is clean, and `next build` passes; `/backoffice/customers/[customer]` is among its routes.
-- `db/tests/customer-history.test.cjs`, new, passes 23 of 23. It uses a made-up restaurant in a rolled-back
-  transaction, with a split bill, a refund and two items. The page's Spent of Rs 575.00 equals the Customers column.
-  A role without `reports.view` sees the name only. A customer who bought nothing, a removed customer and an
-  unknown id are each handled. Orders draws the same six receipts with the same figures as before the move.
+- `db/tests/customer-history.test.cjs`, new, passes 26 of 26. It uses a made-up restaurant and a made-up shop in a
+  rolled-back transaction.
+  - The restaurant has a split bill, a refund and two items. The page's Spent of Rs 575.00 equals the Customers
+    column.
+  - A role without `reports.view` sees the name only.
+  - A customer who bought nothing, a removed customer and an unknown id are each handled.
+  - Orders draws the same six receipts, with the same figures, as before the card moved.
+  - In the shop, a customer bought on account. Their page has the Account button, and none for deposits or credit
+    notes, which they do not have. The account page links back to the history.
 - `seats-customers` passes. `shop-pages` passes except A4. That check is on the Accounts list, which this change
   does not touch. Its test bill was made about 40 minutes earlier and the clock had passed midnight, so the page
   said "1 day" where the check expects "0 days".
