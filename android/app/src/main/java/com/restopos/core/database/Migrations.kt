@@ -478,4 +478,11 @@ object Migrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_mra_invoices_receipt_id` ON `mra_invoices` (`receipt_id`)")
         }
     }
+
+    // a branch's phone, for its own papers (multi-branch)
+    val V35_V36 = object : Migration(35, 36) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `stores` ADD COLUMN `phone` TEXT")
+        }
+    }
 }

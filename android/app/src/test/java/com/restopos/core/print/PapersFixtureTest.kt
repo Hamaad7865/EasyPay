@@ -38,7 +38,7 @@ class PapersFixtureTest {
 
     private fun shop(o: JsonObject) = Shop(
         o.str("name"), o.str("address"), o.str("phone"), o.str("brn"), o.str("vat"), o.str("header"), o.str("footer"),
-        bars = o["bars"]?.jsonPrimitive?.boolean ?: false,
+        bars = o["bars"]?.jsonPrimitive?.boolean ?: false, branch = o.str("branch"),
     )
     private fun JsonObject.str(k: String) = this[k]?.jsonPrimitive?.content ?: ""
 

@@ -482,4 +482,32 @@ class DocsTest {
         assertEquals(Docs.TRIAL_MARK, trial.first().trim())
         assertEquals(Docs.TRIAL_MARK, trial.last().trim())
     }
+
+    // An account with two or more branches (multi-branch): each till's papers name its branch under the business,
+    // with the branch's own address and phone; with one branch, nothing changes.
+    @Test
+    fun aBranchIsNamedUnderTheBusiness() {
+        fun said(bytes: ByteArray) = read(bytes).lines.map { it.trim() }.filter { it.isNotEmpty() }
+        val branch = shop.copy(address = "Royal Street\nPort Louis", phone = "5 765 4321", branch = "Port Louis")
+        val r = said(Docs.receipt(receipt, branch, Paper(), 2))
+        val at = r.indexOf("CafeTino")
+        assertEquals(listOf("CafeTino", "Port Louis", "Royal Street", "Port Louis", "Tel: 5 765 4321"), r.subList(at, at + 5))
+        val slip = said(Docs.cashSlip(CashSlipDoc("out", 70000, "Bread", 1_790_000_000_000, "Priya", "T1"), branch, Paper(32, 3, true), 2))
+        assertEquals("Port Louis", slip[slip.indexOf("CafeTino") + 1])
+        // one branch: the paper is as it was
+        assertFalse(said(Docs.receipt(receipt, shop, Paper(), 2)).contains("Port Louis"))
+    }
+
+    @Test
+    fun theHeadIsTheBranchesOnlyWithSeveral() {
+        val s = PosSettings(companyName = "CafeTino", address = "Royal Road", phone = "5 123 4567")
+        val pl = com.restopos.core.database.StoreEntity("s2", "t", "Port Louis", "PL", address = "Royal Street", phone = "")
+        assertEquals(Shop("CafeTino", "Royal Road", "5 123 4567"), s.shop("x", pl, many = false).copy(brn = "", vat = "", header = "", footer = ""))
+        val many = s.shop("x", pl, many = true)
+        assertEquals("Port Louis", many.branch)
+        assertEquals("Royal Street", many.address)
+        // a branch with no phone of its own gives the company's
+        assertEquals("5 123 4567", many.phone)
+        assertEquals("", s.shop("x", null, many = true).branch)
+    }
 }

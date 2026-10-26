@@ -79,7 +79,7 @@ import androidx.room.RoomDatabase
         AccountBillEntity::class, AccountPaymentEntity::class, AccountPaymentLineEntity::class,
         MraInvoiceEntity::class,
     ],
-    version = 35,
+    version = 36,
     exportSchema = true,
 )
 abstract class TillDatabase : RoomDatabase() {

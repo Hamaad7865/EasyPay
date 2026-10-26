@@ -397,6 +397,11 @@ const id = () => crypto.randomUUID();
     check('T9 its note: both branches, the product and how many', !p.error && p.says.includes('Curepipe') && p.says.includes('Rose Hill') && (rowsOf(p.html).find((x) => x.includes('Ceramic mug')) || '').includes('4'), p.error || p.says.slice(0, 300));
     p = await see(shopBase, '/backoffice/transfers/new', {});
     check('T9 a new transfer asks From and To', !p.error && /name="from"/.test(p.html) && /name="to"/.test(p.html), p.error);
+    // ---- R: each branch's own head (piece 5) ----
+    p = await see(base, '/backoffice/company', {});
+    check('R1 Company details has each branch\'s name, address and phone', !p.error && p.html.includes(`name="name_${pl}"`) && p.html.includes(`name="phone_${pl}"`) && p.html.includes(`name="addr_${main}"`), p.error);
+    p = await see(soloCtx, '/backoffice/company', {});
+    check('R1 one branch: no Branches card', !p.error && !p.html.includes('name="name_'), p.error);
     p = await see(soloCtx, '/backoffice/transfers', {});
     check('T9 one branch: nothing to transfer', !p.error && p.says.includes('one branch'), p.error || p.says.slice(0, 200));
 

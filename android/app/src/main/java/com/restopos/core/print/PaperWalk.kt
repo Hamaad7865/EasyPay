@@ -107,7 +107,8 @@ internal object PaperWalk {
         val n = { c: Long -> Docs.num(c, decimals) }
         return when (b.k) {
             "logo" -> listOfNotNull(logo?.let { Out.Picture(it) })
-            "name" -> words(shop.name)
+            // the branch under the name, when the account has several: every saved design gets it as it is
+            "name" -> words(shop.name) + words(shop.branch)
             "address" -> words(shop.address)
             "phone" -> if (shop.phone.isNotBlank()) listOf(Out.Line("Tel: ${shop.phone}")) else emptyList()
             "brn" -> if (shop.brn.isNotBlank()) listOf(Out.Line("BRN: ${shop.brn}")) else emptyList()

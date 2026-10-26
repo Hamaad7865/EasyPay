@@ -197,7 +197,7 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
             changes["stores"]?.let { rows ->
                 dao.upsertStores(rows.map {
                     StoreEntity(id(it), str(it, "tenant_id") ?: "", str(it, "name") ?: "", str(it, "code") ?: "", str(it, "timezone") ?: "Indian/Mauritius", str(it, "deleted_at"), lng(it, "server_seq"),
-                        address = str(it, "address"))
+                        address = str(it, "address"), phone = str(it, "phone"))
                 })
             }
             changes["pos_devices"]?.let { rows ->

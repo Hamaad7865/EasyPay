@@ -95,7 +95,8 @@ export type KitchenDoc = {
   pickup?: string | null;
   customerNo?: string | null;
 };
-export type Shop = { name: string; address: string; phone: string; brn: string; vat: string; header: string; footer: string; bars: boolean };
+// branch: under the name, when the account has two or more branches (multi-branch); absent or empty with one
+export type Shop = { name: string; address: string; phone: string; brn: string; vat: string; header: string; footer: string; bars: boolean; branch?: string };
 
 export const VERSION = 1;
 export const MOST = 60;
@@ -507,7 +508,7 @@ function receiptOut(b: Block, d: ReceiptDoc, shop: Shop, decimals: number, logo:
     case "logo":
       return logo ? [{ o: "picture" }] : [];
     case "name":
-      return words(shop.name);
+      return [...words(shop.name), ...words(shop.branch ?? "")];
     case "address":
       return words(shop.address);
     case "phone":

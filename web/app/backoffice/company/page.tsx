@@ -24,6 +24,19 @@ async function save(f: FormData) {
       company.vat || null,
     ]);
     await saveSettings(c, ctx.tenantId, { company });
+    // each branch's own name, address and phone, when there are two or more (multi-branch): what its tills print at
+    // the top of their papers, and the address the MRA receives with its sales
+    const stores = (await c.query(`select id from stores where tenant_id = $1 and deleted_at is null`, [ctx.tenantId])).rows as { id: string }[];
+    if (stores.length > 1) {
+      for (const s of stores) {
+        if (!f.has("name_" + s.id)) continue;
+        const branch = text(f, "name_" + s.id, 80);
+        if (!branch) throw new Refused("Each branch needs a name.");
+        await c.query(`update stores set name = $3, address = $4, phone = $5 where tenant_id = $1 and id = $2`, [
+          ctx.tenantId, s.id, branch, text(f, "addr_" + s.id, 240) || null, text(f, "phone_" + s.id, 40) || null,
+        ]);
+      }
+    }
     if (!onMra(ctx.mra)) return "Company details saved. They print on receipts from the next sync.";
     const tan = text(f, "tan", 20);
     if (tan && !/^\d{6,12}$/.test(tan)) throw new Refused("A TAN is made of digits only, as on the MRA's letters.");
@@ -37,19 +50,13 @@ async function save(f: FormData) {
     await saveSettings(c, ctx.tenantId, {
       mra_seller: { legal_name: text(f, "legal_name", 100), tan, nature: asNature(f.get("mra_nature")) ?? "" },
     });
-    const stores = (await c.query(`select id from stores where tenant_id = $1 and deleted_at is null`, [ctx.tenantId])).rows as { id: string }[];
-    // with one branch the company's address is that branch's; with more, each has its own
-    for (const s of stores) {
-      const key = "addr_" + s.id;
-      if (stores.length > 1 && !f.has(key)) continue;
-      const address = stores.length === 1 ? company.address : text(f, key, 240);
-      await c.query(`update stores set address = $3 where tenant_id = $1 and id = $2`, [ctx.tenantId, s.id, address || null]);
-    }
+    // with one branch the company's address is that branch's; with more, each has its own (saved above)
+    if (stores.length === 1) await c.query(`update stores set address = $3 where tenant_id = $1 and id = $2`, [ctx.tenantId, stores[0].id, company.address || null]);
     return "Company details saved, with what the MRA asks for. They print on receipts from the next sync.";
   });
 }
 
-type Branch = { id: string; name: string; address: string | null };
+type Branch = { id: string; name: string; address: string | null; phone: string | null };
 
 export default async function CompanyPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
@@ -65,9 +72,7 @@ export default async function CompanyPage({ searchParams }: { searchParams: Sear
       mra_nature: string | null;
     };
     const s = await loadSettings(c, ctx.tenantId);
-    const branches = mra
-      ? ((await c.query(`select id, name, address from stores where tenant_id = $1 and deleted_at is null order by created_at`, [ctx.tenantId])).rows as Branch[])
-      : [];
+    const branches = (await c.query(`select id, name, address, phone from stores where tenant_id = $1 and deleted_at is null order by created_at, id`, [ctx.tenantId])).rows as Branch[];
     const checklist = mra ? ((await c.query(`select mra_checklist($1) as r`, [ctx.tenantId])).rows[0].r as ChecklistLine[]) : [];
     return {
       name: t.name,
@@ -164,16 +169,27 @@ export default async function CompanyPage({ searchParams }: { searchParams: Sear
             <input name="phone" defaultValue={d.phone} maxLength={40} placeholder="5 123 4567" />
           </label>
         </Card>
-        {mra && d.branches.length > 1 && (
+        {d.branches.length > 1 && (
           <Card title="Branches">
             <p className="muted" style={{ marginTop: 0 }}>
-              The MRA receives each branch&apos;s address with the sales made there.
+              Each branch&apos;s name, address and phone print at the top of its own receipts and papers, under the business name. A branch with no
+              address or phone of its own prints the business&apos;s.{mra ? " The MRA receives each branch's address with the sales made there." : ""}
             </p>
             {d.branches.map((b) => (
-              <label key={b.id} className="field" style={{ maxWidth: 640 }}>
-                {b.name}
-                <textarea name={"addr_" + b.id} defaultValue={b.address ?? ""} maxLength={240} rows={2} />
-              </label>
+              <div key={b.id} className="form-row" style={{ maxWidth: 900 }}>
+                <label className="field">
+                  Branch name
+                  <input name={"name_" + b.id} defaultValue={b.name} required maxLength={80} />
+                </label>
+                <label className="field">
+                  Address
+                  <textarea name={"addr_" + b.id} defaultValue={b.address ?? ""} maxLength={240} rows={2} />
+                </label>
+                <label className="field">
+                  Phone
+                  <input name={"phone_" + b.id} defaultValue={b.phone ?? ""} maxLength={40} />
+                </label>
+              </div>
             ))}
           </Card>
         )}

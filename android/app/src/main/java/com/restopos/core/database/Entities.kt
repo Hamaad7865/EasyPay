@@ -20,6 +20,9 @@ data class StoreEntity(
     val server_seq: Long? = null,
     // the branch's address: what a Premium MRA client's invoices from it carry (server 0116)
     val address: String? = null,
+    // the branch's phone, and with its name and address what its papers say at the top when the account has
+    // two or more branches (multi-branch; Room 36)
+    val phone: String? = null,
 )
 
 @Entity(tableName = "categories")

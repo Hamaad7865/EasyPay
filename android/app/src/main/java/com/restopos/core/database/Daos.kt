@@ -70,6 +70,10 @@ interface CatalogDao {
     @Query("SELECT * FROM stores WHERE id = :id")
     suspend fun store(id: String): StoreEntity?
 
+    // two or more: the account has branches, and a paper names this till's (multi-branch)
+    @Query("SELECT COUNT(*) FROM stores WHERE deleted_at IS NULL")
+    suspend fun storeCount(): Int
+
     @Upsert
     suspend fun upsertItemTaxes(rows: List<ItemTaxCrossRef>)
 

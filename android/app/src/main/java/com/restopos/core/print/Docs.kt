@@ -301,6 +301,9 @@ data class Shop(
     // till's scanner. A restaurant's till takes no scans of receipts, so its
     // paper stays as short as it was.
     val bars: Boolean = false,
+    // The branch, under the name, when the account has two or more (multi-branch); then the address and the
+    // phone above are the branch's own where it has them. Empty for an account with one: its papers are as before.
+    val branch: String = "",
 )
 
 // One printer's paper: how many characters fit, how far to feed, whether to
@@ -354,6 +357,7 @@ object Docs {
         align(EscPos.Align.Center)
         if (logo != null) raster(logo.widthBytes, logo.height, logo.bits)
         if (shop.name.isNotBlank()) { big(true); EscPos.wrap(shop.name, columns / 2).forEach { line(it) }; big(false) }
+        if (shop.branch.isNotBlank()) EscPos.wrap(shop.branch, columns).forEach { line(it) }
         listOf(shop.address).filter { it.isNotBlank() }.forEach { a -> EscPos.wrap(a, columns).forEach { line(it) } }
         if (shop.phone.isNotBlank()) line("Tel: ${shop.phone}")
         if (shop.brn.isNotBlank()) line("BRN: ${shop.brn}")
@@ -500,6 +504,7 @@ object Docs {
         val p = page(paper)
         if (openDrawer) p.drawer()
         if (shop.name.isNotBlank()) p.center(shop.name)
+        if (shop.branch.isNotBlank()) p.center(shop.branch)
         p.align(EscPos.Align.Center).bold(true).big(true)
         p.line(if (d.type == "in") "CASH IN" else "CASH OUT")
         p.big(false).bold(false).align(EscPos.Align.Left)
@@ -521,6 +526,7 @@ object Docs {
         val p = page(paper)
         val n = { c: Long -> num(c, decimals) }
         if (shop.name.isNotBlank()) p.center(shop.name)
+        if (shop.branch.isNotBlank()) p.center(shop.branch)
         p.align(EscPos.Align.Center).bold(true).big(true).line("DRAWER COUNT").big(false).bold(false).align(EscPos.Align.Left)
         p.rule()
         p.row("Date", stamp(d.time))
@@ -546,6 +552,7 @@ object Docs {
         val p = page(paper)
         val n = { c: Long -> num(c, decimals) }
         if (shop.name.isNotBlank()) p.center(shop.name)
+        if (shop.branch.isNotBlank()) p.center(shop.branch)
         p.align(EscPos.Align.Center).bold(true).line(if (d.closedAt == null) "X REPORT - DAY SO FAR" else "CASH DRAWER REPORT").bold(false).align(EscPos.Align.Left)
         p.rule()
         p.row("Till", d.till)

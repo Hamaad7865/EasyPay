@@ -96,7 +96,11 @@ class Printing @Inject constructor(
     // width, whatever this till's printer holds, and TEST while it is setting up.
     fun mailPaper() = Paper(columns = 48, feed = 0, cut = false, trial = trial)
 
-    suspend fun shop(): Shop = settings().shop(session.businessName() ?: "")
+    // who is on paper: the business, and this till's branch when the account has several (multi-branch)
+    suspend fun shop(): Shop {
+        val store = session.storeId()?.let { db.catalog().store(it) }
+        return settings().shop(session.businessName() ?: "", store, db.catalog().storeCount() > 1)
+    }
 
     // Sends the bytes and says, in words a cashier can act on, why it could
     // not. `again` is what Try again sends: null for a job that must not be

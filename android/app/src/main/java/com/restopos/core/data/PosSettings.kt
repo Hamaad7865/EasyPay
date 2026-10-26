@@ -1,5 +1,6 @@
 package com.restopos.core.data
 
+import com.restopos.core.database.StoreEntity
 import com.restopos.core.print.Shop
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -126,8 +127,17 @@ data class PosSettings(
     // a shop that may sell on account now
     val accounts: Boolean get() = retail && accountsPaid && accountsOn
 
-    fun shop(fallbackName: String): Shop =
-        Shop(companyName.ifBlank { fallbackName }, address, phone, brn, vat, header, footer, bars = retail)
+    // `store`: this till's branch; `many`: the account has two or more (multi-branch). Then a paper names the
+    // branch and gives its own address and phone, the company's where it has none. With one branch, as before.
+    fun shop(fallbackName: String, store: StoreEntity? = null, many: Boolean = false): Shop {
+        val branch = store?.takeIf { many }
+        return Shop(
+            companyName.ifBlank { fallbackName },
+            branch?.address?.takeIf { it.isNotBlank() } ?: address,
+            branch?.phone?.takeIf { it.isNotBlank() } ?: phone,
+            brn, vat, header, footer, bars = retail, branch = branch?.name.orEmpty(),
+        )
+    }
 
     companion object {
         val DEFAULT_NOTES = listOf("No onion", "Less salt", "Nut allergy", "Extra chutney", "Rush")
