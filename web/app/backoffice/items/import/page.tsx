@@ -30,8 +30,8 @@ export default async function ImportPage() {
       {all.length > 1 && (
         <p className="note">
           {picked
-            ? `Opening stock and reorder levels in the file go to ${picked.name}. Products and prices are the same at every branch.`
-            : "Products and prices are the same at every branch. A file with opening stock or reorder levels needs a branch: pick it at the top."}
+            ? `Opening stock and reorder levels in the file go to ${picked.name}, and Download your products gives ${picked.name}'s. Products and prices are the same at every branch.`
+            : "Products and prices are the same at every branch. Stock and reorder levels are each branch's: Download your products gives none of them here, and a file that has them needs a branch, picked at the top."}
         </p>
       )}
       {costs ? <Importer run={importCatalog} /> : <p className="note warn">A file carries what each product costs, so importing is for someone who may see cost. Ask the owner to tick See cost and profit on your role.</p>}

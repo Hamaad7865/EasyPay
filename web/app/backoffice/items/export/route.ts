@@ -1,11 +1,16 @@
 import { requirePerm } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
+import { branches, pickedOf } from "@/lib/branch";
 
 // A shop's catalog as the file the importer reads: one row per line (a simple
 // product, or one variant), in the importer's own columns. With ?template=1
 // it is the header alone. Edited and imported again, it changes the products
-// it names; the last column is what is on hand now, and the importer only
-// uses it for a line that has never moved.
+// it names; Opening stock is what is on hand now, and the importer only uses
+// it for a line that has never moved.
+// Stock and reorder levels are each branch's (multi-branch): the file has
+// those of the branch picked on the import page, where it is downloaded, and
+// the import puts them back at the branch picked. With All branches of two or
+// more it has none, so it imports again with no branch and moves no stock.
 
 export const dynamic = "force-dynamic";
 
@@ -41,10 +46,15 @@ export async function GET(req: Request) {
   const template = new URL(req.url).searchParams.get("template") === "1";
   // the Cost column is filled only for someone who may see cost; left empty, an import keeps the cost a line has
   const costs = template || (await readTenant(ctx.tenantId, async (c) => (await c.query(`select has_perm($1, 'costs.view') as ok`, [ctx.employeeId])).rows[0].ok as boolean));
-  const rows = template
-    ? []
-    : await readTenant(ctx.tenantId, async (c) =>
-        (
+  const { rows, levels, branch } = template
+    ? { rows: [] as Row[], levels: true, branch: null }
+    : await readTenant(ctx.tenantId, async (c) => {
+        const all = await branches(c, ctx.tenantId);
+        const picked = await pickedOf(all);
+        // one branch: all of it, as before branches; several: the one picked, or none with All branches
+        const store = all.length > 1 ? (picked?.id ?? null) : null;
+        const levels = all.length < 2 || picked !== null;
+        const rows = (
           await c.query(
             `select i.name, c.name as category, i.brand, s.name as supplier, i.supplier_code, i.option_names, v.option_values,
                     case when v.id is null then i.sku else v.sku end as sku,
@@ -53,7 +63,7 @@ export async function GET(req: Request) {
                     (select t.name from item_taxes it join taxes t on t.tenant_id = it.tenant_id and t.id = it.tax_id
                       where it.tenant_id = i.tenant_id and it.item_id = i.id and it.deleted_at is null limit 1) as tax,
                     l.reorder_point, l.reorder_qty,
-                    coalesce(l.qty, case when v.id is null then i.stock_qty end, 0)::int as qty,
+                    coalesce(l.qty, case when v.id is null and $2::uuid is null then i.stock_qty end, 0)::int as qty,
                     i.sold_by, i.open_price, i.track_stock
                from items i
                left join item_variants v on v.tenant_id = i.tenant_id and v.item_id = i.id and v.deleted_at is null
@@ -61,20 +71,26 @@ export async function GET(req: Request) {
                left join suppliers s on s.tenant_id = i.tenant_id and s.id = i.supplier_id and s.deleted_at is null
                left join lateral (select sum(x.qty)::int as qty, max(x.reorder_point) as reorder_point, max(x.reorder_qty) as reorder_qty
                                     from stock_levels x
-                                   where x.tenant_id = i.tenant_id and x.item_id = i.id and x.variant_id is not distinct from v.id) l on true
+                                   where x.tenant_id = i.tenant_id and x.item_id = i.id and x.variant_id is not distinct from v.id
+                                     and ($2::uuid is null or x.store_id = $2)) l on true
               where i.tenant_id = $1 and i.deleted_at is null
               order by lower(i.name), v.created_at, v.name`,
-            [ctx.tenantId],
+            [ctx.tenantId, store],
           )
-        ).rows as Row[],
-      );
+        ).rows as Row[];
+        return { rows, levels, branch: all.length > 1 ? picked : null };
+      });
+  // the file of one branch of several says which in its name
+  const slug = branch?.name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const file = template ? "products-template" : slug ? `products-${slug}` : "products";
   const lines = [HEAD.map(cell).join(",")];
   for (const r of rows) {
     const vals = r.option_values ?? [];
     const pair = (n: number) => (vals[n] ? [r.option_names[n] ?? "", vals[n]] : ["", ""]);
     lines.push(
       [r.name, r.category, r.brand, r.supplier, r.supplier_code, ...pair(0), ...pair(1), ...pair(2), r.sku, r.barcode,
-        r.open_price ? "" : rupees(r.price), costs ? rupees(r.cost) : "", r.tax, units(r.reorder_point), units(r.reorder_qty), units(Math.max(0, r.qty)),
+        r.open_price ? "" : rupees(r.price), costs ? rupees(r.cost) : "", r.tax,
+        ...(levels ? [units(r.reorder_point), units(r.reorder_qty), units(Math.max(0, r.qty))] : ["", "", ""]),
         way(r), r.track_stock ? "yes" : "no"]
         .map(cell)
         .join(","),
@@ -84,7 +100,7 @@ export async function GET(req: Request) {
   return new Response("﻿" + lines.join("\r\n") + "\r\n", {
     headers: {
       "content-type": "text/csv; charset=utf-8",
-      "content-disposition": `attachment; filename="${template ? "products-template" : "products"}.csv"`,
+      "content-disposition": `attachment; filename="${file}.csv"`,
       "cache-control": "no-store",
     },
   });

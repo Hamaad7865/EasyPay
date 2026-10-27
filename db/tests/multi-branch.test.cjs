@@ -9,7 +9,7 @@
 const crypto = require('crypto');
 const { Client } = require('pg');
 const devguard = require('./require-dev.cjs');
-const { open, text, rowsOf, stats } = require('./page.cjs');
+const { open, code, text, rowsOf, stats } = require('./page.cjs');
 
 let failures = 0;
 function check(name, cond, extra) {
@@ -397,6 +397,81 @@ const id = () => crypto.randomUUID();
     check('T9 its note: both branches, the product and how many', !p.error && p.says.includes('Curepipe') && p.says.includes('Rose Hill') && (rowsOf(p.html).find((x) => x.includes('Ceramic mug')) || '').includes('4'), p.error || p.says.slice(0, 300));
     p = await see(shopBase, '/backoffice/transfers/new', {});
     check('T9 a new transfer asks From and To', !p.error && /name="from"/.test(p.html) && /name="to"/.test(p.html), p.error);
+
+    // ---- X: Download your products, edit, import again, with two branches (bug sweep 2026-10-27, 2) ----
+    // Hand soap is at Curepipe alone: 10 there, reordered below 4 by 12. Rose Hill has never had it.
+    const soap = (await one(`insert into items (tenant_id, name, price, track_stock) values ($1,'Hand soap',6000,true) returning id`, [sid])).id;
+    await asApp(sid, `select stock_move($1,$2,$3,null,10000,'adjust',null,null,null,$4,null)`, [sid, curepipe, soap, sowner]);
+    await asApp(sid, `select stock_set_reorder($1,$2,$3,4000,12000)`, [sid, curepipe, soap]);
+    const { parseCsv } = code(c, shopBase, 'lib/csv.ts');
+    const { toCatalogRows } = code(c, shopBase, 'lib/catalog-rows.ts');
+    const { parseRs } = code(c, shopBase, 'lib/money.ts');
+    // the file the import page's Download your products gives, for the branch picked (who.branch)
+    const download = async (who) => {
+      await c.query('SAVEPOINT dl');
+      try {
+        const res = await code(c, who, 'app/backoffice/items/export/route.ts').GET(new Request('http://localhost/backoffice/items/export'));
+        const csv = await res.text();
+        await c.query('RELEASE SAVEPOINT dl');
+        return { csv, file: res.headers.get('content-disposition') || '' };
+      } catch (e) {
+        await c.query('ROLLBACK TO SAVEPOINT dl');
+        return { csv: '', file: '', error: (e && e.message) || String(e) };
+      }
+    };
+    // a cell of the file: the product's line, under the heading
+    const fileCell = (csv, product, head) => {
+      const rows = parseCsv(csv);
+      const at = (rows[0] || []).indexOf(head);
+      const row = rows.find((x) => x[0] === product);
+      return row && at >= 0 ? row[at] : undefined;
+    };
+    // the file imported for real on the import page, at the branch picked (who.branch)
+    const importFile = async (who, csv) => {
+      await c.query('SAVEPOINT im');
+      try {
+        const out = await code(c, who, 'app/backoffice/items/import/actions.ts').importCatalog(toCatalogRows(parseCsv(csv), parseRs).rows, false);
+        await c.query(out.ok ? 'RELEASE SAVEPOINT im' : 'ROLLBACK TO SAVEPOINT im');
+        return out;
+      } catch (e) {
+        await c.query('ROLLBACK TO SAVEPOINT im');
+        return { ok: false, message: (e && e.message) || String(e) };
+      }
+    };
+    const levels = async () => [await level(sid, curepipe, soap), await level(sid, rh, soap), await itemTotal(soap), await level(sid, curepipe, mugId), await level(sid, rh, mugId)].join(' ');
+    const held = await levels();
+    let dl = await download(shopBase);
+    check('X1 All branches: the file has no stock and no reorder levels, since they are each branch\'s',
+      !dl.error && ['Opening stock', 'Reorder at', 'Order quantity'].every((h) => fileCell(dl.csv, 'Hand soap', h) === '' && fileCell(dl.csv, 'Ceramic mug', h) === ''),
+      dl.error || ['Opening stock', 'Reorder at', 'Order quantity'].map((h) => `${h} ${fileCell(dl.csv, 'Hand soap', h)}`).join(', '));
+    check('X1 and still its prices', fileCell(dl.csv, 'Hand soap', 'Price') === '60.00', fileCell(dl.csv, 'Hand soap', 'Price'));
+    let im = await importFile(shopBase, dl.csv);
+    check('X2 that file imports with All branches, and no branch\'s stock moves', im.ok && (await levels()) === held, im.message || `${await levels()} was ${held}`);
+    dl = await download({ ...shopBase, branch: rh });
+    const rhMug = String((await level(sid, rh, mugId)) / 1000);
+    check('X3 Rose Hill picked: the file has Rose Hill\'s own stock and reorder levels',
+      !dl.error && fileCell(dl.csv, 'Ceramic mug', 'Opening stock') === rhMug && fileCell(dl.csv, 'Ceramic mug', 'Reorder at') === '6'
+        && fileCell(dl.csv, 'Hand soap', 'Opening stock') === '0' && fileCell(dl.csv, 'Hand soap', 'Reorder at') === '' && fileCell(dl.csv, 'Hand soap', 'Order quantity') === '',
+      dl.error || `mug ${fileCell(dl.csv, 'Ceramic mug', 'Opening stock')}/${fileCell(dl.csv, 'Ceramic mug', 'Reorder at')} want ${rhMug}/6, soap ${fileCell(dl.csv, 'Hand soap', 'Opening stock')}/${fileCell(dl.csv, 'Hand soap', 'Reorder at')}/${fileCell(dl.csv, 'Hand soap', 'Order quantity')}`);
+    check('X3 and its name says Rose Hill', /filename="products-rose-hill\.csv"/.test(dl.file), dl.file);
+    im = await importFile({ ...shopBase, branch: rh }, dl.csv);
+    check('X4 imported at Rose Hill, no Hand soap appears there and the total stays 10', im.ok && (await levels()) === held, im.message || `${await levels()} was ${held}`);
+    const rhSoap = await one(`select reorder_point, reorder_qty from stock_levels where tenant_id = $1 and store_id = $2 and item_id = $3`, [sid, rh, soap]);
+    check('X4 nor Curepipe\'s reorder levels', !rhSoap || (rhSoap.reorder_point === null && rhSoap.reorder_qty === null), JSON.stringify(rhSoap));
+    dl = await download({ ...shopBase, branch: curepipe });
+    check('X5 Curepipe picked: Curepipe\'s 10, reordered below 4 by 12', !dl.error && fileCell(dl.csv, 'Hand soap', 'Opening stock') === '10' && fileCell(dl.csv, 'Hand soap', 'Reorder at') === '4' && fileCell(dl.csv, 'Hand soap', 'Order quantity') === '12',
+      dl.error || ['Opening stock', 'Reorder at', 'Order quantity'].map((h) => fileCell(dl.csv, 'Hand soap', h)).join('/'));
+    // a shop with one branch: the file as it always was
+    const oneShop = (await one(`select platform.create_tenant_of_type($1,'One Shop','Main','MB4','Owner',$2,'premium','retail') as r`, [admin, id()])).r;
+    const oneCtx = { tenantId: oneShop.tenant_id, employeeId: oneShop.employee_id, mode: 'retail', premium: true, mra: 'off' };
+    const towel = (await one(`insert into items (tenant_id, name, price, track_stock) values ($1,'Towel',25000,true) returning id`, [oneShop.tenant_id])).id;
+    await asApp(oneShop.tenant_id, `select stock_move($1,$2,$3,null,7000,'adjust',null,null,null,$4,null)`, [oneShop.tenant_id, oneShop.store_id, towel, oneShop.employee_id]);
+    await asApp(oneShop.tenant_id, `select stock_set_reorder($1,$2,$3,2000,5000)`, [oneShop.tenant_id, oneShop.store_id, towel]);
+    dl = await download(oneCtx);
+    check('X6 one branch: its stock and reorder levels, in products.csv, as before',
+      !dl.error && fileCell(dl.csv, 'Towel', 'Opening stock') === '7' && fileCell(dl.csv, 'Towel', 'Reorder at') === '2' && fileCell(dl.csv, 'Towel', 'Order quantity') === '5' && /filename="products\.csv"/.test(dl.file),
+      dl.error || `${['Opening stock', 'Reorder at', 'Order quantity'].map((h) => fileCell(dl.csv, 'Towel', h)).join('/')} ${dl.file}`);
+
     // ---- R: each branch's own head (piece 5) ----
     p = await see(base, '/backoffice/company', {});
     check('R1 Company details has each branch\'s name, address and phone', !p.error && p.html.includes(`name="name_${pl}"`) && p.html.includes(`name="phone_${pl}"`) && p.html.includes(`name="addr_${main}"`), p.error);

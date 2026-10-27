@@ -5,8 +5,9 @@
 // caller's transaction, as the tenant's role). So a page that nobody can
 // open on dev without an account still has its own queries run, and what it
 // would show can be read.
-//   const { open, text, rowsOf, stats } = require('./page.cjs');
+//   const { open, code, text, rowsOf, stats } = require('./page.cjs');
 //   const html = await open(client, ctx, '/backoffice/reports/sales', { from: '2026-10-08' });
+//   const res = await code(client, ctx, 'app/backoffice/items/export/route.ts').GET(new Request('http://localhost/'));
 const fs = require('fs');
 const path = require('path');
 
@@ -74,8 +75,9 @@ function loader(client, ctx, route) {
 // The page at `href` (as the menu links to it), for the person `ctx`:
 // { tenantId, employeeId, mode, ... }. `sp` are the address's ?parameters,
 // `params` the [id] parts of a page that has them (then `file` names it).
+const whoOf = (ctx) => ({ userId: 'test', role: 'Owner', status: 'active', statusReason: null, tenantName: 'Test', employeeName: 'Owner', ...ctx });
 async function open(client, ctx, href, sp = {}, { params, file } = {}) {
-  const who = { userId: 'test', role: 'Owner', status: 'active', statusReason: null, tenantName: 'Test', employeeName: 'Owner', ...ctx };
+  const who = whoOf(ctx);
   const load = loader(client, who, href);
   const Page = load(path.join(WEB, 'app', file ?? href.replace(/^\//, ''), 'page.tsx')).default;
   const props = { searchParams: Promise.resolve(sp) };
@@ -100,4 +102,8 @@ const rowsOf = (html) => [...html.matchAll(/<tr[^>]*>(.*?)<\/tr>/g)].map((m) => 
 // the figures at the top of a report, as "label: value"
 const stats = (html) => [...html.matchAll(/<div class="stat-label">(.*?)<\/div><div class="stat-value"[^>]*>(.*?)<\/div>/g)].map((m) => text(m[1]) + ': ' + text(m[2]));
 
-module.exports = { open, text, rowsOf, stats };
+// Any other module of the back office, with the same stand-ins as a page: a download's GET, a form's action, a
+// helper of web/lib. `file` is its path under web/, as 'app/backoffice/items/export/route.ts'.
+const code = (client, ctx, file) => loader(client, whoOf(ctx), '/' + file)(path.join(WEB, file));
+
+module.exports = { open, code, text, rowsOf, stats };
