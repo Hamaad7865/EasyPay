@@ -491,6 +491,10 @@ export function TenantView({
               <form action={actions.setPlan} className="adm-part">
                 {which}
                 <strong>Plan</strong>
+                <span className="help">
+                  {PLAN_HELP} Premium MRA is Premium for a business that must send every sale to the MRA (turnover over Rs 40 million a year): choosing it
+                  starts the move, and what the move still needs is listed under MRA e-invoicing.
+                </span>
                 <div className="inline">
                   <select name="plan" defaultValue={mra ? PREMIUM_MRA : tenant.plan} aria-label="Plan">
                     {Array.from(new Set<string>([...PLANS, PREMIUM_MRA, tenant.plan])).map((p) => (
@@ -501,26 +505,22 @@ export function TenantView({
                   </select>
                   <Submit className="btn-quiet">Change plan</Submit>
                 </div>
-                <span className="help">
-                  {PLAN_HELP} Premium MRA is Premium for a business that must send every sale to the MRA (turnover over Rs 40 million a year): choosing it
-                  starts the move, and what the move still needs is listed under MRA e-invoicing.
-                </span>
               </form>
               {tenant.business_type === "retail" && (
                 <form action={actions.setFeatures} className="adm-part">
                   {which}
                   <strong>Extras</strong>
-                  <label className="check" style={{ margin: 0 }}>
-                    <input type="checkbox" name="deposits" defaultChecked={(tenant.features ?? []).includes("deposits")} /> Deposits
-                  </label>
-                  <label className="check" style={{ margin: 0 }}>
-                    <input type="checkbox" name="accounts" defaultChecked={(tenant.features ?? []).includes("accounts")} /> Customer accounts
-                  </label>
                   <span className="help">
                     Deposits: goods held for a customer who pays part now and collects later. Customer accounts: a named customer takes goods now and pays
                     later, with statements. Premium and trial carry both already; switch one on here for a client on the offline
                     edition who paid for it.
                   </span>
+                  <label className="check">
+                    <input type="checkbox" name="deposits" defaultChecked={(tenant.features ?? []).includes("deposits")} /> Deposits
+                  </label>
+                  <label className="check">
+                    <input type="checkbox" name="accounts" defaultChecked={(tenant.features ?? []).includes("accounts")} /> Customer accounts
+                  </label>
                   <div className="inline">
                     <Submit className="btn-quiet">Save extras</Submit>
                   </div>

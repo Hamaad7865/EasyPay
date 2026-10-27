@@ -130,12 +130,14 @@ const id = () => crypto.randomUUID();
     const t = totals(p.html);
     check('J4 every table foots to Rs 560.00: sale methods, taxes, payments, categories, people', t.length === 5 && t.every((r) => r.includes('Rs 560.00')), t.join(' // '));
     check('J4 and the VAT in it: Rs 73.04 (15% in every price), Rs 486.96 before it', t[1] === 'Total | Rs 73.04 | Rs 486.96 | Rs 560.00', t[1]);
-    check('J5 the bridge: less Rs 115.00 paid on an earlier sale, Rs 0.00 settled without money, Rs 15.00 still on account', rows.includes('Money received | Rs 560.00') && rows.some((r) => r.startsWith('Less money paid on sales made before') && r.endsWith('| -Rs 115.00'))
-      && rows.some((r) => r.startsWith('Plus what was settled without money') && r.endsWith('| Rs 0.00')) && rows.some((r) => r.startsWith('Plus what is still on account') && r.endsWith('| Rs 15.00')),
-      rows.filter((r) => /^(Money received|Less|Plus)/.test(r)).join(' // '));
-    // sold: 115 + 230 + 115 + 230 - 115 - 115 = 460
-    check('J5 to what was sold today, less refunds: Rs 460.00', rows.includes('Sold in these days, less refunds | Rs 460.00'), rows.find((r) => r.startsWith('Sold in these days')));
-    check('J5 the sale still on account is Priya\'s', p.says.includes(b.number) && /JN1-\d+ · [^·]+ · Priya · Rs 15\.00/.test(p.says), (p.says.match(/\d+ sales? [^R]*Rs 15\.00/) || [])[0]);
+    // under Payments' total, as Carfectionist has it: Rs 115.00 paid on an earlier sale (in the total), Rs 15.00 still on account
+    // of the Rs 460.00 sold (115 + 230 + 115 + 230 - 115 - 115), each with its count of sales; an empty cell is written "|  |"
+    check('J5 under the total: Rs 115.00 paid on an earlier sale, Rs 15.00 on account of Rs 460.00 sold', rows.includes('Paid on earlier sales (1 sale) in the total already |  | Rs 115.00')
+      && rows.includes('On account (not yet paid) (1 sale) of Rs 460.00 sold |  | Rs 15.00'), rows.filter((r) => /^(Total|Paid|On account)/.test(r)).join(' // '));
+    check('J5 and none of the old bridge\'s lines', !/Less money paid|Plus what|Sold in these days|Money received/.test(p.says));
+    // a line's sales are on the page, hidden until it is opened: a row under it, the amount under Amount
+    check('J5 the sale still on account is Priya\'s', p.says.includes(b.number) && rows.some((r) => /^JN1-\d+ · Priya \|  \| Rs 15\.00$/.test(r)), rows.filter((r) => r.includes('Priya')).join(' // '));
+    check('J5 every payment method opens to its sales, closed at first', /<tr class="row"[^>]*><td><span class="lead"><button type="button" class="chev" aria-expanded="false" aria-label="Open Cash"/.test(p.html) && /<tr class="sale" hidden="">/.test(p.html), (p.html.match(/<tr class="row"[^>]*>.{0,160}/) || [])[0]);
     check('J6 the deposit is said apart, in no figure', p.says.includes('Deposits: Rs 50.00 taken and Rs 0.00 given back'));
     // a sales summary of the same day says the same sales
     const sums = await (async () => {
@@ -152,7 +154,7 @@ const id = () => crypto.randomUUID();
     p = await see(shop, { ...day, item: 'Scarf' });
     check('J8 with the item Scarf: the sales that have one, every table footing', !p.error && totals(p.html).length === 5 && new Set(totals(p.html).map((r) => r.match(/Rs [\d,.]+$/)?.[0] ?? r.match(/Rs [\d,.]+/g)?.slice(-1)[0])).size >= 1, p.error);
     p = await see(shop, { ...day, cmp: 'previous-period' });
-    check('J9 compared with the day before: a column of before, nothing then', !p.error && p.says.includes('compared with') && rowsOf(p.html).some((r) => r.startsWith('Total received') && r.includes('Rs 0.00 new')), p.error || rowsOf(p.html).filter((r) => r.startsWith('Total')).join(' // '));
+    check('J9 compared with the day before: a column of before, nothing then', !p.error && p.says.includes('compared with') && rowsOf(p.html).includes('Total |  | Rs 560.00 | Rs 0.00 new'), p.error || rowsOf(p.html).filter((r) => r.startsWith('Total')).join(' // '));
     p = await see(shop, { from: shop.today, to: shop.today, cmp: 'nonsense', from2: 'x' });
     check('J9 a comparison nobody knows is none', !p.error && !p.says.includes('compared with'), p.error);
 
@@ -162,6 +164,7 @@ const id = () => crypto.randomUUID();
     await rest.sale([{ item_id: soup }], [{ payment_type_id: rest.cash, amount: 11500 }]);
     p = await see(rest, { from: rest.today, to: rest.today });
     check('J10 a restaurant on Premium: its sale methods are its order types', !p.error && stats(p.html).join(' | ').includes('Total received incl. tax: Rs 115.00') && totals(p.html).length === 5 && !p.says.includes('Sales [Journal Bistro]'), p.error || p.says.slice(0, 300));
+    check('J10 every sale paid in full that day: Payments ends at its total', !p.error && !/Paid on earlier sales|On account/.test(p.says) && rowsOf(p.html).includes('Total |  | Rs 115.00'), p.error || rowsOf(p.html).filter((r) => /^(Total|Paid|On account)/.test(r)).join(' // '));
 
     // ---------------------------------------------------------------- the offline plan
     const alone = await business('Journal Tablet', 'JN3', 'retail', 'offline');

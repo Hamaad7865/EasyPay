@@ -13,10 +13,11 @@ import { BranchPicker } from "../../branch-picker";
 import { Stat } from "../parts";
 import { PrintButton } from "../print-button";
 import { Submit } from "../../busy";
+import { type Line, Payments } from "./payments";
 
 // The sales journal (Carfectionist's, after Cashmag's "Journal de ventes"):
 // one period, money received, broken down five ways that all foot to the
-// same total, and the bridge from that money to what was sold. Premium and
+// same total; under Payments, what is still on account. Premium and
 // trial (the owner's answer, 2026-10-17); a business on the offline plan has
 // no back office of its own, and the platform admin looking in is told so. The address is the
 // report's only state, so a link or a print is the same report.
@@ -76,20 +77,16 @@ export default async function SalesJournal({ searchParams }: { searchParams: Sea
   const priorHead = prior ? <th className="num">Before</th> : null;
   const find = <T extends { label: string }>(rows: T[] | undefined, l: string) => rows?.find((r) => r.label === l);
   const merged = <T extends { label: string }>(now: T[], prev: T[] | undefined, zero: (l: string) => T) => (prev ? [...now, ...prev.filter((p) => !now.some((x) => x.label === p.label)).map((p) => zero(p.label))] : now);
-  const refs = (list: Ref[]) =>
-    list.length > 0 && (
-      <details className="no-print">
-        <summary className="muted" style={{ cursor: "pointer", fontSize: 12.5 }}>{list.length} {list.length === 1 ? "sale" : "sales"}</summary>
-        <ul className="plain" style={{ margin: "6px 0 0", paddingLeft: 16 }}>
-          {list.slice(0, 200).map((r) => (
-            <li key={r.id} style={{ fontSize: 12.5 }}>
-              <Link href={`/backoffice/receipts?q=${encodeURIComponent(r.number)}`}>{r.number}</Link> · {fmtDay(r.day)}
-              {r.customer ? ` · ${r.customer}` : ""}{r.earlier ? " · sold earlier" : ""} · {m(r.cents)}
-            </li>
-          ))}
-        </ul>
-      </details>
-    );
+  // the Payments card's lines, written out for its part that opens them
+  const sales = (list: Ref[]) =>
+    list.slice(0, 200).map((r) => ({ id: r.id, number: r.number, says: [r.customer, r.earlier ? `sold ${fmtDay(r.day)}` : null].filter(Boolean).join(" · "), amount: m(r.cents) }));
+  const was = (now: number, prev: number | undefined) => (prior ? { amount: m(prev ?? 0), change: delta(now, prev ?? 0) } : undefined);
+  const methods = j.payments.map((r) => ({ label: r.label, n: r.n, amount: m(r.cents), before: was(r.cents, find(prior?.payments, r.label)?.cents), sales: sales(r.refs) }));
+  const after: Line[] = [];
+  if (j.earlier !== 0 || (prior?.earlier ?? 0) !== 0)
+    after.push({ label: "Paid on earlier sales", note: "in the total already", tone: "muted", amount: m(j.earlier), before: was(j.earlier, prior?.earlier), sales: sales(j.earlierRefs) });
+  if (j.onAccount !== 0 || (prior?.onAccount ?? 0) !== 0)
+    after.push({ label: "On account (not yet paid)", note: `of ${m(j.sold)} sold`, tone: "owed", amount: m(j.onAccount), before: was(j.onAccount, prior?.onAccount), sales: sales(j.onAccountRefs) });
   const p = presets(d.now);
   const f = d.data!.facets;
   return (
@@ -180,33 +177,11 @@ export default async function SalesJournal({ searchParams }: { searchParams: Sea
         </table>
       </Card>
 
-      <Card title="Payments" lede="The money, by how it came in; money given back on a return is taken off" flush>
-        <table>
-          <thead><tr><th>Payment method</th><th className="num">Payments</th><th className="num">Amount</th>{priorHead}</tr></thead>
-          <tbody>
-            {j.payments.length === 0 && <tr><td colSpan={prior ? 4 : 3} className="muted">No money was taken in these days.</td></tr>}
-            {j.payments.map((r) => (
-              <tr key={r.label}><td className="strong">{r.label}{refs(r.refs)}</td><td className="num">{r.n}</td><td className="num strong">{m(r.cents)}</td>{priorCell(r.cents, find(prior?.payments, r.label)?.cents)}</tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr><td>Total received</td><td /><td className="num">{m(j.received)}</td>{priorCell(j.received, prior?.received)}</tr>
-          </tfoot>
-        </table>
-        <table>
-          <thead><tr><th>From the money to what was sold</th><th className="num">Amount</th></tr></thead>
-          <tbody>
-            <tr><td>Money received</td><td className="num">{m(j.received)}</td></tr>
-            <tr><td>Less money paid on sales made before these days{refs(j.earlierRefs)}</td><td className="num">{m(-j.earlier)}</td></tr>
-            <tr><td>Plus what was settled without money: returned goods, credit notes, deposits, taken off earlier accounts{refs(j.withoutRefs)}</td><td className="num">{m(j.without)}</td></tr>
-            <tr><td>Plus what is still on account, not yet paid{refs(j.onAccountRefs)}</td><td className="num">{m(j.onAccount)}</td></tr>
-          </tbody>
-          <tfoot><tr><td>Sold in these days, less refunds</td><td className="num">{m(j.sold)}</td></tr></tfoot>
-        </table>
+      <Card title="Payments" flush>
+        <Payments methods={methods} total={{ label: "Total", amount: m(j.received), before: was(j.received, prior?.received), sales: [] }} after={after} compared={!!prior} />
         {shop && (d.data!.deposits.taken !== 0 || d.data!.deposits.back !== 0) && (
-          <p className="muted" style={{ padding: "10px 16px", margin: 0 }}>
-            Deposits: {m(d.data!.deposits.taken)} taken and {m(d.data!.deposits.back)} given back in these days. That is money too, but not a sale until the goods
-            are collected, so it is in no figure here; it is on Deposits and on Day closing.
+          <p className="muted" style={{ padding: "10px 16px", margin: 0, fontSize: 12.5 }}>
+            Deposits: {m(d.data!.deposits.taken)} taken and {m(d.data!.deposits.back)} given back, not in these figures.
           </p>
         )}
       </Card>

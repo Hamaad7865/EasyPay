@@ -1281,14 +1281,32 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 .bo-main .table-search input { width: 280px; padding-left: 34px !important; }
 .rows-open tr.row { cursor: pointer; }
 .rows-open tr.row > td:first-child, .rows-open thead th:first-child { width: 44px; padding-right: 0; }
-.bo-main .rows-open button.chev {
+.bo-main .rows-open button.chev, .bo-main .pay-open button.chev {
   width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; box-shadow: none; color: var(--ink3);
   display: grid; place-items: center;
 }
-.bo-main .rows-open button.chev:hover { background: var(--well); color: var(--ink); }
-.rows-open button.chev svg { width: 16px; height: 16px; transition: transform 0.12s; }
-.rows-open tr.row.on button.chev svg { transform: rotate(90deg); color: var(--accent); }
-.bo-main .rows-open tr.row.on > td { background: var(--accent-soft); }
+.bo-main .rows-open button.chev:hover, .bo-main .pay-open button.chev:hover { background: var(--well); color: var(--ink); }
+.rows-open button.chev svg, .pay-open button.chev svg { width: 16px; height: 16px; transition: transform 0.12s; }
+.rows-open tr.row.on button.chev svg, .pay-open tr.row.on button.chev svg { transform: rotate(90deg); color: var(--accent); }
+.bo-main .rows-open tr.row.on > td, .bo-main .pay-open tr.row.on > td { background: var(--accent-soft); }
+/* the sales journal's Payments, as Carfectionist has it: the arrow before the
+   line's name and its count of sales after it; the sales it opens to sit
+   under the name, their amounts under Amount. Rules are drawn above each row,
+   since the closed sales are hidden rows. */
+.pay-open tr.row { cursor: pointer; }
+.pay-open .lead { display: inline-flex; align-items: center; gap: 6px; margin-left: -6px; }
+.pay-open .lead > span.chev { width: 26px; flex: none; }
+.pay-open .lead .name { font-weight: 600; }
+.pay-open .lead .count { color: var(--ink3); font-size: 12px; }
+.pay-open .pay-note { display: block; padding-left: 26px; color: var(--ink3); font-size: 12px; }
+.pay-open td.amount { font-weight: 650; }
+.bo-main .pay-open tbody td { border-bottom: 0; border-top: 1px solid var(--line); }
+.bo-main .pay-open tbody:first-of-type tr:first-child > td { border-top: 0; }
+.bo-main .pay-open tr.total > td { font-weight: 650; background: var(--surface-2); }
+.pay-open tr.muted .name, .pay-open tr.muted td.amount { color: var(--ink3); font-weight: 500; }
+.pay-open tr.owed td.amount { color: var(--amber); }
+.bo-main .pay-open tr.sale > td { padding-top: 7px; padding-bottom: 7px; background: var(--surface-2); color: var(--ink2); font-size: 12.5px; }
+.bo-main .pay-open tr.sale > td:first-child { padding-left: 42px; }
 .rows-open td.clip { max-width: 0; width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rows-open .count { display: inline-block; min-width: 22px; margin-right: 8px; padding: 1px 7px; border-radius: 999px; background: var(--well); color: var(--ink2); font-size: 12px; font-weight: 600; text-align: center; }
 .bo-main .rows-open tr.open-body > td { padding: 0; background: var(--surface-2); }
@@ -1784,6 +1802,8 @@ button[aria-busy="true"]::after {
 .adm-part + .adm-part { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
 .adm-part > strong { display: block; margin-bottom: 8px; font-size: 13.5px; }
 .adm-part > .help { margin: -4px 0 10px; }
+.adm-part > .check { margin-bottom: 8px; }
+.adm-part > .check + .inline { margin-top: 6px; }
 /* what an admin did here, newest first: when, what, who */
 .adm-log { list-style: none; margin: 0; padding: 2px 20px; }
 .adm-log li { display: grid; grid-template-columns: 168px minmax(0, 1fr) auto; gap: 2px 16px; align-items: baseline; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
