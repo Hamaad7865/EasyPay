@@ -472,6 +472,18 @@ const id = () => crypto.randomUUID();
       !dl.error && fileCell(dl.csv, 'Towel', 'Opening stock') === '7' && fileCell(dl.csv, 'Towel', 'Reorder at') === '2' && fileCell(dl.csv, 'Towel', 'Order quantity') === '5' && /filename="products\.csv"/.test(dl.file),
       dl.error || `${['Opening stock', 'Reorder at', 'Order quantity'].map((h) => fileCell(dl.csv, 'Towel', h)).join('/')} ${dl.file}`);
 
+    // ---- T12: Delete all transactions takes the transfers too, and the numbers start again (bug sweep 2026-10-27, 1) ----
+    // the restaurant: Cola sent from Main to Port Louis twice, T-0001 and T-0002, then its transactions deleted
+    const sendCola = async () => {
+      const out = await asApp(tid, `select stock_transfer($1,$2,$3,$4,$5::jsonb,null) as id`, [tid, owner, main, pl, JSON.stringify([{ item: cola, variant: null, qty: 1000 }])]);
+      return out.error ? out.error : (await one(`select number from stock_transfers where id = $1`, [out.rows[0].id])).number;
+    };
+    const madeBefore = [await sendCola(), await sendCola()].join(' ');
+    r = await asApp(tid, `select purge_transactions($1,$2) as r`, [tid, owner]);
+    const transfersLeft = async () => Number((await one(`select (select count(*) from stock_transfers where tenant_id = $1) + (select count(*) from stock_transfer_lines where tenant_id = $1) as n`, [tid])).n);
+    check('T12 Delete all transactions removes every transfer and its lines', madeBefore === 'T-0001 T-0002' && !r.error && (await transfersLeft()) === 0, madeBefore + ' ' + (r.error || await transfersLeft()));
+    const madeAfter = [await sendCola(), await sendCola()].join(' ');
+    check('T12 and the next transfers go through, as T-0001 and T-0002 again', madeAfter === 'T-0001 T-0002', madeAfter);
     // ---- R: each branch's own head (piece 5) ----
     p = await see(base, '/backoffice/company', {});
     check('R1 Company details has each branch\'s name, address and phone', !p.error && p.html.includes(`name="name_${pl}"`) && p.html.includes(`name="phone_${pl}"`) && p.html.includes(`name="addr_${main}"`), p.error);
