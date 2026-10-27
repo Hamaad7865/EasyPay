@@ -81,12 +81,12 @@ export default async function SalesJournal({ searchParams }: { searchParams: Sea
   const sales = (list: Ref[]) =>
     list.slice(0, 200).map((r) => ({ id: r.id, number: r.number, says: [r.customer, r.earlier ? `sold ${fmtDay(r.day)}` : null].filter(Boolean).join(" · "), amount: m(r.cents) }));
   const was = (now: number, prev: number | undefined) => (prior ? { amount: m(prev ?? 0), change: delta(now, prev ?? 0) } : undefined);
-  const methods = j.payments.map((r) => ({ label: r.label, n: r.n, amount: m(r.cents), before: was(r.cents, find(prior?.payments, r.label)?.cents), sales: sales(r.refs) }));
+  const methods = j.payments.map((r) => ({ label: r.label, count: r.refs.length, n: r.n, amount: m(r.cents), before: was(r.cents, find(prior?.payments, r.label)?.cents), sales: sales(r.refs) }));
   const after: Line[] = [];
   if (j.earlier !== 0 || (prior?.earlier ?? 0) !== 0)
-    after.push({ label: "Paid on earlier sales", note: "in the total already", tone: "muted", amount: m(j.earlier), before: was(j.earlier, prior?.earlier), sales: sales(j.earlierRefs) });
+    after.push({ label: "Paid on earlier sales", note: "in the total already", tone: "muted", count: j.earlierRefs.length, amount: m(j.earlier), before: was(j.earlier, prior?.earlier), sales: sales(j.earlierRefs) });
   if (j.onAccount !== 0 || (prior?.onAccount ?? 0) !== 0)
-    after.push({ label: "On account (not yet paid)", note: `of ${m(j.sold)} sold`, tone: "owed", amount: m(j.onAccount), before: was(j.onAccount, prior?.onAccount), sales: sales(j.onAccountRefs) });
+    after.push({ label: "On account (not yet paid)", note: `of ${m(j.sold)} sold`, tone: "owed", count: j.onAccountRefs.length, amount: m(j.onAccount), before: was(j.onAccount, prior?.onAccount), sales: sales(j.onAccountRefs) });
   const p = presets(d.now);
   const f = d.data!.facets;
   return (

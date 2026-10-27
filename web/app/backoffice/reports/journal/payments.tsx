@@ -13,6 +13,8 @@ import { ChevronRight } from "lucide-react";
 export type Sale = { id: string; number: string; says: string; amount: string };
 export type Line = {
   label: string;
+  // how many sales the line holds; `sales` may be fewer (the page shows the first 200)
+  count?: number;
   n?: number;
   amount: string;
   note?: string;
@@ -33,6 +35,7 @@ export function Payments({ methods, total, after, compared }: { methods: Line[];
   const line = (l: Line) => {
     const opens = l.sales.length > 0;
     const on = open.has(l.label);
+    const count = l.count ?? l.sales.length;
     return (
       <Fragment key={l.label}>
         <tr className={[opens ? "row" : "", on ? "on" : "", l.tone ?? ""].filter(Boolean).join(" ") || undefined} onClick={opens ? () => toggle(l.label) : undefined}>
@@ -46,7 +49,7 @@ export function Payments({ methods, total, after, compared }: { methods: Line[];
                 <span className="chev" />
               )}
               <span className="name">{l.label}</span>
-              {opens && <span className="count">({l.sales.length} {l.sales.length === 1 ? "sale" : "sales"})</span>}
+              {opens && <span className="count">({count} {count === 1 ? "sale" : "sales"})</span>}
             </span>
             {l.note && <span className="pay-note">{l.note}</span>}
           </td>
