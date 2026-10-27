@@ -485,4 +485,23 @@ object Migrations {
             db.execSQL("ALTER TABLE `stores` ADD COLUMN `phone` TEXT")
         }
     }
+
+    // Nothing changes in the tables. 35 and 36 added a branch's address and
+    // phone without pulling again, so one saved before this till updated was
+    // sent, dropped, and never sent again (bug sweep 2026-10-27, 3); so were a
+    // category's goods or services, a tax's MRA code and a till's EBS MRA ID
+    // (35). Pull again from the start: they arrive, and rows already here are
+    // written over with the same values.
+    val V36_V37 = object : Migration(36, 37) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
+        }
+    }
+
+    // Every step, in order: what the database builder is given (AppModule).
+    val ALL = listOf(
+        V1_V2, V2_V3, V3_V4, V4_V5, V5_V6, V6_V7, V7_V8, V8_V9, V9_V10, V10_V11, V11_V12, V12_V13, V13_V14, V14_V15,
+        V15_V16, V16_V17, V17_V18, V18_V19, V19_V20, V20_V21, V21_V22, V22_V23, V23_V24, V24_V25, V25_V26, V26_V27,
+        V27_V28, V28_V29, V29_V30, V30_V31, V31_V32, V32_V33, V33_V34, V34_V35, V35_V36, V36_V37,
+    )
 }
