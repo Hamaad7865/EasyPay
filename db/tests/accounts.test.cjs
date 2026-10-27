@@ -7,7 +7,8 @@
 //     past what a bill owes (two tills apart) stored and flagged
 //   - a return takes off the bill first, whatever the shop's return policy;
 //     money back before money came in is flagged
-//   - the pull, the settings, payment corrections, clearing a test client
+//   - the pull, the settings, payment corrections, clearing a test client,
+//     Delete all transactions (0140)
 // Runs in ONE transaction that is rolled back: it leaves nothing behind.
 // Usage: node db/tests/accounts.test.cjs
 const crypto = require('crypto');
@@ -291,6 +292,36 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
       } catch (e) { said = e.message; }
       await c.query('ROLLBACK TO SAVEPOINT del');
       check('T11 deleting a customer outright keeps their bills and payments, naming nobody', said === null && left.b === 1 && left.p >= 2, said || JSON.stringify(left));
+    }
+    // ---- T12 Delete all transactions takes the bills, deposits, credit notes and points, as a till's Go live does ----
+    {
+      await setSettings({ returns: 'credit', returnDays: 30, loyalty: 'on', loyaltyBp: 100 });
+      const noteType = (await one(`select id from payment_types where tenant_id = $1 and kind = 'credit_note' and deleted_at is null`, [tid])).id;
+      // a toy that earns Anjali points, and another exchanged: Rs 50 to the new sale, Rs 50 kept on a note for her
+      const s = await sale(1, [{ payment_type_id: cash, amount: 10000 }], { extra: { points: { customer_id: anjali, earned: 100 } } });
+      const x = await sale(1, [{ payment_type_id: cash, amount: 10000 }]);
+      const r = await refund(x, 1, [{ payment_type_id: exch, amount: 5000 }, { payment_type_id: noteType, amount: 5000 }],
+        { reason: 'exchange', credit_note: { id: id(), number: 'AC1-T1-CN000001', amount: 5000, valid_to: '2027-04-14', customer_id: anjali } });
+      const dp = await push([op('deposit.create', { id: id(), store_id: store, device_id: dev, number: 'AC1-T1-D2', customer_id: anjali, collect_by: '2026-12-31', device_time: now(),
+        lines: [{ id: id(), item_id: toy, name: 'Toy', qty: 1000, unit_price: 10000 }], payment: { id: id(), payment_type_id: cash, amount: 2000, shift_id: shift } })]);
+      const TAKEN = ['account_bills', 'account_payments', 'account_payment_lines', 'credit_notes', 'deposits', 'deposit_lines', 'deposit_payments'];
+      const rows = async () => one(`select ${TAKEN.map((t) => `(select count(*) from ${t} where tenant_id = $1)::int as ${t}`).join(', ')},
+        (select coalesce(sum(points), 0) from customers where tenant_id = $1)::int as points, (select count(*) from customers where tenant_id = $1)::int as customers`, [tid]);
+      const before = await rows();
+      check('T12 (an exchange kept on a note, a deposit and points earned: all taken)', [...s.out, ...x.out, ...r.out, ...dp].every((o) => tag(o) === 'applied')
+        && TAKEN.every((t) => before[t] > 0) && before.points > 0, tags([...s.out, ...x.out, ...r.out, ...dp]) + ' ' + JSON.stringify(before));
+      // as Backup and data asks it, with what it said kept whole when it refuses
+      await c.query('SAVEPOINT purge');
+      await c.query('SET LOCAL ROLE app_user');
+      await c.query(`select set_config('app.tenant_id', $1, true)`, [tid]);
+      let said = null, after = null;
+      try { await c.query(`select purge_transactions($1, $2)`, [tid, owner]); } catch (e) { said = e.message; }
+      await c.query(said ? 'ROLLBACK TO SAVEPOINT purge' : 'RELEASE SAVEPOINT purge');
+      await c.query('RESET ROLE');
+      if (!said) after = await rows();
+      check('T12 a shop that has issued a credit note can delete all transactions', said === null, said);
+      check('T12 its bills, payments on account, credit notes and deposits are gone with the receipts', !!after && TAKEN.every((t) => after[t] === 0), JSON.stringify(after));
+      check('T12 no customer keeps points that receipts no longer there earned; the customers stay', !!after && after.points === 0 && after.customers === before.customers, JSON.stringify(after));
     }
   } catch (e) {
     failures++;

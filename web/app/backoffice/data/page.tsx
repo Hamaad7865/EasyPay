@@ -105,8 +105,8 @@ export default async function DataPage({ searchParams }: { searchParams: Search 
         <Card title="Delete all transactions" lede={shop ? `${d.counts.receipts} receipts today.` : `${d.counts.receipts} receipts and ${d.counts.orders} orders today.`}>
           <p>
             {shop
-              ? "Removes every sale, receipt, refund, clock-in, cash movement and day (its opening, its counts and its closing). The catalog, staff, printers and settings stay. A till carries on from its own last receipt number unless it is signed out and set up again."
-              : "Removes every order, receipt, refund, clock-in, cash movement and day (its opening, its counts and its closing). The menu, staff, tables, printers and settings stay. A till carries on from its own last bill number unless it is signed out and set up again."}
+              ? "Removes every sale, receipt, refund, credit note, deposit, bill on account, clock-in, cash movement and day (its opening, its counts and its closing), and the customers' points. The catalog, staff, customers, printers and settings stay. A till carries on from its own last receipt number unless it is signed out and set up again."
+              : "Removes every order, receipt, refund, clock-in, cash movement and day (its opening, its counts and its closing), and the customers' points. The menu, staff, customers, tables, printers and settings stay. A till carries on from its own last bill number unless it is signed out and set up again."}
           </p>
           <p className="flag">Receipts are tax records. Do not delete them once the {w.place} is trading for real.</p>
           <form action={deleteTransactions}>

@@ -213,6 +213,8 @@ const id = () => crypto.randomUUID();
       check(`W1 the ${shared.length} pages a shop shares with a restaurant say nothing of a restaurant, menu, kitchen, guests, tables or bookings`, said.length === 0, said.join(' || '));
       const data = await see(shop, '/backoffice/data', {});
       check('W1 Backup and data asks for the shop\'s name and deletes the catalog', data.says.includes("Type the shop's name to confirm") && data.says.includes('Delete the catalog'), data.error || data.says.slice(0, 300));
+      // bug sweep 2026-10-27, 9 (0140): Delete all transactions says it takes what a shop's tills issued, and the points
+      check('W1 and says Delete all transactions takes credit notes, deposits, bills on account and points', /refund, credit note, deposit, bill on account,.*and the customers' points/.test(data.says), (data.says.match(/Removes every sale.{0,200}/) || [])[0]);
       await c.query('ROLLBACK TO SAVEPOINT w1');
     }
     const one1 = await see(shop, '/backoffice/purchase-orders/' + po.id, {}, { params: { id: po.id }, file: 'backoffice/purchase-orders/[id]' });
@@ -545,6 +547,7 @@ const id = () => crypto.randomUUID();
     check('R4 with its guests and its time to payment, beside the restaurant', p.says.includes('Sales per guest') && p.says.includes('Send to payment') && p.says.includes('beside the restaurant as a whole'));
     p = await see(rest, '/backoffice/data', {});
     check('R10 a restaurant\'s Backup and data asks for the restaurant\'s name and deletes the menu', !p.error && p.says.includes("Type the restaurant's name to confirm") && p.says.includes('Delete the menu'), p.error || p.says.slice(0, 300));
+    check('R10 and says its Delete all transactions takes the customers\' points, keeping the customers', /and the customers' points\. The menu, staff, customers,/.test(p.says), (p.says.match(/Removes every order.{0,200}/) || [])[0]);
     p = await see(rest, '/backoffice/reports/items', { ...rrange, group: 'supplier' });
     check('R4 a restaurant is not offered Item sales by supplier or brand, and asked for one gets its items', !p.error && !p.html.includes('value="supplier"') && rowsOf(p.html).some((r) => r.includes('| Soup |')), p.error);
     p = await see(rest, '/backoffice/reports/orders', rrange);
