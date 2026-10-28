@@ -447,10 +447,13 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                         <input name={`val${n}`} maxLength={300} placeholder={o.values.length > 0 ? "A new one, or several with commas" : ["S, M, L, XL", "White, Navy", "Cotton, Linen"][n - 1]} autoComplete="off" />
                         <input type="hidden" name={`has${n}`} value={o.values.join("\n")} />
                         {o.values.length > 0 && (
-                          <span className="help">
-                            Has: {o.values.map((v) => (
-                              <span key={v} className="badge" style={{ marginRight: 4 }}>{v}</span>
-                            ))}
+                          <span className="help has">
+                            <span>Has:</span>
+                            <span className="has-list">
+                              {o.values.map((v) => (
+                                <span key={v} className="badge">{v}</span>
+                              ))}
+                            </span>
                           </span>
                         )}
                       </label>
