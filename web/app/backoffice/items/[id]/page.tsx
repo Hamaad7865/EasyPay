@@ -31,6 +31,7 @@ const WHY: Record<string, string> = {
   "too-many-variants": "That would make more than 200 lines for one product.",
   "unknown-variant": "That line is no longer there. Reload the page.",
   "unknown-item": "That product is no longer there.",
+  "unknown-value": "No line has that value any more. Reload the page.",
 };
 // runs a change; a rule the database refuses it for becomes a sentence
 async function ruled<T>(run: () => Promise<T>): Promise<T> {
@@ -158,6 +159,36 @@ async function addOptions(f: FormData) {
     return `${created} ${created === 1 ? "line" : "lines"} made${existing ? `, ${existing} already there` : ""}. ${
       coded > 0 ? "Each has a barcode of yours: type the maker's own over it if the goods carry one." : "Give them barcodes below, or type the makers' own."
     }`;
+  });
+}
+
+// A value renamed on the lines that have it (migration 0141): an import that
+// said Plain where the shop meant another word is put right without new lines.
+// Ticked, every product with an option of that name and that value follows.
+async function renameValue(f: FormData) {
+  "use server";
+  const id = String(f.get("id") ?? "");
+  await act("items.edit", `${PATH}/${id}`, async (c, ctx) => {
+    if (!UUID.test(id)) throw new Refused("That product is no longer there.");
+    // the value picked comes as its option's number and itself: "3:Plain"
+    const picked = String(f.get("from") ?? "");
+    const option = Number(picked.slice(0, picked.indexOf(":")));
+    const from = picked.slice(picked.indexOf(":") + 1);
+    const to = text(f, "to", 30);
+    if (![1, 2, 3].includes(option) || from === "") throw new Refused("Pick the value to rename.");
+    if (to === "") throw new Refused("Type its new name.");
+    let r;
+    try {
+      r = await ruled(() => c.query(`select variant_value_rename($1, $2, $3, $4, $5, $6) as r`, [ctx.tenantId, id, option, from, to, on(f, "everywhere")]));
+    } catch (e) {
+      if (e instanceof Error && e.message === "value-taken") {
+        const where = (e as { detail?: string }).detail ?? "A product";
+        throw new Refused(`${where} already has a line with ${to} beside the one that would be renamed. Remove one of the two first, or pick another name.`);
+      }
+      throw e;
+    }
+    const { lines, products } = r.rows[0].r as { lines: number; products: number };
+    return `${from} is now ${to} on ${lines} ${lines === 1 ? "line" : "lines"}${products > 1 ? ` of ${products} products` : ""}.`;
   });
 }
 
@@ -461,6 +492,42 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                   );
                 })}
                 <Submit className="btn-sm">{hasLines ? "Make the missing lines" : "Make the lines"}</Submit>
+              </form>
+            )}
+            {item && hasLines && (
+              <form action={renameValue} style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+                <input type="hidden" name="id" value={item.id} />
+                <div className="form-row" style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 2fr)" }}>
+                  <label className="field">
+                    Rename a value
+                    <select name="from" required defaultValue="">
+                      <option value="" disabled>Pick one</option>
+                      {optionRows.map((o) => {
+                        const n = options.indexOf(o) + 1;
+                        return (
+                          <optgroup key={n} label={o.name}>
+                            {o.values.map((v) => (
+                              <option key={v} value={`${n}:${v}`}>{v}</option>
+                            ))}
+                          </optgroup>
+                        );
+                      })}
+                    </select>
+                  </label>
+                  <label className="field">
+                    Its new name
+                    <input name="to" required maxLength={30} autoComplete="off" placeholder="What it should say" />
+                    <span className="help">Every line with it is renamed and keeps its barcode, price and stock. Receipts already printed keep the old name.</span>
+                  </label>
+                </div>
+                <label className="check">
+                  <input type="checkbox" name="everywhere" />
+                  <span>
+                    On every product
+                    <small>Every other product with an option of the same name and this value is renamed too, as after an import.</small>
+                  </span>
+                </label>
+                <Submit className="btn-sm btn-quiet">Rename</Submit>
               </form>
             )}
           </Card>
