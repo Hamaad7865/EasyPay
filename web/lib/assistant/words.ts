@@ -12,6 +12,8 @@ export function key(s: string): string {
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
+    // a range of sizes stays a range: 1-2 is not 12, nor 3-4 34
+    .replace(/(\d)\s*[-/]\s*(\d)/g, "$1to$2")
     .replace(/[^a-z0-9]/g, "");
   if (k.length > 4 && k.endsWith("ed")) k = k.slice(0, -2);
   else if (k.length > 4 && k.endsWith("es")) k = k.slice(0, -2);

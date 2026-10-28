@@ -25,6 +25,9 @@ check("sizes and colours compare without spaces or case", () => {
   assert.equal(key("Pale blue"), key("pale Blue"));
   assert.equal(key("Petrol  Blue"), key("petrol blue"));
   assert.notEqual(key("1"), key("10"));
+  assert.notEqual(key("1-2"), key("12"));
+  assert.notEqual(key("3-4"), key("34"));
+  assert.equal(key("12-18m"), key("12 - 18M"));
 });
 check("striped is the stripe most lines say, with the others named", () => {
   const r = read("striped", styles);

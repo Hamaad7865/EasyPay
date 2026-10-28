@@ -157,6 +157,41 @@ const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
       check('M11 another business\'s product is not found', r.isError === true, words(r));
     }
 
+    // M13 the sign-in that works: a code for tokens, the token on /mcp, a refresh, the old refresh refused, Disconnect
+    {
+      const regd = await (await fetch(BASE + '/oauth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ redirect_uris: ['https://claude.ai/api/mcp/auth_callback'] }) })).json();
+      const verifier = crypto.randomBytes(40).toString('base64url');
+      const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+      const codeIs = crypto.randomBytes(24).toString('base64url');
+      await c.query(`insert into assistant_codes (code_hash, client_id, tenant_id, employee_id, redirect_uri, challenge, expires_at) values ($1,$2,$3,$4,'https://claude.ai/api/mcp/auth_callback',$5, now() + interval '5 minutes')`,
+        [sha(codeIs), regd.client_id, tid, emp, challenge]);
+      const post = (body) => fetch(BASE + '/oauth/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body) });
+      let t = await post({ grant_type: 'authorization_code', code: codeIs, client_id: regd.client_id, redirect_uri: 'https://claude.ai/api/mcp/auth_callback', code_verifier: verifier });
+      const first = await t.json();
+      check('M13 a good code and verifier give tokens', t.status === 200 && /^ep_at_/.test(first.access_token) && /^ep_rt_/.test(first.refresh_token), JSON.stringify(first).slice(0, 80));
+      const used = await rpc('tools/list', {}, first.access_token);
+      check('M13 the access token works on /mcp', used.status === 200 && Array.isArray(used.body.result.tools), used.status);
+      t = await post({ grant_type: 'authorization_code', code: codeIs, client_id: regd.client_id, redirect_uri: 'https://claude.ai/api/mcp/auth_callback', code_verifier: verifier });
+      check('M13 a code works once', t.status === 400, t.status);
+      t = await post({ grant_type: 'refresh_token', refresh_token: first.refresh_token, client_id: regd.client_id });
+      const second = await t.json();
+      check('M13 a refresh gives a new pair', t.status === 200 && second.refresh_token !== first.refresh_token, t.status);
+      t = await post({ grant_type: 'refresh_token', refresh_token: first.refresh_token, client_id: regd.client_id });
+      check('M13 the old refresh token is refused', t.status === 400, t.status);
+      await c.query(`update assistant_grants set ended_at = now(), ended_why = 'disconnected' where tenant_id = $1 and client_id = $2`, [tid, regd.client_id]);
+      check('M13 after Disconnect, /mcp is 401', (await rpc('tools/list', {}, second.access_token)).status === 401);
+      await c.query(`delete from assistant_clients where client_id = $1`, [regd.client_id]);
+    }
+
+    // M14 what Claude asks first: initialize, then the card's page
+    {
+      const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: { extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] } } }, clientInfo: { name: 'test', version: '1' } });
+      check('M14 initialize answers, with EasyPay\'s instructions', init.status === 200 && init.body.result && /EasyPay/.test(init.body.result.instructions || ''), JSON.stringify(init.body).slice(0, 160));
+      const page = await rpc('resources/read', { uri: 'ui://easypay/card' });
+      const content = page.body.result && page.body.result.contents[0];
+      check('M14 the card page is an MCP App with the bridge in it', content && content.mimeType === 'text/html;profile=mcp-app' && /ui\/initialize/.test(content.text), JSON.stringify(page.body).slice(0, 160));
+    }
+
     // M12 losing Use the assistant ends the connection
     await c.query(`update roles set permissions = '[]'::jsonb where id = (select role_id from employees where id = $1)`, [emp]);
     const after = await rpc('tools/list', {});
