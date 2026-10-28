@@ -15,7 +15,12 @@
     "/_next/*",
     "/icon.png",
     "/logo-full.png",
-    "/logo-mark.png"
+    "/logo-mark.png",
+    "/mcp",
+    "/oauth/*",
+    "/.well-known/oauth-protected-resource",
+    "/.well-known/oauth-protected-resource/*",
+    "/.well-known/oauth-authorization-server"
   ],
   "exclude": []
 }

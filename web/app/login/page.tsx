@@ -37,7 +37,10 @@ export default function LoginPage() {
     // /admin (a login with no restaurant lands on the page that says so, and
     // that page knows an admin). Not "/": at easypaypos.com that is the
     // public site. The button stays busy until the page is there.
-    router.push("/backoffice");
+    // The one exception: signing in to connect Claude goes back to the page
+    // that asks to allow it (/oauth/authorize), and nowhere else.
+    const back = new URLSearchParams(window.location.search).get("next") ?? "";
+    router.push(back.startsWith("/oauth/authorize?") ? back : "/backoffice");
     router.refresh();
   }
 

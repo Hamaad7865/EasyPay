@@ -49,6 +49,8 @@ const GROUPS: PermGroup[] = [
     title: "Back office",
     perms: [
       ["backoffice.access", "Sign in to the back office"],
+      // EasyPay in the person's own Claude (0146): what they may change through it is still what their role allows
+      ["assistant.use", "Use the assistant: connect EasyPay to their own Claude"],
       ["reports.view", "See reports"],
       ["items.edit", "Edit the menu, taxes and stock"],
       ["employees.edit", "Manage staff and roles"],

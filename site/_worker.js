@@ -15,6 +15,7 @@
 const BACK_OFFICE = [
   "/login", "/reset-password", "/onboarding", "/backoffice", "/admin", "/api/auth", // its pages and its sign-in calls
   "/_next", // its scripts and styles
+  "/mcp", "/oauth", "/.well-known/oauth-protected-resource", "/.well-known/oauth-authorization-server", // EasyPay in Claude: the connector and its sign-in
 ];
 const BACK_OFFICE_FILES = ["/icon.png", "/logo-full.png", "/logo-mark.png"]; // web/app/icon.png and web/public
 

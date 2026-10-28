@@ -1,4 +1,5 @@
 import {
+  Bot,
   ArrowLeftRight,
   ArrowRightLeft,
   FileCheck,
@@ -190,6 +191,7 @@ export const GROUPS: NavGroup[] = [
       { href: "/backoffice/taxes", label: "Taxes", icon: FileText, words: "vat zero rated exempt tax and charges" },
       { href: "/backoffice/receipt-design", label: "Receipt design", icon: ReceiptText, words: "logo header footer paper" },
       { href: "/backoffice/data", label: "Backup and data", icon: Database, words: "settings export download delete transactions" },
+      { href: "/backoffice/assistant", label: "EasyPay in Claude", icon: Bot, words: "assistant claude ai chat connector mcp connected apps changes log" },
     ],
   },
   {
