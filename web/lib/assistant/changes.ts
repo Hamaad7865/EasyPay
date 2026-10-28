@@ -5,7 +5,9 @@ import { random, sha256, type Who } from "./oauth";
 import { branches, lines, pieces, product, rs, sheetOf, spellings, stock, tileOf, type Branch, type Line, type Product } from "./catalog";
 import { read, thousandths, cents, titled } from "./words";
 import type { DoneCard, PreviewCard, Reading, Sheet, StockMove, Tile, Warning } from "./types";
-import { Ask, No, RESHAPE, STEPS } from "./reshape";
+import { Ask, No, RESHAPE, STEPS, TYPO } from "./reshape";
+import { SETTINGS } from "./settings";
+import { key } from "./words";
 
 // A change through Claude (spec, The preview is the real change, undone):
 //   1. plan: what the AI sent, read against the shop's own rows into exact
@@ -148,6 +150,9 @@ const addLine: Kind = {
     const warnings: Warning[] = [];
     if (fresh.size) warnings.push({ tone: "amber", text: `New spelling: ${before.readings.filter((r) => r.isNew).map((r) => r.is).join(", ")}. Check it isn't a typo of one the shop has.` });
     if (p.cost !== null && (p.price as number) < (p.cost as number)) warnings.push({ tone: "amber", text: "The price is below its cost." });
+    if ((p.qty as number) > TYPO) warnings.push({ tone: "amber", text: `${pieces(p.qty as number)} pieces of one variant is a lot. Check it isn't a typo.` });
+    const odd = oddPrice(p.price as number, ls.filter((l) => l.id !== undefined).map((l) => l.price));
+    if (odd) warnings.push({ tone: "amber", text: odd });
     return {
       tile: tileOf(prod, ls, held),
       sheet: sheetOf(prod, ls, held, p.values as string[], fresh),
@@ -237,8 +242,18 @@ const editLines: Kind = {
     const ls = await lines(x.c, x.t, p.id);
     const set = (input.set ?? {}) as Params;
     const ids = Array.isArray(input.lines) ? input.lines.map(str) : [];
-    const chosen = ids.length ? ls.filter((l) => ids.includes(l.id)) : input.all === true ? ls : [];
-    if (chosen.length === 0) throw new Ask(`Which lines of ${p.name}? Give their ids, or say all.`);
+    const where = (input.where && typeof input.where === "object" ? input.where : null) as Record<string, string | string[]> | null;
+    if (where) {
+      const unknown = Object.keys(where).filter((o) => !p.options.some((po) => po.toLowerCase() === o.toLowerCase()));
+      if (unknown.length) throw new Ask(`${p.name}'s options are ${p.options.join(", ")}. Which one is ${unknown.join(" and ")}?`);
+    }
+    const fits = (l: Line) =>
+      Object.entries(where ?? {}).every(([o, vals]) => {
+        const i = p.options.findIndex((po) => po.toLowerCase() === o.toLowerCase());
+        return (Array.isArray(vals) ? vals : [vals]).some((v) => key(String(v)) === key(l.values[i] ?? ""));
+      });
+    const chosen = ids.length ? ls.filter((l) => ids.includes(l.id)) : where ? ls.filter(fits) : input.all === true ? ls : [];
+    if (chosen.length === 0) throw new Ask(where ? `No line of ${p.name} has those values.` : `Which lines of ${p.name}? Give their ids, values (where), or say all.`);
     const readings: Reading[] = [{ said: "product", is: p.name, note: `${chosen.length} of its ${ls.length} lines`, isNew: false }];
     const mayCost = await may(x, "costs.view");
     const price = num(set.price), cost = num(set.cost);
@@ -293,6 +308,9 @@ const editLines: Kind = {
     });
     const warnings: Warning[] = [];
     if ((p.lines as { price: number; cost: number | null }[]).some((n) => n.cost !== null && n.price < n.cost)) warnings.push({ tone: "amber", text: "A price is below its cost." });
+    const others = ls.filter((l) => !(p.lines as { id: string }[]).some((n) => n.id === l.id)).map((l) => l.price);
+    const odd = (p.lines as { price: number }[]).map((n) => oddPrice(n.price, others)).find(Boolean);
+    if (odd) warnings.push({ tone: "amber", text: odd });
     const sold = (await x.c.query(`select count(*)::int as n from ticket_lines where tenant_id = $1 and variant_id = any($2::uuid[])`, [x.t, (p.lines as { id: string }[]).map((l) => l.id)])).rows[0].n;
     if (sold > 0 && p.values) warnings.push({ tone: "amber", text: "This line has sold before. Its receipts keep the name they printed." });
     return { tile: tileOf(prod, ls, held), sheet: one ? sheetOf(prod, ls, held, one.values) : null, stock: [], warnings, danger: false, confirm: "Confirm", typeName: null, lines: changed };
@@ -389,7 +407,12 @@ const editProduct: Kind = {
     if (name) readings.push({ said: "name", is: name, note: "renamed", isNew: false });
     if (cat) readings.push({ said: "category", is: cat.parent ? `${cat.parent} › ${cat.name}` : cat.name, note: "moved", isNew: false });
     if (price !== null) readings.push({ said: "price", is: rs(cents(price)), note: "said", isNew: false });
-    return { params: { verb, item: p.id, name: name || null, category: cat?.id ?? null, brand: input.brand === undefined ? undefined : str(input.brand) || null, price: price === null ? null : cents(price) }, readings, title: `Edit ${p.name}`, touched: { [`items:${p.id}`]: p.updated_at } };
+    if (cost !== null) {
+      if ((await lines(x.c, x.t, p.id)).length) throw new No(`${p.name}'s lines each have their own cost: set it on its lines (edit lines, all or by values).`);
+      if (!(await may(x, "costs.view"))) throw new No("Your role doesn't include seeing cost, so it can't set one.");
+      readings.push({ said: "cost", is: rs(cents(cost)), note: "said", isNew: false });
+    }
+    return { params: { verb, item: p.id, name: name || null, category: cat?.id ?? null, brand: input.brand === undefined ? undefined : str(input.brand) || null, price: price === null ? null : cents(price), cost: cost === null ? null : cents(cost) }, readings, title: `Edit ${p.name}`, touched: { [`items:${p.id}`]: p.updated_at } };
   },
   async run(x, p) {
     if (p.verb === "new") {
@@ -402,9 +425,9 @@ const editProduct: Kind = {
     }
     await x.c.query(
       `update items set name = coalesce($3, name), category_id = coalesce($4, category_id), price = coalesce($5, price),
-              brand = case when $6::boolean then $7 else brand end
+              brand = case when $6::boolean then $7 else brand end, cost = coalesce($8, cost)
         where tenant_id = $1 and id = $2`,
-      [x.t, p.item, p.name, p.category, p.price, p.brand !== undefined, p.brand ?? null],
+      [x.t, p.item, p.name, p.category, p.price, p.brand !== undefined, p.brand ?? null, p.cost ?? null],
     );
     return { summary: "product saved", lines: [], item: p.item as string };
   },
@@ -509,6 +532,8 @@ const remove: Kind = {
 const startOver: Kind = {
   perm: "items.edit",
   async plan(x) {
+    const owner = (await x.c.query(`select coalesce(r.permissions ? '*', false) as ok from employees e left join roles r on r.id = e.role_id where e.id = $1`, [x.w.employeeId])).rows[0]?.ok;
+    if (!owner) throw new No("Only the owner can start the catalog over.");
     const ok = (await x.c.query(`select catalog_setting_up($1) as ok`, [x.t])).rows[0].ok;
     if (!ok) throw new No(`${x.w.tenantName} is live, so it can't start over. Delete what should go, product by product.`);
     const n = (await x.c.query(`select (select count(*) from items where tenant_id = $1 and deleted_at is null)::int as items,
@@ -555,6 +580,42 @@ async function undo(x: C, u0: unknown): Promise<void> {
     );
   }
   if (u.items) await hiddenBack(x, u);
+  const made = (u0 ?? {}) as { hide?: { items: string[]; lines: string[]; categories: string[] }; reverse?: { store: string; item: string; line: string | null; qty: number }[] };
+  for (const m of made.reverse ?? []) {
+    await x.c.query(`select stock_move($1,$2,$3,$4,$5,'adjust',null,null,null,$6,'Import undone')`, [x.t, m.store, m.item, m.line, -m.qty, x.w.employeeId]);
+  }
+  if (made.hide) {
+    const h = made.hide;
+    const held = (await x.c.query(
+      `select store_id, item_id, variant_id, qty from stock_levels where tenant_id = $1 and deleted_at is null and qty <> 0 and (item_id = any($2::uuid[]) or variant_id = any($3::uuid[]))`,
+      [x.t, h.items, h.lines],
+    )).rows;
+    for (const s of held) {
+      await x.c.query(`select stock_move($1,$2,$3,$4,$5,'adjust',null,null,null,$6,'Import undone')`, [x.t, s.store_id, s.item_id, s.variant_id, -Number(s.qty), x.w.employeeId]);
+    }
+    await x.c.query(`update item_variants set deleted_at = now() where tenant_id = $1 and deleted_at is null and (id = any($2::uuid[]) or item_id = any($3::uuid[]))`, [x.t, h.lines, h.items]);
+    await x.c.query(`update items set deleted_at = now() where tenant_id = $1 and deleted_at is null and id = any($2::uuid[])`, [x.t, h.items]);
+    await x.c.query(
+      `update categories k set deleted_at = now() where tenant_id = $1 and deleted_at is null and id = any($2::uuid[]) and parent_id is not null
+          and not exists (select 1 from items i where i.category_id = k.id and i.deleted_at is null)`,
+      [x.t, h.categories],
+    );
+    await x.c.query(
+      `update categories k set deleted_at = now() where tenant_id = $1 and deleted_at is null and id = any($2::uuid[]) and parent_id is null
+          and not exists (select 1 from items i where i.category_id = k.id and i.deleted_at is null)
+          and not exists (select 1 from categories s where s.parent_id = k.id and s.deleted_at is null)`,
+      [x.t, h.categories],
+    );
+  }
+}
+
+// A price far from what the product's other lines cost: likely a typo (half, or twice, the middle one).
+function oddPrice(price: number, others: number[]): string | null {
+  if (!others.length) return null;
+  const sorted = [...others].sort((a, b) => a - b);
+  const mid = sorted[Math.floor(sorted.length / 2)];
+  if (mid > 0 && (price < mid / 2 || price > mid * 2)) return `${rs(price)} is far from what its other lines cost (about ${rs(mid)}). Check it isn't a typo.`;
+  return null;
 }
 
 async function hiddenBack(x: C, u0: unknown): Promise<void> {
@@ -593,14 +654,14 @@ const restore: Kind = {
   },
   async view(_x, p) {
     const u = p.undo as { items?: string[]; lines?: string[]; categories?: string[]; moves?: unknown[]; steps?: unknown[] };
-    const said = u.moves || u.steps ? "Lines go back to the products they were in. Tidied spellings stay tidy." : `${u.items?.length ?? 0} products, ${u.lines?.length ?? 0} lines, ${u.categories?.length ?? 0} categories come back`;
+    const said = (u as { hide?: unknown }).hide ? "The import is undone: what it made goes, with its stock, and stock it added is taken back. Prices it changed stay." : u.moves || u.steps ? "Lines go back to the products they were in. Tidied spellings stay tidy." : `${u.items?.length ?? 0} products, ${u.lines?.length ?? 0} lines, ${u.categories?.length ?? 0} categories come back`;
     return { tile: null, sheet: null, stock: [], warnings: [], danger: false, confirm: "Restore", typeName: null, lines: [said] };
   },
 };
 
-export const KINDS: Record<string, Kind> = { add_line: addLine, change_stock: changeStock, edit_lines: editLines, edit_category: editCategory, edit_product: editProduct, delete: remove, start_over: startOver, restore, ...RESHAPE };
+export const KINDS: Record<string, Kind> = { add_line: addLine, change_stock: changeStock, edit_lines: editLines, edit_category: editCategory, edit_product: editProduct, delete: remove, start_over: startOver, restore, ...RESHAPE, ...SETTINGS };
 // what a plan (tidy the stock) may do besides reshaping: make categories, edit a product, delete
-Object.assign(STEPS, { edit_category: editCategory, edit_product: editProduct, delete: remove });
+Object.assign(STEPS, { edit_category: editCategory, edit_product: editProduct, edit_lines: editLines, delete: remove, set_tax: SETTINGS.set_tax });
 
 // ------------------------------------------------------- propose and confirm
 

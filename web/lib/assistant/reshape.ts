@@ -23,6 +23,8 @@ export type ReKind = { perm: string; plan(x: C, input: Params): Promise<Planned>
 
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : v === undefined || v === null ? "" : String(v).trim());
 const BIG = 50;
+// more pieces of one line than a shop of this kind holds: likely a typo (thousandths)
+export const TYPO = 100_000;
 
 async function productOf(x: C, id: unknown): Promise<Product> {
   const s = str(id);
@@ -458,12 +460,30 @@ export const importRows: ReKind = {
     };
   },
   async run(x, p) {
+    const ids = async (sql: string) => new Set((await x.c.query(sql, [x.t])).rows.map((y) => y.id as string));
+    const had = {
+      items: await ids(`select id from items where tenant_id = $1 and deleted_at is null`),
+      lines: await ids(`select id from item_variants where tenant_id = $1 and deleted_at is null`),
+      categories: await ids(`select id from categories where tenant_id = $1 and deleted_at is null`),
+    };
     const r = (await x.c.query(`select catalog_import($1,$2,$3,$4::jsonb,false) as r`, [x.t, p.store, x.w.employeeId, JSON.stringify(p.rows)])).rows[0].r;
+    const fresh = async (sql: string, before: Set<string>) => [...(await ids(sql))].filter((id) => !before.has(id));
+    const undo = {
+      hide: {
+        items: await fresh(`select id from items where tenant_id = $1 and deleted_at is null`, had.items),
+        lines: await fresh(`select id from item_variants where tenant_id = $1 and deleted_at is null`, had.lines),
+        categories: await fresh(`select id from categories where tenant_id = $1 and deleted_at is null`, had.categories),
+      },
+      reverse: [] as { store: string; item: string; line: string | null; qty: number }[],
+    };
     for (const h of p.holding as { item: string; line: string | null; qty: number; now: number }[]) {
       const move = p.mode === "set" ? h.qty - h.now : h.qty;
-      if (move !== 0) await x.c.query(`select stock_move($1,$2,$3,$4,$5,$6,null,null,null,$7,'Imported through Claude')`, [x.t, p.store, h.item, h.line, move, p.mode === "set" ? "count" : "receive", x.w.employeeId]);
+      if (move !== 0) {
+        await x.c.query(`select stock_move($1,$2,$3,$4,$5,$6,null,null,null,$7,'Imported through Claude')`, [x.t, p.store, h.item, h.line, move, p.mode === "set" ? "count" : "receive", x.w.employeeId]);
+        undo.reverse.push({ store: p.store as string, item: h.item, line: h.line, qty: move });
+      }
     }
-    return { summary: `imported ${r.good} rows`, lines: [`${r.new_products} new products, ${r.new_lines} new lines, ${r.stock_set} opening stocks`] };
+    return { summary: `imported ${r.good} rows`, lines: [`${r.new_products} new products, ${r.new_lines} new lines, ${r.stock_set} opening stocks`], undo };
   },
   async view(_x, p, ran) {
     const dry = p.dry as { problems: { n: number; name: string; why: string }[] };
@@ -476,7 +496,12 @@ export const importRows: ReKind = {
       tile: null,
       sheet: null,
       stock: [],
-      warnings: dry.problems.length ? [{ tone: "amber", text: `${dry.problems.length} rows stay out: ${dry.problems.slice(0, 6).map((q) => `row ${q.n} ${q.name} (${WHY[q.why] ?? q.why})`).join("; ")}${dry.problems.length > 6 ? "…" : ""}` }] : [],
+      warnings: [
+        ...((p.rows as { stock?: number; name: string }[]).filter((r) => (r.stock ?? 0) > TYPO).length
+          ? [{ tone: "amber" as const, text: `${(p.rows as { stock?: number }[]).filter((r) => (r.stock ?? 0) > TYPO).length} rows have more than 100 pieces of one line. Check they aren't typos.` }]
+          : []),
+        ...(dry.problems.length ? [{ tone: "amber" as const, text: `${dry.problems.length} rows stay out: ${dry.problems.slice(0, 6).map((q) => `row ${q.n} ${q.name} (${WHY[q.why] ?? q.why})`).join("; ")}${dry.problems.length > 6 ? "…" : ""}` }] : []),
+      ],
       danger: false,
       confirm: "Import",
       typeName: null,

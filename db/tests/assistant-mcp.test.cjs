@@ -19,6 +19,7 @@ const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
   const c = new Client({ connectionString: devguard.envMap().DATABASE_URL_UNPOOLED, ssl: { require: true } });
   await c.connect();
   const one = async (sql, p) => (await c.query(sql, p)).rows[0];
+  const all = async (sql, p) => (await c.query(sql, p)).rows;
   const admin = crypto.randomUUID();
   await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'admin-mcp@example.com') on conflict do nothing`, [admin]);
   const made = (await one(`select platform.create_tenant($1,'MCP Shop','Main','MC1','Owner',$2,'premium') as r`, [admin, crypto.randomUUID()])).r;
@@ -190,6 +191,53 @@ const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
       const page = await rpc('resources/read', { uri: 'ui://easypay/card' });
       const content = page.body.result && page.body.result.contents[0];
       check('M14 the card page is an MCP App with the bridge in it', content && content.mimeType === 'text/html;profile=mcp-app' && /ui\/initialize/.test(content.text), JSON.stringify(page.body).slice(0, 160));
+    }
+
+    // M15 prices, costs, taxes, settings, discounts, promotions, typo warnings, an import undone, the call log
+    {
+      await c.query(`insert into platform.setting_up (tenant_id) values ($1) on conflict do nothing`, [tid]);
+      const shirt = (await one(`insert into items (tenant_id, name, price, track_stock, option_names) values ($1, 'Polo', 50000, true, '{Colour,Age}') returning id`, [tid])).id;
+      await c.query(`select variants_generate($1,$2,$3,$4::jsonb)`, [tid, shirt, ['Colour', 'Age'], JSON.stringify([['Red', 'Blue'], ['8', '10', '12']])]);
+      const go = async (name, args) => { const r = await tool(name, args); return { r, k: r.structuredContent ? await tool('confirm', { proposal: (/data-confirm="([0-9a-f-]{36})"/.exec(r.structuredContent.html) || [])[1], code: r._meta['easypay/code'] }) : null }; };
+      let { r, k } = await go('edit_lines', { product: shirt, where: { Age: ['10', '12'] }, set: { price: 650, cost: 300 } });
+      const priced = await all(`select option_values[2] as age, price, cost from item_variants where item_id = $1 order by 1`, [shirt]);
+      check('M15 lines chosen by their values get a new price and cost', priced.filter((x) => x.age !== '8').every((x) => Number(x.price) === 65000 && Number(x.cost) === 30000) && priced.filter((x) => x.age === '8').every((x) => Number(x.price) === 50000), JSON.stringify(priced));
+      r = await tool('edit_product', { verb: 'edit', product: shirt, cost: 200 });
+      check('M15 a product with lines gets its cost on its lines, not itself', r.isError === true && /its lines/.test(words(r)), words(r));
+      ({ r } = await go('add_line', { product: shirt, values: { Colour: 'Green', Age: '8' }, qty: 500, price: 5000 }));
+      check('M15 500 of one variant and a price a tenth of the others both warn', /typo/.test(r.structuredContent.html) && (r.structuredContent.html.match(/typo/g) || []).length >= 2, words(r));
+      await c.query(`insert into taxes (tenant_id, name, rate_bp, type, is_default) values ($1, 'VAT 15%', 1500, 'included', false)`, [tid]);
+      ({ r, k } = await go('set_tax', { tax: 'vat 15', products: [shirt] }));
+      const taxed = await one(`select t.name from item_taxes it join taxes t on t.id = it.tax_id where it.item_id = $1 and it.deleted_at is null`, [shirt]);
+      check('M15 set_tax gives the product VAT 15%', taxed && taxed.name === 'VAT 15%', JSON.stringify(taxed) + words(r));
+      ({ r, k } = await go('edit_tax', { verb: 'new', name: 'Exempt test', rate: 0, type: 'included' }));
+      check('M15 a new tax is made', Boolean(await one(`select 1 from taxes where tenant_id = $1 and name = 'Exempt test'`, [tid])), words(r));
+      ({ r, k } = await go('edit_discount', { verb: 'new', name: 'Staff', type: 'percent', value: 10, approval: true }));
+      check('M15 a new discount is made', Boolean(await one(`select 1 from discounts where tenant_id = $1 and name = 'Staff' and value = 10 and requires_approval`, [tid])), words(r));
+      r = await tool('promote', { verb: 'apply', product: shirt, percent: 50 });
+      check('M15 a promotion below cost, or on lines with no cost, is refused', r.isError === true, words(r));
+      ({ r, k } = await go('settings', { set: { returnDays: 14, receiptFooter: 'Thank you!' } }));
+      const st = (await one(`select data from pos_settings where tenant_id = $1`, [tid])).data;
+      check('M15 settings: 14 days to return and the receipt footer', st.returnDays === 14 && st.receipt && st.receipt.footer === 'Thank you!', JSON.stringify(st).slice(0, 120));
+      r = await tool('settings', { set: { plan: 'premium' } });
+      check('M15 a setting Claude may not change is refused', r.isError === true, words(r));
+      r = await tool('shop', { what: 'taxes' });
+      check('M15 the shop tool lists the taxes with their products', /VAT 15%: 15%, in the price, 1 products/.test(words(r)), words(r));
+      // an import, then Restore: what it made goes, with its stock
+      ({ r, k } = await go('import', { rows: [{ n: 2, name: 'Sock', category: 'Feet', price: 100, stock: 3 }] }));
+      const sock = await one(`select i.id, (select qty from stock_levels l where l.item_id = i.id) as q from items i where i.tenant_id = $1 and i.name = 'Sock' and i.deleted_at is null`, [tid]);
+      check('M15 the import makes Sock with 3', sock && sock.q === 3000, JSON.stringify(sock));
+      const imp = (await one(`select id from assistant_log where tenant_id = $1 and kind = 'import'`, [tid])).id;
+      ({ r, k } = await go('restore', { change: imp }));
+      const undone = await one(`select deleted_at is not null as gone, (select qty from stock_levels l where l.item_id = i.id) as q from items i where i.id = $1`, [sock.id]);
+      const feet = await one(`select deleted_at is not null as gone from categories where tenant_id = $1 and name = 'Feet'`, [tid]);
+      check('M15 Restore undoes the import: Sock and Feet go, its stock written back to 0', undone.gone && undone.q === 0 && feet.gone, JSON.stringify([undone, feet]) + words(k));
+      const calls = await all(`select outcome, count(*)::int as n from assistant_calls where tenant_id = $1 group by 1`, [tid]);
+      const has = (o) => (calls.find((x) => x.outcome === o) || { n: 0 }).n > 0;
+      check('M15 every call is logged, with done, asked and refused ones', has('ok') && has('asked') && has('refused'), JSON.stringify(calls));
+      const codes = await one(`select count(*)::int as n from assistant_calls where tenant_id = $1 and tool = 'confirm' and args like '%easypay%'`, [tid]);
+      const leaked = await one(`select count(*)::int as n from assistant_calls where tenant_id = $1 and tool = 'confirm' and args not like '%"code":"…"%'`, [tid]);
+      check('M15 a Confirm code is never kept in the log', leaked.n === 0, JSON.stringify([codes, leaked]));
     }
 
     // M12 losing Use the assistant ends the connection

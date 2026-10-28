@@ -69,7 +69,15 @@ export default async function AssistantPage({ searchParams }: { searchParams: Se
         [ctx.tenantId],
       )
     ).rows as { id: string; who: string; at: string; kind: string; asked: string | null; summary: string; after: string[] | null; can_restore: boolean; restored: boolean }[];
-    return { may, owner, grants, log };
+    const calls = (
+      await c.query(
+        `select to_char(k.created_at at time zone 'Indian/Mauritius', 'DD Mon HH24:MI') as at, e.name as who, k.tool, k.outcome, k.said
+           from assistant_calls k left join employees e on e.id = k.employee_id
+          where k.tenant_id = $1 order by k.created_at desc limit 40`,
+        [ctx.tenantId],
+      )
+    ).rows as { at: string; who: string | null; tool: string; outcome: string; said: string | null }[];
+    return { may, owner, grants, log, calls };
   });
   return (
     <div>
@@ -93,6 +101,16 @@ export default async function AssistantPage({ searchParams }: { searchParams: Se
         </ol>
         <p className="muted" style={{ marginBottom: 0 }}>
           Claude reads and changes the shop as you, with what your role allows. What it reads goes to Anthropic under your own Claude account.
+        </p>
+      </Card>
+      <Card title="Things to say to Claude">
+        <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.8 }}>
+          {SAY.map((x) => (
+            <li key={x}>&ldquo;{x}&rdquo;</li>
+          ))}
+        </ul>
+        <p className="muted" style={{ marginBottom: 0 }}>
+          Every change shows a card of how it will look on the tablet and waits for your Confirm. Big ones ask you to type the shop&apos;s name. Restore, under Changes below, undoes a delete, a split, a move, an import or a whole plan for 30 days.
         </p>
       </Card>
       <Card title="Connected apps">
@@ -169,6 +187,50 @@ export default async function AssistantPage({ searchParams }: { searchParams: Se
           </table>
         )}
       </Card>
+      <Card title="Recent calls">
+        {d.calls.length === 0 ? (
+          <p className="muted" style={{ margin: 0 }}>Claude hasn&apos;t asked anything yet.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Who</th>
+                <th>Asked</th>
+                <th>Answer</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.calls.map((k, i) => (
+                <tr key={i}>
+                  <td>{k.at}</td>
+                  <td>{k.who ?? ""}</td>
+                  <td className="strong">{k.tool.replace(/_/g, " ")}</td>
+                  <td>
+                    <span className={k.outcome === "ok" ? "badge blue" : k.outcome === "asked" ? "badge" : "badge red"}>{OUTCOME[k.outcome] ?? k.outcome}</span>
+                    {k.outcome !== "ok" && k.said && <small className="cell-sub">{k.said.slice(0, 160)}</small>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
     </div>
   );
 }
+
+const OUTCOME: Record<string, string> = { ok: "Done", asked: "Asked you", refused: "Refused", error: "Failed" };
+// what a shop says to Claude most, as a start
+const SAY = [
+  "Show me Chemise Long Sleeve",
+  "What's below zero? What's running low?",
+  "Open stock for Chemise Long Sleeve: 5, red, size 3-6m, stripe",
+  "We received 20 of Navy Blue age 10, plain",
+  "Set the cost of every age 10 to 15 line to Rs 400",
+  "Put VAT 15% on everything in Shirt",
+  "Make a category Shirt with a sub category Long Sleeve",
+  "Tidy the stock: tidy colours and styles, rename Age to Size, split by style into Shirt › Long Sleeve",
+  "Import this file (with the Excel attached)",
+  "What sold this week? Promote the slowest at 20% off",
+];

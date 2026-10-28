@@ -1,11 +1,12 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { readTenant } from "@/lib/db";
+import { readTenant, withTenant } from "@/lib/db";
 import type { Who } from "./oauth";
 import { appHtml } from "./app-html";
 import { cardHtml, CARD_CSS } from "./card";
 import { branches, find, gridsOf, lines, pieces, product, rs, spellings, stock, tileOf, tone } from "./catalog";
 import { Ask, cancel, confirm, KINDS, No, propose } from "./changes";
+import { settingsNow } from "./settings";
 import type { Card, HistoryCard, LinesCard, ProductCard } from "./types";
 
 // EasyPay as the tools of the owner's own Claude (spec, Tools). One server is
@@ -47,6 +48,26 @@ async function guarded(run: () => Promise<Result>): Promise<Result> {
 export function serverFor(w: Who, origin: string): McpServer {
   const s = new McpServer({ name: "easypay", version: "1.0.0" }, { capabilities: { tools: {}, resources: {} }, instructions: INSTRUCTIONS });
   const asShop = <T>(fn: (c: Parameters<Parameters<typeof readTenant>[1]>[0]) => Promise<T>) => readTenant(w.tenantId, fn);
+  // every call, logged (0148): which tool, what came of it, how long it took; never a Confirm code
+  const reg = ((name: string, config: Parameters<typeof s.registerTool>[1], cb: (args: Record<string, unknown>) => Promise<Result>) =>
+    s.registerTool(name, config as never, (async (args: Record<string, unknown>) => {
+      const t0 = Date.now();
+      let r: Result | null = null;
+      try {
+        r = await cb(args ?? {});
+        return r;
+      } finally {
+        const text = r ? r.content.map((x) => x.text).join(" ") : "";
+        const outcome = !r ? "error" : r.isError ? "refused" : text.startsWith("EasyPay needs to know") ? "asked" : "ok";
+        const kept = { ...(args ?? {}) };
+        if ("code" in kept) kept.code = "…";
+        await withTenant(w.tenantId, (c) =>
+          c.query(`insert into assistant_calls (tenant_id, employee_id, grant_id, tool, args, outcome, said, ms) values ($1,$2,$3,$4,$5,$6,$7,$8)`, [
+            w.tenantId, w.employeeId, w.grantId, name, JSON.stringify(kept).slice(0, 2000), outcome, text.slice(0, 500), Date.now() - t0,
+          ]),
+        ).catch(() => {});
+      }
+    }) as never)) as unknown as typeof s.registerTool;
   const mayAsk = async (perm: string) =>
     asShop(async (c) => Boolean((await c.query(`select has_perm($1, $2) as ok`, [w.employeeId, perm])).rows[0]?.ok));
 
@@ -56,7 +77,7 @@ export function serverFor(w: Who, origin: string): McpServer {
 
   // ------------------------------------------------------------- questions
 
-  s.registerTool(
+  reg(
     "find",
     {
       title: "Find products",
@@ -84,7 +105,7 @@ export function serverFor(w: Who, origin: string): McpServer {
       }),
   );
 
-  s.registerTool(
+  reg(
     "product",
     {
       title: "Show a product",
@@ -126,7 +147,7 @@ export function serverFor(w: Who, origin: string): McpServer {
       }),
   );
 
-  s.registerTool(
+  reg(
     "stock",
     {
       title: "Stock lines",
@@ -170,7 +191,7 @@ export function serverFor(w: Who, origin: string): McpServer {
       }),
   );
 
-  s.registerTool(
+  reg(
     "history",
     {
       title: "A line's stock history",
@@ -209,7 +230,7 @@ export function serverFor(w: Who, origin: string): McpServer {
       }),
   );
 
-  s.registerTool(
+  reg(
     "categories",
     { title: "Categories", description: "The shop's categories and sub categories, as paths (Shirt › Long Sleeve), with how many products each holds.", inputSchema: z.object({}), annotations: { readOnlyHint: true } },
     async () =>
@@ -227,7 +248,32 @@ export function serverFor(w: Who, origin: string): McpServer {
       }),
   );
 
-  s.registerTool(
+  reg(
+    "shop",
+    {
+      title: "The shop's setup",
+      description: "The shop's taxes (with how many products each), discounts, POS settings Claude may change, staff and their roles, and running promotions.",
+      inputSchema: z.object({ what: z.enum(["taxes", "discounts", "settings", "staff", "promotions"]) }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ what }) =>
+      guarded(async () => {
+        const text = await asShop(async (c) => {
+          if (what === "settings") return (await settingsNow(c, w.tenantId)).join("\n");
+          if (what === "taxes") return (await c.query(`select t.name, t.rate_bp, t.type, t.is_default, (select count(*)::int from item_taxes it where it.tax_id = t.id and it.deleted_at is null) as n from taxes t where t.tenant_id = $1 and t.deleted_at is null order by t.is_default desc, t.name`, [w.tenantId])).rows
+            .map((t) => `- ${t.name}: ${t.rate_bp / 100}%, ${t.type === "added" ? "added on top" : "in the price"}${t.is_default ? ", the usual one" : ""}, ${t.n} products`).join("\n") || "No taxes.";
+          if (what === "discounts") return (await c.query(`select name, type, value, requires_approval from discounts where tenant_id = $1 and deleted_at is null order by name`, [w.tenantId])).rows
+            .map((d) => `- ${d.name}: ${d.type === "amount" ? rs(Number(d.value)) : d.value + "%"} off${d.requires_approval ? ", needs a manager" : ""}`).join("\n") || "No discounts.";
+          if (what === "staff") return (await c.query(`select e.name, r.name as role, e.is_active from employees e left join roles r on r.id = e.role_id where e.tenant_id = $1 and e.deleted_at is null order by e.name`, [w.tenantId])).rows
+            .map((e) => `- ${e.name}: ${e.role ?? "no role"}${e.is_active ? "" : ", switched off"}`).join("\n");
+          return (await c.query(`select i.name, coalesce(v.name, '') as line, p.original_price, p.promo_price from promotions p join items i on i.id = p.item_id left join item_variants v on v.id = p.variant_id where p.tenant_id = $1 and p.status = 'active' and p.deleted_at is null order by i.name limit 100`, [w.tenantId])).rows
+            .map((p) => `- ${p.name} ${p.line}: ${rs(Number(p.original_price))} → ${rs(Number(p.promo_price))}`).join("\n") || "No promotion is running.";
+        });
+        return said(text);
+      }),
+  );
+
+  reg(
     "sales",
     {
       title: "Sales",
@@ -259,7 +305,7 @@ export function serverFor(w: Who, origin: string): McpServer {
 
   const asked = z.string().optional().describe("The owner's own words for this change, kept in the log");
   const change = (name: string, title: string, description: string, input: z.ZodObject) =>
-    s.registerTool(name, { title, description: description + " Changes nothing: returns a card that waits for the owner's Confirm.", inputSchema: input, _meta: SHOWN }, async (args: Record<string, unknown>) =>
+    reg(name, { title, description: description + " Changes nothing: returns a card that waits for the owner's Confirm.", inputSchema: input, _meta: SHOWN }, async (args: Record<string, unknown>) =>
       guarded(async () => {
         const { card, code } = await propose(w, name, args, String(args.asked ?? ""), origin);
         const text = [
@@ -309,6 +355,7 @@ export function serverFor(w: Who, origin: string): McpServer {
     z.object({
       product: z.string(),
       lines: z.array(z.string()).optional().describe("Line ids"),
+      where: z.record(z.string(), z.union([z.string(), z.array(z.string())])).optional().describe("Lines by their values, e.g. {\"Age\": [\"10\", \"11\", \"12\"]} or {\"Colour\": \"Red\"}"),
       all: z.boolean().optional().describe("Every line of the product"),
       set: z.object({ price: z.number().optional(), cost: z.number().optional(), sku: z.string().optional(), barcode: z.string().optional(), values: z.record(z.string(), z.string()).optional() }),
       asked,
@@ -410,17 +457,53 @@ export function serverFor(w: Who, origin: string): McpServer {
       asked,
     }),
   );
+  change(
+    "set_tax",
+    "Set a product's tax",
+    "Give products one of the shop's taxes (it replaces the one they had): by ids, or everything in a category (sub categories included).",
+    z.object({ tax: z.string().describe("The tax's name, e.g. VAT 15%"), products: z.array(z.string()).optional(), category: z.string().optional().describe("e.g. 'Shirt' or 'Shirt › Long Sleeve'"), asked }),
+  );
+  change(
+    "edit_tax",
+    "Make or change a tax",
+    "verb new: a tax (name, rate in percent, type included in the price or added on top); edit: its name, rate or type; default: the one new products take.",
+    z.object({ verb: z.enum(["new", "edit", "default"]), tax: z.string().optional(), name: z.string().optional(), rate: z.number().optional(), type: z.enum(["included", "added"]).optional(), asked }),
+  );
+  change(
+    "edit_discount",
+    "Make, change or delete a discount",
+    "The discounts the tills offer: type percent or amount (rupees), value, and whether a manager must approve it.",
+    z.object({ verb: z.enum(["new", "edit", "delete"]), discount: z.string().optional(), name: z.string().optional(), type: z.enum(["percent", "amount"]).optional(), value: z.number().optional(), approval: z.boolean().optional(), asked }),
+  );
+  change(
+    "promote",
+    "Promote a product, or lift its promotion",
+    "verb apply: a promoted price on every line of a product (a price in rupees, or percent off), never below cost; verb lift: back to the normal price.",
+    z.object({ verb: z.enum(["apply", "lift"]), product: z.string(), price: z.number().optional(), percent: z.number().optional(), asked }),
+  );
+  change(
+    "settings",
+    "Change POS settings",
+    "The shop's settings Claude may change: returns, returnDays, noteMonths, slowMoverDays, deposits, depositDays, accounts, accountDays, loyalty, loyaltyPercent, quickPay, receiptHeader, receiptFooter. Never PINs, logins, printers, tills, the plan, MRA or payments.",
+    z.object({ set: z.record(z.string(), z.union([z.string(), z.number()])), asked }),
+  );
+  change(
+    "edit_staff",
+    "A staff member's role, or on or off",
+    "Change a staff member's role, or switch them off or on for the tills. Never their PIN or a login.",
+    z.object({ staff: z.string(), role: z.string().optional(), active: z.boolean().optional(), asked }),
+  );
   change("start_over", "Start over", "While the shop is being set up: hide every product, line and category, to start the catalog again.", z.object({ asked }));
   change("restore", "Restore", "Bring back a delete or a start over, from the change log, within 30 days.", z.object({ change: z.string().describe("The change's id from the log"), asked }));
   void KINDS;
 
-  s.registerTool("confirm", { title: "Confirm", description: "The card's Confirm button.", inputSchema: z.object({ proposal: z.string(), code: z.string() }), _meta: CARD_ONLY }, async ({ proposal, code }) =>
+  reg("confirm", { title: "Confirm", description: "The card's Confirm button.", inputSchema: z.object({ proposal: z.string(), code: z.string() }), _meta: CARD_ONLY }, async ({ proposal, code }) =>
     guarded(async () => {
       const done = await confirm(w, proposal, code);
       return shown(`${done.title}. ${done.lines.join(" ")}`, done);
     }),
   );
-  s.registerTool("cancel", { title: "Cancel", description: "The card's Cancel button.", inputSchema: z.object({ proposal: z.string() }), _meta: CARD_ONLY }, async ({ proposal }) =>
+  reg("cancel", { title: "Cancel", description: "The card's Cancel button.", inputSchema: z.object({ proposal: z.string() }), _meta: CARD_ONLY }, async ({ proposal }) =>
     guarded(async () => {
       await cancel(w, proposal);
       return shown("Cancelled. Nothing was changed.", { kind: "done", title: "Cancelled: nothing was changed", lines: [], tile: null, sheet: null });

@@ -38,7 +38,11 @@ async function serve(req: Request): Promise<Response> {
     );
   }
   if (tooMany(w.grantId ?? "")) return Response.json({ error: "slow_down", error_description: "Too many calls in a minute. Try again shortly." }, { status: 429 });
-  const handler = createMcpHandler(() => serverFor(w, o), { responseMode: "json" });
+  const handler = createMcpHandler(() => serverFor(w, o), {
+    responseMode: "json",
+    // what went wrong, in the Worker's log (never shown to Claude, who is told only that it failed)
+    onerror: (e) => console.error("mcp: " + (e.stack || e.message)),
+  });
   return handler.fetch(req, { authInfo: { token: bearer!, clientId: w.grantId ?? "", scopes: ["easypay"] } });
 }
 
