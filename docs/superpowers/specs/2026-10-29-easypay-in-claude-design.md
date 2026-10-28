@@ -69,8 +69,68 @@ Claude subscription is used in Claude itself, through the connector.
 | Q31 | **Start over**, only while the shop is being set up (`platform.setting_up`). One change hides every product, line and category, with their stock and pictures; red card, typed shop name. Tills, staff, settings, customers and suppliers stay. Test sales stay until EasyPay clears them in /admin. Restore for 30 days. Not offered after Go live. |
 | Q32 | **Split** a product by an option, or by groups of values. Each line moves with its barcode, stock and history. The option split on leaves the new products and goes into their names. Each new product can be renamed and given a category before Confirm, and the old product is deleted once empty. A tidy is offered first when the option has several spellings. |
 | Q33 | **Move** lines, or **merge** a whole product, into another product, keeping barcodes, stock and history. Values that don't fit the other product's options are mapped with the owner before the card. |
-| Q34 | Piece 1 is released in two steps. 1a: connecting, the cards, add, edit, delete, Start over. 1b: tidy, split, move and merge. |
-| Q35 | Kids Corner tidies and splits what it has rather than starting over. That keeps the barcodes on its labels and the 582 pieces counted. Its first job: tidy Colour and Style, then split by Style. |
+| Q34 | Piece 1 is released in two steps. 1a: connecting, the cards, add, edit, delete, Start over. 1b: tidy, split, move and merge, "tidy the stock" and file import. Sub categories come before both (Q45). |
+| Q35 | Kids Corner tidies and splits what it has rather than starting over. That keeps the barcodes on its labels and the 582 pieces counted. Its first job: "tidy the stock" (Q46). |
+| Q36 | **Sub categories**, one level deep (Shirt › Long Sleeve). |
+| Q37 | A product has one category: a sub category, or a category with no subs. |
+| Q38 | Tablet: tapping a category in the Sell screen's list opens its subs under it, indented, with "All Shirt" first. Search and scanning as today. A new tablet version. |
+| Q39 | Back office: Categories page has Add sub category, and a sub can be moved to another parent. The product page picks "Shirt › Long Sleeve". The import gets a **Sub category** column; a file without it imports as today. |
+| Q40 | A sub category takes its parent's settings (Count its stock, colour, MRA nature, kitchen printers) unless set on itself. |
+| Q41 | Reports by category add subs into the parent, and each parent opens to show them. |
+| Q42 | A category with subs or products can't be deleted unless they are moved or deleted in the same change. |
+| Q43 | Claude makes, renames, moves and deletes subs, and moves products into them. A split can put its products in a sub. Cards show the path. |
+| Q44 | Shops and restaurants both. |
+| Q45 | Sub categories are their own release, first, before 1a. |
+| Q46 | **"Tidy the stock"**: Claude reads the catalog (or part of it) and proposes one plan, a tree of categories › subs › products › variants. The owner corrects it in words, and each correction redraws the card. |
+| Q47 | One Confirm, all or nothing, in one transaction. Logged as one change, with Restore for 30 days. |
+| Q48 | Claude sends the plan as rules, not line ids. EasyPay expands them, and refuses unless every line lands somewhere, the pieces are equal before and after, and every barcode is kept except where the card says. The check shows in green. |
+| Q49 | Claude suggests product names (sub + value), and the owner can change any of them. Names are written as shown. |
+| Q50 | Kids Corner's option Age becomes **Size** in its plan. |
+| Q51 | "Tidy the stock" is in release 1b. Order: sub categories, 1a, 1b, then Kids Corner's tidy. |
+| Q52 | **Import a file through Claude**: the owner drops an xlsx in Claude. Claude reads any layout, maps the columns, and sends the rows to EasyPay in parts. Nothing goes in before Confirm. |
+| Q53 | The import card: products new and updated, new lines, opening stock per branch; how Claude read the file; the spelling rules applied; each problem with Claude's proposed fix. Confirm imports the ready products, and the rest are listed, never half imported. |
+| Q54 | More than three options: Claude asks whether to fold the extra one into a value, into the name, or into its own product. |
+| Q55 | Rows for lines that already hold stock: Claude asks once whether to add (received) or replace (count). They become stock changes inside the same Confirm. |
+
+## Release 0: sub categories (Q36 to Q45)
+
+Released first, on its own, for shops and restaurants alike.
+
+- **Database** (one migration):
+  - `categories.parent_id`: null for a top category, else the category it sits under.
+  - A guard refuses three things: a parent that is itself a sub, a parent from another business, and a
+    category that has subs being put under another (one level only).
+  - A sub's own `color`, `is_stock`, `mra_nature` and `printer_ids` may be empty, meaning "as the
+    parent" (Q40). One function, `category_settings(tenant, category)`, answers what applies, and
+    everything that reads those settings asks it: the till's pull, kitchen printing, the MRA invoice
+    and Count its stock.
+  - Deleting a category that has live subs or products is refused (`category-not-empty`, Q42), unless
+    the same change moves or deletes them.
+  - The till pull sends `parent_id` with the categories, through the usual `select *`.
+- **Import:**
+  - A new **Sub category** column, next to Category.
+  - `catalog_import` finds the sub under that category by name (capitals aside), or makes it.
+  - A sub category with no category is a problem (`sub-without-category`).
+  - A file without the column imports exactly as before.
+- **Back office:**
+  - **Categories page:** subs are listed under their parent, indented, with **Add sub category** on
+    each top category, and a parent picker on a sub to move it. A sub's settings show "as Shirt" until
+    set.
+  - **Product page and the product list:** the category picker shows "Shirt › Long Sleeve". The list
+    can be filtered by a parent (which includes its subs) or by a sub.
+  - **Reports by category:** subs add up into the parent row, and the row opens to show them (Q41).
+- **Tablet (new version):**
+  - Room migration adding `parent_id`.
+  - The shop's Sell screen category list and the restaurant's menu categories show top categories.
+    Tapping one with subs opens them under it, indented, with "All Shirt" first, and the tiles follow
+    what is picked (Q38).
+  - Categories with no subs work as today. Search and scanning are unchanged.
+- **Tests:**
+  - A database suite for the guard, inheritance, delete refusal, the import column, and the pull
+    carrying `parent_id`.
+  - Page tests for the Categories page and the picker.
+  - Unit tests on the tablet's list (which tiles show for a parent, a sub, All).
+  - A look on the emulator.
 
 ## Piece 1
 
@@ -166,7 +226,12 @@ Changes (each returns a **preview card** and changes nothing):
 - `split`: one product into several, by an option or by groups of values (Q32). Release 1b.
 - `move`: lines, or a whole product, into another product (Q33). Release 1b.
 
-`tidy`, `split` and `move` come in release 1b. Everything else is in 1a.
+- `plan`: "tidy the stock", rules for a whole catalog or part of it (Q46 to Q50). Release 1b.
+- `import`: rows read from an uploaded file (Q52 to Q55). Release 1b.
+
+`tidy`, `split`, `move`, `plan` and `import` come in release 1b. Everything else is in 1a. Every tool
+knows sub categories (Q43): `edit_category` makes, renames, moves and deletes them, and paths show as
+"Shirt › Long Sleeve".
 
 The Confirm tool, `confirm(proposal, code)`, has `_meta.ui.visibility: ["app"]`: Claude hides it from
 the AI and only the card's button calls it. Claude doesn't promise to refuse a call the AI makes anyway,
@@ -332,12 +397,64 @@ instructions can't steer the change, and the card can't differ from what Confirm
 - **Tablets:** they get the moved lines with their next pull. The plan checks that the tablet's pull
   applies a line's new product (and its stock rows), on the emulator, before release 1b.
 
-### Kids Corner's first job (Q35)
+### Tidy the stock: one plan (Q46 to Q50)
 
-Tidy Colour (84 spellings → about 58) and Style (12 → 6), merging the one pair that clashes, and deleting
-the leftover line of the deleted twin. Then split by Style into five products: Plain 150 lines, Stripe
-82, Design 29, Plain Colle Mao 15, Stripe Colle Mao 8. The owner runs it from their Claude after release
-1b.
+- **`plan` tool.** Claude first reads the catalog or a part of it through the question tools (values
+  with counts, names, categories). It then sends a plan made of rules:
+  - categories and subs to make or keep;
+  - for each product: its category path, its value renames per option, its option renames (Age →
+    Size), and whether to split it by an option (with a name per value or group) or move it into
+    another product;
+  - deletes (an emptied product, a twin's leftover line).
+- **The server expands the rules** into exact steps on exact lines, using the same functions as the
+  single tools: `variant_value_rename`, `variant_merge`, `variants_move`, category saves and deletes.
+- **It refuses the plan unless:**
+  - every live line ends in exactly one product;
+  - the pieces per branch are equal before and after;
+  - every barcode is kept, except the ones the card names as lost in a merge;
+  - no product passes 1000 lines.
+- **The card is a tree** (category › sub › product), each product with its lines and pieces. It opens
+  to show its options and values, each value with the spellings it came from. "New", "kept" and
+  "deleted" are marked, and the check shows in green.
+- **Corrections** ("call it Long Sleeve Design", "put 3-6m to 24m in a Baby sub") make a new proposal
+  and a new card. The last one is the one that can be confirmed.
+- **Confirm** runs every step in one transaction, logged as one change. Restore undoes it for 30 days:
+  it puts each line back in its old product with its old values, and brings back what was deleted. It
+  refuses if any of those lines changed since.
+- Names are suggested as sub category + value ("Long Sleeve Design") and written as shown on the card.
+
+### Importing a file through Claude (Q52 to Q55)
+
+- Claude reads the uploaded xlsx itself and maps its columns to the import's own columns: name,
+  category, sub category, price, cost, options and values, barcode, SKU, stock, sold by, count stock.
+- **`import` tool.** It takes the mapped rows in parts of up to 200, for a draft kept on the server
+  (`assistant_imports`, RLS per tenant, gone after a day).
+  - With the last part it runs `catalog_import` as a dry run, with the spelling rules of Q5 applied to
+    the values first. The card is built from that answer.
+  - The card shows: products new and updated, new lines, opening stock per branch; how Claude read the
+    file ("Couleur → Colour"); the rules applied ("striped → stripe"); and each problem with its row
+    number, its reason (the import's own) and Claude's proposed fix.
+- **A fourth option** (Q54): Claude asks how to fold it in before it sends the rows: into a value
+  ("Beige (lin)"), into the name, or as its own product.
+- **Lines that already hold stock** (Q55): `catalog_import` skips the stock of a line that holds some
+  or has moved. Claude asks once whether to add (received) or replace (count). Those rows become stock
+  changes of the same proposal.
+- **Confirm** runs the import for real with the stored rows and those stock changes, in one
+  transaction. Products with a problem are left out and listed, as the back office import does.
+- The tablet sees the result at its next pull. Not confirmed yet: that Claude reads xlsx on the
+  owner's plan and on the phone. This is checked on the test copy.
+
+### Kids Corner's first job (Q35, Q50)
+
+"Tidy the stock":
+1. Make Shirt › Long Sleeve.
+2. Tidy Colour (84 spellings → about 58) and Style (12 → 6), merging the one pair that clashes.
+3. Rename Age to Size.
+4. Split by Style into five products under Shirt › Long Sleeve: Long Sleeve Plain 150 lines, Stripe 82,
+   Design 29, Plain Colle Mao 15, Stripe Colle Mao 8.
+5. Delete the emptied Chemise Long Sleeve and its twin's leftover line.
+
+The owner runs it from their Claude after release 1b.
 
 ### Back office pages
 
