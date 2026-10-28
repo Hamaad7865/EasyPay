@@ -35,6 +35,8 @@ function loader(client, ctx, route) {
     // the branch picked in the back office (web/lib/branch.ts): the caller says which with ctx.branch
     'next/headers': {
       cookies: async () => ({ get: (k) => (k === 'bo-branch' && ctx.branch ? { value: ctx.branch } : undefined), set() {} }),
+      // a request as it reaches easypaypos.com (the EasyPay in Claude page shows its own address)
+      headers: async () => new Map([['host', 'easypaypos.com'], ['x-forwarded-proto', 'https']]),
     },
     '@/lib/tenant': {
       tenantContext: async () => ctx, requirePerm: async () => ctx, isSuspended: () => false,
