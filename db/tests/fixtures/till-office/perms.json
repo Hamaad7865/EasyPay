@@ -105,6 +105,10 @@
           "Sign in to the back office"
         ],
         [
+          "assistant.use",
+          "Use the assistant: connect EasyPay to their own Claude"
+        ],
+        [
           "reports.view",
           "See reports"
         ],
@@ -234,6 +238,10 @@
         [
           "backoffice.access",
           "Sign in to the back office"
+        ],
+        [
+          "assistant.use",
+          "Use the assistant: connect EasyPay to their own Claude"
         ],
         [
           "reports.view",

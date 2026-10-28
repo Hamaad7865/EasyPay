@@ -59,6 +59,7 @@ object Perms {
         )),
         Group("Back office", listOf(
             "backoffice.access" to "Sign in to the back office",
+            "assistant.use" to "Use the assistant: connect EasyPay to their own Claude",
             "reports.view" to "See reports",
             "items.edit" to "Edit the menu, taxes and stock",
             "employees.edit" to "Manage staff and roles",
@@ -98,6 +99,7 @@ object Perms {
         )),
         Group("Back office", listOf(
             "backoffice.access" to "Sign in to the back office",
+            "assistant.use" to "Use the assistant: connect EasyPay to their own Claude",
             "reports.view" to "See reports",
             "items.edit" to "Edit the catalog, taxes and discounts",
             "employees.edit" to "Manage staff and roles",
