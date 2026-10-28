@@ -70,6 +70,21 @@ import kotlinx.coroutines.launch
 
 private const val BARS = "M4 6v12M8 6v12M11 6v12M15 6v12M18 6v12M20 6v12"
 
+// how many variants a product has before the sheet that asks which opens with a search
+private const val SEARCH_FROM = 12
+
+// The variants with every word typed somewhere in their name (its values,
+// "Black / 15 / Plain"), their SKU or their barcode, case aside; all of them
+// when nothing is typed.
+internal fun variantsMatching(variants: List<ItemVariantEntity>, q: String): List<ItemVariantEntity> {
+    val words = q.lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
+    if (words.isEmpty()) return variants
+    return variants.filter { v ->
+        val hay = listOfNotNull(v.name, v.sku, v.barcode).joinToString(" ").lowercase()
+        words.all { it in hay }
+    }
+}
+
 // The shop's products as a place to pick from: found by tapping a tile, by
 // searching a name, a SKU or a barcode, or by scanning. Print labels, an
 // order, a delivery and a count each hold one and draw ProductPane from it.
@@ -186,14 +201,26 @@ fun ProductPane(p: ProductPick, modifier: Modifier, empty: String = "No products
 // A product that comes in variants: which of them are meant. Each is a key
 // that is in or out; `all` is one tap for every size of it.
 // hint: what the sheet says under the product's name. some: the key's words for how many are chosen.
+// A product with more than SEARCH_FROM of them (a shop's shirt in 40 colours
+// and 20 ages) opens with a search: colour, size, style, SKU or barcode, the
+// words in any order. What was tapped stays chosen while the search changes,
+// and All then means all of the ones shown.
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WhichSheet(p: ProductPick, picked: ProductPick.Picked, hint: String, all: String = "All of them", none: String = "Tap the ones you mean", some: (Int) -> String) {
     var chosen by remember(picked) { mutableStateOf(emptySet<String>()) }
-    Sheet(onDismiss = { p.closePicker() }, width = 600.dp, pad = 24.dp, gap = 18.dp) {
+    var q by remember(picked) { mutableStateOf("") }
+    val searching = picked.variants.size > SEARCH_FROM
+    val shown = if (searching) variantsMatching(picked.variants, q) else picked.variants
+    val narrowed = shown.size < picked.variants.size
+    Sheet(onDismiss = { p.closePicker() }, width = 600.dp, pad = 24.dp, gap = 18.dp, top = searching) {
         SheetHead(picked.item.name, hint) { p.closePicker() }
+        if (searching) {
+            Field(q, { q = it.take(60) }, "Search its ${picked.variants.size} variants: colour, size, SKU, barcode", Modifier.fillMaxWidth(), height = 50.dp, size = 16.sp)
+            if (shown.isEmpty()) T("No variant of it matches that.", 14.sp, 600, V.Text2)
+        }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            picked.variants.forEach { v ->
+            shown.forEach { v ->
                 val on = v.id in chosen
                 Column(
                     Modifier.height(64.dp).widthIn(min = 110.dp).press { chosen = if (on) chosen - v.id else chosen + v.id }.clip(RoundedCornerShape(14.dp)).background(if (on) V.On else V.Key).padding(horizontal = 16.dp),
@@ -205,7 +232,7 @@ fun WhichSheet(p: ProductPick, picked: ProductPick.Picked, hint: String, all: St
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            VBtn(all, Modifier.weight(1f), height = 56.dp, radius = 16.dp, size = 16.sp) { p.pick(picked.item, picked.variants) }
+            VBtn(if (narrowed) "All ${shown.size} shown" else all, Modifier.weight(1f), height = 56.dp, radius = 16.dp, size = 16.sp, enabled = shown.isNotEmpty()) { p.pick(picked.item, shown) }
             val n = chosen.size
             VBtn(
                 if (n == 0) none else some(n), Modifier.weight(2f),
