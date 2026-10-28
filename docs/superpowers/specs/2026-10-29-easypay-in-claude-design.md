@@ -428,8 +428,8 @@ instructions can't steer the change, and the card can't differ from what Confirm
 
 - Claude reads the uploaded xlsx itself and maps its columns to the import's own columns: name,
   category, sub category, price, cost, options and values, barcode, SKU, stock, sold by, count stock.
-- **`import` tool.** It takes the mapped rows in parts of up to 200, for a draft kept on the server
-  (`assistant_imports`, RLS per tenant, gone after a day).
+- **`import` tool.** As built, it takes the mapped rows in one call, up to 3000; a bigger file goes
+  through the back office's import. There are no parts and no server draft.
   - With the last part it runs `catalog_import` as a dry run, with the spelling rules of Q5 applied to
     the values first. The card is built from that answer.
   - The card shows: products new and updated, new lines, opening stock per branch; how Claude read the

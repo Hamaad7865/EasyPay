@@ -344,6 +344,72 @@ export function serverFor(w: Who, origin: string): McpServer {
     "Delete products, some lines of a product, or a category. Their stock is written off; Restore can bring them back for 30 days.",
     z.object({ what: z.enum(["products", "lines", "category"]), ids: z.array(z.string()), product: z.string().optional().describe("For lines: the product's id"), asked }),
   );
+  change(
+    "tidy",
+    "Tidy an option's spellings",
+    "One option of one product: its spellings of one thing made one (white, White → White; stripe, Stripes, Striped → Stripe). Lines that become the same are merged, with their stock.",
+    z.object({
+      product: z.string(),
+      option: z.string().describe("The option's name, e.g. Colour"),
+      names: z.record(z.string(), z.string()).optional().describe("Another name for a group than the one proposed, e.g. {\"Military\": \"Militaire\"}"),
+      asked,
+    }),
+  );
+  change(
+    "rename_option",
+    "Rename an option",
+    "An option of a product called something else, e.g. Age → Size. The lines' values stay.",
+    z.object({ product: z.string(), option: z.string(), to: z.string(), asked }),
+  );
+  change(
+    "split",
+    "Split a product",
+    "One product into several, by an option (each value its own product) or by groups of values. Lines keep their barcodes, stock and history; the option leaves the new products. Tidy the option first if it has several spellings.",
+    z.object({
+      product: z.string(),
+      by: z.string().describe("The option split on, e.g. Style"),
+      names: z.record(z.string(), z.string()).optional().describe("A name for each value's product, e.g. {\"Design\": \"Long Sleeve Design\"}"),
+      groups: z.record(z.string(), z.array(z.string())).optional().describe("Instead: each new product's name with the values it takes"),
+      category: z.string().optional().describe("Where the new products go, e.g. 'Shirt › Long Sleeve'"),
+      asked,
+    }),
+  );
+  change(
+    "move",
+    "Move lines into another product",
+    "Some or all lines of a product into another product, keeping barcodes, stock and history.",
+    z.object({ product: z.string(), into: z.string(), lines: z.array(z.string()).optional(), drop: z.string().optional().describe("An option the lines lose on the way"), asked }),
+  );
+  change(
+    "plan",
+    "Tidy the stock: a plan",
+    "Several changes as one plan with one Confirm, each step worked out on the steps before it. Steps: edit_category, edit_product, tidy, rename_option, split, move, delete, each with the same args as its own tool. EasyPay checks every line and piece is accounted for.",
+    z.object({ steps: z.array(z.object({ tool: z.string(), args: z.record(z.string(), z.unknown()) })), asked }),
+  );
+  change(
+    "import",
+    "Import rows from a file",
+    "Rows you read from a file the owner gave you (xlsx, csv), in EasyPay's columns. Prices in rupees, stock in pieces, up to three options per product by name.",
+    z.object({
+      rows: z.array(
+        z.object({
+          n: z.number().optional().describe("The row's number in the file"),
+          name: z.string(),
+          category: z.string().optional(),
+          sub_category: z.string().optional(),
+          brand: z.string().optional(),
+          price: z.number().optional(),
+          cost: z.number().optional(),
+          stock: z.number().optional(),
+          sku: z.string().optional(),
+          barcode: z.string().optional(),
+          options: z.record(z.string(), z.string()).optional().describe("e.g. {\"Colour\": \"Red\", \"Size\": \"10\"}"),
+        }),
+      ),
+      existing: z.enum(["add", "set"]).optional().describe("For lines that already hold stock: add the file's quantities, or set them to it. Ask the owner when EasyPay asks."),
+      asked,
+    }),
+  );
   change("start_over", "Start over", "While the shop is being set up: hide every product, line and category, to start the catalog again.", z.object({ asked }));
   change("restore", "Restore", "Bring back a delete or a start over, from the change log, within 30 days.", z.object({ change: z.string().describe("The change's id from the log"), asked }));
   void KINDS;

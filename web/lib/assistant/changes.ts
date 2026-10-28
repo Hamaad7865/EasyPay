@@ -5,6 +5,7 @@ import { random, sha256, type Who } from "./oauth";
 import { branches, lines, pieces, product, rs, sheetOf, spellings, stock, tileOf, type Branch, type Line, type Product } from "./catalog";
 import { read, thousandths, cents, titled } from "./words";
 import type { DoneCard, PreviewCard, Reading, Sheet, StockMove, Tile, Warning } from "./types";
+import { Ask, No, RESHAPE, STEPS } from "./reshape";
 
 // A change through Claude (spec, The preview is the real change, undone):
 //   1. plan: what the AI sent, read against the shop's own rows into exact
@@ -18,8 +19,8 @@ import type { DoneCard, PreviewCard, Reading, Sheet, StockMove, Tile, Warning } 
 // Every value the database fills in on the way (a barcode made by the shop's
 // setting) is read back at the preview and stored, so Confirm makes the same.
 
-export class Ask extends Error {}
-export class No extends Error {}
+// the question back and the refusal, the same classes for every change (reshape.ts makes them)
+export { Ask, No };
 
 type Params = Record<string, unknown>;
 type Planned = { params: Params; readings: Reading[]; title: string; touched: Record<string, string> };
@@ -534,6 +535,47 @@ const startOver: Kind = {
   },
 };
 
+// What Restore puts back (spec Q13, Q47): the rows a delete or a start over
+// hid and the stock it wrote off; the lines a split or a move took, back in
+// their products with their values; a plan's steps, last first. Tidied
+// spellings stay tidy.
+async function undo(x: C, u0: unknown): Promise<void> {
+  const u = (u0 ?? {}) as { steps?: unknown[]; moves?: { line: string; item: string; values: string[] }[]; made?: string[]; revive?: string[]; items?: string[] };
+  for (const s of [...(u.steps ?? [])].reverse()) await undo(x, s);
+  if (u.moves) {
+    await x.c.query(`update items set deleted_at = null where tenant_id = $1 and id = any($2::uuid[])`, [x.t, u.revive ?? []]);
+    for (const m of u.moves) {
+      await x.c.query(`update item_variants set item_id = $3, option_values = $4, name = array_to_string($4::text[], ' / ') where tenant_id = $1 and id = $2`, [x.t, m.line, m.item, m.values]);
+      await x.c.query(`update stock_levels set item_id = $3 where tenant_id = $1 and variant_id = $2`, [x.t, m.line, m.item]);
+      await x.c.query(`update stock_movements set item_id = $3 where tenant_id = $1 and variant_id = $2`, [x.t, m.line, m.item]);
+    }
+    await x.c.query(
+      `update items i set deleted_at = now() where tenant_id = $1 and id = any($2::uuid[]) and not exists (select 1 from item_variants v where v.item_id = i.id and v.deleted_at is null)`,
+      [x.t, u.made ?? []],
+    );
+  }
+  if (u.items) await hiddenBack(x, u);
+}
+
+async function hiddenBack(x: C, u0: unknown): Promise<void> {
+  const u = u0 as { items: string[]; lines: string[]; categories: string[]; stock?: { store_id: string; item_id: string; variant_id: string | null; qty: number }[] };
+  const tops = (await x.c.query(`select id from categories where tenant_id = $1 and id = any($2::uuid[]) and parent_id is null`, [x.t, u.categories])).rows.map((r) => r.id);
+  await x.c.query(`update categories set deleted_at = null where tenant_id = $1 and id = any($2::uuid[])`, [x.t, tops]);
+  await x.c.query(`update categories set deleted_at = null where tenant_id = $1 and id = any($2::uuid[])`, [x.t, u.categories]);
+  await x.c.query(`update items set deleted_at = null where tenant_id = $1 and id = any($2::uuid[])`, [x.t, u.items]);
+  const clash = (await x.c.query(
+    `select v.name from item_variants v where v.tenant_id = $1 and v.id = any($2::uuid[]) and exists (
+       select 1 from item_variants o where o.tenant_id = v.tenant_id and o.item_id = v.item_id and o.deleted_at is null and o.id <> v.id
+          and lower(o.option_values::text) = lower(v.option_values::text)) limit 1`, [x.t, u.lines])).rows[0];
+  if (clash) throw new No(`A line ${clash.name} was made since, so the old one can't come back beside it.`);
+  await x.c.query(`update item_variants set deleted_at = null where tenant_id = $1 and id = any($2::uuid[])`, [x.t, u.lines]);
+  const o = (u as { options?: { item: string; names: string[] } | null }).options;
+  if (o && o.names.length) await x.c.query(`update items set option_names = $3 where tenant_id = $1 and id = $2 and coalesce(array_length(option_names, 1), 0) = 0`, [x.t, o.item, o.names]);
+  for (const h of u.stock ?? []) {
+    await x.c.query(`select stock_move($1,$2,$3,$4,$5,$6,null,null,null,$7,'Restored through Claude')`, [x.t, h.store_id, h.item_id, h.variant_id, h.qty, h.qty > 0 ? "found" : "internal", x.w.employeeId]);
+  }
+}
+
 // Restore a delete or a start over from the log (spec Q13).
 const restore: Kind = {
   perm: "items.edit",
@@ -545,32 +587,20 @@ const restore: Kind = {
     return { params: { log: l.id, undo: l.undo }, readings: [{ said: "restore", is: l.summary, note: null, isNew: false }], title: `Restore: ${l.summary}`, touched: {} };
   },
   async run(x, p) {
-    const u = p.undo as { items: string[]; lines: string[]; categories: string[]; stock?: { store_id: string; item_id: string; variant_id: string | null; qty: number }[] };
-    const tops = (await x.c.query(`select id from categories where tenant_id = $1 and id = any($2::uuid[]) and parent_id is null`, [x.t, u.categories])).rows.map((r) => r.id);
-    await x.c.query(`update categories set deleted_at = null where tenant_id = $1 and id = any($2::uuid[])`, [x.t, tops]);
-    await x.c.query(`update categories set deleted_at = null where tenant_id = $1 and id = any($2::uuid[])`, [x.t, u.categories]);
-    await x.c.query(`update items set deleted_at = null where tenant_id = $1 and id = any($2::uuid[])`, [x.t, u.items]);
-    const clash = (await x.c.query(
-      `select v.name from item_variants v where v.tenant_id = $1 and v.id = any($2::uuid[]) and exists (
-         select 1 from item_variants o where o.tenant_id = v.tenant_id and o.item_id = v.item_id and o.deleted_at is null and o.id <> v.id
-            and lower(o.option_values::text) = lower(v.option_values::text)) limit 1`, [x.t, u.lines])).rows[0];
-    if (clash) throw new No(`A line ${clash.name} was made since, so the old one can't come back beside it.`);
-    await x.c.query(`update item_variants set deleted_at = null where tenant_id = $1 and id = any($2::uuid[])`, [x.t, u.lines]);
-    const o = (u as { options?: { item: string; names: string[] } | null }).options;
-    if (o && o.names.length) await x.c.query(`update items set option_names = $3 where tenant_id = $1 and id = $2 and coalesce(array_length(option_names, 1), 0) = 0`, [x.t, o.item, o.names]);
-    for (const h of u.stock ?? []) {
-      await x.c.query(`select stock_move($1,$2,$3,$4,$5,$6,null,null,null,$7,'Restored through Claude')`, [x.t, h.store_id, h.item_id, h.variant_id, h.qty, h.qty > 0 ? "found" : "internal", x.w.employeeId]);
-    }
+    await undo(x, p.undo);
     await x.c.query(`update assistant_log set restored_at = now() where tenant_id = $1 and id = $2`, [x.t, p.log]);
     return { summary: "restored", lines: [] };
   },
   async view(_x, p) {
-    const u = p.undo as { items: string[]; lines: string[]; categories: string[] };
-    return { tile: null, sheet: null, stock: [], warnings: [], danger: false, confirm: "Restore", typeName: null, lines: [`${u.items.length} products, ${u.lines.length} lines, ${u.categories.length} categories come back`] };
+    const u = p.undo as { items?: string[]; lines?: string[]; categories?: string[]; moves?: unknown[]; steps?: unknown[] };
+    const said = u.moves || u.steps ? "Lines go back to the products they were in. Tidied spellings stay tidy." : `${u.items?.length ?? 0} products, ${u.lines?.length ?? 0} lines, ${u.categories?.length ?? 0} categories come back`;
+    return { tile: null, sheet: null, stock: [], warnings: [], danger: false, confirm: "Restore", typeName: null, lines: [said] };
   },
 };
 
-export const KINDS: Record<string, Kind> = { add_line: addLine, change_stock: changeStock, edit_lines: editLines, edit_category: editCategory, edit_product: editProduct, delete: remove, start_over: startOver, restore };
+export const KINDS: Record<string, Kind> = { add_line: addLine, change_stock: changeStock, edit_lines: editLines, edit_category: editCategory, edit_product: editProduct, delete: remove, start_over: startOver, restore, ...RESHAPE };
+// what a plan (tidy the stock) may do besides reshaping: make categories, edit a product, delete
+Object.assign(STEPS, { edit_category: editCategory, edit_product: editProduct, delete: remove });
 
 // ------------------------------------------------------- propose and confirm
 
