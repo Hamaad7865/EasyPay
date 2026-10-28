@@ -36,7 +36,7 @@ below was settled with the owner in grill-me rounds (Q1 to Q27, all taken as rec
 | Who | Back office logins whose role has a new permission, **Use the assistant**. It is off in every role but the owner's (which holds `*`). Each person acts with their own permissions. |
 | Q3 | Every change shows a preview card drawn like the tablet. It has four parts: "I read this as", the product's tile, the tablet's variant sheet with the line lit, and stock before → after. The card is built from the real result of the change, run and rolled back. |
 | Confirm | Every change waits for Confirm. Questions need no confirm. |
-| Q4 | Confirm is a button on the card. The AI can never press it. A back office page with the same preview is the fallback. A preview lasts 15 minutes, or until what it touches changes. |
+| Q4 | Confirm is a button on the card, and the AI must not be able to press it. That is checked on the test copy; if the check fails, every confirm opens the back office page. A back office page with the same preview is the fallback. A preview lasts 15 minutes, or until what it touches changes. |
 | Q5 | A word that matches values already used, ignoring capitals, spaces and plurals, takes the spelling most lines use. A word matching nothing is marked **New** in yellow. |
 | Q6 | A product or category not named exactly is searched for, and the owner chooses. Nothing is created unless the owner says "new". |
 | Q7 | A new line with no price said: if every line of the product has one price, that price is used. Otherwise the assistant asks first, suggesting the nearest lines' price (same age). Cost stays empty unless given. |
@@ -135,7 +135,8 @@ Changes (each returns a **preview card** and changes nothing):
 - `change_stock`: add N or count N, with a reason, at a branch.
 - `edit_lines`: price, cost, SKU or barcode of one or many lines.
 - `edit_product`, `edit_category` (with the verb in the input: new, rename or move): products and
-  categories, including a new product with its options.
+  categories. A new product can come with its options, or with none plus an opening stock (the owner's
+  first example: "import 6 shirt with category shirt, opening stock 6").
 - `tidy`: one option of one product (Q15, Q16).
 - `delete`: lines, a product, or a category (Q10, Q14).
 - `restore`: a delete from the log (Q13).
@@ -145,12 +146,28 @@ the AI and only the card's button calls it. Claude doesn't promise to refuse a c
 so the server refuses any confirm without the card's one-time code. Each change tool also takes
 `asked`: the owner's words, kept for the log.
 
+**Where the code travels, and what is promised:**
+- The code goes only in the tool result's `_meta`, never in its text or `structuredContent`. The MCP
+  Apps spec describes `_meta` as "not intended for model context", but as advice, not a rule. Claude's
+  own handling is not documented.
+- **Guaranteed human:** a confirm on the back office page, which needs the person's own signed-in
+  browser.
+- **The card's button:** protected as long as Claude keeps `_meta` from the AI. That is checked on the
+  test copy (below) by asking Claude to read out the code and to confirm by itself. If either works,
+  the card's button goes, and every confirm opens the back office page.
+
 ### The preview is the real change, undone
 
 1. The change tool opens a transaction as the tenant, runs the real function with the parameters it
    resolved, and reads back the rows a card needs: the product, its lines, their stock at the branch,
    the category, what a delete would hide.
 2. It then rolls back. Nothing is kept.
+   - Every value the database filled in during that run is read back and becomes a parameter. This
+     covers the automatic barcode (`assign_barcodes` takes it from `barcode_counters`, which the
+     rollback winds back, and another line made meanwhile would take it), the suggested price and the
+     branch.
+   - Confirm passes them explicitly, so the barcode on the card is the barcode made. If it was taken
+     in between, the proposal is stale.
 3. It writes a proposal (`assistant_proposals`, RLS per tenant). The proposal holds:
    - the kind and the resolved parameters;
    - before and after, and the "I read this as" list;
@@ -180,7 +197,9 @@ instructions can't steer the change, and the card can't differ from what Confirm
   - No match is **New** (yellow).
 - **Stock reason** (Q8): the plan maps received, found, damaged and lost to the movement reasons the
   stock pages already record, and a count to a stock count.
-- **Price** (Q7), **branch** (Q9), **barcode** (Q17) as decided. The card says where each came from:
+- **Branch** (Q9): a call from Claude has no working branch picked in a browser. A shop with one branch
+  uses it. A shop with several is asked which, unless the owner named one, and the card names it.
+- **Price** (Q7) and **barcode** (Q17) as decided. The card says where each came from:
   "said", "the product's price", "suggested from Red / 3 / Plain", "made by the shop's barcode setting".
 
 ### The card
@@ -203,6 +222,7 @@ instructions can't steer the change, and the card can't differ from what Confirm
   2. The tile.
   3. The sheet with the new or changed line lit.
   4. Stock before → after at the named branch.
+  A product with no options never opens a sheet on the tablet, so its card has parts 1, 2 and 4.
 - **Bigger changes:** a summary ("tidy Colour: 84 spellings → 58, 103 lines renamed, 1 pair merged")
   with the lists folded underneath.
 - **A delete:** red, listing lines, pieces and their value at cost (when the person may see cost),
@@ -257,8 +277,8 @@ instructions can't steer the change, and the card can't differ from what Confirm
 
 - **Database suites on dev**, in one transaction that rolls back, as the others do:
   - a proposal changes nothing;
-  - Confirm makes exactly what the card showed (the rows read at the preview equal the rows after
-    Confirm, ids aside);
+  - Confirm makes exactly what the card showed: the rows read at the preview equal the rows after
+    Confirm, ids aside but barcodes included, even with a line made by someone else in between;
   - stale, expired and used proposals are refused, and so is a wrong code;
   - permissions: no Use the assistant, no `stock.adjust`, no See cost and profit;
   - a suspended shop and an offline plan;
@@ -272,13 +292,17 @@ instructions can't steer the change, and the card can't differ from what Confirm
 - **Tools.** Through the SDK's in-memory client: each tool's input and output, and the owner's own
   sentence "open stock for Shirt Long Sleeve quantity 5, colour red, size 3 - 6m, style striped"
   against a copy of Kids Corner's lines. Expected: Chemise Long Sleeve, Age, 3-6m, stripe, a price
-  question, then a card.
+  question, then a card. Also "import 6 shirt with category shirt, opening stock 6". Expected: a
+  question first (a new product called Shirt, or one of the shirts there?), then a card with the tile
+  and 0 → 6.
 - **The card.** Rendered in headless Chrome from fixtures, light and dark, at phone width and desktop
   width. Its keys are checked against the tablet's sheet.
 - **The test copy (Q21).** A second Worker of the back office at a public test address, pointed at
   dev-review. The owner's part:
   - add that address to the sign-in service's trusted domains;
-  - add the connector in Claude, sign in with a test shop, and try the example from the phone.
+  - add the connector in Claude, sign in with a test shop, and try the example from the phone;
+  - ask Claude to read out the Confirm code and to confirm by itself. Both must fail, or the card's
+    button goes (see Tools).
   Only then production, with the usual release tag. The migration goes with it, and the site's routes
   for `/mcp`, `/oauth/*` and `/.well-known/*`.
 
