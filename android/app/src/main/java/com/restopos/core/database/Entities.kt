@@ -39,6 +39,8 @@ data class CategoryEntity(
     val is_stock: Boolean = false,
     // goods or services, for the MRA; null is the business's own (server 0116)
     val mra_nature: String? = null,
+    // the category it sits under (Shirt › Long Sleeve, server 0145); null for one at the top
+    val parent_id: String? = null,
 )
 
 @Entity(

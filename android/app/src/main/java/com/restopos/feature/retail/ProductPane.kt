@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.restopos.core.common.Money
 import com.restopos.core.common.Scanner
+import com.restopos.core.data.CategoryTree
 import com.restopos.core.data.Found
 import com.restopos.core.data.RetailSales
 import com.restopos.core.database.CategoryEntity
@@ -187,7 +188,8 @@ fun ProductPane(p: ProductPick, modifier: Modifier, empty: String = "No products
         }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CatKey("All", !searching && cat == null) { p.pickCat(null) }
-            cats.forEach { c -> CatKey(c.name, !searching && cat == c.id) { p.pickCat(c.id) } }
+            // the top categories; the one picked is followed by "All Shirt" and its subs
+            CategoryTree.chips(cats, cat).forEach { r -> CatKey(r.label, !searching && r.on) { p.pickCat(r.id) } }
         }
         LazyVerticalGrid(GridCells.Adaptive(176.dp), Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {

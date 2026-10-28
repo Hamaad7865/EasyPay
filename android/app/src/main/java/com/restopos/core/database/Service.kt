@@ -290,9 +290,10 @@ interface ServiceDao {
     @Query("DELETE FROM bookings") suspend fun clearBookings()
 
     // ---- the menu ----
+    // a category's items, a top one's subs' with its own (0145)
     @Query(
         """SELECT * FROM items WHERE deleted_at IS NULL
-           AND (:cat IS NULL OR category_id = :cat)
+           AND (:cat IS NULL OR category_id = :cat OR category_id IN (SELECT id FROM categories WHERE parent_id = :cat AND deleted_at IS NULL))
            AND (:q = '' OR name LIKE '%' || :q || '%' OR barcode = :q)
            ORDER BY name COLLATE NOCASE LIMIT 600""",
     )

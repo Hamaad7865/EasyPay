@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.restopos.core.common.Money
 import com.restopos.core.common.Scanner
+import com.restopos.core.data.CategoryTree
 import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.ExchangeDraft
 import com.restopos.core.data.LinePrice
@@ -419,6 +420,8 @@ private fun Products(vm: RetailViewModel, narrow: Boolean, modifier: Modifier) {
     val searching = q.isNotBlank()
     val scan by vm.scanMode.collectAsState()
     val band = anyPictured(items, { it.id }) { it.picture_id }
+    // the top categories, the one picked open to its subs; a top one's number holds its subs' products
+    val rows = remember(cats, cat, counts) { CategoryTree.rows(cats, cat, counts) }
 
     Column(modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -438,7 +441,8 @@ private fun Products(vm: RetailViewModel, narrow: Boolean, modifier: Modifier) {
         Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Rail(SellFit.rail(narrow)) {
                 item(key = "all") { RailKey("All", null, !searching && cat == null) { vm.pickCat(null) } }
-                items(cats, key = { it.id }) { c -> RailKey(c.name, counts[c.id], !searching && cat == c.id) { vm.pickCat(c.id) } }
+                // an open top one and its "All" row share an id, so the depth is in the key
+                items(rows, key = { "${it.id}/${it.depth}" }) { r -> RailKey(r.label, r.count, !searching && r.on, indent = r.depth > 0) { vm.pickCat(r.id) } }
             }
             LazyVerticalGrid(GridCells.Adaptive(150.dp), Modifier.weight(1f).fillMaxHeight(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {

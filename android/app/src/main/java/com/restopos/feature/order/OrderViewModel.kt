@@ -7,6 +7,7 @@ import com.restopos.core.common.Uuid7
 import com.restopos.core.common.tableLabel
 import com.restopos.core.data.Approvals
 import com.restopos.core.data.Calc
+import com.restopos.core.data.CategoryTree
 import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.LineInfo
 import com.restopos.core.data.ModPick
@@ -112,8 +113,9 @@ class OrderViewModel @Inject constructor(
     val cats: StateFlow<List<CategoryEntity>> = db.catalog().categories().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     private val pickedCat = MutableStateFlow<String?>(null)
     val query = MutableStateFlow("")
-    // a category is always showing: the one tapped, else the first
-    val cat: StateFlow<String?> = combine(cats, pickedCat) { all, sel -> sel?.takeIf { id -> all.any { it.id == id } } ?: all.firstOrNull()?.id }
+    // a category is always showing: the one tapped, else the first top one,
+    // whose items come with its subs' (Service.items reads both)
+    val cat: StateFlow<String?> = combine(cats, pickedCat) { all, sel -> sel?.takeIf { id -> all.any { it.id == id } } ?: CategoryTree.rows(all, null).firstOrNull()?.id }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     // a search looks through the whole menu, not only the open category
     val items: StateFlow<List<ItemEntity>> = combine(cat, query) { c, q -> (if (q.isBlank()) c else null) to q.trim() }

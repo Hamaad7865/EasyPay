@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.restopos.core.common.Money
 import com.restopos.core.common.tableLabel
+import com.restopos.core.data.CategoryTree
 import com.restopos.core.data.DiscountPick
 import com.restopos.core.data.LineInfo
 import com.restopos.core.data.ModPick
@@ -387,8 +388,11 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, narrow: Boolean, modifier: Mod
     val withOptions by vm.withOptions.collectAsState()
     val catCounts by vm.catCounts.collectAsState()
     val searching = q.isNotBlank()
-    val index = remember(cats) { cats.mapIndexed { i, c -> c.id to i }.toMap() }
+    // a sub is painted as its parent, and does not move the colours of the categories after it
+    val index = remember(cats) { CategoryTree.places(cats) }
     val byId = remember(cats) { cats.associateBy { it.id } }
+    // the top categories, the one showing open to its subs; a top one's number holds its subs' items
+    val rows = remember(cats, cat, catCounts) { CategoryTree.rows(cats, cat, catCounts) }
     // how many of each item are on the order and not sent yet
     val counts = remember(ui.fresh) { ui.fresh.groupBy { it.line.item_id }.mapValues { e -> e.value.sumOf { it.units } } }
     val band = anyPictured(items, { it.id }) { it.picture_id }
@@ -402,7 +406,10 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, narrow: Boolean, modifier: Mod
         }
         Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Rail(SellFit.rail(narrow)) {
-                items(cats, key = { it.id }) { c -> RailKey(c.name, catCounts[c.id], !searching && c.id == cat, colorOf(c, index[c.id] ?: 0)) { vm.pickCat(c.id) } }
+                // an open top one and its "All" row share an id, so the depth is in the key
+                items(rows, key = { "${it.id}/${it.depth}" }) { r ->
+                    RailKey(r.label, r.count, !searching && r.on, colorOf(byId[r.id], index[r.id] ?: 0), indent = r.depth > 0) { vm.pickCat(r.id) }
+                }
             }
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {

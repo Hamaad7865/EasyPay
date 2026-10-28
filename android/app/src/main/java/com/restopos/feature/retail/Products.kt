@@ -31,6 +31,7 @@ import androidx.lifecycle.viewModelScope
 import com.restopos.core.common.Money
 import com.restopos.core.common.Scanner
 import com.restopos.core.data.Approvals
+import com.restopos.core.data.CategoryTree
 import com.restopos.core.data.Found
 import com.restopos.core.data.LinePrice
 import com.restopos.core.data.NeedsApproval
@@ -273,7 +274,9 @@ fun ProductsScreen(vm: ProductsViewModel, onLabel: (ItemEntity) -> Unit = {}, on
         }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Cat("All", !searching && cat == null, null) { vm.pickCat(null) }
-            cats.forEachIndexed { n, c -> Cat(c.name, !searching && cat == c.id, catColor(c.color, n)) { vm.pickCat(c.id) } }
+            // the top categories; the one picked is followed by "All Shirt" and its subs, painted as it is
+            val places = CategoryTree.places(cats)
+            CategoryTree.chips(cats, cat).forEach { r -> Cat(r.label, !searching && r.on, catColor(byId[r.id]?.color, places[r.id] ?: 0)) { vm.pickCat(r.id) } }
         }
         Column(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)).background(V.Panel)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {

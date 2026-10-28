@@ -16,9 +16,10 @@ data class TaxUse(val id: String, val n: Int)
 @Dao
 interface CatalogDao {
     // Sale grid + search read from Room with paging (spec 7.3, 2,000 items).
+    // A top category shows its subs' items with its own (0145).
     @Query(
         """SELECT * FROM items WHERE deleted_at IS NULL
-           AND (:cat IS NULL OR category_id = :cat)
+           AND (:cat IS NULL OR category_id = :cat OR category_id IN (SELECT id FROM categories WHERE parent_id = :cat AND deleted_at IS NULL))
            AND (:q = '' OR name LIKE '%' || :q || '%')
            ORDER BY name""",
     )

@@ -85,6 +85,8 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         printer_ids = it.jsonObject["printer_ids"]?.takeIf { v -> v is kotlinx.serialization.json.JsonArray }?.toString() ?: "[]",
                         is_stock = bool(it, "is_stock", false),
                         mra_nature = str(it, "mra_nature"),
+                        // the category it sits under (0145)
+                        parent_id = str(it, "parent_id"),
                     )
                 })
             }

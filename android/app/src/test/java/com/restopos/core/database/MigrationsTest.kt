@@ -38,4 +38,12 @@ class MigrationsTest {
             assertTrue("from $from: $run", reset >= 0 && reset > phone)
         }
     }
+
+    // a sub category already put under its parent before this build is pulled again, its parent named (0145)
+    @Test fun a_till_on_38_pulls_the_categories_again_with_their_parents() {
+        val run = said(38)
+        val reset = run.indexOfLast { it == "UPDATE `sync_state` SET `cursor` = 0" }
+        val parent = run.indexOfFirst { it == "ALTER TABLE `categories` ADD COLUMN `parent_id` TEXT" }
+        assertTrue("$run", parent >= 0 && reset > parent)
+    }
 }

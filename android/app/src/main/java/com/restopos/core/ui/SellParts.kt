@@ -59,14 +59,15 @@ fun Rail(width: Dp, content: LazyListScope.() -> Unit) {
 }
 
 // One category in the list: lit as the till lights what is picked (V.On), with
-// how many products it holds, and for a restaurant its colour.
+// how many products it holds, and for a restaurant its colour. indent: one
+// under the top one that is open ("All Shirt", Long Sleeve), set further in.
 @Composable
-fun RailKey(label: String, count: Int?, on: Boolean, dot: Color? = null, onClick: () -> Unit) {
+fun RailKey(label: String, count: Int?, on: Boolean, dot: Color? = null, indent: Boolean = false, onClick: () -> Unit) {
     val bg by animateColorAsState(if (on) V.On else Color.Transparent, tween(160), label = "rail")
     val fg by animateColorAsState(if (on) V.OnText else V.Text2, tween(160), label = "railName")
     Row(
         Modifier.fillMaxWidth().heightIn(min = 50.dp).press(0.98f, onClick).clip(RoundedCornerShape(12.dp)).background(bg)
-            .padding(start = 14.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+            .padding(start = if (indent) 28.dp else 14.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         dot?.let { Box(Modifier.size(9.dp).clip(CircleShape).background(it)) }

@@ -6,6 +6,7 @@ import com.restopos.core.common.PinHash
 import com.restopos.core.common.Uuid7
 import com.restopos.core.data.Approvals
 import com.restopos.core.data.CategoryForm
+import com.restopos.core.data.CategoryTree
 import com.restopos.core.data.CompanyForm
 import com.restopos.core.data.ItemForm
 import com.restopos.core.data.NeedsApproval
@@ -124,7 +125,11 @@ class SetupViewModel @Inject constructor(
     }
     val items: StateFlow<List<ItemEntity>> = category.flatMapLatest { c ->
         if (c == null) flowOf(emptyList())
-        else combine(db.service().items(c, ""), waiting) { stored, mine -> stored + mine.filter { it.category_id == c && stored.none { s -> s.id == it.id } } }
+        // a top category's own and its subs', as the stored ones are read
+        else combine(db.service().items(c, ""), waiting, catsNow) { stored, mine, all ->
+            val covered = CategoryTree.covers(all, c).orEmpty()
+            stored + mine.filter { it.category_id in covered && stored.none { s -> s.id == it.id } }
+        }
     }.held(emptyList())
     val counts: StateFlow<Map<String, Int>> = combine(db.catalog().itemsPerCategory(), waiting) { rows, mine ->
         rows.associate { it.id to it.n }.toMutableMap().also { m -> mine.forEach { i -> i.category_id?.let { c -> m[c] = (m[c] ?: 0) + 1 } } }
