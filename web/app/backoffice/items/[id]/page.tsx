@@ -6,7 +6,7 @@ import { act, on, Refused, text, UUID } from "@/lib/action";
 import { parseRs } from "@/lib/money";
 import { fmtQty } from "@/lib/report";
 import { saveProductRow, saveVariantLines, setItemTax } from "@/lib/saves";
-import { branches } from "@/lib/branch";
+import { branches, formBranch, pickedOf, workingBranch } from "@/lib/branch";
 import { Card, Flash, PageHead, type Search } from "../../ui";
 import { Submit } from "../../busy";
 import { PriceFields, type TaxChoice } from "./price-fields";
@@ -32,6 +32,9 @@ const WHY: Record<string, string> = {
   "unknown-variant": "That line is no longer there. Reload the page.",
   "unknown-item": "That product is no longer there.",
   "unknown-value": "No line has that value any more. Reload the page.",
+  "variant-exists": "That variant is already there.",
+  "stock-not-counted": "This product counts no stock: leave the quantity empty.",
+  "bad-number": "A price, a cost or a quantity is below zero.",
 };
 // runs a change; a rule the database refuses it for becomes a sentence
 async function ruled<T>(run: () => Promise<T>): Promise<T> {
@@ -159,6 +162,43 @@ async function addOptions(f: FormData) {
     return `${created} ${created === 1 ? "line" : "lines"} made${existing ? `, ${existing} already there` : ""}. ${
       coded > 0 ? "Each has a barcode of yours: type the maker's own over it if the goods carry one." : "Give them barcodes below, or type the makers' own."
     }`;
+  });
+}
+
+// One line made for the values typed (migration 0142): a product with forty
+// colours is given the one it received, not every combination it lacks.
+async function addVariant(f: FormData) {
+  "use server";
+  const id = String(f.get("id") ?? "");
+  await act("items.edit", `${PATH}/${id}`, async (c, ctx) => {
+    if (!UUID.test(id)) throw new Refused("That product is no longer there.");
+    const values = [1, 2, 3].filter((n) => f.has(`value${n}`)).map((n) => text(f, `value${n}`, 30));
+    if (values.length === 0 || values.some((v) => v === "")) throw new Refused("Give every option a value.");
+    const rs = (k: string) => {
+      const raw = String(f.get(k) ?? "").trim();
+      if (raw === "") return null;
+      const cents = parseRs(raw);
+      if (cents === null) throw new Refused("A price or a cost is not a number.");
+      return cents;
+    };
+    const price = rs("price");
+    const cost = rs("cost");
+    const qtyText = String(f.get("qty") ?? "").trim().replace(",", ".");
+    const qty = qtyText === "" ? null : Math.round(Number(qtyText) * 1000);
+    if (qty !== null && (!Number.isFinite(qty) || qty < 0 || qty > 1_000_000_000)) throw new Refused("The quantity in stock is not a number.");
+    const store = qty ? await formBranch(c, ctx.tenantId, f.get("store")) : null;
+    if (qty && !store) throw new Refused("Pick a branch at the top of the page before giving a quantity.");
+    const mayCost = (await c.query(`select has_perm($1, 'costs.view') as ok`, [ctx.employeeId])).rows[0].ok as boolean;
+    const made = await ruled(() =>
+      c.query(`select variant_add($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) as id`, [
+        ctx.tenantId, id, values, price, mayCost ? cost : null, text(f, "sku", 60) || null, code(f, "barcode", 64), store, qty, ctx.employeeId,
+      ]),
+    );
+    // its name as the database wrote it, a value's spelling taken from the lines before it
+    const name = (await c.query(`select name from item_variants where tenant_id = $1 and id = $2`, [ctx.tenantId, made.rows[0].id])).rows[0].name as string;
+    // a shop that has its barcodes made automatically: the new line gets one now (migration 0080; nothing otherwise)
+    const coded = (await c.query(`select barcodes_auto($1, $2) as n`, [ctx.tenantId, id])).rows[0].n as number;
+    return `${name} added${coded > 0 ? ", with a barcode of yours" : ""}.`;
   });
 }
 
@@ -334,6 +374,42 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   const optionRows = hasLines ? options.filter((o) => o.name !== "") : options;
   const tax = item?.tax_id ?? d.taxes[0]?.id ?? "";
   const missingCodes = hasLines ? lines.filter((v) => !v.barcode).length : item && !item.barcode ? 1 : 0;
+  // the branch a new line's stock goes to: the one picked, or the account's only one
+  const working = workingBranch(d.all, await pickedOf(d.all));
+  // options named and values given, then every combination the product lacks: a new product's
+  // first lines, and folded under Add a variant once it has some
+  const combinations = item && (
+    <form action={addOptions}>
+      <input type="hidden" name="id" value={item.id} />
+      {optionRows.map((o, i) => {
+        const n = (hasLines ? options.indexOf(o) : i) + 1;
+        return (
+          <div key={n} className="form-row" style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 2fr)" }}>
+            <label className="field">
+              Option {n}
+              <input name={`opt${n}`} defaultValue={o.name} maxLength={30} placeholder={["Size", "Colour", "Material"][n - 1]} />
+            </label>
+            <label className="field">
+              {o.values.length > 0 ? "Add values" : "Values, separated by commas"}
+              <input name={`val${n}`} maxLength={300} placeholder={o.values.length > 0 ? "A new one, or several with commas" : ["S, M, L, XL", "White, Navy", "Cotton, Linen"][n - 1]} autoComplete="off" />
+              <input type="hidden" name={`has${n}`} value={o.values.join("\n")} />
+              {o.values.length > 0 && (
+                <span className="help has">
+                  <span>Has:</span>
+                  <span className="has-list">
+                    {o.values.map((v) => (
+                      <span key={v} className="badge">{v}</span>
+                    ))}
+                  </span>
+                </span>
+              )}
+            </label>
+          </div>
+        );
+      })}
+      <Submit className="btn-sm">{hasLines ? "Make the missing lines" : "Make the lines"}</Submit>
+    </form>
+  );
 
   return (
     <div>
@@ -462,38 +538,66 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
             title="Variants"
             lede={item ? "Sizes, colours or anything else it comes in. Each combination is a line with its own barcode, price, cost and stock." : "Save the product, then add its sizes and colours here."}
           >
-            {item && (
-              <form action={addOptions}>
+            {item && hasLines && (
+              <form action={addVariant}>
                 <input type="hidden" name="id" value={item.id} />
-                {optionRows.map((o, i) => {
-                  const n = (hasLines ? options.indexOf(o) : i) + 1;
-                  return (
-                    <div key={n} className="form-row" style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 2fr)" }}>
-                      <label className="field">
-                        Option {n}
-                        <input name={`opt${n}`} defaultValue={o.name} maxLength={30} placeholder={["Size", "Colour", "Material"][n - 1]} />
+                {working && <input type="hidden" name="store" value={working.id} />}
+                <p className="strong" style={{ margin: "0 0 10px" }}>Add a variant</p>
+                <div className="form-row" style={{ gridTemplateColumns: `repeat(${optionRows.length}, minmax(0, 1fr))` }}>
+                  {optionRows.map((o) => {
+                    const n = options.indexOf(o) + 1;
+                    return (
+                      <label key={n} className="field">
+                        {o.name}
+                        <input name={`value${n}`} list={`values${n}`} required maxLength={30} autoComplete="off" placeholder={o.values[0]} />
+                        <datalist id={`values${n}`}>
+                          {o.values.map((v) => (
+                            <option key={v} value={v} />
+                          ))}
+                        </datalist>
                       </label>
-                      <label className="field">
-                        {o.values.length > 0 ? "Add values" : "Values, separated by commas"}
-                        <input name={`val${n}`} maxLength={300} placeholder={o.values.length > 0 ? "A new one, or several with commas" : ["S, M, L, XL", "White, Navy", "Cotton, Linen"][n - 1]} autoComplete="off" />
-                        <input type="hidden" name={`has${n}`} value={o.values.join("\n")} />
-                        {o.values.length > 0 && (
-                          <span className="help has">
-                            <span>Has:</span>
-                            <span className="has-list">
-                              {o.values.map((v) => (
-                                <span key={v} className="badge">{v}</span>
-                              ))}
-                            </span>
-                          </span>
-                        )}
-                      </label>
-                    </div>
-                  );
-                })}
-                <Submit className="btn-sm">{hasLines ? "Make the missing lines" : "Make the lines"}</Submit>
+                    );
+                  })}
+                </div>
+                <div className="form-row">
+                  <label className="field">
+                    Barcode
+                    <input name="barcode" maxLength={64} autoComplete="off" placeholder="Scan it here, or leave empty" />
+                  </label>
+                  <label className="field">
+                    SKU
+                    <input name="sku" maxLength={60} autoComplete="off" placeholder="Your own code for it" />
+                  </label>
+                </div>
+                <div className="form-row">
+                  <label className="field">
+                    Price (Rs)
+                    <input name="price" inputMode="decimal" placeholder={rupees(item.price)} />
+                  </label>
+                  {d.mayCost && (
+                    <label className="field">
+                      Cost (Rs)
+                      <input name="cost" inputMode="decimal" placeholder={rupees(item.cost)} />
+                    </label>
+                  )}
+                  {item.track_stock && working && (
+                    <label className="field">
+                      {many ? `In stock at ${working.name}` : "In stock"}
+                      <input name="qty" inputMode="decimal" placeholder="0" />
+                    </label>
+                  )}
+                </div>
+                <Submit className="btn-sm">Add this variant</Submit>
               </form>
             )}
+            {item && hasLines && (
+              <details style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+                <summary className="strong" style={{ cursor: "pointer" }}>Make every combination</summary>
+                <p className="muted" style={{ margin: "6px 0 12px" }}>New values here make a line for every combination the product does not have yet.</p>
+                {combinations}
+              </details>
+            )}
+            {item && !hasLines && combinations}
             {item && hasLines && (
               <form action={renameValue} style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
                 <input type="hidden" name="id" value={item.id} />
