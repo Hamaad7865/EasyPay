@@ -85,7 +85,8 @@ export function tileOf(p: Product, ls: Line[], held: Map<string, number>, price?
     name: p.name,
     price: rs(price ?? p.price),
     category: p.path,
-    picture: p.picture ? `/backoffice/pictures/${p.picture}` : null,
+    // a picture is behind the back office's sign-in, which a card in Claude doesn't have: initials for now
+    picture: null,
     lines: ls.length,
     pieces: p.counted ? pieces(total) : null,
   };
