@@ -51,6 +51,8 @@ async function deleteMenu(f: FormData) {
       `update modifier_groups set deleted_at = now(), name = name || ' (removed ' || to_char(now(), 'YYYYMMDDHH24MISS') || ')' where tenant_id = $1 and deleted_at is null`,
       [ctx.tenantId],
     );
+    // sub categories before the categories they are under: one with live subs is not removed (0145)
+    await c.query(`update categories set deleted_at = now() where tenant_id = $1 and deleted_at is null and parent_id is not null`, [ctx.tenantId]);
     await c.query(`update categories set deleted_at = now() where tenant_id = $1 and deleted_at is null`, [ctx.tenantId]);
     return `The ${w.catalog} is empty: ${n.rowCount} ${w.items} removed. Receipts already issued keep the names of what was sold.`;
   });
