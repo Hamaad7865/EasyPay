@@ -150,6 +150,14 @@ check("a name with a script in it comes out as text", () => {
   }
   assert.ok(!outs[3].includes('href="javascript'));
 });
+check("a picture draws in the tile's band and in the sheet's square", () => {
+  const pic = "https://easypaypos.com/p/chemise.jpg";
+  const html = cardHtml({ ...cards.preview, tile: { ...tile, picture: pic } });
+  assert.ok(html.includes(`<div class="ep-band"><img src="${pic}" alt=""`));
+  assert.ok(html.includes(`<img class="ep-square" src="${pic}" alt=""`));
+  assert.ok(!cardHtml(cards.preview).includes("ep-square"), "no picture, no square, as on the till");
+  assert.ok(cardHtml(cards.preview).includes('<span class="ep-initials">CL</span>'));
+});
 check("none of the sample cards carries a script", () => {
   for (const html of all) assert.ok(!/<script/i.test(html));
 });
