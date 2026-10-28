@@ -7,6 +7,7 @@ import { Chev, downloadCsv, fold, NoMatch, Seg, SortTh, type Start, TableSearch,
 import { type AddonGroup, ItemEditor, type Tax } from "./editor";
 import { Submit } from "../busy";
 import type { Mode } from "@/lib/mode";
+import { type CategoryPick, within } from "@/lib/categories";
 
 export type Item = {
   id: string;
@@ -66,7 +67,7 @@ export function ItemsTable({
   showCost: boolean;
   // a shop's product opens on a page of its own; a restaurant's item in the panel
   mode: Mode;
-  items: Item[]; cats: { id: string; name: string }[]; taxes: Tax[]; groups: AddonGroup[]; start: Start;
+  items: Item[]; cats: CategoryPick[]; taxes: Tax[]; groups: AddonGroup[]; start: Start;
   // why the last save was refused, if it was
   problem: string;
   quickSave: Action; bulkSave: Action; saveItem: Action;
@@ -105,12 +106,14 @@ export function ItemsTable({
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
   const cat = t.get("category");
   const status = t.get("status");
+  // a category takes in its sub categories (0145)
+  const catIds = useMemo(() => within(cats, cat), [cats, cat]);
 
   const hay = useMemo(() => new Map(items.map((i) => [i.id, fold([i.name, i.cat ?? "", i.sku ?? "", i.barcode ?? "", i.codes].join(" "))])), [items]);
   const shown = t.sorted(
     items.filter(
       (i) =>
-        (!cat || (cat === "none" ? !i.cat_id : i.cat_id === cat)) &&
+        (!cat || (cat === "none" ? !i.cat_id : catIds.has(i.cat_id ?? ""))) &&
         (!status || (status === "on" ? i.is_available : status === "out" ? !i.is_available : status === "notax" ? !i.tax : true)) &&
         t.finds(hay.get(i.id)!),
     ),

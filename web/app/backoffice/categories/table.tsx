@@ -6,12 +6,32 @@ import { Back, Chev, fold, NoMatch, SortTh, type Start, TableSearch, useTable } 
 import { Submit } from "../busy";
 import type { Mode } from "@/lib/mode";
 
-export type Category = { id: string; name: string; hex: string; has_color: boolean; sort_order: number; is_stock: boolean; printer_ids: string[]; items: number; mra_nature: string | null };
+export type Category = {
+  id: string;
+  name: string;
+  hex: string;
+  has_color: boolean;
+  sort_order: number;
+  is_stock: boolean;
+  printer_ids: string[];
+  items: number;
+  mra_nature: string | null;
+  // a sub category (0145): the category it is under, and whether it keeps that one's settings
+  parent_id: string | null;
+  parent_name: string | null;
+  parent_order: number;
+  follows_parent: boolean;
+  subs: number;
+};
 type Action = (f: FormData) => Promise<void>;
 
-// The categories as one table, in the order the till shows them. A line says
-// where the category stands, where its items print and whether they are
-// counted; tapping it opens it to change any of that, or to remove it.
+// "Shirt › Long Sleeve" for a sub category, its own name for a category.
+const path = (r: Category) => (r.parent_name ? `${r.parent_name} › ${r.name}` : r.name);
+
+// The categories as one table, in the order the till shows them, each sub
+// category under its own. A line says where the category stands, where its
+// items print and whether they are counted; tapping it opens it to change any
+// of that, to put it under another, to add a sub category, or to remove it.
 // mraBusiness: for a Premium MRA client (0116), what the business sells ("" not
 // said yet); a category may say otherwise. Left out for any other client.
 export function CategoriesTable({
@@ -19,6 +39,7 @@ export function CategoriesTable({
   printers,
   start,
   save,
+  add,
   mode,
   mraBusiness,
 }: {
@@ -26,6 +47,7 @@ export function CategoriesTable({
   printers: { id: string; name: string }[];
   start: Start;
   save: Action;
+  add: Action;
   mode: Mode;
   mraBusiness?: string;
 }) {
@@ -35,13 +57,21 @@ export function CategoriesTable({
   const t = useTable("/backoffice/categories", start);
   const printerName = useMemo(() => new Map(printers.map((p) => [p.id, p.name])), [printers]);
   const prints = (r: Category) => r.printer_ids.map((id) => printerName.get(id)).filter((n): n is string => Boolean(n));
-  const hay = useMemo(() => new Map(rows.map((r) => [r.id, fold([r.name, ...prints(r), r.is_stock ? "counted stock" : ""].join(" "))])), [rows, printerName]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hay = useMemo(() => new Map(rows.map((r) => [r.id, fold([path(r), ...prints(r), r.is_stock ? "counted stock" : ""].join(" "))])), [rows, printerName]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tops = rows.filter((r) => !r.parent_id);
+  // in the till's order: a category, then its subs in their own order
+  const top = (r: Category) => (r.parent_id ? r.parent_name ?? "" : r.name);
   const shown = t.sorted(
     rows.filter((r) => t.finds(hay.get(r.id)!)),
     {
-      name: (a, b) => a.name.localeCompare(b.name),
-      order: (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name),
-      items: (a, b) => a.items - b.items || a.name.localeCompare(b.name),
+      name: (a, b) => path(a).localeCompare(path(b)),
+      order: (a, b) =>
+        a.parent_order - b.parent_order ||
+        top(a).localeCompare(top(b)) ||
+        Number(Boolean(a.parent_id)) - Number(Boolean(b.parent_id)) ||
+        a.sort_order - b.sort_order ||
+        a.name.localeCompare(b.name),
+      items: (a, b) => a.items - b.items || path(a).localeCompare(path(b)),
     },
   );
   const items = rows.reduce((a, r) => a + r.items, 0);
@@ -80,9 +110,11 @@ export function CategoriesTable({
                   <td>
                     <Chev open={on} name={r.name} onClick={() => t.toggle(r.id)} />
                   </td>
-                  <td className="strong">
+                  <td className="strong" style={r.parent_id ? { paddingLeft: 28 } : undefined}>
                     <span className="swatch" style={{ background: r.hex }} />
+                    {r.parent_id && <span className="muted">{r.parent_name} › </span>}
                     {r.name}
+                    {r.subs > 0 && <span className="muted"> · {r.subs === 1 ? "1 sub category" : `${r.subs} sub categories`}</span>}
                   </td>
                   <td className="num">{r.sort_order}</td>
                   {!shop && <td>{where.length ? where.join(", ") : <span className="muted">No printer</span>}</td>}
@@ -112,6 +144,27 @@ export function CategoriesTable({
                             Sequence
                             <input name="sort_order" type="number" min={0} max={999} defaultValue={r.sort_order} className="narrow" />
                           </label>
+                          {r.subs === 0 && (
+                            <label className="inline muted">
+                              Under
+                              <select name="parent" defaultValue={r.parent_id ?? ""}>
+                                <option value="">Nothing: a category</option>
+                                {tops
+                                  .filter((p) => p.id !== r.id)
+                                  .map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.name}
+                                    </option>
+                                  ))}
+                              </select>
+                            </label>
+                          )}
+                          {r.subs === 0 && (
+                            <label className="check" style={{ margin: 0 }}>
+                              <input type="checkbox" name="follows" defaultChecked={r.parent_id ? r.follows_parent : true} />
+                              {r.parent_name ? `Same settings as ${r.parent_name}` : "Same settings as the category it goes under"}
+                            </label>
+                          )}
                           <label className="inline muted">
                             Colour
                             <input type="color" name="color" defaultValue={r.hex} aria-label={`Colour for ${r.name}`} />
@@ -154,6 +207,17 @@ export function CategoriesTable({
                             </Submit>
                           </div>
                         </form>
+                        {!r.parent_id && (
+                          <form action={add} className="open-form" style={{ marginTop: 12 }}>
+                            <input type="hidden" name="parent" value={r.id} />
+                            <Back t={t} id={r.id} />
+                            <label className="inline muted">
+                              Sub category of {r.name}
+                              <input name="name" placeholder="Long Sleeve" required maxLength={40} />
+                            </label>
+                            <Submit className="btn-sm">Add sub category</Submit>
+                          </form>
+                        )}
                       </div>
                     </td>
                   </tr>

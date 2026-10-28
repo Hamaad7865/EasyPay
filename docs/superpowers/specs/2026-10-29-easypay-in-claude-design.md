@@ -100,10 +100,11 @@ Released first, on its own, for shops and restaurants alike.
   - `categories.parent_id`: null for a top category, else the category it sits under.
   - A guard refuses three things: a parent that is itself a sub, a parent from another business, and a
     category that has subs being put under another (one level only).
-  - A sub's own `color`, `is_stock`, `mra_nature` and `printer_ids` may be empty, meaning "as the
-    parent" (Q40). One function, `category_settings(tenant, category)`, answers what applies, and
-    everything that reads those settings asks it: the till's pull, kitchen printing, the MRA invoice
-    and Count its stock.
+  - Q40 as built (0145): a sub has `follows_parent` (default true). While it follows, the database
+    copies the parent's `color`, `is_stock`, `printer_ids` and `mra_nature` onto the sub's own row
+    when it is put under the parent, and again whenever the parent's change. So nothing that reads
+    those columns changes: the tills, kitchen printing, the MRA invoice and stock all keep reading the
+    sub's own row. Saving a sub's own settings, in the back office or on a till, stops it following.
   - Deleting a category that has live subs or products is refused (`category-not-empty`, Q42), unless
     the same change moves or deletes them.
   - The till pull sends `parent_id` with the categories, through the usual `select *`.

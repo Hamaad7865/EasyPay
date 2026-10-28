@@ -63,6 +63,8 @@ check("a supplier's headers are matched to what they are, in English or in Frenc
   assert.deepEqual(autoMap(["Item", "Retail price", "Qty", "EAN", "Dept", "Make", "Buy price"]), ["name", "price", "stock", "barcode", null, "brand", "cost"]);
   assert.deepEqual(autoMap(["Désignation", "Prix de vente", "Catégorie", "Code-barres", "Quantité", "Fournisseur", "TVA"]), ["name", "price", "category", "barcode", "stock", "supplier", "tax"]);
   assert.deepEqual(autoMap(["", "  ", "Notes"]), [null, null, null]);
+  // a sub category column beside the category (0145)
+  assert.deepEqual(autoMap(["Name", "Category", "Sub category", "Sous-catégorie"]).slice(0, 3), ["name", "category", "sub_category"]);
 });
 check("a kind of column is given to one header only: the first", () => {
   assert.deepEqual(autoMap(["Name", "Price", "Retail price", "Product"]), ["name", "price", null, null]);

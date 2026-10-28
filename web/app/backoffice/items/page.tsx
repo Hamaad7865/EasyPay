@@ -9,6 +9,7 @@ import { money, withDefaults } from "@/lib/settings";
 import { Flash, one, PageHead, type Search, startKey, startOf } from "../ui";
 import type { AddonGroup, Tax } from "./editor";
 import { type Item, ItemsTable } from "./table";
+import { CATEGORY_PICK_JSON, type CategoryPick } from "@/lib/categories";
 
 const PATH = "/backoffice/items";
 
@@ -192,8 +193,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
     menu: (
       await c.query(
         `select (select data from pos_settings where tenant_id = $1 and deleted_at is null) as settings,
-                coalesce((select json_agg(json_build_object('id', k.id, 'name', k.name) order by k.sort_order, k.name)
-                            from categories k where k.tenant_id = $1 and k.deleted_at is null), '[]'::json) as cats,
+                ${CATEGORY_PICK_JSON} as cats,
                 coalesce((select json_agg(json_build_object('id', t.id, 'name', t.name, 'rate_bp', t.rate_bp, 'type', t.type, 'is_default', t.is_default)
                                           order by t.is_default desc, t.rate_bp desc, t.name)
                             from taxes t where t.tenant_id = $1 and t.deleted_at is null), '[]'::json) as taxes,
@@ -202,14 +202,14 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
                             from modifier_groups g where g.tenant_id = $1 and g.deleted_at is null), '[]'::json) as groups`,
         [ctx.tenantId],
       )
-    ).rows[0] as { settings: unknown; cats: { id: string; name: string }[]; taxes: Tax[]; groups: AddonGroup[] },
+    ).rows[0] as { settings: unknown; cats: CategoryPick[]; taxes: Tax[]; groups: AddonGroup[] },
     items: (
       await c.query(
         `select i.id, i.name, i.price, i.open_price, i.is_available, i.category_id, i.sku, i.barcode, i.track_stock, i.cost,
                 (select count(*)::int from item_variants v where v.tenant_id = i.tenant_id and v.item_id = i.id and v.deleted_at is null) as variants,
                 (select string_agg(concat_ws(' ', v.sku, v.barcode), ' ') from item_variants v
                   where v.tenant_id = i.tenant_id and v.item_id = i.id and v.deleted_at is null) as variant_codes,
-                c.name as cat_name, c.color as cat_color, c.sort_order as cat_order,
+                case when cp.id is null then c.name else cp.name || ' › ' || c.name end as cat_name, c.color as cat_color, coalesce(cp.sort_order, c.sort_order) as cat_order,
                 (i.track_stock or coalesce(c.is_stock, false)) as tracked, coalesce(i.stock_qty, 0) as stock_qty,
                 (select string_agg(t.name, ', ') from item_taxes it join taxes t on t.tenant_id = it.tenant_id and t.id = it.tax_id
                   where it.tenant_id = i.tenant_id and it.item_id = i.id and it.deleted_at is null) as tax,
@@ -222,6 +222,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
                    left join categories pc on pc.tenant_id = p.tenant_id and pc.id = p.category_id
                   where p.track_stock or coalesce(pc.is_stock, false)) as parts_left
            from items i left join categories c on c.id = i.category_id and c.tenant_id = i.tenant_id
+                        left join categories cp on cp.id = c.parent_id and cp.tenant_id = c.tenant_id
           where i.deleted_at is null and i.tenant_id = $1
           order by c.sort_order nulls last, c.name nulls last, i.name`,
         [ctx.tenantId],

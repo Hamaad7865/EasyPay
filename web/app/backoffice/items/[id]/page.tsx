@@ -11,6 +11,7 @@ import { Card, Flash, PageHead, type Search } from "../../ui";
 import { Submit } from "../../busy";
 import { PriceFields, type TaxChoice } from "./price-fields";
 import { PicturePicker } from "./picture-picker";
+import { CATEGORY_PICK } from "@/lib/categories";
 
 // A shop's product, on a page of its own: what it is, what it costs and sells
 // for, who supplies it and when to reorder it, and its variants (sizes,
@@ -381,7 +382,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
               order by v.created_at, v.name`,
             [ctx.tenantId, id],
           ),
-      c.query(`select id, name from categories where tenant_id = $1 and deleted_at is null order by sort_order, name`, [ctx.tenantId]),
+      c.query(CATEGORY_PICK, [ctx.tenantId]),
       c.query(`select id, name, rate_bp, type, is_default from taxes where tenant_id = $1 and deleted_at is null order by is_default desc, name`, [ctx.tenantId]),
       c.query(`select id, name from suppliers where tenant_id = $1 and deleted_at is null order by lower(name)`, [ctx.tenantId]),
       c.query(`select has_perm($1, 'costs.view') as costs`, [ctx.employeeId]),

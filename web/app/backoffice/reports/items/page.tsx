@@ -11,7 +11,8 @@ import { BranchPicker } from "../../branch-picker";
 import { ReportFilters, Stat } from "../parts";
 
 // ex_vat, costed and cost: a shop's, for whoever may see costs (see itemSalesSql)
-type Row = { name: string; cat: string | null; qty: number; amount: string; ex_vat?: string; costed?: string; cost?: string | null };
+// sub: by category, a row for one of a category's sub categories, under its row and inside its figures (0145)
+type Row = { name: string; sub: string | null; cat: string | null; qty: number; amount: string; ex_vat?: string; costed?: string; cost?: string | null };
 const pct = (v: number | null) => (v === null ? "" : (v * 100).toFixed(1) + "%");
 
 export default async function ItemRank({ searchParams }: { searchParams: Search }) {
@@ -43,15 +44,17 @@ export default async function ItemRank({ searchParams }: { searchParams: Search 
   );
   if (!d.ok) return <div>{head}<div className="note warn">Your role does not include seeing reports.</div></div>;
   const m = (v: string | number) => money(Number(v), d.s.decimals);
-  const total = d.rows.reduce((a, r) => a + Number(r.amount), 0);
-  const qty = d.rows.reduce((a, r) => a + r.qty, 0);
+  // the figures are the rows' that are not inside another's
+  const mains = d.rows.filter((r) => !r.sub);
+  const total = mains.reduce((a, r) => a + Number(r.amount), 0);
+  const qty = mains.reduce((a, r) => a + r.qty, 0);
   const top = Math.max(1, ...d.rows.map((r) => Number(r.amount)));
   // one row for each product, or for each category, supplier or brand
   const byCat = d.f.group !== "item";
   const what = { item: shop ? "Product" : "Item", category: "Category", supplier: "Supplier", brand: "Brand" }[d.f.group];
   const many = { item: shop ? "Different products sold" : "Different items sold", category: "Categories sold", supplier: "Suppliers sold from", brand: "Brands sold" }[d.f.group];
   // profit is over the sales that have a cost: a product with none is not all profit
-  const sum = (k: "ex_vat" | "costed" | "cost") => d.rows.reduce((a, r) => a + Number(r[k] ?? 0), 0);
+  const sum = (k: "ex_vat" | "costed" | "cost") => mains.reduce((a, r) => a + Number(r[k] ?? 0), 0);
   const exVat = sum("ex_vat"), costed = sum("costed"), cost = sum("cost");
   return (
     <div>
@@ -62,7 +65,7 @@ export default async function ItemRank({ searchParams }: { searchParams: Search 
       ) : (
         <>
           <div className="stats">
-            <Stat label={many} value={String(d.rows.length)} />
+            <Stat label={many} value={String(mains.length)} />
             <Stat label="Quantity sold" value={fmtQty(qty)} />
             <Stat label="Sales" value={m(total)} />
             <Stat label="Best seller" value={d.rows[0].name} note={m(d.rows[0].amount)} />
@@ -97,9 +100,9 @@ export default async function ItemRank({ searchParams }: { searchParams: Search 
             </thead>
             <tbody>
               {d.rows.map((r, i) => (
-                <tr key={r.name + i}>
-                  <td className="num muted">{i + 1}</td>
-                  <td className="strong">{r.name}</td>
+                <tr key={r.name + (r.sub ?? "") + i}>
+                  <td className="num muted">{r.sub ? "" : mains.indexOf(r) + 1}</td>
+                  {r.sub ? <td style={{ paddingLeft: 28 }}><span className="muted">{r.name} › </span>{r.sub}</td> : <td className="strong">{r.name}</td>}
                   {!byCat && <td>{r.cat ?? <span className="muted">None</span>}</td>}
                   <td className="num">{fmtQty(r.qty)}</td>
                   <td className="num strong">{m(r.amount)}</td>

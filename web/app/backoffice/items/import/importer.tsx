@@ -17,6 +17,7 @@ const WHY: Record<string, string> = {
   "tax-unknown": "No tax of that name is set up. Use a name from Taxes, or leave it empty for the usual one.",
   "options-differ": "The rows of this product do not name the same options, or the product already has a different number of them.",
   "duplicate-line": "This line is in the file twice.",
+  "sub-without-category": "A sub category needs its category in the Category column.",
   "has-stock": "This product has stock of its own, so it cannot be given variants. Bring it to zero under Stock first.",
   "barcode-twice": "This barcode is on more than one row.",
   "sku-twice": "This SKU is on more than one row.",
@@ -308,6 +309,10 @@ export function Importer({ run }: { run: (rows: ImportRow[], dry: boolean) => Pr
       const news: string[] = [];
       if (r.category && cats.has(r.category.toLowerCase())) news.push(`${r.category} will be added as a new category`);
       if (r.category && back.has(r.category.toLowerCase())) news.push(`${r.category} was removed and will be brought back as a category`);
+      // a sub category is said as its path (0145)
+      const path = r.category && r.sub_category ? `${r.category} › ${r.sub_category}` : "";
+      if (path && cats.has(path.toLowerCase())) news.push(`${path} will be added as a new sub category`);
+      if (path && back.has(path.toLowerCase())) news.push(`${path} was removed and will be brought back as a sub category`);
       if (r.supplier && sups.has(r.supplier.toLowerCase())) news.push(`${r.supplier} will be added as a new supplier`);
       by.set(r.n, { news });
     }

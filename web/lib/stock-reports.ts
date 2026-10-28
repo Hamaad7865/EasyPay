@@ -115,12 +115,20 @@ export function lineOffSql(shop: boolean, r: string, kind: "discount" | "overrid
 export function itemSalesSql(receipts: string, group: "item" | "category" | "supplier" | "brand", withCost: boolean): string {
   const by = {
     item: `rl.name_snapshot`,
-    category: `coalesce(c.name, 'No category')`,
+    // a sub category's sales are its category's (0145); the sub's own come as rows under it (sub)
+    category: `coalesce(cp.name, c.name, 'No category')`,
     supplier: `coalesce(su.name, 'No supplier')`,
     brand: `coalesce(nullif(btrim(i.brand), ''), 'No brand')`,
   }[group];
   const cat = group === "item" ? "max(c.name)" : "null::text";
+  const sub = group === "category" ? "case when cp.id is not null then c.name end" : "null::text";
+  // by category: each category's row, then a row for each of its sub categories
+  const grouped = group === "category"
+    ? `group by grouping sets ((${by}), (${by}, ${sub})) having grouping(${sub}) = 1 or ${sub} is not null`
+    : "group by 1";
+  const ordered = "order by max(case when sub is null then amount end) over (partition by name) desc, name, sub nulls first, amount desc";
   const catalog = `left join categories c on c.tenant_id = $1 and c.id = i.category_id
+           left join categories cp on cp.tenant_id = $1 and cp.id = c.parent_id
            left join suppliers su on su.tenant_id = $1 and su.id = i.supplier_id`;
   const amount = `(line_amount(rl.unit_price, rl.qty) + coalesce((select sum(m.price) from receipt_line_modifiers m
                    where m.tenant_id = $1 and m.receipt_line_id = rl.id), 0))`;
@@ -137,17 +145,17 @@ export function itemSalesSql(receipts: string, group: "item" | "category" | "sup
                       and m.variant_id is not distinct from ${variant} and m.reason in ('sale', 'refund') and m.deleted_at is null
                     limit 1))`;
   if (!withCost) {
-    return `with r as (${receipts})
-         select ${by} as name, ${cat} as cat,
+    return `select * from (with r as (${receipts})
+         select ${by} as name, ${sub} as sub, ${cat} as cat,
                 sum(r.sign * rl.qty)::int as qty,
                 sum(r.sign * ${amount})::bigint as amount
            from r join receipt_lines rl on rl.tenant_id = $1 and rl.receipt_id = r.id
            left join ticket_lines tl on tl.tenant_id = $1 and tl.id = rl.ticket_line_id
            left join items i on i.tenant_id = $1 and i.id = tl.item_id
            ${catalog}
-          group by 1 order by 4 desc, 1`;
+          ${grouped}) q ${ordered}`;
   }
-  return `with r as (${receipts}),
+  return `select * from (with r as (${receipts}),
        l as (
          select r.id as receipt_id, r.sign, r.subtotal, r.discount_total, rl.id as line_id, rl.qty, rl.name_snapshot,
                 tl.item_id, tl.variant_id, tl.deposit_line_id, ${amount}::bigint as base
@@ -168,7 +176,7 @@ export function itemSalesSql(receipts: string, group: "item" | "category" | "sup
                     where p.cost is not null)) as unit_cost
            from x
        )
-       select ${by.replace("rl.", "y.")} as name, ${cat} as cat,
+       select ${by.replace("rl.", "y.")} as name, ${sub} as sub, ${cat} as cat,
               sum(y.sign * y.qty)::int as qty,
               sum(y.sign * y.base)::bigint as amount,
               sum(y.sign * y.ex_vat)::bigint as ex_vat,
@@ -177,5 +185,5 @@ export function itemSalesSql(receipts: string, group: "item" | "category" | "sup
          from y
          left join items i on i.tenant_id = $1 and i.id = y.item_id
          ${catalog}
-        group by 1 order by 4 desc, 1`;
+        ${grouped.replace(/rl./g, "y.")}) q ${ordered}`;
 }

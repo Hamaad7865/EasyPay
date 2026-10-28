@@ -12,7 +12,7 @@
 // without looking further at the row.
 export type CatalogRow = {
   n: number;
-  name?: string; category?: string; brand?: string; supplier?: string; supplier_code?: string;
+  name?: string; category?: string; sub_category?: string; brand?: string; supplier?: string; supplier_code?: string;
   o1?: string; v1?: string; o2?: string; v2?: string; o3?: string; v3?: string;
   sku?: string; barcode?: string; tax?: string;
   price?: number | null; cost?: number | null; reorder?: number | null; order_qty?: number | null; stock?: number | null;
@@ -35,6 +35,8 @@ export const FIELDS: { key: Target; label: string; required?: boolean; pair?: bo
   { key: "name", label: "Product name", required: true, words: ["name", "product", "productname", "item", "itemname", "description", "designation", "nom", "produit", "article", "libelle"] },
   { key: "price", label: "Selling price", required: true, words: ["price", "sellingprice", "sellprice", "retailprice", "retail", "rrp", "unitprice", "prix", "prixdevente", "prixvente", "pv"] },
   { key: "category", label: "Category", words: ["category", "cat", "department", "group", "categorie", "famille", "rayon"] },
+  // a category under the Category column's (0145): Shirt, then Long Sleeve
+  { key: "sub_category", label: "Sub category", words: ["subcategory", "subcat", "subgroup", "subdepartment", "souscategorie", "sousfamille", "sousrayon"] },
   { key: "brand", label: "Brand", words: ["brand", "make", "marque"] },
   { key: "supplier", label: "Supplier", words: ["supplier", "vendor", "suppliername", "fournisseur"] },
   { key: "supplier_code", label: "Supplier's code", words: ["suppliercode", "supplierscode", "supplierref", "vendorcode", "reffournisseur", "codefournisseur"] },

@@ -15,17 +15,33 @@ const HEX = /^#[0-9a-f]{6}$/i;
 // what a category with no colour of its own is painted with
 const PLAIN = "#3f8443";
 
+// What the database says when a category would go two levels deep, under one
+// that is not there, or away while subs are still in it (0145), in words.
+function tree(e: unknown): never {
+  const m = e instanceof Error ? e.message : "";
+  if (m === "too-deep") throw new Refused("A sub category can't have sub categories of its own, and a category that has some can't go under another.");
+  if (m === "bad-parent") throw new Refused("That category can't hold sub categories. Pick another.");
+  if (m === "category-not-empty") throw new Refused("This category still has sub categories. Move or remove them first.");
+  throw e;
+}
+
+// A category, or with a parent a sub category under it (0145): its settings
+// are the parent's until its own are saved.
 async function addCategory(f: FormData) {
   "use server";
-  await act("items.edit", PATH, async (c, ctx) => {
+  await act("items.edit", backTo(f, PATH), async (c, ctx) => {
     const name = text(f, "name", 40);
     const color = String(f.get("color") ?? "");
+    const parent = String(f.get("parent") ?? "");
     if (!name) throw new Refused("Give the category a name.");
-    await c.query(
-      `insert into categories (tenant_id, name, color, sort_order)
-       values ($1, $2, $3, (select coalesce(max(sort_order), -1) + 1 from categories where tenant_id = $1))`,
-      [ctx.tenantId, name, HEX.test(color) ? color : null],
-    );
+    if (parent && !UUID.test(parent)) throw new Refused("That category no longer exists. Reload the page.");
+    await c
+      .query(
+        `insert into categories (tenant_id, name, color, parent_id, sort_order)
+         values ($1, $2, $3, $4, (select coalesce(max(sort_order), -1) + 1 from categories where tenant_id = $1 and parent_id is not distinct from $4))`,
+        [ctx.tenantId, name, HEX.test(color) ? color : null, parent || null],
+      )
+      .catch(tree);
     return `${name} added.`;
   });
 }
@@ -40,12 +56,35 @@ async function saveCategory(f: FormData) {
     if (f.get("remove") === "1") {
       const n = await c.query(`select count(*)::int as n from items where tenant_id = $1 and category_id = $2 and deleted_at is null`, [ctx.tenantId, id]);
       if (n.rows[0].n > 0) throw new Refused(`This category still has ${n.rows[0].n} items. Move or remove them first.`);
-      await c.query(`update categories set deleted_at = now() where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id]);
+      await c.query(`update categories set deleted_at = now() where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id]).catch(tree);
       return "Category removed.";
     }
     const name = text(f, "name", 40);
     const color = String(f.get("color") ?? "");
     if (!name) throw new Refused("A category needs a name.");
+    // where it sits (0145): under a category, or on its own. A sub that keeps
+    // its parent's settings takes them back (the database copies them).
+    if (f.has("parent")) {
+      const parent = String(f.get("parent") ?? "");
+      if (parent && !UUID.test(parent)) throw new Refused("That category no longer exists. Reload the page.");
+      await c
+        .query(`update categories set parent_id = $3, follows_parent = $4 where tenant_id = $1 and id = $2 and deleted_at is null`, [
+          ctx.tenantId,
+          id,
+          parent || null,
+          !parent || on(f, "follows"),
+        ])
+        .catch(tree);
+      if (parent && on(f, "follows")) {
+        await c.query(`update categories set name = $3, sort_order = $4 where tenant_id = $1 and id = $2 and deleted_at is null`, [
+          ctx.tenantId,
+          id,
+          name,
+          int(f, "sort_order", 0, 999, 0),
+        ]);
+        return `${name} saved.`;
+      }
+    }
     // a Premium MRA client says whether a category's items are goods or services (0116)
     if (onMra(ctx.mra)) {
       await c.query(`update categories set mra_nature = $3 where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id, asNature(f.get("mra_nature"))]);
@@ -69,7 +108,18 @@ async function saveCategory(f: FormData) {
   });
 }
 
-type Row = { id: string; name: string; color: string | null; sort_order: number; is_stock: boolean; printer_ids: string[]; items: number; mra_nature: string | null };
+type Row = {
+  id: string;
+  name: string;
+  color: string | null;
+  sort_order: number;
+  is_stock: boolean;
+  printer_ids: string[];
+  items: number;
+  mra_nature: string | null;
+  parent_id: string | null;
+  follows_parent: boolean;
+};
 
 export default async function CategoriesPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
@@ -77,7 +127,7 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
   const d = await readTenant(ctx.tenantId, async (c) => ({
     rows: (
       await c.query(
-        `select c.id, c.name, c.color, c.sort_order, c.is_stock, c.printer_ids, c.mra_nature,
+        `select c.id, c.name, c.color, c.sort_order, c.is_stock, c.printer_ids, c.mra_nature, c.parent_id, c.follows_parent,
                 (select count(*)::int from items i where i.category_id = c.id and i.tenant_id = c.tenant_id and i.deleted_at is null) as items
            from categories c where c.deleted_at is null and c.tenant_id = $1 order by c.sort_order, c.name`,
         [ctx.tenantId],
@@ -99,17 +149,26 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
     ),
     nature: onMra(ctx.mra) ? (((await c.query(`select mra_nature from tenants where id = $1`, [ctx.tenantId])).rows[0]?.mra_nature as string | null) ?? "") : undefined,
   }));
-  const rows: Category[] = d.rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    hex: toHex(r.color) ?? PLAIN,
-    has_color: Boolean(r.color),
-    sort_order: r.sort_order,
-    is_stock: r.is_stock,
-    printer_ids: r.printer_ids ?? [],
-    items: r.items,
-    mra_nature: r.mra_nature,
-  }));
+  const named = new Map(d.rows.map((r) => [r.id, r]));
+  const rows: Category[] = d.rows.map((r) => {
+    const parent = r.parent_id ? named.get(r.parent_id) : undefined;
+    return {
+      id: r.id,
+      name: r.name,
+      hex: toHex(r.color) ?? PLAIN,
+      has_color: Boolean(r.color),
+      sort_order: r.sort_order,
+      is_stock: r.is_stock,
+      printer_ids: r.printer_ids ?? [],
+      items: r.items,
+      mra_nature: r.mra_nature,
+      parent_id: parent ? parent.id : null,
+      parent_name: parent ? parent.name : null,
+      parent_order: parent ? parent.sort_order : r.sort_order,
+      follows_parent: r.follows_parent,
+      subs: d.rows.filter((s) => s.parent_id === r.id).length,
+    };
+  });
   const start = startOf(sp, "q", "sort", "open");
   // Categories whose items reach nobody in the kitchen: no printer and no
   // kitchen screen ticked, and nothing that takes everything. A category added
@@ -139,13 +198,28 @@ export default async function CategoriesPage({ searchParams }: { searchParams: S
         <form action={addCategory} className="bo-toolbar" style={{ margin: 0 }}>
           <input name="name" placeholder="Name" required maxLength={40} style={{ minWidth: 260 }} />
           <input type="color" name="color" defaultValue={PLAIN} aria-label="Colour on the till" />
+          {rows.some((r) => !r.parent_id) && (
+            <label className="inline muted">
+              Under
+              <select name="parent" defaultValue="">
+                <option value="">Nothing: a category</option>
+                {rows
+                  .filter((r) => !r.parent_id)
+                  .map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}: a sub category
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
           <Submit>Add</Submit>
         </form>
       </Card>
       {rows.length === 0 ? (
         <Empty icon={Tags} title="No categories yet">Add the first one above, for example Starters or Drinks.</Empty>
       ) : (
-        <CategoriesTable key={startKey(sp, start)} rows={rows} printers={d.printers} start={start} save={saveCategory} mode={ctx.mode} mraBusiness={d.nature} />
+        <CategoriesTable key={startKey(sp, start)} rows={rows} printers={d.printers} start={start} save={saveCategory} add={addCategory} mode={ctx.mode} mraBusiness={d.nature} />
       )}
       {ctx.mode === "restaurant" && d.printers.length === 0 && (
         <p className="muted">
