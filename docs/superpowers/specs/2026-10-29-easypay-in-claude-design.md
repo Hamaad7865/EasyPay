@@ -4,9 +4,12 @@
 the owner will connect his claude app to the software. Then for example he will say, import 6 shirt with
 category shirt, opening stock 6 … we should be able to do everything, create a new category, delete
 everything". Then: "the ai needs to show how it will appear in the android apk for example if I say Please
-open stock for Shirt Long Sleeve quantity 5 variant color red, size 3 - 6m, style striped". Every choice
-below was settled with the owner in grill-me rounds (Q1 to Q27, all taken as recommended), ending with
-"lets use it this way": the owner's Claude subscription is used in Claude itself, through the connector.
+open stock for Shirt Long Sleeve quantity 5 variant color red, size 3 - 6m, style striped". And: "we need to enable every action edit add update delete but claude gives warning
+when something bad will happen … we should be able to delete everything and restart as from zero … theres
+one item but over 200 variants. Claude app should be able to also manipulate them and splitting those into
+different products and then the owner will approve them". Every choice below was settled with the owner in
+grill-me rounds (Q1 to Q35, all taken as recommended). "lets use it this way" settled that the owner's
+Claude subscription is used in Claude itself, through the connector.
 
 ## Why
 
@@ -54,12 +57,20 @@ below was settled with the owner in grill-me rounds (Q1 to Q27, all taken as rec
 | Q19 | Questions: stock, sales, best and slow sellers. Cost and profit need **See cost and profit**. Sales need **See reports**. Customers: names and what they owe (with See reports), never phone or email. |
 | Q20 | Settings (piece 2): taxes, discounts, promotions, till staff and roles, receipt wording. Never: PINs, passwords, back office logins, printers, tills, the plan, the MRA connection, payments. |
 | Q21 | Tested on a test copy of the back office at a public test address, against the dev database. The owner connects it from Claude, because Claude can't reach this PC. Production only after that. |
-| Q22 | Kids Corner's tidy is the assistant's first real job on production. Nothing is changed before it. |
+| Q22 | Kids Corner's clean-up is the assistant's first real job on production (see Q35). Nothing is changed before it. |
 | Q23 | The back office chat's component, model and price are decided at the start of piece 3. |
-| Q24 | Order: piece 1 (below), then 2 (settings), then 3 (the back office chat). Each piece is released once tested. |
+| Q24 | Order: piece 1 (below, released as 1a then 1b, Q34), then 2 (settings), then 3 (the back office chat). Each is released once tested. |
 | Q25 | For now the back office has a **Use EasyPay in Claude** page (the address and the steps), and no chat. Piece 3 adds a chat on EasyPay's own AI account, with a cheap model and a monthly allowance per shop. An owner's own API key may sit beside it later. |
 | Q26 | The Allow page says, in one line, that Claude will read and change the shop's data as this person, and that what it reads goes to Anthropic under their own Claude account. |
 | Q27 | A connection stays until Disconnect, or until the login loses the permission, is removed, or the shop is suspended. While suspended it can still answer questions but changes nothing. |
+| Q28 | Questions are answered with cards too, which change nothing: a product's stock as a grid (one per style, colours down, ages across, red below zero, amber low); lists of lines; a line's history (opening, sales, found, damaged, transfers, who and when, newest first). Tapping a number in a grid opens that line's history. |
+| Q29 | Edit one line: its values, price, cost, barcode or SKU. Edit a product: name, category, brand, price, option names. An edit that gives a line another line's values offers a merge (Q16). |
+| Q30 | Warnings, said by Claude and shown on the card. Amber: a price below cost, stock going below zero, a barcode change when labels are printed, a New spelling, editing a line that has sold. Red: any delete, and Start over. Typing the shop's name: the Q14 cases and Start over. |
+| Q31 | **Start over**, only while the shop is being set up (`platform.setting_up`). One change hides every product, line and category, with their stock and pictures; red card, typed shop name. Tills, staff, settings, customers and suppliers stay. Test sales stay until EasyPay clears them in /admin. Restore for 30 days. Not offered after Go live. |
+| Q32 | **Split** a product by an option, or by groups of values. Each line moves with its barcode, stock and history. The option split on leaves the new products and goes into their names. Each new product can be renamed and given a category before Confirm, and the old product is deleted once empty. A tidy is offered first when the option has several spellings. |
+| Q33 | **Move** lines, or **merge** a whole product, into another product, keeping barcodes, stock and history. Values that don't fit the other product's options are mapped with the owner before the card. |
+| Q34 | Piece 1 is released in two steps. 1a: connecting, the cards, add, edit, delete, Start over. 1b: tidy, split, move and merge. |
+| Q35 | Kids Corner tidies and splits what it has rather than starting over. That keeps the barcodes on its labels and the 582 pieces counted. Its first job: tidy Colour and Style, then split by Style. |
 
 ## Piece 1
 
@@ -129,17 +140,33 @@ Questions (the AI may call them freely; nothing changes):
 - `stock`: stock by product, option value or branch; lines below zero; lines running low.
 - `sales`: by day or period, by product or value; best and slow sellers. Needs See reports.
 - `owing`: customers and what they owe. Needs See reports. Never phone or email.
+- `history`: one line's stock movements, newest first, 50 at a time: reason, quantity, branch, who,
+  when, and the receipt or delivery it came from. Needs `stock.view`.
+
+These answer with read-only cards (Q28), drawn by the same renderer as the previews:
+- a product's grid, one per value of its last option when it has three, else one: the first option
+  down, the second across;
+- a list of lines;
+- a line's history.
+Pressing a number in a grid calls `history` from the card. That needs the tool to be visible to the
+card as well as the AI, which is harmless because it only reads.
 
 Changes (each returns a **preview card** and changes nothing):
 - `add_line`: one new line with its opening stock (the owner's example).
 - `change_stock`: add N or count N, with a reason, at a branch.
-- `edit_lines`: price, cost, SKU or barcode of one or many lines.
+- `edit_lines`: price, cost, SKU or barcode of one or many lines, and one line's values (Q29). Values
+  that equal another line's offer a merge instead.
 - `edit_product`, `edit_category` (with the verb in the input: new, rename or move): products and
   categories. A new product can come with its options, or with none plus an opening stock (the owner's
   first example: "import 6 shirt with category shirt, opening stock 6").
 - `tidy`: one option of one product (Q15, Q16).
 - `delete`: lines, a product, or a category (Q10, Q14).
-- `restore`: a delete from the log (Q13).
+- `restore`: a delete, or a Start over, from the log (Q13).
+- `start_over`: while setting up only (Q31). Release 1a.
+- `split`: one product into several, by an option or by groups of values (Q32). Release 1b.
+- `move`: lines, or a whole product, into another product (Q33). Release 1b.
+
+`tidy`, `split` and `move` come in release 1b. Everything else is in 1a.
 
 The Confirm tool, `confirm(proposal, code)`, has `_meta.ui.visibility: ["app"]`: Claude hides it from
 the AI and only the card's button calls it. Claude doesn't promise to refuse a call the AI makes anyway,
@@ -254,6 +281,64 @@ instructions can't steer the change, and the card can't differ from what Confirm
   that change hid. It refuses if a line with the same values, or the same barcode, was made since.
 - Never reachable: sales, receipts, payments, customer accounts, back office logins, the shop.
 
+### Warnings (Q30)
+
+- Each proposal carries a list of warnings, worked out by the server from the rows read back, never by
+  the AI. The AI repeats them in words, and the card shows them above the buttons.
+- **Amber:**
+  - a price below the line's cost;
+  - stock going below zero;
+  - a barcode changed, or dropped in a merge, on a line that has printed labels (the shop's label
+    history, else any line with a barcode);
+  - a New spelling;
+  - an edit to a line that has sold.
+- **Red:** every delete, and Start over.
+- **Typing the shop's name:** the Q14 cases and Start over.
+
+### Start over (Q31)
+
+- A new function, `catalog_start_over(tenant)`, refused unless the shop has its `platform.setting_up`
+  row. In one change it hides:
+  - every product, line and category;
+  - their stock rows;
+  - the pictures' links.
+  It changes no stock movement, sale, till, staff member, setting, customer or supplier.
+- The red card counts what goes: products, lines, categories, pieces and their value, and pictures.
+  It says test sales stay until EasyPay clears them, and that Restore brings everything back for 30
+  days.
+- The plan checks that an import after Start over makes new products rather than finding the hidden
+  ones by name, so the new catalog starts clean.
+
+### Split, move and merge (Q32, Q33)
+
+- A new function, `variants_move(tenant, lines, to_item, drop_option)`, moves lines to another product
+  and keeps their ids, so each line's barcode, stock levels and movements go with it:
+  - `item_variants.item_id`, `stock_levels.item_id` and `stock_movements.item_id` follow;
+  - when `drop_option` is given, that value leaves `option_values` and the name;
+  - a line that would equal one already in the target is refused, with the clash named (or offered
+    as a merge, Q16).
+- **`split`** makes the new products first, in the same transaction:
+  - the old product's category, brand, sold-by and stock setting are copied;
+  - its option names lose the split option;
+  - the product price is the price most of its lines have;
+  - the name is the old name plus the value or group ("Chemise Long Sleeve Stripe"), and the owner can
+    change it on the way.
+  - Then the lines are moved, and the old product is deleted when nothing is left in it.
+- **`move`** puts lines, or every line of a product, into an existing product. Values are mapped to the
+  target's options with the owner first ("Style is not an option there: drop it, or add it?").
+- **Sales:** receipts keep the name they printed (`receipt_lines.name_snapshot`), and a line's own
+  history goes with it. The plan checks how reports by product group a moved line's past sales, and
+  says so in the card if they stay under the old product.
+- **Tablets:** they get the moved lines with their next pull. The plan checks that the tablet's pull
+  applies a line's new product (and its stock rows), on the emulator, before release 1b.
+
+### Kids Corner's first job (Q35)
+
+Tidy Colour (84 spellings → about 58) and Style (12 → 6), merging the one pair that clashes, and deleting
+the leftover line of the deleted twin. Then split by Style into five products: Plain 150 lines, Stripe
+82, Design 29, Plain Colle Mao 15, Stripe Colle Mao 8. The owner runs it from their Claude after release
+1b.
+
 ### Back office pages
 
 - `/backoffice/assistant`, under Settings, for whoever holds Use the assistant:
@@ -284,7 +369,12 @@ instructions can't steer the change, and the card can't differ from what Confirm
   - a suspended shop and an offline plan;
   - a delete then Restore, and Restore refused after a clash;
   - `variant_merge` with stock at two branches;
-  - the tidy of a copy of Kids Corner's values (84 → 58, 12 → 6, one merge).
+  - the tidy of a copy of Kids Corner's values (84 → 58, 12 → 6, one merge);
+  - Start over: refused once live, and its Restore;
+  - a split of a copy of Kids Corner's 284 lines by Style (150 / 82 / 29 / 15 / 8): every barcode and
+    every stock level still there, history attached, the old product deleted;
+  - a move refused on a clash;
+  - the warnings: each one raised by the case that should raise it, and not otherwise.
 - **Sign-in.** The endpoints are tested against dev with a script that plays Claude's part: register,
   PKCE, code, token, refresh and its rotation, a 401 with the header, and a disconnected grant
   refused. No hosted-auth account is made: the authorize step is given a signed-in context as the
@@ -309,4 +399,5 @@ instructions can't steer the change, and the card can't differ from what Confirm
 ## Open for the owner
 
 - The test address's name, and adding it to the sign-in service's trusted domains (Q21).
-- After release: Kids Corner's tidy as the first job (Q22), run by the owner from their Claude.
+- After release 1b: Kids Corner's tidy and split as the first job (Q35), run by the owner from their
+  Claude.
