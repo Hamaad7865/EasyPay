@@ -83,6 +83,8 @@ data class ItemEntity(
     // what one of it is made of (server 0112, core/data/Parts): selling it
     // takes its parts off the stock, and it keeps none of its own
     val parts: String = "[]",
+    // the picture the back office set for it (server 0143), fetched once into item_pictures as "p:" and its id
+    val picture_id: String? = null,
 )
 
 @Entity(tableName = "modifier_groups")

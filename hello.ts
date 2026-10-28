@@ -618,6 +618,32 @@ app.get("/sync/pull", async (c) => {
   }
 });
 
+// A picture of a product or of a variant (migration 0143), fetched once by a
+// till whose pull named it in items.picture_id or item_variants.picture_id:
+// the business's own only, as its role. A picture is never changed (a new one
+// gets a new id), so the till keeps it for good.
+app.get("/pictures/:id", async (c) => {
+  let auth: Authed;
+  try {
+    auth = await requireTill(c.req.raw);
+  } catch (res) {
+    return res as Response;
+  }
+  const id = c.req.param("id");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return c.json({ error: "no such picture" }, 404);
+  try {
+    const out = await asTenant<{ jpeg: Buffer }>(auth.tenantId, (q) =>
+      q(`select jpeg from pictures where id = $1`, [id]).then((r) => r.rows),
+    );
+    if (!out[0]) return c.json({ error: "no such picture" }, 404);
+    return new Response(new Uint8Array(out[0].jpeg), {
+      headers: { "content-type": "image/jpeg", "cache-control": "private, max-age=31536000, immutable" },
+    });
+  } catch (err) {
+    return c.json({ error: "the picture could not be read" }, syncFailure("picture", err));
+  }
+});
+
 // What a till wrote down when it stopped unexpectedly, sent the next time it
 // runs: where in the program, which version, which tablet. At most ten at a
 // time, each cut to size by report_crashes; the same report twice is kept once.

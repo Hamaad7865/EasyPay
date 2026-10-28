@@ -153,7 +153,7 @@ fun ProductPane(p: ProductPick, modifier: Modifier, empty: String = "No products
     val byId = remember(cats) { cats.associateBy { it.id } }
     val searching = q.isNotBlank()
     val scan by p.scanMode.collectAsState()
-    val band = anyPictured(items) { it.id }
+    val band = anyPictured(items, { it.id }) { it.picture_id }
 
     Column(modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -63,6 +63,23 @@ class Pictures @Inject constructor(
 
     fun remove(item: String) = scope.launch { runCatching { db.pictures().drop(item) } }
 
+    // The pictures the back office set (server 0143), after a pull: each one
+    // the products and variants name is fetched once and kept as "p:" and its
+    // id; one nothing names any more is let go. A picture that is not there
+    // (404) is passed over; anything else (no network) leaves the rest for the
+    // next pull.
+    suspend fun fetchNamed(api: com.restopos.core.network.ApiClient) = withContext(Dispatchers.IO) {
+        db.pictures().dropUnnamed()
+        for (id in db.pictures().unfetched()) {
+            val jpeg = try {
+                api.picture(id)
+            } catch (e: com.restopos.core.network.ApiError) {
+                if (e.status == 404) continue else throw e
+            }
+            db.pictures().put(ItemPictureEntity(serverKey(id), jpeg, System.currentTimeMillis()))
+        }
+    }
+
     private fun keep(item: String, read: () -> Bitmap) = scope.launch {
         runCatching {
             val small = small(read())
@@ -80,6 +97,9 @@ class Pictures @Inject constructor(
     companion object {
         // the long side of a kept picture, in pixels: twice a card's width on the sharpest tablet the till is drawn for
         const val MOST = 640
+
+        // where a picture the back office set is kept among the tablet's (server 0143)
+        fun serverKey(id: String) = "p:$id"
 
         // A picture chosen on the tablet, read at a fraction of its size when
         // it is far larger than `most` needs (a whole photograph does not fit

@@ -194,6 +194,10 @@ class ApiClient(baseUrl: String, private val auth: AuthClient, private val versi
             }
         }.body()
 
+    // A picture the back office set (server 0143), by the id a pull named: the JPEG itself.
+    suspend fun picture(id: String): ByteArray =
+        authed(sync = true) { a -> http.get("$functionUrl/pictures/$id") { header(HttpHeaders.Authorization, a) } }.body()
+
     // What the till wrote down when it stopped unexpectedly (core/common/Crashes).
     suspend fun crashes(reports: List<kotlinx.serialization.json.JsonObject>) {
         authed(sync = true) { a ->

@@ -10,6 +10,7 @@ import { branches, formBranch, pickedOf, workingBranch } from "@/lib/branch";
 import { Card, Flash, PageHead, type Search } from "../../ui";
 import { Submit } from "../../busy";
 import { PriceFields, type TaxChoice } from "./price-fields";
+import { PicturePicker } from "./picture-picker";
 
 // A shop's product, on a page of its own: what it is, what it costs and sells
 // for, who supplies it and when to reorder it, and its variants (sizes,
@@ -35,6 +36,8 @@ const WHY: Record<string, string> = {
   "variant-exists": "That variant is already there.",
   "stock-not-counted": "This product counts no stock: leave the quantity empty.",
   "bad-number": "A price, a cost or a quantity is below zero.",
+  "bad-picture": "That picture could not be used. Try another.",
+  "unknown-picture": "That picture is no longer there. Reload the page.",
 };
 // runs a change; a rule the database refuses it for becomes a sentence
 async function ruled<T>(run: () => Promise<T>): Promise<T> {
@@ -162,6 +165,40 @@ async function addOptions(f: FormData) {
     return `${created} ${created === 1 ? "line" : "lines"} made${existing ? `, ${existing} already there` : ""}. ${
       coded > 0 ? "Each has a barcode of yours: type the maker's own over it if the goods carry one." : "Give them barcodes below, or type the makers' own."
     }`;
+  });
+}
+
+// A picture (migration 0143), made small in the browser: the product's own,
+// one for every line of a colour (option and value), or one line's own.
+// remove takes it off; the picture itself stays, unnamed.
+async function setPicture(f: FormData) {
+  "use server";
+  const id = String(f.get("id") ?? "");
+  await act("items.edit", `${PATH}/${id}`, async (c, ctx) => {
+    if (!UUID.test(id)) throw new Refused("Save the product first.");
+    let picture: string | null = null;
+    if (!f.get("remove")) {
+      const file = f.get("jpeg");
+      if (!(file instanceof Blob) || file.size === 0) throw new Refused("Choose a picture.");
+      if (file.size > 400_000) throw new Refused("That picture is too large.");
+      const bytes = Buffer.from(new Uint8Array(await file.arrayBuffer()));
+      const r = await ruled(() => c.query(`select picture_put($1, $2, $3, $4) as id`, [ctx.tenantId, bytes, Number(f.get("width")), Number(f.get("height"))]));
+      picture = r.rows[0].id as string;
+    }
+    const variant = String(f.get("variant") ?? "");
+    const option = Number(f.get("option") ?? 0);
+    const value = String(f.get("value") ?? "");
+    if (UUID.test(variant)) {
+      await ruled(() => c.query(`select variant_picture_set($1, $2, $3)`, [ctx.tenantId, variant, picture]));
+      return picture ? "Picture put on the line." : "Picture taken off the line.";
+    }
+    if (option > 0 && value) {
+      const r = await ruled(() => c.query(`select variant_pictures_set($1, $2, $3, $4, $5) as n`, [ctx.tenantId, id, option, value, picture]));
+      const n = r.rows[0].n as number;
+      return `${value}: ${picture ? "picture put on" : "picture taken off"} ${n} ${n === 1 ? "line" : "lines"}.`;
+    }
+    await ruled(() => c.query(`select item_picture_set($1, $2, $3)`, [ctx.tenantId, id, picture]));
+    return picture ? "Picture saved." : "Picture removed.";
   });
 }
 
@@ -295,10 +332,12 @@ type ItemRow = {
   id: string; name: string; price: string; cost: string | null; category_id: string | null; brand: string | null;
   supplier_id: string | null; supplier_code: string | null; sku: string | null; barcode: string | null;
   is_available: boolean; open_price: boolean; track_stock: boolean; option_names: string[]; stock_qty: number; tax_id: string | null; sold_by: string;
+  picture_id: string | null;
   reorder_point: number | null; reorder_qty: number | null;
 };
-type VariantRow = { id: string; name: string; barcode: string | null; sku: string | null; price: string; cost: string | null; option_values: string[]; qty: number };
+type VariantRow = { id: string; name: string; barcode: string | null; sku: string | null; price: string; cost: string | null; option_values: string[]; qty: number; picture_id: string | null };
 
+const pictureSrc = (id: string | null) => (id ? `/backoffice/pictures/${id}` : null);
 const rupees = (cents: string | number | null) => (cents === null ? "" : (Number(cents) / 100).toString());
 const qtyUnits = (q: number | null) => (q === null ? "" : (q / 1000).toString());
 
@@ -325,7 +364,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
         ? Promise.resolve({ rows: [] as ItemRow[] })
         : c.query(
             `select i.id, i.name, i.price, i.cost, i.category_id, i.brand, i.supplier_id, i.supplier_code, i.sku, i.barcode,
-                    i.is_available, i.open_price, i.track_stock, i.option_names, coalesce(i.stock_qty, 0)::int as stock_qty, i.sold_by,
+                    i.is_available, i.open_price, i.track_stock, i.option_names, coalesce(i.stock_qty, 0)::int as stock_qty, i.sold_by, i.picture_id,
                     (select it.tax_id from item_taxes it where it.tenant_id = i.tenant_id and it.item_id = i.id and it.deleted_at is null limit 1) as tax_id,
                     (select l.reorder_point from stock_levels l where l.tenant_id = i.tenant_id and l.item_id = i.id and l.reorder_point is not null limit 1) as reorder_point,
                     (select l.reorder_qty from stock_levels l where l.tenant_id = i.tenant_id and l.item_id = i.id and l.reorder_qty is not null limit 1) as reorder_qty
@@ -335,7 +374,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
       isNew
         ? Promise.resolve({ rows: [] as VariantRow[] })
         : c.query(
-            `select v.id, v.name, v.barcode, v.sku, v.price, v.cost, v.option_values,
+            `select v.id, v.name, v.barcode, v.sku, v.price, v.cost, v.option_values, v.picture_id,
                     coalesce((select sum(l.qty) from stock_levels l where l.tenant_id = v.tenant_id and l.variant_id = v.id), 0)::int as qty
                from item_variants v
               where v.tenant_id = $1 and v.item_id = $2 and v.deleted_at is null
@@ -374,6 +413,15 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   const optionRows = hasLines ? options.filter((o) => o.name !== "") : options;
   const tax = item?.tax_id ?? d.taxes[0]?.id ?? "";
   const missingCodes = hasLines ? lines.filter((v) => !v.barcode).length : item && !item.barcode ? 1 : 0;
+  // the first option's values (the colours), case aside, each with the picture its lines carry
+  const byFirst: { value: string; picture: string | null }[] = [];
+  for (const v of lines) {
+    const value = v.option_values[0];
+    if (!value) continue;
+    const g = byFirst.find((x) => x.value.toLowerCase() === value.toLowerCase());
+    if (!g) byFirst.push({ value, picture: v.picture_id });
+    else if (!g.picture) g.picture = v.picture_id;
+  }
   // the branch a new line's stock goes to: the one picked, or the account's only one
   const working = workingBranch(d.all, await pickedOf(d.all));
   // options named and values given, then every combination the product lacks: a new product's
@@ -457,6 +505,11 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
               </span>
             </label>
           </Card>
+          {item && (
+            <Card title="Picture" lede="Shown on the product's card on the tills. A picture chosen on a till itself is used where none is set here.">
+              <PicturePicker action={setPicture} fields={{ id: item.id }} src={pictureSrc(item.picture_id)} label={item.name} size={96} />
+            </Card>
+          )}
           <Card title="Price">
             <PriceFields
               showCost={d.mayCost} cost={d.mayCost ? rupees(item?.cost ?? null) : ""} price={item && !item.open_price ? rupees(item.price) : ""} tax={tax} taxes={d.taxes}
@@ -636,6 +689,16 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
             )}
           </Card>
 
+          {item && hasLines && byFirst.length > 0 && (
+            <Card title={`Pictures by ${options[0].name}`} lede={`One picture for each ${options[0].name.toLowerCase()}: it goes on every line of it, and the tills show it when it is picked. A line given its own below keeps that one until this is changed.`}>
+              <div className="picture-grid">
+                {byFirst.map((g) => (
+                  <PicturePicker key={g.value} action={setPicture} fields={{ id: item.id, option: "1", value: g.value }} src={pictureSrc(g.picture)} label={g.value} size={48} />
+                ))}
+              </div>
+            </Card>
+          )}
+
           {item && hasLines && (
             <Card title={`${lines.length} ${lines.length === 1 ? "line" : "lines"}`} lede="Change a barcode, a SKU, a price or a cost, then save the lines. Quantities change under Stock." flush>
               <form action={saveLines}>
@@ -644,6 +707,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                   <table>
                     <thead>
                       <tr>
+                        <th>Picture</th>
                         <th>Variant</th>
                         <th>Barcode</th>
                         <th>SKU</th>
@@ -656,6 +720,9 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                     <tbody>
                       {lines.map((v) => (
                         <tr key={v.id}>
+                          <td>
+                            <PicturePicker action={setPicture} fields={{ id: item.id, variant: v.id }} src={pictureSrc(v.picture_id)} label="" size={36} />
+                          </td>
                           <td className="strong">
                             <input type="hidden" name="v" value={v.id} />
                             {v.name}

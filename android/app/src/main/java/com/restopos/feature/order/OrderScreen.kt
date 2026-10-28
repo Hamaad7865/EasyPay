@@ -391,7 +391,7 @@ private fun Menu(ui: OrderUi, vm: OrderViewModel, narrow: Boolean, modifier: Mod
     val byId = remember(cats) { cats.associateBy { it.id } }
     // how many of each item are on the order and not sent yet
     val counts = remember(ui.fresh) { ui.fresh.groupBy { it.line.item_id }.mapValues { e -> e.value.sumOf { it.units } } }
-    val band = anyPictured(items) { it.id }
+    val band = anyPictured(items, { it.id }) { it.picture_id }
 
     Column(modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(Modifier.fillMaxWidth()) {
@@ -472,7 +472,7 @@ private fun MenuCard(i: ItemEntity, byId: Map<String, CategoryEntity>, index: Ma
     ) {
         // Its picture along the top, the count in its corner; an item with none shows its initials on its category's colour.
         if (band) Box {
-            PictureBand(i.id, i.name, if (out) V.Well else hue.copy(alpha = 0.18f).compositeOver(V.Well), off = out)
+            PictureBand(i.id, i.name, if (out) V.Well else hue.copy(alpha = 0.18f).compositeOver(V.Well), off = out, picture = i.picture_id)
             count(Modifier.align(Alignment.TopEnd).padding(8.dp))
         }
         // The name and the price, on the card's own ground: the category's colour is a rail down their side and a wash from it.

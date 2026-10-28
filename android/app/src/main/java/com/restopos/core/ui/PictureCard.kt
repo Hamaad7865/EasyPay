@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -12,11 +14,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 // Where a card gets a product's picture from (core/data/Pictures). stamp:
@@ -54,9 +59,23 @@ const val PICTURE_SHAPE = 2f
 // of two heights side by side leave holes in the rows. A grid with no picture
 // in it keeps its cards as low as they were.
 @Composable
-fun <T> anyPictured(items: List<T>, id: (T) -> String): Boolean {
+fun <T> anyPictured(items: List<T>, id: (T) -> String, picture: (T) -> String?): Boolean {
     val stamps = LocalPictureStamps.current
-    return remember(items, stamps) { stamps.isNotEmpty() && items.any { id(it) in stamps } }
+    return remember(items, stamps) { stamps.isNotEmpty() && items.any { pictureKey(stamps, id(it), picture(it)) in stamps } }
+}
+
+// Which picture a card shows: the one the back office set (server 0143),
+// once this till has fetched it (kept as "p:" and its id), else the one
+// chosen on this till for the product, kept under the product's own id.
+fun pictureKey(stamps: Map<String, Long>, item: String, picture: String?): String =
+    picture?.let { "p:$it" }?.takeIf { it in stamps } ?: item
+
+// A picture in a square, cropped to fill it, or nothing when there is none:
+// the variant picked on the sheet that asks which one (server 0143).
+@Composable
+fun PictureSquare(key: String, size: Dp, ground: Color) {
+    val img = pictureOf(key) ?: return
+    Image(img, null, Modifier.size(size).clip(RoundedCornerShape(12.dp)).background(ground), contentScale = ContentScale.Crop)
 }
 
 // The picture along the top of a card, cropped to fill its shape, with the
@@ -68,15 +87,17 @@ fun <T> anyPictured(items: List<T>, id: (T) -> String): Boolean {
 // card has its height from the start. off: not to be had (sold out, not on
 // sale), the picture grey and faint.
 @Composable
-fun PictureBand(item: String, name: String, ground: Color, off: Boolean = false) {
-    val img = pictureOf(item)
+fun PictureBand(item: String, name: String, ground: Color, off: Boolean = false, picture: String? = null) {
+    val stamps = LocalPictureStamps.current
+    val key = pictureKey(stamps, item, picture)
+    val img = pictureOf(key)
     Box(Modifier.fillMaxWidth().aspectRatio(PICTURE_SHAPE).background(ground), contentAlignment = Alignment.Center) {
         if (img != null) {
             Image(
                 img, null, Modifier.matchParentSize(), contentScale = ContentScale.Crop, alpha = if (off) 0.45f else 1f,
                 colorFilter = if (off) ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) else null,
             )
-        } else if (item !in LocalPictureStamps.current) T(initials(name), 22.sp, 800, V.Text3)
+        } else if (key !in stamps) T(initials(name), 22.sp, 800, V.Text3)
     }
 }
 

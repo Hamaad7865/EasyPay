@@ -498,10 +498,21 @@ object Migrations {
         }
     }
 
+    // 38: the pictures the back office sets (server 0143), named on products
+    // and variants. Pull again from the start, so the names set before this
+    // till updated arrive too; the pictures are then fetched once each.
+    val V37_V38 = object : Migration(37, 38) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `items` ADD COLUMN `picture_id` TEXT")
+            db.execSQL("ALTER TABLE `item_variants` ADD COLUMN `picture_id` TEXT")
+            db.execSQL("UPDATE `sync_state` SET `cursor` = 0")
+        }
+    }
+
     // Every step, in order: what the database builder is given (AppModule).
     val ALL = listOf(
         V1_V2, V2_V3, V3_V4, V4_V5, V5_V6, V6_V7, V7_V8, V8_V9, V9_V10, V10_V11, V11_V12, V12_V13, V13_V14, V14_V15,
         V15_V16, V16_V17, V17_V18, V18_V19, V19_V20, V20_V21, V21_V22, V22_V23, V23_V24, V24_V25, V25_V26, V26_V27,
-        V27_V28, V28_V29, V29_V30, V30_V31, V31_V32, V32_V33, V33_V34, V34_V35, V35_V36, V36_V37,
+        V27_V28, V28_V29, V29_V30, V30_V31, V31_V32, V32_V33, V33_V34, V34_V35, V35_V36, V36_V37, V37_V38,
     )
 }

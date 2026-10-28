@@ -30,6 +30,8 @@ data class ItemVariantEntity(
     val cost: Long? = null,
     // its price before the promotion it is on (server 0110); null when it is on none
     val promo_was: Long? = null,
+    // its picture (server 0143): its colour's, or its own, set in the back office
+    val picture_id: String? = null,
 )
 
 // What this shop holds of one product, or of one variant of it, in

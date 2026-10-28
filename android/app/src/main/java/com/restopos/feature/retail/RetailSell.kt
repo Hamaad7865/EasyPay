@@ -61,7 +61,10 @@ import com.restopos.core.ui.GoRow
 import com.restopos.core.ui.IconKey
 import com.restopos.core.ui.L
 import com.restopos.core.ui.PayKey
+import com.restopos.core.ui.LocalPictureStamps
 import com.restopos.core.ui.PictureBand
+import com.restopos.core.ui.PictureSquare
+import com.restopos.core.ui.pictureKey
 import com.restopos.core.ui.Rail
 import com.restopos.core.ui.RailKey
 import com.restopos.core.ui.ScanKey
@@ -415,7 +418,7 @@ private fun Products(vm: RetailViewModel, narrow: Boolean, modifier: Modifier) {
     val byId = remember(cats) { cats.associateBy { it.id } }
     val searching = q.isNotBlank()
     val scan by vm.scanMode.collectAsState()
-    val band = anyPictured(items) { it.id }
+    val band = anyPictured(items, { it.id }) { it.picture_id }
 
     Column(modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -483,7 +486,7 @@ internal fun Tile(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants: In
     val ink = if (i.is_available) V.Text else V.Text3
     Column(Modifier.press(0.97f, onClick).clip(RoundedCornerShape(18.dp)).background(V.Panel)) {
         // V.Key: lighter than the card, so the band of a product with no picture is not a hole in it (V.Well is the screen's own colour)
-        if (band) PictureBand(i.id, i.name, V.Key, off = !i.is_available)
+        if (band) PictureBand(i.id, i.name, V.Key, off = !i.is_available, picture = i.picture_id)
         Column(
             Modifier.fillMaxWidth().height(if (band) 96.dp else 118.dp).padding(horizontal = 14.dp, vertical = if (band) 10.dp else 14.dp),
             verticalArrangement = Arrangement.SpaceBetween,
@@ -519,7 +522,7 @@ private fun SellTile(i: ItemEntity, cat: CategoryEntity?, left: Long?, variants:
     Column(Modifier.press(0.97f, onClick).clip(RoundedCornerShape(16.dp)).background(V.Panel)) {
         Box {
             // V.Key: lighter than the card, so the band of a product with no picture is not a hole in it
-            PictureBand(i.id, i.name, V.Key, off = !i.is_available)
+            PictureBand(i.id, i.name, V.Key, off = !i.is_available, picture = i.picture_id)
             Box(
                 Modifier.align(Alignment.BottomStart).padding(8.dp).height(24.dp).clip(RoundedCornerShape(12.dp)).background(V.Panel).padding(horizontal = 9.dp),
                 contentAlignment = Alignment.Center,
@@ -551,6 +554,9 @@ private fun VariantSheet(p: VariantPick, vm: RetailViewModel) {
 
     Sheet(onDismiss = { vm.closePicker() }, width = 560.dp, pad = 24.dp, gap = 18.dp) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            // the picked one's picture (server 0143): its colour's or its own, else the product's
+            val stamps = LocalPictureStamps.current
+            PictureSquare(pictureKey(stamps, pictureKey(stamps, p.item.id, p.item.picture_id), picked.picture_id), 72.dp, V.Key)
             T(p.item.name, 22.sp, 800, modifier = Modifier.weight(1f), lines = 2)
             T(Money.format(picked.price), 18.sp, 800)
         }

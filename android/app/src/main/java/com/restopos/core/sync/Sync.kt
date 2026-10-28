@@ -82,6 +82,7 @@ class PullWorker @AssistedInject constructor(
     private val session: SessionStore,
     private val applier: PullApplier,
     private val requests: com.restopos.core.data.TillRequests,
+    private val pictures: com.restopos.core.data.Pictures,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -192,6 +193,10 @@ class PullWorker @AssistedInject constructor(
             // 0091): close its day, or write down cash taken out. The till does
             // it now, itself. A request that fails is left for the next sync.
             runCatching { requests.run() }
+            // The pictures the back office set (server 0143) that the pull named
+            // and this till does not have yet: fetched once each. No network
+            // leaves them for the next pull; the sync is done either way.
+            runCatching { pictures.fetchNamed(api) }
             // the server took this till: whatever asked for a sign-in before is over
             session.setNeedsSignIn(false)
             Result.success(workDataOf(SyncScheduler.BROUGHT to brought.toTypedArray()))

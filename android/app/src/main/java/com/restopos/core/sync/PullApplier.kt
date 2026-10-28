@@ -104,7 +104,9 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         // its price before the promotion it is on (0110)
                         promo_was = lng(it, "promo_was"),
                         // what one of it is made of (0112)
-                        parts = (it.jsonObject["parts"] as? kotlinx.serialization.json.JsonArray)?.toString() ?: "[]")
+                        parts = (it.jsonObject["parts"] as? kotlinx.serialization.json.JsonArray)?.toString() ?: "[]",
+                        // the picture the back office set (0143)
+                        picture_id = str(it, "picture_id"))
                 })
             }
             // A shop's variants, and what this shop holds of each product. A
@@ -126,6 +128,7 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                         str(it, "sku")?.trim()?.ifEmpty { null }, str(it, "barcode")?.trim()?.ifEmpty { null },
                         (it.jsonObject["option_values"] as? kotlinx.serialization.json.JsonArray)?.toString() ?: "[]",
                         str(it, "deleted_at"), lng(it, "server_seq"), cost = lng(it, "cost"), promo_was = lng(it, "promo_was"),
+                        picture_id = str(it, "picture_id"),
                     )
                 })
             }

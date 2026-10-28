@@ -872,6 +872,10 @@ details.card:not([open]) > summary.card-head { border-bottom: 0; }
 .help.has { display: flex; align-items: baseline; gap: 6px; }
 .help.has > span:first-child { flex: none; }
 .has-list { display: flex; flex-wrap: wrap; gap: 5px 4px; min-width: 0; }
+/* a product's or a variant's picture (migration 0143): the square to click, the picture cropped to fill it */
+.bo-main button.picture-thumb { flex: none; padding: 0; overflow: hidden; display: grid; place-items: center; border: 1px dashed var(--line-strong); border-radius: 8px; background: var(--surface-2); color: var(--ink3); font-size: 20px; box-shadow: none; }
+.bo-main button.picture-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.picture-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px 16px; }
 .form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
 .form-row .field { max-width: none; }
 .check { display: flex; align-items: flex-start; gap: 4px; font-size: 13.5px; font-weight: 500; margin-bottom: 12px; cursor: pointer; }
