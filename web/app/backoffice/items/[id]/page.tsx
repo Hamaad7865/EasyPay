@@ -29,7 +29,7 @@ const WHY: Record<string, string> = {
   "sku-taken": "Another product or variant already has that SKU.",
   "has-stock": "There is still stock. Bring it to zero under Stock first.",
   "bad-options": "Give each option a name and at least one value, with nothing repeated. A product that has variants keeps the number of options it has.",
-  "too-many-variants": "That would make more than 200 lines for one product.",
+  "too-many-variants": "That would make more than 1000 lines for one product.",
   "unknown-variant": "That line is no longer there. Reload the page.",
   "unknown-item": "That product is no longer there.",
   "unknown-value": "No line has that value any more. Reload the page.",

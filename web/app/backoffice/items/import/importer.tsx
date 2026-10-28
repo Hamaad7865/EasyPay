@@ -22,7 +22,7 @@ const WHY: Record<string, string> = {
   "sku-twice": "This SKU is on more than one row.",
   "barcode-taken": "Another product already has this barcode.",
   "sku-taken": "Another product already has this SKU.",
-  "too-many-variants": "That would make more than 200 lines for one product.",
+  "too-many-variants": "That would make more than 1000 lines for one product.",
   "product-has-problems": "Another row of this product has a problem, so the whole product waits.",
   // how it is sold, and whether it counts stock (0131)
   "bad-sold-by": "Sold by says each, kilo, or at the sale (for a price typed at the till). This row says something else.",

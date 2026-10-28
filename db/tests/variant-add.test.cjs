@@ -89,11 +89,22 @@ function check(name, cond, extra) {
     await c.query(`update items set track_stock = true where id = $1`, [dress]);
     check('A4 nothing was made by any of them', (await lines()).length === 7, String((await lines()).length));
 
-    // A5 200 lines at most
+    // A5 1000 lines at most (0144; 200 until then): a shop's shirt in many colours, ages and styles has more than 200
     const big = (await one(`insert into items (tenant_id, name, price, track_stock) values ($1,'Big',1000,true) returning id`, [tid])).id;
-    await c.query(`select variants_generate($1,$2,$3,$4::jsonb)`, [tid, big, ['N'], JSON.stringify([Array.from({ length: 200 }, (_, i) => String(i + 1))])]);
+    const upTo = (n) => Array.from({ length: n }, (_, i) => String(i + 1));
+    await c.query(`select variants_generate($1,$2,$3,$4::jsonb)`, [tid, big, ['N'], JSON.stringify([upTo(200)])]);
     e = await addFails(['201'], {}, tid, big);
-    check('A5 a 201st line is refused', said(e) === 'too-many-variants', said(e));
+    check('A5 a 201st line is made', e === null, said(e));
+    // an import past 200 lines, then to 1000: the check before importing says what would go in
+    const rows = upTo(300).slice(201).map((n, i) => ({ n: i + 2, name: 'Big', price: 100000, o1: 'N', v1: n }));
+    let dry = (await one(`select catalog_import($1,$2,$3,$4::jsonb,true) as r`, [tid, store, emp, JSON.stringify(rows)])).r;
+    check('A5 a file taking a product from 201 lines to 300 goes in', dry.good === 99 && dry.new_lines === 99 && dry.problems.length === 0, JSON.stringify(dry).slice(0, 160));
+    const r5 = await one(`select variants_generate($1,$2,$3,$4::jsonb) as r`, [tid, big, ['N'], JSON.stringify([upTo(1000)])]);
+    check('A5 Make every combination goes to 1000', r5.r.created === 799, JSON.stringify(r5.r));
+    e = await addFails(['1001'], {}, tid, big);
+    check('A5 a 1001st line is refused', said(e) === 'too-many-variants', said(e));
+    dry = (await one(`select catalog_import($1,$2,$3,$4::jsonb,true) as r`, [tid, store, emp, JSON.stringify([{ n: 2, name: 'Big', price: 100000, o1: 'N', v1: '1001' }])])).r;
+    check('A5 and an import of a 1001st is refused', dry.problems.length === 1 && dry.problems[0].why === 'too-many-variants', JSON.stringify(dry.problems));
 
     // A6 the tills are sent it: it has a sync number
     check('A6 the new line has a sync number', (await one(`select server_seq from item_variants where id = $1`, [v])).server_seq !== null);

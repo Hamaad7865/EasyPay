@@ -53,7 +53,7 @@ object VariantForm {
 
     fun refused(code: String?): String = when (code) {
         "bad-options" -> "Those options cannot be used: an option is named twice, a value is missing, or the product already has a different number of options."
-        "too-many-variants" -> "That would make more than 200 variants for one product."
+        "too-many-variants" -> "That would make more than 1000 variants for one product."
         "has-stock" -> "It still holds stock. Bring that to zero first, with Remove stock."
         "unknown-item" -> "That product is no longer there."
         "unknown-variant" -> "That variant is no longer there."

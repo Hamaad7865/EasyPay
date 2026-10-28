@@ -1106,7 +1106,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
                 option_values = JsonArray(values.map { JsonPrimitive(it) }).toString(), cost = item.cost,
             )
         }
-        if (live.size + new.size > 200) throw Refused("too-many-variants")
+        if (live.size + new.size > 1000) throw Refused("too-many-variants")
         dao.putItem(item.copy(option_names = JsonArray(called.map { JsonPrimitive(it) }).toString()))
         dao.putVariants(new)
         return new
@@ -1115,7 +1115,7 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
     private suspend fun variantsSave(p: JsonObject) {
         val id = p.id("item_id")
         val lines = (p["lines"] as? JsonArray) ?: bad()
-        if (lines.size > 200) bad()
+        if (lines.size > 1000) bad()
         for (row in lines) {
             val l = (row as? JsonObject) ?: bad()
             val vid = l.id("id")

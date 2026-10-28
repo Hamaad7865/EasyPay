@@ -110,9 +110,10 @@ const validEan13 = (code) => /^\d{13}$/.test(code)
     check('C6 a value with nothing in it', said(e) === 'bad-options', said(e));
     e = await genFails(G, ['Size'], [['S', 's']]);
     check('C6 the same value twice', said(e) === 'bad-options', said(e));
-    const six = ['1', '2', '3', '4', '5', '6'];
-    e = await genFails(G, ['A', 'B', 'C'], [six, six, six]);
-    check('C6 more than 200 lines', said(e) === 'too-many-variants', said(e));
+    // 11 x 10 x 10: past the 1000 lines a product may have (0144; 200 until then)
+    const ten = Array.from({ length: 10 }, (_, i) => String(i + 1));
+    e = await genFails(G, ['A', 'B', 'C'], [[...ten, '11'], ten, ten]);
+    check('C6 more than 1000 lines', said(e) === 'too-many-variants', said(e));
     e = await genFails(P, ['Size'], [['S', 'M']]);
     check('C6 a product with variants keeps its number of options', said(e) === 'bad-options', said(e));
 
