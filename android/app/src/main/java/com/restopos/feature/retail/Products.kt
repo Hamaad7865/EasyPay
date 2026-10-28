@@ -84,8 +84,9 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 // A product opened on the Products & stock screen: its variants, and what the
-// shop holds of each line of it.
-class ProductOpen(val item: ItemEntity, val category: String?, val variants: List<ItemVariantEntity>, val levels: Map<String, Int>, val counted: Boolean)
+// shop holds of each line of it. scanned: the variant whose own code was
+// scanned to open it, which Stock check lists first.
+class ProductOpen(val item: ItemEntity, val category: String?, val variants: List<ItemVariantEntity>, val levels: Map<String, Int>, val counted: Boolean, val scanned: String? = null)
 
 // Behind Products & stock: every product with what is left of it, found by
 // name, SKU or barcode (typed or scanned), and what a till may change: a

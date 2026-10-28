@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +36,7 @@ import com.restopos.core.data.Found
 import com.restopos.core.data.LinePrice
 import com.restopos.core.data.RetailSales
 import com.restopos.core.database.ItemEntity
+import com.restopos.core.database.ItemVariantEntity
 import com.restopos.core.database.TillDatabase
 import com.restopos.core.sync.SessionStore
 import com.restopos.core.ui.Field
@@ -89,12 +91,13 @@ class StockCheckViewModel @Inject constructor(
     val scanMode: StateFlow<Boolean> = session.scanMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     fun setScanMode(on: Boolean) = viewModelScope.launch { session.setScanMode(on) }
 
-    fun show(itemId: String) = viewModelScope.launch {
+    // variantId: the variant whose own code was scanned, listed first
+    fun show(itemId: String, variantId: String? = null) = viewModelScope.launch {
         val item = db.catalog().item(itemId) ?: return@launch
         val storeId = session.storeId()
         val levels = if (storeId == null) emptyList() else db.retail().levelsOf(storeId, itemId)
         val category = db.ops().categoryOfItem(itemId)
-        open.value = ProductOpen(item, category?.name, db.retail().variantsOf(itemId), levels.associate { it.variant_id to it.qty }, item.track_stock || category?.is_stock == true)
+        open.value = ProductOpen(item, category?.name, db.retail().variantsOf(itemId), levels.associate { it.variant_id to it.qty }, item.track_stock || category?.is_stock == true, variantId)
     }
 
     // Done on the keyboard: a whole code opens its product, and so does a
@@ -103,7 +106,7 @@ class StockCheckViewModel @Inject constructor(
         val q = query.value.trim()
         if (q.isEmpty()) return@launch
         when (val f = sales.find(q)) {
-            is Found.Product -> show(f.item.id)
+            is Found.Product -> show(f.item.id, f.variant?.id)
             is Found.Pick -> show(f.item.id)
             else -> matches.value.singleOrNull()?.let { show(it.id) }
         }
@@ -112,17 +115,17 @@ class StockCheckViewModel @Inject constructor(
     // A scanned barcode opens its product, and the list shows where it was found.
     fun scanned(code: String) = viewModelScope.launch {
         when (val f = sales.find(code)) {
-            is Found.Product -> found(f.item)
-            is Found.Pick -> found(f.item)
+            is Found.Product -> found(f.item, f.variant)
+            is Found.Pick -> found(f.item, null)
             is Found.Several -> { Toaster.say("Two products carry the code ${f.code}. Find it by its name."); Scanner.say(false, "Two products carry ${f.code}") }
             is Found.Nothing -> { Toaster.say("No product has the code ${f.code}."); Scanner.say(false, "No match · ${f.code}") }
         }
     }
 
-    private fun found(item: ItemEntity) {
+    private fun found(item: ItemEntity, variant: ItemVariantEntity?) {
         query.value = item.name
-        show(item.id)
-        Scanner.say(true, "Found · ${item.name}")
+        show(item.id, variant?.id)
+        Scanner.say(true, "Found · ${sales.nameOf(item, variant)}")
     }
 }
 
@@ -230,17 +233,28 @@ private fun Details(p: ProductOpen?, modifier: Modifier) {
             T("PRICE", 11.sp, 800, V.Text3, Modifier.width(130.dp), align = TextAlign.End, spacing = 1.sp)
             T("IN THIS SHOP", 11.sp, 800, V.Text3, Modifier.width(140.dp), align = TextAlign.End, spacing = 1.sp)
         }
-        // one row for a product with no variants; else one for each of them
+        // one row for a product with no variants; else one for each of them,
+        // the one that was scanned first
         val rows = remember(p) {
             if (p.variants.isEmpty()) listOf(StockRow("", i.name, listOfNotNull(i.sku, i.barcode).joinToString(" · "), i.price))
-            else p.variants.map { v -> StockRow(v.id, v.name, listOfNotNull(v.sku, v.barcode).joinToString(" · "), v.price) }
+            else scannedFirst(p.variants, p.scanned) { it.id }.map { v -> StockRow(v.id, v.name, listOfNotNull(v.sku, v.barcode).joinToString(" · "), v.price) }
         }
-        LazyColumn(Modifier.fillMaxSize()) {
+        // each product opens at the top of its list, where a scanned variant
+        // is: a keyed list would otherwise keep where it was scrolled to
+        val list = rememberLazyListState()
+        LaunchedEffect(p) { list.scrollToItem(0) }
+        LazyColumn(Modifier.fillMaxSize(), state = list) {
             items(rows, key = { it.id }) { r ->
                 val n = qtyOf(r.id)
-                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                val hit = p.scanned != null && r.id == p.scanned
+                Row(Modifier.fillMaxWidth().background(if (hit) V.RowOn else Color.Transparent).padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        T(r.name, 15.sp, 700)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            T(r.name, 15.sp, 700, modifier = Modifier.weight(1f, fill = false))
+                            if (hit) Box(Modifier.clip(RoundedCornerShape(999.dp)).background(V.BlueWash).padding(horizontal = 8.dp, vertical = 3.dp)) {
+                                T("SCANNED", 10.sp, 800, V.BlueText, spacing = 0.7.sp)
+                            }
+                        }
                         if (r.codes.isNotEmpty()) T(r.codes, 12.sp, 500, V.Text3)
                     }
                     T(Money.format(r.price) + if (weighed) " /kg" else "", 15.sp, 600, V.Text2, Modifier.width(130.dp), align = TextAlign.End)
@@ -253,6 +267,11 @@ private fun Details(p: ProductOpen?, modifier: Modifier) {
 }
 
 private class StockRow(val id: String, val name: String, val codes: String, val price: Long)
+
+// The variants in the order Stock check lists them: the one whose code was
+// scanned first, the others after it in the order the back office keeps.
+internal fun <T> scannedFirst(rows: List<T>, scanned: String?, id: (T) -> String): List<T> =
+    if (scanned == null) rows else rows.sortedBy { if (id(it) == scanned) 0 else 1 }
 
 // What a panel says while it has nothing to show.
 @Composable
