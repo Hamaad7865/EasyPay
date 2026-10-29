@@ -80,15 +80,28 @@ language sql stable set search_path = public as $fn$
                   where v.tenant_id = p_tenant and v.deleted_at is null and i.deleted_at is null and lower(v.sku) = lower(p_sku))
 $fn$;
 
--- a stem another product's SKUs use: one of them is it, or starts with it and a dash
+-- a stem another product's SKUs use: one of them is it, or starts with it and a dash. Read as a range in byte
+-- order (from "lsp-" to just before "lsp.", the character after the dash), on an index of its own: an import of
+-- 500 products otherwise reads every SKU of the shop for each of them (5 seconds where the import took 1)
+create index if not exists idx_items_sku_bytes on items (tenant_id, (lower(sku) collate "C")) where sku is not null and deleted_at is null;
+create index if not exists idx_item_variants_sku_bytes on item_variants (tenant_id, (lower(sku) collate "C")) where sku is not null and deleted_at is null;
+-- a product's lines: there was no index for them, and each product's turn read every line of the shop
+create index if not exists idx_item_variants_item on item_variants (tenant_id, item_id);
+
 create or replace function sku_stem_taken(p_tenant uuid, p_item uuid, p_stem text) returns boolean
 language sql stable set search_path = public as $fn$
   select exists (select 1 from items i
-                  where i.tenant_id = p_tenant and i.deleted_at is null and i.id <> p_item and i.sku is not null
-                    and (lower(i.sku) = lower(p_stem) or lower(i.sku) like lower(p_stem) || '-%'))
+                  where i.tenant_id = p_tenant and i.sku is not null and i.deleted_at is null and i.id <> p_item
+                    and (lower(i.sku) collate "C") = lower(p_stem))
+      or exists (select 1 from items i
+                  where i.tenant_id = p_tenant and i.sku is not null and i.deleted_at is null and i.id <> p_item
+                    and (lower(i.sku) collate "C") >= lower(p_stem) || '-' and (lower(i.sku) collate "C") < lower(p_stem) || '.')
       or exists (select 1 from item_variants v join items i on i.tenant_id = v.tenant_id and i.id = v.item_id
-                  where v.tenant_id = p_tenant and v.deleted_at is null and i.deleted_at is null and v.item_id <> p_item and v.sku is not null
-                    and (lower(v.sku) = lower(p_stem) or lower(v.sku) like lower(p_stem) || '-%'))
+                  where v.tenant_id = p_tenant and v.sku is not null and v.deleted_at is null and i.deleted_at is null and v.item_id <> p_item
+                    and (lower(v.sku) collate "C") = lower(p_stem))
+      or exists (select 1 from item_variants v join items i on i.tenant_id = v.tenant_id and i.id = v.item_id
+                  where v.tenant_id = p_tenant and v.sku is not null and v.deleted_at is null and i.deleted_at is null and v.item_id <> p_item
+                    and (lower(v.sku) collate "C") >= lower(p_stem) || '-' and (lower(v.sku) collate "C") < lower(p_stem) || '.')
 $fn$;
 
 -- the work of assign_skus, with the first SKU it made (for assign_skus_for to show)
