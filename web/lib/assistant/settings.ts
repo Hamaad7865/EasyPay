@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import type { Who } from "./oauth";
 import { loadSettings, saveSettings, type PosSettings } from "@/lib/settings";
+import { leftWords, planPromotion, promoTargets, runPromotion, someOf, type PromoLeft, type PromoStep } from "@/lib/promotions";
 import { linesWhere, rs } from "./catalog";
 import { key, cents } from "./words";
 import { Ask, No, type Planned, type Ran, type ReKind, type Viewed } from "./reshape";
@@ -158,73 +159,36 @@ export const editDiscount: ReKind = {
 
 // ------------------------------------------------------------- promotions
 
-// A promoted price on lines of products (0110), never below cost, so a line
-// with no cost can't be promoted; lifted, the price goes back. One product,
-// some, or a whole category, and of them the lines with the values said (the
-// owner of Kids Corner, 2026-10-29: a promotion price on certain products). A
-// percent is off the price before any promotion. A line already promoted takes
-// the new price: reduced again when lower, put back and promoted afresh when
-// higher. A line that can't take it is left out and named on the card.
-type Target = { item: string; line: string | null; name: string; price: number; cost: number | null; open: boolean; live: { id: string; original: number; promo: number } | null };
-type Promo = { item: string; line: string | null; name: string; from: number; at: number; now: number; how: "apply" | "reduce" | "again"; promo: string | null };
-type Left = { why: "no-cost" | "below-cost" | "not-lower" | "already" | "open-price"; name: string; cost: number | null; now: number };
+// A promoted price on lines of products (lib/promotions: never below cost, a
+// percent off the price before any promotion, a line already promoted takes
+// the new price, a line that can't is left out and named on the card). One
+// product, some, or a whole category, and of them the lines with the values
+// said. Lifted, the same lines go back to their price.
 type Lift = { id: string; name: string; at: number; back: number; kept: boolean };
 const MOST_PROMOTED = 500;
 
-// the lines a promotion is for, each with the promotion it has
-async function promoTargets(x: C, input: Params) {
+// the lines a promotion is for, what it touches, and what the owner called them
+async function promoChosen(x: C, input: Params) {
   const ps = await productsOf(x, str(input.product) ? { products: [input.product] } : input);
   if (!ps.length) throw new No("No product is there to promote.");
-  const ids = ps.map((p) => p.id);
-  const items = (
-    await x.c.query(
-      `select id, name, price::float8 as price, cost::float8 as cost, open_price, coalesce(option_names, '{}') as options, updated_at::text
-         from items where tenant_id = $1 and id = any($2::uuid[]) and deleted_at is null order by name`,
-      [x.t, ids],
-    )
-  ).rows as { id: string; name: string; price: number; cost: number | null; open_price: boolean; options: string[]; updated_at: string }[];
-  const vs = (
-    await x.c.query(
-      `select id, item_id, name, coalesce(option_values, '{}') as values, price::float8 as price, cost::float8 as cost, updated_at::text
-         from item_variants where tenant_id = $1 and item_id = any($2::uuid[]) and deleted_at is null order by created_at, name`,
-      [x.t, ids],
-    )
-  ).rows as { id: string; item_id: string; name: string; values: string[]; price: number; cost: number | null; updated_at: string }[];
-  const on = (
-    await x.c.query(
-      `select id, item_id, variant_id, original_price::float8 as original, promo_price::float8 as promo
-         from promotions where tenant_id = $1 and item_id = any($2::uuid[]) and status = 'active' and deleted_at is null`,
-      [x.t, ids],
-    )
-  ).rows as { id: string; item_id: string; variant_id: string | null; original: number; promo: number }[];
+  const { items, targets: all } = await promoTargets(x.c, x.t, ps.map((p) => p.id));
   const where = input.where && typeof input.where === "object" && Object.keys(input.where).length ? (input.where as Record<string, string | string[]>) : null;
   if (where) {
     const unknown = Object.keys(where).filter((o) => !items.some((i) => i.options.some((po) => po.toLowerCase() === o.toLowerCase())));
     if (unknown.length) throw new Ask(items.length === 1 ? `${items[0].name}'s options are ${items[0].options.join(", ") || "none"}. Which one is ${unknown.join(" and ")}?` : `None of those products has ${unknown.join(" or ")}.`);
   }
-  const targets: Target[] = [];
-  const touched: Record<string, string> = {};
-  for (const i of items) {
-    const own = vs.filter((v) => v.item_id === i.id);
-    const liveOf = (line: string | null) => on.find((o) => o.item_id === i.id && o.variant_id === line) ?? null;
-    if (!own.length && !where) targets.push({ item: i.id, line: null, name: i.name, price: i.price, cost: i.cost, open: i.open_price, live: liveOf(null) });
-    for (const v of where ? linesWhere(i.options, own, where) : own) {
-      targets.push({ item: i.id, line: v.id, name: `${i.name} / ${v.name}`, price: v.price, cost: v.cost, open: i.open_price, live: liveOf(v.id) });
-      touched[`item_variants:${v.id}`] = v.updated_at;
-    }
-    touched[`items:${i.id}`] = i.updated_at;
-  }
+  const targets = where ? all.filter((t) => linesWhere(items.find((i) => i.id === t.item)?.options ?? [], [t], where).length) : all;
+  const touched: Record<string, string> = Object.fromEntries(items.map((i) => [`items:${i.id}`, i.updated_at]));
+  for (const t of targets) if (t.line) touched[`item_variants:${t.line}`] = t.updated_at;
   const valuesSaid = where ? Object.entries(where).map(([o, v]) => `${o} ${(Array.isArray(v) ? v : [v]).join(", ")}`).join("; ") : "";
   const scope = (str(input.product) ? items[0]?.name : str(input.category)) || `${items.length} products`;
   return { targets, touched, scope: valuesSaid ? `${scope} (${valuesSaid})` : scope };
 }
 
-const some = (names: string[]) => names.slice(0, 3).join(", ") + (names.length > 3 ? ` and ${names.length - 3} more` : "");
-
 export const promote: ReKind = {
   perm: "items.edit",
   async plan(x, input) {
-    const { targets, touched, scope } = await promoTargets(x, input);
+    const { targets, touched, scope } = await promoChosen(x, input);
     if (!targets.length) throw new Ask(`No line of ${scope} has those values.`);
     if (targets.length > MOST_PROMOTED) throw new No(`That's ${targets.length} lines. Promote up to ${MOST_PROMOTED} at a time: a sub category, or some values, at a time.`);
     if (str(input.verb) === "lift") {
@@ -244,28 +208,10 @@ export const promote: ReKind = {
     if (price !== null && off !== null) throw new Ask("A price or a percent off: which one?");
     if (off !== null && !(off >= 1 && off <= 99)) throw new No("A percent off is between 1 and 99.");
     if (price !== null && price < 0) throw new No("A promoted price is a number of rupees above 0.");
-    // a percent comes out at the shop's smallest money (whole rupees when it shows no cents), never below cost
-    const unit = 10 ** (2 - (await loadSettings(x.c, x.t)).decimals);
-    const plan: Promo[] = [], left: Left[] = [];
-    for (const t of targets) {
-      const from = t.live ? t.live.original : t.price;
-      const exact = price !== null ? cents(price) : (from * (100 - (off as number))) / 100;
-      let now = price !== null ? exact : Math.round(exact / unit) * unit;
-      if (price === null && t.cost !== null && now < t.cost) now = Math.ceil(exact / unit) * unit;
-      // what the line sells at once the promotion it has is put back (a price changed by hand since stays)
-      const base = t.live && t.price === t.live.promo ? t.live.original : t.price;
-      const out = (why: Left["why"]) => left.push({ why, name: t.name, cost: t.cost, now });
-      if (t.open) out("open-price");
-      else if (t.cost === null) out("no-cost");
-      else if (now < t.cost) out("below-cost");
-      else if (t.live && now < t.live.promo) plan.push({ item: t.item, line: t.line, name: t.name, from, at: t.price, now, how: "reduce", promo: t.live.id });
-      else if (t.live && now === t.live.promo) out("already");
-      else if (now >= base) out("not-lower");
-      else plan.push({ item: t.item, line: t.line, name: t.name, from, at: t.price, now, how: t.live ? "again" : "apply", promo: t.live?.id ?? null });
-    }
+    const { plan, left } = planPromotion(targets, price !== null ? cents(price) : null, off, 10 ** (2 - (await loadSettings(x.c, x.t)).decimals));
     const said = off !== null ? `${off}% off` : rs(cents(price as number));
     const mayCost = (await x.c.query(`select has_perm($1, 'costs.view') as ok`, [x.w.employeeId])).rows[0].ok as boolean;
-    if (!plan.length) throw new No(`None of those lines can take ${said}. ${leftWords(left, said, mayCost).join(" ")}`);
+    if (!plan.length) throw new No(`None of those lines can take ${said}. ${leftWords(left, said, mayCost, rs).join(" ")}`);
     return {
       params: { verb: "apply", plan, left, said, mayCost, note: str(input.note).slice(0, 120) || "Through Claude" },
       readings: [
@@ -281,13 +227,7 @@ export const promote: ReKind = {
       for (const l of p.lift as Lift[]) await x.c.query(`select promotion_lift($1,$2,$3)`, [x.t, x.w.employeeId, l.id]);
       return { summary: "promotion lifted", lines: [] };
     }
-    for (const l of p.plan as Promo[]) {
-      if (l.how === "reduce") await x.c.query(`select promotion_reduce($1,$2,$3,$4,$5,$6)`, [x.t, x.w.employeeId, l.item, l.line, l.now, p.note]);
-      else {
-        if (l.how === "again") await x.c.query(`select promotion_lift($1,$2,$3)`, [x.t, x.w.employeeId, l.promo]);
-        await x.c.query(`select promotion_apply($1,$2,$3,$4,$5,$6)`, [x.t, x.w.employeeId, l.item, l.line, l.now, p.note]);
-      }
-    }
+    await runPromotion(x.c, x.t, x.w.employeeId, p.plan as PromoStep[], p.note as string);
     return { summary: "promoted", lines: [] };
   },
   async view(_x, p) {
@@ -297,32 +237,18 @@ export const promote: ReKind = {
       const kept = lift.filter((l) => l.kept);
       return quiet(
         cap(lift.map((l) => `${l.name}: ${rs(l.at)} → ${rs(l.back)}`)),
-        [{ tone: "amber", text: "The tills sell at the normal prices from their next sync." }, ...(kept.length ? [{ tone: "amber" as const, text: `${kept.length} had ${kept.length === 1 ? "its price" : "their prices"} changed by hand since, so ${kept.length === 1 ? "it stays" : "they stay"} as ${kept.length === 1 ? "it is" : "they are"} (${some(kept.map((l) => l.name))}).` }] : [])],
+        [{ tone: "amber", text: "The tills sell at the normal prices from their next sync." }, ...(kept.length ? [{ tone: "amber" as const, text: `${kept.length} had ${kept.length === 1 ? "its price" : "their prices"} changed by hand since, so ${kept.length === 1 ? "it stays" : "they stay"} as ${kept.length === 1 ? "it is" : "they are"} (${someOf(kept.map((l) => l.name))}).` }] : [])],
         "Lift",
       );
     }
-    const plan = p.plan as Promo[];
+    const plan = p.plan as PromoStep[];
     const up = plan.filter((l) => l.how === "again");
     const warnings: Viewed["warnings"] = [{ tone: "amber", text: "The tills sell at the promoted prices from their next sync. Lift puts them back." }];
-    if (up.length) warnings.push({ tone: "amber", text: `${up.length} already on promotion at a lower price ${up.length === 1 ? "goes" : "go"} up to the new one (${some(up.map((l) => `${l.name}: ${rs(l.at)} → ${rs(l.now)}`))}). Leave ${up.length === 1 ? "it" : "them"} out to keep ${up.length === 1 ? "it" : "them"} lower.` });
-    for (const text of leftWords(p.left as Left[], p.said as string, p.mayCost as boolean)) warnings.push({ tone: "amber", text });
+    if (up.length) warnings.push({ tone: "amber", text: `${up.length} already on promotion at a lower price ${up.length === 1 ? "goes" : "go"} up to the new one (${someOf(up.map((l) => `${l.name}: ${rs(l.at)} → ${rs(l.now)}`))}). Leave ${up.length === 1 ? "it" : "them"} out to keep ${up.length === 1 ? "it" : "them"} lower.` });
+    for (const text of leftWords(p.left as PromoLeft[], p.said as string, p.mayCost as boolean, rs)) warnings.push({ tone: "amber", text });
     return quiet(cap(plan.map((l) => `${l.name}: ${rs(l.from)} → ${rs(l.now)}${l.how === "apply" ? "" : ` (on promotion at ${rs(l.at)} now)`}`)), warnings, "Promote");
   },
 };
-
-// the lines left out of a promotion, in words, by why
-function leftWords(left: Left[], said: string, mayCost: boolean): string[] {
-  const of = (why: Left["why"]) => left.filter((l) => l.why === why);
-  const n = (ls: Left[]) => `${ls.length} ${ls.length === 1 ? "line" : "lines"}`;
-  const out: string[] = [];
-  const none = of("no-cost"), below = of("below-cost"), high = of("not-lower"), same = of("already"), open = of("open-price");
-  if (none.length) out.push(`${n(none)} left out: no cost is known, and a promotion never goes below cost (${some(none.map((l) => l.name))}). Set the cost first.`);
-  if (below.length) out.push(`${n(below)} left out: ${said} would go below cost (${some(below.map((l) => (mayCost ? `${l.name}: cost ${rs(l.cost as number)}, ${rs(l.now)}` : l.name)))}).`);
-  if (high.length) out.push(`${n(high)} left out: ${said} isn't lower than the price ${high.length === 1 ? "it sells" : "they sell"} at now (${some(high.map((l) => l.name))}).`);
-  if (same.length) out.push(`${n(same)} already on promotion at that price (${some(same.map((l) => l.name))}).`);
-  if (open.length) out.push(`${n(open)} left out: open price, said at the till (${some(open.map((l) => l.name))}).`);
-  return out;
-}
 
 // ----------------------------------------------------------- POS settings
 

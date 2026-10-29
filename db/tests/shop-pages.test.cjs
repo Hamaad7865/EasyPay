@@ -13,7 +13,7 @@
 const crypto = require('crypto');
 const { Client } = require('pg');
 const devguard = require('./require-dev.cjs');
-const { open, text, rowsOf, stats } = require('./page.cjs');
+const { open, code, text, rowsOf, stats } = require('./page.cjs');
 
 let failures = 0;
 function check(name, cond, extra) {
@@ -523,6 +523,42 @@ const id = () => crypto.randomUUID();
       check('Z4 lifted: back among the slow movers at Rs 115.00, no promotion running', !p.error && p.says.includes('No promotions are running') && (rowsOf(p.html).find((r) => r.startsWith('Belt')) || '').includes('Rs 115.00'), p.error);
       p = await see(shop, '/backoffice/settings', {});
       check('Z5 a shop\'s POS settings carry the two thresholds', !p.error && p.html.includes('name="slowMoverDays"') && p.html.includes('name="promoStillDays"'), p.error);
+
+      // any product, selling or not (the owner of Kids Corner, 2026-10-29: a shop just imported has no slow movers):
+      // found by its name, promoted by the line or every line at once, a line with no cost left out and named
+      const tee = (await one(`insert into items (tenant_id, name, price, track_stock, category_id, option_names) values ($1,'Tee',67500,true,$2,'{Size}') returning id`, [shop.tid, shop.cat])).id;
+      await c.query(`select variants_generate($1,$2,$3,$4::jsonb)`, [shop.tid, tee, ['Size'], JSON.stringify([['10', '12', '13']])]);
+      await c.query(`update item_variants set price = 67500, cost = case when option_values[1] = '13' then null else 40000 end where item_id = $1`, [tee]);
+      const size = async (s) => one(`select id, price::int as price from item_variants where item_id = $1 and option_values[1] = $2`, [tee, s]);
+      const promote = async (fields) => {
+        const f = new FormData();
+        for (const [k, v] of Object.entries(fields)) f.set(k, v);
+        await c.query('SAVEPOINT pa');
+        try {
+          await code(c, shop.ctx, 'app/backoffice/promotions/actions.ts').promoteChosen(f);
+          await c.query('RELEASE SAVEPOINT pa');
+          return 'no answer';
+        } catch (e) {
+          const m = decodeURIComponent(((e && e.message) || String(e)).replace(/\+/g, ' '));
+          await c.query(/[?&]err=/.test(m) ? 'ROLLBACK TO SAVEPOINT pa' : 'RELEASE SAVEPOINT pa');
+          return m;
+        }
+      };
+      p = await see(shop, '/backoffice/promotions', { q: 'tee' });
+      const found = rowsOf(p.html);
+      check('Z6 Promote a product finds Tee, which is not a slow mover, with its three sizes at Rs 675.00 and a form for every line and for all of them',
+        !p.error && found.some((r) => r.startsWith('Tee')) && ['10', '12', '13'].every((s) => found.some((r) => r.startsWith(s + ' ') && r.includes('Rs 675.00'))) && (p.html.match(/name="amount"/g) || []).length === 4,
+        p.error || found.join(' // ').slice(0, 400));
+      let said = await promote({ item: tee, amount: '20%' });
+      check('Z7 20% off every line: sizes 10 and 12 at Rs 540.00, 13 left out because it has no cost, and the answer says so',
+        (await size('10')).price === 54000 && (await size('12')).price === 54000 && (await size('13')).price === 67500 && /2 lines on promotion/.test(said) && /no cost/.test(said) && /Tee \/ 13/.test(said), said);
+      said = await promote({ item: tee, variant: (await size('12')).id, amount: '500' });
+      const twelve = await one(`select original_price::int as o, promo_price::int as p from promotions where tenant_id = $1 and variant_id = $2 and status = 'active'`, [shop.tid, (await size('12')).id]);
+      check('Z8 one line at Rs 500: size 12 goes down again, its price before the promotion kept', (await size('12')).price === 50000 && twelve && twelve.o === 67500 && twelve.p === 50000 && (await size('10')).price === 54000, said);
+      said = await promote({ item: tee, amount: '150%' });
+      check('Z8 a percent off over 99 is refused', /err=/.test(said) && /between 1 and 99/.test(said), said);
+      p = await see(shop, '/backoffice/promotions', {});
+      check('Z9 both sizes are listed under On promotion', !p.error && rowsOf(p.html).some((r) => r.startsWith('Tee, 10 | Rs 675.00 | Rs 540.00')) && rowsOf(p.html).some((r) => r.startsWith('Tee, 12 | Rs 675.00 | Rs 500.00')), p.error || rowsOf(p.html).join(' // ').slice(0, 400));
     }
 
     // -------------------------------------------------------- a restaurant
