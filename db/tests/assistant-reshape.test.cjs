@@ -1,7 +1,8 @@
 // assistant-reshape.test.cjs — EasyPay in Claude, release 1b, against the back office on this PC (next dev,
 // port 3000, the dev database): a small copy of Kids Corner's shirt with its spellings, tidied, split
 // by Style into Shirt › Long Sleeve with Age renamed Size, all as one plan; then Restore; then a file's
-// rows imported. Checks R1 to R8. It makes a business of its own and removes it at the end.
+// rows imported; then a product counted by size alone given its colours, and Restore. Checks R1 to R10.
+// It makes a business of its own and removes it at the end.
 // Usage: node db/tests/assistant-reshape.test.cjs   (ASSISTANT_BASE=http://localhost:3000 by default)
 const crypto = require('crypto');
 const { Client } = require('pg');
@@ -139,6 +140,42 @@ const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
     r = await tool('rename_option', { product: tee, option: 'Size', to: 'age' });
     await press(r);
     check('R8 Size is now Age', (await one(`select option_names from items where id = $1`, [tee])).option_names.join() === 'Colour,Age');
+
+    // R9 a product counted by size alone, its colours said later (the owner, 2026-10-29: "3 is blue 7 is red"):
+    // Colour is added (every size Mixed), and a size's pieces go to a line of each colour
+    const sizes = (await one(`insert into items (tenant_id, name, price, track_stock, option_names) values ($1, 'Long Sleeve Plain', 87500, true, '{Size}') returning id`, [tid])).id;
+    for (const [s, q] of [['10', 10], ['12', 4], ['13', 2]]) {
+      const v = (await one(`insert into item_variants (tenant_id, item_id, name, price, option_values) values ($1,$2,$3,87500,$4) returning id`, [tid, sizes, s, [s]])).id;
+      await c.query(`select stock_move($1,$2,$3,$4,$5,'opening',null,null,null,$6,'test')`, [tid, store, sizes, v, q * 1000, emp]);
+    }
+    const linesOf = async () => (await all(
+      `select v.option_values, v.barcode, coalesce((select sum(qty) from stock_levels l where l.variant_id = v.id and l.deleted_at is null), 0)::int / 1000 as q
+         from item_variants v where v.item_id = $1 and v.deleted_at is null order by v.option_values::text`, [sizes],
+    )).map((x) => `${x.option_values.join('/')}:${x.q}${x.barcode ? '#' + x.barcode : ''}`).join(' ');
+    const optionsOf = async () => (await one(`select option_names from items where id = $1`, [sizes])).option_names.join();
+    r = await tool('split_colours', { product: sizes, option: 'Colour', lines: [{ where: { Size: '10' }, into: [{ value: 'blue', qty: 3, barcode: '2990000000999' }, { value: 'Red', qty: 7 }] }], asked: 'size 10: 3 blue, 7 red' });
+    const sh = (r.structuredContent || {}).html || '';
+    check('R9 the card adds Colour, the other sizes Mixed, and splits 10 into Blue 3 and Red 7', !r.isError && /Mixed/.test(sh) && /Blue/.test(sh) && /Red/.test(sh), words(r));
+    check('R9 nothing changed yet', (await optionsOf()) === 'Size' && (await linesOf()) === '10:10 12:4 13:2', await linesOf());
+    k = await press(r);
+    check('R9 Size and Colour: 10 is Blue 3 with its old barcode and Red 7, 10 / Mixed gone, the other sizes Mixed', (await optionsOf()) === 'Size,Colour'
+      && (await linesOf()) === '10/Blue:3#2990000000999 10/Red:7 12/Mixed:4 13/Mixed:2', (await linesOf()) + ' ' + words(k));
+    const notes = (await all(`select note from stock_movements where tenant_id = $1 and item_id = $2 and reason = 'adjust'`, [tid, sizes])).map((x) => x.note);
+    check('R9 the pieces moved as pairs of stock moves', notes.length === 4 && notes.filter((n) => /^Split from/.test(n)).length === 2, notes.join(' | '));
+    r = await tool('split_colours', { product: sizes, option: 'Colour', lines: [{ where: { Size: '12' }, into: [{ value: 'Blue', qty: 5 }] }] });
+    check('R9 more pieces than the size holds is refused, saying how many it holds', r.isError === true && /holds 4/.test(words(r)), words(r));
+    r = await tool('split_colours', { product: sizes, option: 'Colour', lines: [{ where: { Size: '12' }, into: [{ value: 'BLUE', qty: 3 }] }] });
+    const sh2 = (r.structuredContent || {}).html || '';
+    check('R9 fewer: the card says 1 stays in 12 / Mixed, and BLUE is the shop\'s Blue', /1 stays in 12 \/ Mixed/.test(sh2) && !/New colour/.test(sh2), words(r));
+    await press(r);
+    check('R9 12 is Blue 3 and Mixed 1', (await linesOf()).includes('12/Blue:3') && (await linesOf()).includes('12/Mixed:1'), await linesOf());
+
+    // R10 Restore, last first: the pieces go back, the lines it made go, and with the last one the option too
+    const splits = await all(`select id from assistant_log where tenant_id = $1 and kind = 'split_colours' order by created_at desc`, [tid]);
+    await press(await tool('restore', { change: splits[0].id }));
+    check('R10 Restore of the second: 12 is Mixed 4 again, Colour stays', (await linesOf()) === '10/Blue:3#2990000000999 10/Red:7 12/Mixed:4 13/Mixed:2' && (await optionsOf()) === 'Size,Colour', await linesOf());
+    await press(await tool('restore', { change: splits[1].id }));
+    check('R10 Restore of the first: by size alone again, 10 holds 10', (await optionsOf()) === 'Size' && (await linesOf()) === '10:10 12:4 13:2', (await optionsOf()) + ' ' + (await linesOf()));
   } finally {
     await devguard.cleanupTenant(c, tid).catch((e) => console.log('cleanup: ' + e.message));
     await c.query(`delete from assistant_clients where client_id = $1`, [client]).catch(() => {});

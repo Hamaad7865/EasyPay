@@ -110,7 +110,7 @@ export default async function AssistantPage({ searchParams }: { searchParams: Se
           ))}
         </ul>
         <p className="muted" style={{ marginBottom: 0 }}>
-          Every change shows a card of how it will look on the tablet and waits for your Confirm. Big ones ask you to type the shop&apos;s name. Restore, under Changes below, undoes a delete, a split, a move, an import or a whole plan for 30 days.
+          Every change shows a card of how it will look on the tablet and waits for your Confirm. Big ones ask you to type the shop&apos;s name. Restore, under Changes below, undoes a delete, a split, a move, colours said, an import or a whole plan for 30 days.
         </p>
       </Card>
       <Card title="Connected apps">
@@ -232,5 +232,6 @@ const SAY = [
   "Make a category Shirt with a sub category Long Sleeve",
   "Tidy the stock: tidy colours and styles, rename Age to Size, split by style into Shirt › Long Sleeve",
   "Import this file (with the Excel attached)",
+  "Long Sleeve Plain size 10: 3 are Blue, 7 are Red",
   "What sold this week? Promote the slowest at 20% off",
 ];

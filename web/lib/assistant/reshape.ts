@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import type { Who } from "./oauth";
-import { branches, lines, pieces, product, rs, spellings, stock, tileOf, type Line, type Product } from "./catalog";
+import { branches, lines, pieces, product, rs, sheetOf, spellings, stock, tileOf, type Line, type Product } from "./catalog";
 import { groups, key, read, thousandths, titled, cents } from "./words";
 import type { Reading, Sheet, StockMove, Tile, Warning } from "./types";
 
@@ -296,6 +296,157 @@ export const move: ReKind = {
   },
 };
 
+// ------------------------------------------------------ colours said later
+
+// A product counted by size alone, its colours said later (the owner of Kids
+// Corner, 2026-10-29: "quantity 10, then 3 is blue 7 is red"). The option is
+// added first when the product hasn't it, every line taking the placeholder
+// (Mixed); then each line said gives its pieces to a line of each value, made
+// when missing, as a pair of stock moves (variant_split, 0149). A placeholder
+// line left with nothing goes, unless asked to stay.
+type Into = { value: string; qty: number; barcode: string | null; sku: string | null; price: number | null; isNew: boolean; before: number };
+type Splitting = { from: string; name: string; values: string[]; held: number; barcode: string | null; into: Into[] };
+export const splitColours: ReKind = {
+  perm: "items.edit",
+  async plan(x, input) {
+    const p = await productOf(x, input.product);
+    const said = titled(str(input.option) || "Colour").slice(0, 30);
+    const placeholder = titled(str(input.placeholder) || "Mixed").slice(0, 30);
+    let i = p.options.findIndex((o) => o.toLowerCase() === said.toLowerCase());
+    const adding = i < 0;
+    if (adding) {
+      if (!p.options.length) throw new No(`${p.name} has no lines to say the ${said.toLowerCase()} of. Make its lines first.`);
+      if (p.options.length >= 3) throw new No(`${p.name} already has three options (${p.options.join(", ")}), the most a product has.`);
+      i = p.options.length;
+    }
+    const options = adding ? [...p.options, said] : p.options;
+    const ls = (await lines(x.c, x.t, p.id)).map((l) => (adding ? { ...l, values: [...l.values, placeholder] } : l));
+    const all = await branches(x.c, x.t);
+    const b = str(input.branch).toLowerCase();
+    const store = (b ? all.find((y) => y.name.toLowerCase() === b) ?? all.find((y) => y.name.toLowerCase().includes(b)) : all.length === 1 ? all[0] : undefined);
+    if (!store) throw new Ask(`At which branch are those pieces? ${all.map((y) => y.name).join(", ")}.`);
+    const h = await stock(x.c, x.t, p.id, store.id);
+    const known = adding ? [] : spellings(p.options, ls)[i];
+    const asked = Array.isArray(input.lines) ? (input.lines as { where?: Record<string, unknown>; into?: Record<string, unknown>[] }[]) : [];
+    const others = options.filter((_, j) => j !== i);
+    if (!asked.length) throw new Ask(`Which ${others.join(" and ").toLowerCase()}, and how many of each ${said.toLowerCase()}?`);
+    const splits: Splitting[] = [];
+    for (const a of asked) {
+      const where = a.where ?? {};
+      const want = options.map((o, j) => {
+        const k = Object.keys(where).find((w) => w.toLowerCase() === o.toLowerCase());
+        return k ? str(where[k]) : j === i ? placeholder : null;
+      });
+      const hits = ls.filter((l) => want.every((v, j) => v === null || key(v) === key(l.values[j] ?? "")));
+      const named = want.map((v, j) => (v === null ? null : `${options[j]} ${v}`)).filter(Boolean).join(", ");
+      if (!hits.length) throw new Ask(`${p.name} has no line with ${named}. Its lines are ${ls.slice(0, 12).map((l) => l.values.join(" / ")).join(", ")}${ls.length > 12 ? "…" : ""}.`);
+      if (hits.length > 1) throw new Ask(`${named} is ${hits.length} lines of ${p.name}: ${hits.slice(0, 8).map((l) => l.values.join(" / ")).join(", ")}. Which one?`);
+      const from = hits[0];
+      if (splits.some((s) => s.from === from.id)) throw new No(`${from.values.join(" / ")} is said twice. Say all its ${said.toLowerCase()}s once.`);
+      const held = h.get(from.id) ?? 0;
+      const into: Into[] = [];
+      for (const part of a.into ?? []) {
+        const v = str(part.value);
+        if (!v) throw new Ask(`Which ${said.toLowerCase()}?`);
+        const hit = read(v, known);
+        const value = hit ? hit.value : titled(v).slice(0, 30);
+        if (into.some((q) => q.value.toLowerCase() === value.toLowerCase())) throw new No(`${value} is said twice for ${from.values.join(" / ")}.`);
+        if (value.toLowerCase() === (from.values[i] ?? "").toLowerCase()) throw new No(`The pieces are already ${value}. Say the ${said.toLowerCase()}s they are.`);
+        const n = typeof part.qty === "number" ? part.qty : Number(str(part.qty));
+        if (!Number.isFinite(n) || n < 0) throw new Ask(`How many ${value} in ${from.values.join(" / ")}?`);
+        const values = from.values.map((y, j) => (j === i ? value : y));
+        const there = ls.find((l) => l.values.every((y, j) => y.toLowerCase() === values[j].toLowerCase()));
+        const barcode = str(part.barcode) || null;
+        if (barcode) {
+          const taken = (await x.c.query(
+            `select v.name, i.name as product from item_variants v join items i on i.id = v.item_id and i.deleted_at is null
+              where v.tenant_id = $1 and v.deleted_at is null and v.barcode = $2
+             union all select null, name from items where tenant_id = $1 and deleted_at is null and barcode = $2 limit 1`,
+            [x.t, barcode],
+          )).rows[0];
+          if (taken && !(there && there.barcode === barcode)) throw new No(`Barcode ${barcode} is already on ${taken.product}${taken.name ? `, ${taken.name}` : ""}.`);
+        }
+        const price = part.price === undefined || part.price === null || str(part.price) === "" ? null : cents(Number(part.price));
+        into.push({ value, qty: thousandths(n), barcode: there ? null : barcode, sku: there ? null : str(part.sku) || null, price: there ? null : price, isNew: !hit && !adding, before: there ? h.get(there.id) ?? 0 : 0 });
+      }
+      if (!into.length) throw new Ask(`How many of each ${said.toLowerCase()} in ${from.values.join(" / ")}?`);
+      const total = into.reduce((s, q) => s + q.qty, 0);
+      if (total > held) throw new No(`${p.name} ${from.values.join(" / ")} holds ${pieces(held)} at ${store.name}; the ${said.toLowerCase()}s said add up to ${pieces(total)}. Count again, or say fewer.`);
+      splits.push({ from: from.id, name: from.values.join(" / "), values: from.values, held, barcode: from.barcode, into });
+    }
+    const readings: Reading[] = [{ said: "product", is: p.name, note: adding ? `gets the option ${said}: its lines are ${placeholder} until said` : `${said}: ${known.length} values`, isNew: false }];
+    for (const s of splits) {
+      const left = s.held - s.into.reduce((a, q) => a + q.qty, 0);
+      readings.push({ said: s.name, is: s.into.map((q) => `${q.value} ${pieces(q.qty)}`).join(", "), note: left ? `${pieces(left)} ${left === 1000 ? "stays" : "stay"} in ${s.name}` : null, isNew: s.into.some((q) => q.isNew) });
+    }
+    const one = splits.length === 1 ? splits[0] : null;
+    const bare = (s: Splitting) => s.values.filter((_, j) => j !== i).join(" / ");
+    return {
+      params: { item: p.id, add: adding ? { name: said, value: placeholder } : null, option: i + 1, store: store.id, branch: store.name, splits, keep: input.keep_mixed === true, placeholder, lines: ls.length },
+      readings,
+      title: one ? `${p.name} ${bare(one)}: ${one.into.map((q) => `${pieces(q.qty)} ${q.value}`).join(", ")}` : `${p.name}: ${splits.map(bare).join(", ")} said by ${said.toLowerCase()}`,
+      touched: { [`items:${p.id}`]: p.updated_at, ...Object.fromEntries(splits.map((s) => [`item_variants:${s.from}`, ls.find((l) => l.id === s.from)!.updated_at])) },
+    };
+  },
+  async run(x, p) {
+    const add = p.add as { name: string; value: string } | null;
+    if (add) await x.c.query(`select variant_option_add($1,$2,$3,$4)`, [x.t, p.item, add.name, add.value]);
+    const moves: { store: string; item: string; from: string; to: string; qty: number; created: boolean }[] = [];
+    const dropped: string[] = [];
+    for (const s of p.splits as Splitting[]) {
+      const parts = s.into.map((q) => ({ value: q.value, qty: q.qty, barcode: q.barcode, sku: q.sku, price: q.price }));
+      const r = (await x.c.query(`select variant_split($1,$2,$3,$4::jsonb,$5,$6,$7) as r`, [x.t, s.from, p.option, JSON.stringify(parts), p.store, x.w.employeeId, !p.keep])).rows[0].r as {
+        lines: { line: string; created: boolean; qty: number }[]; dropped: boolean;
+      };
+      for (const l of r.lines) moves.push({ store: p.store as string, item: p.item as string, from: s.from, to: l.line, qty: l.qty, created: l.created });
+      if (r.dropped) dropped.push(s.from);
+    }
+    const first = (p.splits as Splitting[])[0];
+    return {
+      summary: "split by " + String(add?.name ?? "option").toLowerCase(),
+      lines: [],
+      item: p.item as string,
+      picked: first.values.map((v, j) => (j === (p.option as number) - 1 ? first.into[0].value : v)),
+      undo: { colours: { item: p.item, option: p.option, added: Boolean(add), moves, dropped } },
+    };
+  },
+  async view(x, p, ran) {
+    const prod = (await product(x.c, x.t, p.item as string))!;
+    const ls = await lines(x.c, x.t, prod.id);
+    const h = await stock(x.c, x.t, prod.id, p.store as string);
+    const i = (p.option as number) - 1;
+    const splits = p.splits as Splitting[];
+    const warnings: Warning[] = [];
+    const add = p.add as { name: string; value: string } | null;
+    const waiting = ls.filter((l) => (l.values[i] ?? "").toLowerCase() === String(p.placeholder).toLowerCase()).length;
+    if (add) warnings.push({ tone: "amber", text: `${prod.name} gets the option ${add.name}. The tablet asks ${prod.options.join(", then ")}. Its lines not said yet are ${add.value} (${waiting} now), until their ${add.name.toLowerCase()}s are said.` });
+    const stockMoves: StockMove[] = [];
+    const out: string[] = [];
+    for (const s of splits) {
+      const moved = s.into.reduce((a, q) => a + q.qty, 0);
+      const left = s.held - moved;
+      out.push(`${s.name} → ${s.into.map((q) => `${s.values.map((v, j) => (j === i ? q.value : v)).join(" / ")} ${pieces(q.qty)}`).join(", ")}`);
+      stockMoves.push({ branch: String(p.branch), line: s.name, before: pieces(s.held), after: left ? pieces(left) : p.keep ? "0" : "0, and the line goes" });
+      for (const q of s.into) stockMoves.push({ branch: String(p.branch), line: s.values.map((v, j) => (j === i ? q.value : v)).join(" / "), before: pieces(q.before), after: pieces(q.before + q.qty) });
+      if (left) warnings.push({ tone: "amber", text: `${pieces(left)} ${left === 1000 ? "stays" : "stay"} in ${s.name}: the ${(add?.name ?? prod.options[i]).toLowerCase()}s said add up to ${pieces(moved)} of its ${pieces(s.held)}.` });
+      else if (!p.keep && s.barcode) warnings.push({ tone: "amber", text: `${s.name} goes once empty, and its barcode ${s.barcode} stops scanning.` });
+      if (s.into.some((q) => q.qty > TYPO)) warnings.push({ tone: "amber", text: `More than ${pieces(TYPO)} pieces of one line. Check it isn't a typo.` });
+    }
+    const fresh = splits.flatMap((s) => s.into.filter((q) => q.isNew).map((q) => q.value));
+    if (fresh.length) warnings.push({ tone: "amber", text: `New ${prod.options[i].toLowerCase()}: ${[...new Set(fresh)].join(", ")}. Check none is a typo of one the shop has.` });
+    return {
+      tile: tileOf(prod, ls, h),
+      sheet: sheetOf(prod, ls, h, ran.picked ?? [], new Set(fresh.map((v) => `${i}:${v}`))),
+      stock: stockMoves,
+      warnings,
+      danger: false,
+      confirm: "Split",
+      typeName: null,
+      lines: out,
+    };
+  },
+};
+
 // ----------------------------------------------------- tidy the stock (plan)
 
 export const STEPS: Record<string, ReKind> = {};
@@ -511,4 +662,4 @@ export const importRows: ReKind = {
 };
 
 Object.assign(STEPS, { tidy, rename_option: renameOption, split, move });
-export const RESHAPE: Record<string, ReKind> = { tidy, rename_option: renameOption, split, move, plan, import: importRows };
+export const RESHAPE: Record<string, ReKind> = { tidy, rename_option: renameOption, split, move, plan, import: importRows, split_colours: splitColours };

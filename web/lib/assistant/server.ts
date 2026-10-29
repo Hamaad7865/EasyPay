@@ -428,6 +428,33 @@ export function serverFor(w: Who, origin: string): McpServer {
     z.object({ product: z.string(), into: z.string(), lines: z.array(z.string()).optional(), drop: z.string().optional().describe("An option the lines lose on the way"), asked }),
   );
   change(
+    "split_colours",
+    "Say the colours of counted pieces",
+    "A product counted without an option, its pieces now said by it: \"Long Sleeve Plain size 10: 3 Blue, 7 Red\". If the product hasn't the option yet (Colour), it is added and every line is Mixed until said. Each line said gives its pieces to a line of each value, made if missing (with a barcode when given, e.g. the old label's). Several lines in one call, one Confirm. Lines left with nothing go.",
+    z.object({
+      product: z.string(),
+      option: z.string().optional().describe("The option said, Colour if not given"),
+      lines: z.array(
+        z.object({
+          where: z.record(z.string(), z.string()).describe("The line, by its other options' values, e.g. {\"Size\": \"10\"}"),
+          into: z.array(
+            z.object({
+              value: z.string().describe("e.g. Blue"),
+              qty: z.number().describe("Pieces of that value"),
+              barcode: z.string().optional().describe("For a new line: the barcode on its labels"),
+              sku: z.string().optional(),
+              price: z.number().optional().describe("For a new line, in rupees, if not the line's price"),
+            }),
+          ),
+        }),
+      ),
+      placeholder: z.string().optional().describe("The value lines take until said, Mixed if not given"),
+      keep_mixed: z.boolean().optional().describe("Keep a Mixed line that is left with nothing"),
+      branch: z.string().optional(),
+      asked,
+    }),
+  );
+  change(
     "plan",
     "Tidy the stock: a plan",
     "Several changes as one plan with one Confirm, each step worked out on the steps before it. Steps: edit_category, edit_product, tidy, rename_option, split, move, delete, each with the same args as its own tool. EasyPay checks every line and piece is accounted for.",

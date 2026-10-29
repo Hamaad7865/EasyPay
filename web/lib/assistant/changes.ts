@@ -580,6 +580,24 @@ async function undo(x: C, u0: unknown): Promise<void> {
     );
   }
   if (u.items) await hiddenBack(x, u);
+  // colours said (0149): the pieces back in the line they came from, that line back if it went, the lines made gone
+  // once they hold nothing, and the option taken off again once every line is back to one value
+  const said = (u0 ?? {}) as { colours?: { item: string; option: number; added: boolean; moves: { store: string; item: string; from: string; to: string; qty: number; created: boolean }[]; dropped: string[] } };
+  if (said.colours) {
+    const s = said.colours;
+    await x.c.query(`update item_variants set deleted_at = null where tenant_id = $1 and id = any($2::uuid[])`, [x.t, s.dropped]);
+    for (const m of s.moves.filter((y) => y.qty > 0)) {
+      await x.c.query(`select stock_move($1,$2,$3,$4,$5,'adjust',null,null,null,$6,'Split undone')`, [x.t, m.store, m.item, m.to, -m.qty, x.w.employeeId]);
+      await x.c.query(`select stock_move($1,$2,$3,$4,$5,'adjust',null,null,null,$6,'Split undone')`, [x.t, m.store, m.item, m.from, m.qty, x.w.employeeId]);
+    }
+    await x.c.query(
+      `update item_variants v set deleted_at = now() where tenant_id = $1 and id = any($2::uuid[]) and deleted_at is null
+          and not exists (select 1 from stock_levels l where l.variant_id = v.id and l.deleted_at is null and l.qty <> 0)`,
+      [x.t, s.moves.filter((y) => y.created).map((y) => y.to)],
+    );
+    const values = (await x.c.query(`select count(distinct lower(option_values[$3]))::int as n from item_variants where tenant_id = $1 and item_id = $2 and deleted_at is null`, [x.t, s.item, s.option])).rows[0].n as number;
+    if (s.added && values <= 1) await x.c.query(`select variant_option_drop($1,$2,$3)`, [x.t, s.item, s.option]);
+  }
   const made = (u0 ?? {}) as { hide?: { items: string[]; lines: string[]; categories: string[] }; reverse?: { store: string; item: string; line: string | null; qty: number }[] };
   for (const m of made.reverse ?? []) {
     await x.c.query(`select stock_move($1,$2,$3,$4,$5,'adjust',null,null,null,$6,'Import undone')`, [x.t, m.store, m.item, m.line, -m.qty, x.w.employeeId]);
@@ -654,7 +672,7 @@ const restore: Kind = {
   },
   async view(_x, p) {
     const u = p.undo as { items?: string[]; lines?: string[]; categories?: string[]; moves?: unknown[]; steps?: unknown[] };
-    const said = (u as { hide?: unknown }).hide ? "The import is undone: what it made goes, with its stock, and stock it added is taken back. Prices it changed stay." : u.moves || u.steps ? "Lines go back to the products they were in. Tidied spellings stay tidy." : `${u.items?.length ?? 0} products, ${u.lines?.length ?? 0} lines, ${u.categories?.length ?? 0} categories come back`;
+    const said = (u as { colours?: unknown }).colours ? "The pieces go back to the line they came from, and the lines it made go. The option goes too once every line is back to one value." : (u as { hide?: unknown }).hide ? "The import is undone: what it made goes, with its stock, and stock it added is taken back. Prices it changed stay." : u.moves || u.steps ? "Lines go back to the products they were in. Tidied spellings stay tidy." : `${u.items?.length ?? 0} products, ${u.lines?.length ?? 0} lines, ${u.categories?.length ?? 0} categories come back`;
     return { tile: null, sheet: null, stock: [], warnings: [], danger: false, confirm: "Restore", typeName: null, lines: [said] };
   },
 };
