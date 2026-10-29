@@ -13,12 +13,14 @@ import { useRef, useState, useTransition } from "react";
 
 const MOST = 640;
 
-export function PicturePicker({ action, fields, src, label, size = 64 }: {
+export function PicturePicker({ action, fields, src, label, size = 64, compact = false }: {
   action: (f: FormData) => Promise<void>;
   fields: Record<string, string>;
   src: string | null;
   label: string;
   size?: number;
+  // a line's own row: the square alone, no words beside it (the label names it to a screen reader)
+  compact?: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, start] = useTransition();
@@ -60,19 +62,50 @@ export function PicturePicker({ action, fields, src, label, size = 64 }: {
     }
   };
 
+  const thumb = (
+    <button
+      type="button"
+      className="picture-thumb"
+      onClick={() => input.current?.click()}
+      disabled={busy}
+      aria-label={src ? `Change the picture of ${label}` : `Add a picture to ${label}`}
+      title={compact ? (busy ? "Saving…" : said ?? (src ? "Change the picture" : "Add a picture")) : undefined}
+      style={{ width: size, height: size }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- the business's own picture, served by the back office */}
+      {src ? <img src={src} alt="" /> : <span aria-hidden>{busy ? "…" : "+"}</span>}
+    </button>
+  );
+  const file = (
+    <input
+      ref={input}
+      type="file"
+      accept="image/*"
+      hidden
+      onChange={(e) => {
+        const f = e.target.files?.[0];
+        e.target.value = "";
+        if (f) chosen(f);
+      }}
+    />
+  );
+  if (compact)
+    return (
+      <div className="picture-picker" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        {thumb}
+        {src && !busy && (
+          <button type="button" className="btn-link danger" aria-label={`Remove the picture of ${label}`} title="Remove the picture" onClick={() => send((f) => f.set("remove", "1"))}>
+            ×
+          </button>
+        )}
+        {said && <span className="help" style={{ color: "var(--red)" }}>Not a picture</span>}
+        {file}
+      </div>
+    );
+
   return (
     <div className="picture-picker" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <button
-        type="button"
-        className="picture-thumb"
-        onClick={() => input.current?.click()}
-        disabled={busy}
-        aria-label={src ? `Change the picture of ${label}` : `Add a picture to ${label}`}
-        style={{ width: size, height: size }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element -- the business's own picture, served by the back office */}
-        {src ? <img src={src} alt="" /> : <span aria-hidden>+</span>}
-      </button>
+      {thumb}
       <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
         {label && <span className="strong" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>}
         <span style={{ display: "flex", gap: 10 }}>
@@ -87,17 +120,7 @@ export function PicturePicker({ action, fields, src, label, size = 64 }: {
         </span>
         {said && <span className="help" style={{ color: "var(--red)" }}>{said}</span>}
       </span>
-      <input
-        ref={input}
-        type="file"
-        accept="image/*"
-        hidden
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          e.target.value = "";
-          if (file) chosen(file);
-        }}
-      />
+      {file}
     </div>
   );
 }

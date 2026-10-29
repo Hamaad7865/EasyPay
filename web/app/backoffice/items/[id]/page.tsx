@@ -11,6 +11,7 @@ import { Card, Flash, PageHead, type Search } from "../../ui";
 import { Submit } from "../../busy";
 import { PriceFields, type TaxChoice } from "./price-fields";
 import { PicturePicker } from "./picture-picker";
+import { LinesTools } from "./lines-tools";
 import { CATEGORY_PICK } from "@/lib/categories";
 
 // A shop's product, on a page of its own: what it is, what it costs and sells
@@ -338,6 +339,26 @@ type ItemRow = {
 };
 type VariantRow = { id: string; name: string; barcode: string | null; sku: string | null; price: string; cost: string | null; option_values: string[]; qty: number; picture_id: string | null };
 
+// The lines in the order a person looks for them (the owner, 2026-10-29): an option whose values all start
+// with a number goes by the number (1, 2 … 15 Year, not 1, 10, 11 … 2); words keep the order they came in
+// (S, M, L). The first option decides, then the second, then the third.
+const natural = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+function inOrder(ls: VariantRow[]): VariantRow[] {
+  const n = Math.max(0, ...ls.map((l) => l.option_values.length));
+  const rank = Array.from({ length: n }, (_, i) => {
+    const seen = [...new Set(ls.map((l) => l.option_values[i] ?? ""))];
+    if (seen.every((v) => /^\d/.test(v))) seen.sort((a, b) => natural.compare(a, b));
+    return new Map(seen.map((v, k) => [v, k]));
+  });
+  const at = (l: VariantRow, i: number) => rank[i].get(l.option_values[i] ?? "") ?? 0;
+  return [...ls].sort((a, b) => {
+    for (let i = 0; i < n; i++) if (at(a, i) !== at(b, i)) return at(a, i) - at(b, i);
+    return 0;
+  });
+}
+// above this many lines, a chip for each value shows only its lines
+const CHIPS_FROM = 10;
+
 const pictureSrc = (id: string | null) => (id ? `/backoffice/pictures/${id}` : null);
 const rupees = (cents: string | number | null) => (cents === null ? "" : (Number(cents) / 100).toString());
 const qtyUnits = (q: number | null) => (q === null ? "" : (q / 1000).toString());
@@ -401,7 +422,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   });
   if (!isNew && !d.item) notFound();
   const item = d.item;
-  const lines = d.variants;
+  const lines = inOrder(d.variants);
   const hasLines = lines.length > 0;
   const onHand = hasLines ? lines.reduce((a, v) => a + v.qty, 0) : (item?.stock_qty ?? 0);
   const many = d.all.length > 1;
@@ -700,61 +721,6 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
             </Card>
           )}
 
-          {item && hasLines && (
-            <Card title={`${lines.length} ${lines.length === 1 ? "line" : "lines"}`} lede="Change a barcode, a SKU, a price or a cost, then save the lines. Quantities change under Stock." flush>
-              <form action={saveLines}>
-                <input type="hidden" name="id" value={item.id} />
-                <div className="table-scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Picture</th>
-                        <th>Variant</th>
-                        <th>Barcode</th>
-                        <th>SKU</th>
-                        <th className="num">Price (Rs)</th>
-                        {d.mayCost && <th className="num">Cost (Rs)</th>}
-                        <th className="num">On hand</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {lines.map((v) => (
-                        <tr key={v.id}>
-                          <td>
-                            <PicturePicker action={setPicture} fields={{ id: item.id, variant: v.id }} src={pictureSrc(v.picture_id)} label="" size={36} />
-                          </td>
-                          <td className="strong">
-                            <input type="hidden" name="v" value={v.id} />
-                            {v.name}
-                          </td>
-                          <td><input name={`barcode:${v.id}`} defaultValue={v.barcode ?? ""} maxLength={64} aria-label={`Barcode of ${v.name}`} autoComplete="off" style={{ width: 150 }} /></td>
-                          <td><input name={`sku:${v.id}`} defaultValue={v.sku ?? ""} maxLength={60} aria-label={`SKU of ${v.name}`} autoComplete="off" style={{ width: 120 }} /></td>
-                          <td className="num"><input name={`price:${v.id}`} defaultValue={rupees(v.price)} required inputMode="decimal" aria-label={`Price of ${v.name}`} className="narrow" /></td>
-                          {d.mayCost && <td className="num"><input name={`cost:${v.id}`} defaultValue={rupees(v.cost)} inputMode="decimal" aria-label={`Cost of ${v.name}`} className="narrow" /></td>}
-                          <td className="num strong">{v.qty <= 0 ? <span className="badge red">{fmtQty(v.qty)}</span> : fmtQty(v.qty)}</td>
-                          <td>
-                            <Submit className="btn-link danger" formAction={removeLine.bind(null, v.id)} formNoValidate aria-label={`Remove ${v.name}`}>
-                              Remove
-                            </Submit>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="card-body bo-toolbar" style={{ margin: 0 }}>
-                  <Submit className="btn-sm">Save the lines</Submit>
-                  {missingCodes > 0 && (
-                    <Submit className="btn-sm btn-quiet" formAction={makeBarcodes} formNoValidate>
-                      Make barcodes for the {missingCodes === 1 ? "line that has" : `${missingCodes} lines that have`} none
-                    </Submit>
-                  )}
-                </div>
-              </form>
-            </Card>
-          )}
-
           {item && !hasLines && missingCodes > 0 && (
             <form action={makeBarcodes} className="bo-toolbar">
               <input type="hidden" name="id" value={item.id} />
@@ -772,6 +738,65 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
           )}
         </div>
       </div>
+
+      {item && hasLines && (
+        <div className="lines-wide">
+          <Card title={`${lines.length} ${lines.length === 1 ? "line" : "lines"}`} lede="Change a barcode, a SKU, a price or a cost, then save the lines. Quantities change under Stock." flush>
+            <form action={saveLines}>
+              <input type="hidden" name="id" value={item.id} />
+              <LinesTools options={optionRows.map((o) => ({ name: o.name, values: o.values }))} chips={lines.length > CHIPS_FROM} mayCost={d.mayCost} />
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Picture</th>
+                      <th>Variant</th>
+                      <th>Barcode</th>
+                      <th>SKU</th>
+                      <th className="num">Price (Rs)</th>
+                      {d.mayCost && <th className="num">Cost (Rs)</th>}
+                      <th className="num">On hand</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lines.map((v) => (
+                      // its values ride on the row, for the chips above to show only some
+                      <tr key={v.id} data-line="" data-o1={v.option_values[0]} data-o2={v.option_values[1]} data-o3={v.option_values[2]}>
+                        <td>
+                          <PicturePicker action={setPicture} fields={{ id: item.id, variant: v.id }} src={pictureSrc(v.picture_id)} label={v.name} size={32} compact />
+                        </td>
+                        <td className="strong nowrap">
+                          <input type="hidden" name="v" value={v.id} />
+                          {v.name}
+                        </td>
+                        <td><input name={`barcode:${v.id}`} defaultValue={v.barcode ?? ""} maxLength={64} aria-label={`Barcode of ${v.name}`} autoComplete="off" style={{ width: 150 }} /></td>
+                        <td><input name={`sku:${v.id}`} defaultValue={v.sku ?? ""} maxLength={60} aria-label={`SKU of ${v.name}`} autoComplete="off" style={{ width: 120 }} /></td>
+                        <td className="num"><input name={`price:${v.id}`} defaultValue={rupees(v.price)} required inputMode="decimal" aria-label={`Price of ${v.name}`} className="narrow" /></td>
+                        {d.mayCost && <td className="num"><input name={`cost:${v.id}`} defaultValue={rupees(v.cost)} inputMode="decimal" aria-label={`Cost of ${v.name}`} className="narrow" /></td>}
+                        <td className="num strong">{v.qty <= 0 ? <span className="badge red">{fmtQty(v.qty)}</span> : fmtQty(v.qty)}</td>
+                        <td>
+                          <Submit className="btn-link danger" formAction={removeLine.bind(null, v.id)} formNoValidate aria-label={`Remove ${v.name}`}>
+                            Remove
+                          </Submit>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="card-body bo-toolbar lines-save" style={{ margin: 0 }}>
+                <Submit className="btn-sm">Save the lines</Submit>
+                {missingCodes > 0 && (
+                  <Submit className="btn-sm btn-quiet" formAction={makeBarcodes} formNoValidate>
+                    Make barcodes for the {missingCodes === 1 ? "line that has" : `${missingCodes} lines that have`} none
+                  </Submit>
+                )}
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
