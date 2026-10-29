@@ -1,7 +1,7 @@
 // assistant-mcp.test.cjs — EasyPay in Claude, release 1a, against the back office running on this PC
 // (next dev on port 3000, reading the dev database). It plays Claude's part: the sign-in endpoints, then
 // /mcp with a connection's token, the owner's own sentence from the spec, Confirm, history, delete,
-// Restore and Start over. Checks M1 to M12. It makes a business of its own and removes it at the end.
+// Restore and Start over, then prices, taxes, settings and promotions. Checks M1 to M16. It makes a business of its own and removes it at the end.
 // Usage: node db/tests/assistant-mcp.test.cjs   (ASSISTANT_BASE=http://localhost:3000 by default)
 const crypto = require('crypto');
 const { Client } = require('pg');
@@ -214,7 +214,7 @@ const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
       check('M15 a new tax is made', Boolean(await one(`select 1 from taxes where tenant_id = $1 and name = 'Exempt test'`, [tid])), words(r));
       ({ r, k } = await go('edit_discount', { verb: 'new', name: 'Staff', type: 'percent', value: 10, approval: true }));
       check('M15 a new discount is made', Boolean(await one(`select 1 from discounts where tenant_id = $1 and name = 'Staff' and value = 10 and requires_approval`, [tid])), words(r));
-      r = await tool('promote', { verb: 'apply', product: shirt, percent: 50 });
+      r = await tool('promote', { verb: 'apply', product: shirt, percent: 60 });
       check('M15 a promotion below cost, or on lines with no cost, is refused', r.isError === true, words(r));
       ({ r, k } = await go('settings', { set: { returnDays: 14, receiptFooter: 'Thank you!' } }));
       const st = (await one(`select data from pos_settings where tenant_id = $1`, [tid])).data;
@@ -238,6 +238,45 @@ const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
       const codes = await one(`select count(*)::int as n from assistant_calls where tenant_id = $1 and tool = 'confirm' and args like '%easypay%'`, [tid]);
       const leaked = await one(`select count(*)::int as n from assistant_calls where tenant_id = $1 and tool = 'confirm' and args not like '%"code":"…"%'`, [tid]);
       check('M15 a Confirm code is never kept in the log', leaked.n === 0, JSON.stringify([codes, leaked]));
+    }
+
+    // M16 a promotion on chosen lines (the owner of Kids Corner, 2026-10-29): lines by their values, a percent off
+    // the price before any promotion, a whole category with a line that has no cost left out and named, lifted by values
+    {
+      const go = async (name, args) => { const r = await tool(name, args); return { r, k: r.structuredContent ? await tool('confirm', { proposal: (/data-confirm="([0-9a-f-]{36})"/.exec(r.structuredContent.html) || [])[1], code: r._meta['easypay/code'] }) : null }; };
+      const tops = (await one(`insert into categories (tenant_id, name) values ($1, 'Tops') returning id`, [tid])).id;
+      const long = (await one(`insert into categories (tenant_id, name, parent_id) values ($1, 'Long', $2) returning id`, [tid, tops])).id;
+      const tee = (await one(`insert into items (tenant_id, name, price, category_id, track_stock, option_names) values ($1, 'Tee', 67500, $2, true, '{Size}') returning id`, [tid, long])).id;
+      await c.query(`select variants_generate($1,$2,$3,$4::jsonb)`, [tid, tee, ['Size'], JSON.stringify([['10', '12', '13']])]);
+      await c.query(`update item_variants set price = 67500, cost = case when option_values[1] = '13' then null else 40000 end where item_id = $1`, [tee]);
+      const cap = (await one(`insert into items (tenant_id, name, price, cost, category_id, track_stock) values ($1, 'Cap', 30000, 10000, $2, true) returning id`, [tid, tops])).id;
+      const prices = async () => Object.fromEntries((await all(`select option_values[1] as s, price::int as p from item_variants where item_id = $1 and deleted_at is null`, [tee])).map((x) => [x.s, x.p]));
+      const live = async (item) => all(`select variant_id, original_price::int as o, promo_price::int as p from promotions where item_id = $1 and status = 'active' and deleted_at is null`, [item]);
+      const capPrice = async () => (await one(`select price::int as p from items where id = $1`, [cap])).p;
+      const shown = (r) => ((r.structuredContent && r.structuredContent.html) || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      let { r } = await go('promote', { verb: 'apply', product: tee, where: { Size: ['10', '12'] }, percent: 20 });
+      let p = await prices();
+      check('M16 20% off sizes 10 and 12 only: Rs 540, 13 stays at Rs 675', p['10'] === 54000 && p['12'] === 54000 && p['13'] === 67500 && (await live(tee)).length === 2, JSON.stringify(p) + words(r));
+      ({ r } = await go('promote', { verb: 'apply', product: tee, where: { Size: '10' }, percent: 30 }));
+      p = await prices();
+      const l10 = (await live(tee)).find((x) => x.p === p['10']);
+      check('M16 30% off a line already promoted is off its price before (Rs 472.50), not stacked', p['10'] === 47250 && l10 && l10.o === 67500 && (await live(tee)).length === 2, JSON.stringify(p) + words(r));
+      r = await tool('promote', { verb: 'apply', category: 'Tops', percent: 10 });
+      const card = shown(r);
+      check('M16 a whole category: the line with no cost is left out and named, the ones promoted lower are said', /no cost/i.test(card) && /Tee \/ 13|Tee 13|13\b/.test(card) && /already on promotion/i.test(card), card.slice(0, 500));
+      await tool('confirm', { proposal: (/data-confirm="([0-9a-f-]{36})"/.exec(r.structuredContent.html) || [])[1], code: r._meta['easypay/code'] });
+      p = await prices();
+      check('M16 10% off Tops (Long inside it): Cap Rs 270, Tee 10 and 12 at Rs 607.50, 13 untouched', (await capPrice()) === 27000 && p['10'] === 60750 && p['12'] === 60750 && p['13'] === 67500 && (await live(tee)).length === 2, JSON.stringify([await capPrice(), p]));
+      ({ r } = await go('promote', { verb: 'lift', product: tee, where: { Size: '12' } }));
+      p = await prices();
+      check('M16 lifting size 12 puts it back to Rs 675; 10 stays promoted', p['12'] === 67500 && p['10'] === 60750 && (await live(tee)).length === 1, JSON.stringify(p) + words(r));
+      ({ r } = await go('promote', { verb: 'lift', category: 'Tops' }));
+      p = await prices();
+      check('M16 lifting Tops puts every price back', (await capPrice()) === 30000 && p['10'] === 67500 && (await live(tee)).length === 0 && (await live(cap)).length === 0, JSON.stringify([await capPrice(), p]) + words(r));
+      r = await tool('promote', { verb: 'apply', product: tee, percent: 120 });
+      check('M16 a percent off over 99 is refused', r.isError === true && /1 and 99/.test(words(r)), words(r));
+      r = await tool('promote', { verb: 'lift', category: 'Tops' });
+      check('M16 lifting where nothing is promoted says so', r.isError === true && /No promotion/i.test(words(r)), words(r));
     }
 
     // M12 losing Use the assistant ends the connection

@@ -233,5 +233,8 @@ const SAY = [
   "Tidy the stock: tidy colours and styles, rename Age to Size, split by style into Shirt › Long Sleeve",
   "Import this file (with the Excel attached)",
   "Long Sleeve Plain size 10: 3 are Blue, 7 are Red",
+  "Put everything in Shirt › Long Sleeve at 20% off",
+  "Long Sleeve Plain sizes 12 and 13 at Rs 500",
   "What sold this week? Promote the slowest at 20% off",
+  "Lift the promotion on Long Sleeve Plain",
 ];

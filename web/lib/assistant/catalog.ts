@@ -47,6 +47,17 @@ export async function lines(c: PoolClient, t: string, item: string): Promise<Lin
   ).rows;
 }
 
+// The lines with the values said, by option name: {"Size": ["10", "12"]}, {"Colour": "Red"}.
+// An option the product doesn't have matches no line.
+export function linesWhere<L extends { values: string[] }>(options: string[], ls: L[], where: Record<string, string | string[]>): L[] {
+  return ls.filter((l) =>
+    Object.entries(where).every(([o, vals]) => {
+      const i = options.findIndex((po) => po.toLowerCase() === o.toLowerCase());
+      return i >= 0 && (Array.isArray(vals) ? vals : [vals]).some((v) => key(String(v)) === key(l.values[i] ?? ""));
+    }),
+  );
+}
+
 // what each line holds at a branch ("" is the product itself, when it has no lines)
 export async function stock(c: PoolClient, t: string, item: string, store: string): Promise<Map<string, number>> {
   const r = await c.query(`select coalesce(variant_id::text, '') as v, qty from stock_levels where tenant_id = $1 and item_id = $2 and store_id = $3 and deleted_at is null`, [t, item, store]);

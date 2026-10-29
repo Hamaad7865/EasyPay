@@ -2,12 +2,11 @@ import type { PoolClient } from "pg";
 import { withTenant } from "@/lib/db";
 import { saveVariantLines } from "@/lib/saves";
 import { random, sha256, type Who } from "./oauth";
-import { branches, lines, pieces, product, rs, sheetOf, spellings, stock, tileOf, type Branch, type Line, type Product } from "./catalog";
+import { branches, lines, linesWhere, pieces, product, rs, sheetOf, spellings, stock, tileOf, type Branch, type Line, type Product } from "./catalog";
 import { read, thousandths, cents, titled } from "./words";
 import type { DoneCard, PreviewCard, Reading, Sheet, StockMove, Tile, Warning } from "./types";
 import { Ask, No, RESHAPE, STEPS, TYPO } from "./reshape";
 import { SETTINGS } from "./settings";
-import { key } from "./words";
 
 // A change through Claude (spec, The preview is the real change, undone):
 //   1. plan: what the AI sent, read against the shop's own rows into exact
@@ -247,12 +246,7 @@ const editLines: Kind = {
       const unknown = Object.keys(where).filter((o) => !p.options.some((po) => po.toLowerCase() === o.toLowerCase()));
       if (unknown.length) throw new Ask(`${p.name}'s options are ${p.options.join(", ")}. Which one is ${unknown.join(" and ")}?`);
     }
-    const fits = (l: Line) =>
-      Object.entries(where ?? {}).every(([o, vals]) => {
-        const i = p.options.findIndex((po) => po.toLowerCase() === o.toLowerCase());
-        return (Array.isArray(vals) ? vals : [vals]).some((v) => key(String(v)) === key(l.values[i] ?? ""));
-      });
-    const chosen = ids.length ? ls.filter((l) => ids.includes(l.id)) : where ? ls.filter(fits) : input.all === true ? ls : [];
+    const chosen = ids.length ? ls.filter((l) => ids.includes(l.id)) : where ? linesWhere(p.options, ls, where) : input.all === true ? ls : [];
     if (chosen.length === 0) throw new Ask(where ? `No line of ${p.name} has those values.` : `Which lines of ${p.name}? Give their ids, values (where), or say all.`);
     const readings: Reading[] = [{ said: "product", is: p.name, note: `${chosen.length} of its ${ls.length} lines`, isNew: false }];
     const mayCost = await may(x, "costs.view");
@@ -749,6 +743,13 @@ function refusal(e: unknown): Error {
     "bad-options": "Those values don't fit the product's options.",
     "category-not-empty": "That category still has sub categories.",
     live: "The business is live, so it can't start over.",
+    // a shop's promotions (0110)
+    "on-promotion": "A line is already on promotion. Ask again to see it as things are now.",
+    "not-lower": "A promoted price must be lower than the price it sells at now.",
+    "below-cost": "A promotion never goes below cost.",
+    "no-cost": "A line has no cost, and a promotion never goes below cost. Set its cost first.",
+    "pick-variant": "A product with lines is promoted by its lines.",
+    "not-active": "That promotion isn't running any more.",
   };
   return new No(said[m] ?? "That couldn't be done. Nothing was changed.");
 }

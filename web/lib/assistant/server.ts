@@ -504,9 +504,19 @@ export function serverFor(w: Who, origin: string): McpServer {
   );
   change(
     "promote",
-    "Promote a product, or lift its promotion",
-    "verb apply: a promoted price on every line of a product (a price in rupees, or percent off), never below cost; verb lift: back to the normal price.",
-    z.object({ verb: z.enum(["apply", "lift"]), product: z.string(), price: z.number().optional(), percent: z.number().optional(), asked }),
+    "Promote products, or lift their promotion",
+    "verb apply: a promoted price (a price in rupees, or percent off the price before any promotion) on a product, some products, or everything in a category, and of them only the lines with the values in where if given; never below cost, so lines with no cost or that would go below it are left out and named on the card. A line already promoted takes the new price. verb lift: the same lines back to their normal price.",
+    z.object({
+      verb: z.enum(["apply", "lift"]),
+      product: z.string().optional().describe("One product's id"),
+      products: z.array(z.string()).optional().describe("Product ids"),
+      category: z.string().optional().describe("Everything in a category, sub categories included: 'Shirt' or 'Shirt › Long Sleeve'"),
+      where: z.record(z.string(), z.union([z.string(), z.array(z.string())])).optional().describe("Only the lines with these values, e.g. {\"Size\": [\"12\", \"13\"]} or {\"Colour\": \"Red\"}"),
+      price: z.number().optional().describe("The promoted price in rupees"),
+      percent: z.number().optional().describe("Percent off, 1 to 99"),
+      note: z.string().optional().describe("e.g. Back to school"),
+      asked,
+    }),
   );
   change(
     "settings",
