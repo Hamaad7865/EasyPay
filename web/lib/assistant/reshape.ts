@@ -3,6 +3,7 @@ import type { Who } from "./oauth";
 import { branches, lines, pieces, product, rs, sheetOf, spellings, stock, tileOf, type Line, type Product } from "./catalog";
 import { groups, key, read, thousandths, titled, cents } from "./words";
 import type { Reading, Sheet, StockMove, Tile, Warning } from "./types";
+import { skusForNewLines } from "@/lib/saves";
 
 // Release 1b of EasyPay in Claude (spec Q15, Q16, Q32, Q33, Q46 to Q55): the
 // changes that reshape a catalog. A tidy of one option's spellings, a split of
@@ -618,6 +619,8 @@ export const importRows: ReKind = {
       categories: await ids(`select id from categories where tenant_id = $1 and deleted_at is null`),
     };
     const r = (await x.c.query(`select catalog_import($1,$2,$3,$4::jsonb,false) as r`, [x.t, p.store, x.w.employeeId, JSON.stringify(p.rows)])).rows[0].r;
+    // the lines it added with no SKU get one made from the name and the values, as the back office's import does (0150)
+    const skus = await skusForNewLines(x.c, x.t);
     const fresh = async (sql: string, before: Set<string>) => [...(await ids(sql))].filter((id) => !before.has(id));
     const undo = {
       hide: {
@@ -634,7 +637,7 @@ export const importRows: ReKind = {
         undo.reverse.push({ store: p.store as string, item: h.item, line: h.line, qty: move });
       }
     }
-    return { summary: `imported ${r.good} rows`, lines: [`${r.new_products} new products, ${r.new_lines} new lines, ${r.stock_set} opening stocks`], undo };
+    return { summary: `imported ${r.good} rows`, lines: [`${r.new_products} new products, ${r.new_lines} new lines, ${r.stock_set} opening stocks${skus ? `, ${skus} SKUs made` : ""}`], undo };
   },
   async view(_x, p, ran) {
     const dry = p.dry as { problems: { n: number; name: string; why: string }[] };

@@ -7,6 +7,7 @@ import { fmtQty } from "@/lib/report";
 import { setItemTax } from "@/lib/saves";
 import { money, withDefaults } from "@/lib/settings";
 import { Flash, one, PageHead, type Search, startKey, startOf } from "../ui";
+import { Submit } from "../busy";
 import type { AddonGroup, Tax } from "./editor";
 import { type Item, ItemsTable } from "./table";
 import { CATEGORY_PICK_JSON, type CategoryPick } from "@/lib/categories";
@@ -62,6 +63,18 @@ function partsOf(f: FormData): { item_id: string; qty: number }[] | null {
     out.push({ item_id: ids[i], qty: Math.round(n * 1000) });
   }
   return out;
+}
+
+// A shop's lines that have no SKU, every product's at once, get one made from
+// the product's name and the line's values (assign_skus_for, migration 0150):
+// LSP-10Y. A SKU typed by hand, or made before, is kept.
+async function makeSkus() {
+  "use server";
+  await act("items.edit", PATH, async (c, ctx) => {
+    const r = (await c.query(`select assign_skus_for($1, null) as r`, [ctx.tenantId])).rows[0].r as { made: number; like: string | null };
+    if (r.made === 0) return "Every line already has a SKU.";
+    return `${r.made.toLocaleString("en-US")} ${r.made === 1 ? "SKU" : "SKUs"} made, like ${r.like}. The SKUs that were there are kept.`;
+  });
 }
 
 // Price and availability are what change day to day, so they are edited in
@@ -230,6 +243,20 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
     ).rows as ItemRow[],
     // cost and margin are worked out, and sent to the browser, only for someone who may see cost
     costs: (await c.query(`select has_perm($1, 'costs.view') as ok`, [ctx.employeeId])).rows[0].ok as boolean,
+    // a shop's lines with no SKU: a product without lines, or a line
+    noSku:
+      ctx.mode === "retail"
+        ? ((
+            await c.query(
+              `select ((select count(*) from items i
+                        where i.tenant_id = $1 and i.deleted_at is null and nullif(btrim(i.sku), '') is null
+                          and not exists (select 1 from item_variants v where v.tenant_id = i.tenant_id and v.item_id = i.id and v.deleted_at is null))
+                    + (select count(*) from item_variants v join items i on i.tenant_id = v.tenant_id and i.id = v.item_id
+                        where v.tenant_id = $1 and v.deleted_at is null and i.deleted_at is null and nullif(btrim(v.sku), '') is null))::int as n`,
+              [ctx.tenantId],
+            )
+          ).rows[0].n as number)
+        : 0,
   }));
   const decimals = withDefaults(d.menu.settings).decimals;
   // what the shop keeps of the price once the tax in it and the cost are taken out, in percent
@@ -284,6 +311,12 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
       />
       {/* a save the panel was refused says why in the panel, which is open again */}
       {!(one(sp.err) && (start.edit === "new" || items.some((i) => i.id === start.edit))) && <Flash sp={sp} />}
+      {d.noSku > 0 && (
+        <form action={makeSkus} className="bo-toolbar">
+          <span className="muted">{d.noSku === 1 ? "1 line has no SKU." : `${d.noSku.toLocaleString("en-US")} lines have no SKU.`}</span>
+          <Submit className="btn-sm btn-quiet">{d.noSku === 1 ? "Make it from the name" : "Make their SKUs from the names"}</Submit>
+        </form>
+      )}
       {/* Keyed by what the address asks for: arriving from the search or the
           Categories page with another ?category= starts the table again from it. */}
       <ItemsTable

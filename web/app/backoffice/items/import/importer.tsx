@@ -670,6 +670,7 @@ export function Importer({ run }: { run: (rows: ImportRow[], dry: boolean) => Pr
                         <p className="muted">
                           {count(done.products, "product", "products")} saved, {done.new_products.toLocaleString("en-US")} of them new.
                           {(done.barcodes ?? 0) > 0 && ` ${count(done.barcodes ?? 0, "barcode", "barcodes")} made for the lines that came with none.`}
+                          {(done.skus ?? 0) > 0 && ` ${count(done.skus ?? 0, "SKU", "SKUs")} made from the names for the lines that came with none.`}
                           {(done.stock_skipped ?? 0) > 0 && ` ${count(done.stock_skipped ?? 0, "line", "lines")} already had stock history: their quantity was left alone.`}
                         </p>
                       </div>

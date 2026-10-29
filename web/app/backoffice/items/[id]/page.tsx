@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { onlyFor } from "@/lib/tenant";
+import { onlyFor, type TenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
+import type { PoolClient } from "pg";
 import { act, on, Refused, text, UUID } from "@/lib/action";
 import { parseRs } from "@/lib/money";
 import { fmtQty } from "@/lib/report";
@@ -271,22 +272,30 @@ async function renameValue(f: FormData) {
   });
 }
 
-// The lines of a product, saved together in one statement.
+// The lines of a product as typed, saved together in one statement: by Save
+// the lines, and first by the Save bar's other buttons, so a price filled in
+// and not yet saved is not lost. Returns how many; none from a form without them.
+async function saveTyped(c: PoolClient, ctx: TenantContext, id: string, f: FormData): Promise<number> {
+  const lines = f.getAll("v").map(String).filter((v) => UUID.test(v)).map((v) => {
+    const price = parseRs(String(f.get(`price:${v}`) ?? ""));
+    const costText = String(f.get(`cost:${v}`) ?? "").trim();
+    const cost = costText === "" ? null : parseRs(costText);
+    if (price === null || (costText !== "" && cost === null)) throw new Refused("A price or a cost on one of the lines is not a number.");
+    return { id: v, barcode: code(f, `barcode:${v}`, 64), sku: text(f, `sku:${v}`, 60) || null, price, cost };
+  });
+  if (lines.length === 0) return 0;
+  const mayCost = (await c.query(`select has_perm($1, 'costs.view') as ok`, [ctx.employeeId])).rows[0].ok as boolean;
+  await ruled(() => saveVariantLines(c, ctx.tenantId, id, lines, mayCost));
+  return lines.length;
+}
+
 async function saveLines(f: FormData) {
   "use server";
   const id = String(f.get("id") ?? "");
   await act("items.edit", `${PATH}/${id}`, async (c, ctx) => {
     if (!UUID.test(id)) throw new Refused("That product is no longer there.");
-    const lines = f.getAll("v").map(String).filter((v) => UUID.test(v)).map((v) => {
-      const price = parseRs(String(f.get(`price:${v}`) ?? ""));
-      const costText = String(f.get(`cost:${v}`) ?? "").trim();
-      const cost = costText === "" ? null : parseRs(costText);
-      if (price === null || (costText !== "" && cost === null)) throw new Refused("A price or a cost on one of the lines is not a number.");
-      return { id: v, barcode: code(f, `barcode:${v}`, 64), sku: text(f, `sku:${v}`, 60) || null, price, cost };
-    });
-    const mayCost = (await c.query(`select has_perm($1, 'costs.view') as ok`, [ctx.employeeId])).rows[0].ok as boolean;
-    await ruled(() => saveVariantLines(c, ctx.tenantId, id, lines, mayCost));
-    return lines.length === 1 ? "1 line saved." : `${lines.length} lines saved.`;
+    const n = await saveTyped(c, ctx, id, f);
+    return n === 1 ? "1 line saved." : `${n} lines saved.`;
   });
 }
 
@@ -307,9 +316,25 @@ async function makeBarcodes(f: FormData) {
   const id = String(f.get("id") ?? "");
   await act("items.edit", `${PATH}/${id}`, async (c, ctx) => {
     if (!UUID.test(id)) throw new Refused("Save the product first.");
+    await saveTyped(c, ctx, id, f);
     const r = await ruled(() => c.query(`select assign_barcodes($1, $2) as n`, [ctx.tenantId, id]));
     const n = r.rows[0].n as number;
     return n === 0 ? "Every line already has a barcode." : `${n} ${n === 1 ? "barcode" : "barcodes"} made. Print them as labels to stick on the goods.`;
+  });
+}
+
+// SKUs for the lines that have none, or the product when it has no lines,
+// made from its name and their values (assign_skus, migration 0150): LSP-10Y.
+// One typed by hand is kept.
+async function makeSkus(f: FormData) {
+  "use server";
+  const id = String(f.get("id") ?? "");
+  await act("items.edit", `${PATH}/${id}`, async (c, ctx) => {
+    if (!UUID.test(id)) throw new Refused("Save the product first.");
+    await saveTyped(c, ctx, id, f);
+    const r = (await ruled(() => c.query(`select made, first from sku_fill($1, $2)`, [ctx.tenantId, id]))).rows[0] as { made: number; first: string | null };
+    if (r.made === 0) return "Every line already has a SKU.";
+    return r.made === 1 ? `SKU ${r.first} made.` : `${r.made} SKUs made, like ${r.first}.`;
   });
 }
 
@@ -435,6 +460,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   const optionRows = hasLines ? options.filter((o) => o.name !== "") : options;
   const tax = item?.tax_id ?? d.taxes[0]?.id ?? "";
   const missingCodes = hasLines ? lines.filter((v) => !v.barcode).length : item && !item.barcode ? 1 : 0;
+  const missingSkus = hasLines ? lines.filter((v) => !v.sku).length : item && !item.sku ? 1 : 0;
   // the first option's values (the colours), case aside, each with the picture its lines carry
   const byFirst: { value: string; picture: string | null }[] = [];
   for (const v of lines) {
@@ -729,6 +755,14 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
             </form>
           )}
 
+          {item && !hasLines && missingSkus > 0 && (
+            <form action={makeSkus} className="bo-toolbar">
+              <input type="hidden" name="id" value={item.id} />
+              <span className="muted">No SKU on it?</span>
+              <Submit className="btn-sm btn-quiet">Make one from its name</Submit>
+            </form>
+          )}
+
           {item && (
             <form action={removeProduct} className="open-remove" style={{ marginTop: 16 }}>
               <input type="hidden" name="id" value={item.id} />
@@ -790,6 +824,11 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
                 {missingCodes > 0 && (
                   <Submit className="btn-sm btn-quiet" formAction={makeBarcodes} formNoValidate>
                     Make barcodes for the {missingCodes === 1 ? "line that has" : `${missingCodes} lines that have`} none
+                  </Submit>
+                )}
+                {missingSkus > 0 && (
+                  <Submit className="btn-sm btn-quiet" formAction={makeSkus} formNoValidate>
+                    Make SKUs for the {missingSkus === 1 ? "line that has" : `${missingSkus} lines that have`} none
                   </Submit>
                 )}
               </div>

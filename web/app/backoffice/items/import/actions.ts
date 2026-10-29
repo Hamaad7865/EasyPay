@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
 import { requirePerm } from "@/lib/tenant";
 import { withTenant } from "@/lib/db";
-import { barcodesForNewLines } from "@/lib/saves";
+import { barcodesForNewLines, skusForNewLines } from "@/lib/saves";
 import { branches, pickedOf, workingBranch } from "@/lib/branch";
 import type { CatalogRow } from "@/lib/catalog-rows";
 
@@ -15,6 +15,8 @@ export type ImportResult = {
   stock_set?: number; stock_skipped?: number;
   // barcodes made for the lines the file added with none (a shop that has them made automatically)
   barcodes?: number;
+  // SKUs made from the names for the lines the file added with none (migration 0150)
+  skus?: number;
   // what the file adds besides products (migration 0081): categories, removed categories brought back, suppliers
   new_categories?: string[]; revived_categories?: string[]; new_suppliers?: string[];
   problems: { n: number; name: string | null; why: string }[];
@@ -39,8 +41,9 @@ export async function importCatalog(rows: ImportRow[], dry: boolean): Promise<{ 
       const r = await c.query(`select catalog_import($1, $2, $3, $4::jsonb, $5) as r`, [ctx.tenantId, store ?? all[0].id, ctx.employeeId, JSON.stringify(rows), dry]);
       const out = r.rows[0].r as ImportResult;
       if (dry) return out;
-      // a shop that has its barcodes made automatically: the lines this file added with none get theirs
-      return { ...out, barcodes: await barcodesForNewLines(c, ctx.tenantId) };
+      // a shop that has its barcodes made automatically: the lines this file added with none get theirs;
+      // and every shop's get a SKU made from the name and the values
+      return { ...out, barcodes: await barcodesForNewLines(c, ctx.tenantId), skus: await skusForNewLines(c, ctx.tenantId) };
     });
     if (!dry) revalidatePath("/backoffice/items");
     return { ok: true, result };

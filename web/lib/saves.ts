@@ -233,7 +233,24 @@ export async function barcodesForNewLines(c: PoolClient, tenantId: string): Prom
   return r.rows[0].n as number;
 }
 
-export type VariantLine = { id: string; barcode: string | null; sku: string | null; price: number; cost: number | null };
+// A catalog file's lines with no SKU get one made from the product's name and
+// the line's values (assign_skus, migration 0150): LSP-10Y. Every shop, the
+// same products as barcodesForNewLines: made in this transaction, or given a
+// line in it. A SKU in the file, or one already there, is kept. Returns how
+// many were made.
+export async function skusForNewLines(c: PoolClient, tenantId: string): Promise<number> {
+  const r = await c.query(
+    `select (assign_skus_for($1, array(
+               select i.id from items i
+                where i.tenant_id = $1 and i.deleted_at is null
+                  and (i.created_at = now()
+                    or exists (select 1 from item_variants v where v.tenant_id = $1 and v.item_id = i.id and v.deleted_at is null and v.created_at = now()))))->>'made')::int as n`,
+    [tenantId],
+  );
+  return r.rows[0].n as number;
+}
+
+export type VariantLine ={ id: string; barcode: string | null; sku: string | null; price: number; cost: number | null };
 
 // The lines of a product, saved together in one statement. Their costs are
 // only written by someone who may see cost, as for the product itself.
