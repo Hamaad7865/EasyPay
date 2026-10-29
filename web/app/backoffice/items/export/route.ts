@@ -14,8 +14,9 @@ import { branches, pickedOf } from "@/lib/branch";
 
 export const dynamic = "force-dynamic";
 
+// a product in a sub category (0145) is under its parent in Category and its own in Sub category, as the import reads them
 const HEAD = [
-  "Name", "Category", "Brand", "Supplier", "Supplier code", "Option 1", "Value 1", "Option 2", "Value 2", "Option 3", "Value 3",
+  "Name", "Category", "Sub category", "Brand", "Supplier", "Supplier code", "Option 1", "Value 1", "Option 2", "Value 2", "Option 3", "Value 3",
   "SKU", "Barcode", "Price", "Cost", "Tax", "Reorder at", "Order quantity", "Opening stock", "Sold by", "Count stock",
 ];
 // how a product is sold, in the words the importer reads back (0131)
@@ -28,7 +29,7 @@ const rupees = (cents: string | null) => (cents === null ? "" : (Number(cents) /
 const units = (q: number | null) => (q === null ? "" : String(q / 1000));
 
 type Row = {
-  name: string; category: string | null; brand: string | null; supplier: string | null; supplier_code: string | null;
+  name: string; category: string | null; sub_category: string | null; brand: string | null; supplier: string | null; supplier_code: string | null;
   option_names: string[]; option_values: string[] | null; sku: string | null; barcode: string | null;
   price: string; cost: string | null; tax: string | null; reorder_point: number | null; reorder_qty: number | null; qty: number;
   sold_by: string; open_price: boolean; track_stock: boolean;
@@ -56,7 +57,7 @@ export async function GET(req: Request) {
         const levels = all.length < 2 || picked !== null;
         const rows = (
           await c.query(
-            `select i.name, c.name as category, i.brand, s.name as supplier, i.supplier_code, i.option_names, v.option_values,
+            `select i.name, coalesce(pc.name, c.name) as category, case when pc.id is not null then c.name end as sub_category, i.brand, s.name as supplier, i.supplier_code, i.option_names, v.option_values,
                     case when v.id is null then i.sku else v.sku end as sku,
                     case when v.id is null then i.barcode else v.barcode end as barcode,
                     coalesce(v.price, i.price) as price, coalesce(v.cost, i.cost) as cost,
@@ -68,6 +69,7 @@ export async function GET(req: Request) {
                from items i
                left join item_variants v on v.tenant_id = i.tenant_id and v.item_id = i.id and v.deleted_at is null
                left join categories c on c.tenant_id = i.tenant_id and c.id = i.category_id
+               left join categories pc on pc.tenant_id = c.tenant_id and pc.id = c.parent_id
                left join suppliers s on s.tenant_id = i.tenant_id and s.id = i.supplier_id and s.deleted_at is null
                left join lateral (select sum(x.qty)::int as qty, max(x.reorder_point) as reorder_point, max(x.reorder_qty) as reorder_qty
                                     from stock_levels x
@@ -88,7 +90,7 @@ export async function GET(req: Request) {
     const vals = r.option_values ?? [];
     const pair = (n: number) => (vals[n] ? [r.option_names[n] ?? "", vals[n]] : ["", ""]);
     lines.push(
-      [r.name, r.category, r.brand, r.supplier, r.supplier_code, ...pair(0), ...pair(1), ...pair(2), r.sku, r.barcode,
+      [r.name, r.category, r.sub_category, r.brand, r.supplier, r.supplier_code, ...pair(0), ...pair(1), ...pair(2), r.sku, r.barcode,
         r.open_price ? "" : rupees(r.price), costs ? rupees(r.cost) : "", r.tax,
         ...(levels ? [units(r.reorder_point), units(r.reorder_qty), units(Math.max(0, r.qty))] : ["", "", ""]),
         way(r), r.track_stock ? "yes" : "no"]

@@ -1,10 +1,10 @@
 // sub-categories.test.cjs — a category under another, one level deep (migration 0145): Shirt › Long
-// Sleeve. Checks S1 to S6. Runs in ONE transaction that is rolled back: it leaves nothing behind.
+// Sleeve. Checks S1 to S8. Runs in ONE transaction that is rolled back: it leaves nothing behind.
 // Usage: node db/tests/sub-categories.test.cjs
 const crypto = require('crypto');
 const { Client } = require('pg');
 const devguard = require('./require-dev.cjs');
-const { open, text } = require('./page.cjs');
+const { open, text, code } = require('./page.cjs');
 
 let failures = 0;
 function check(name, cond, extra) {
@@ -130,6 +130,29 @@ function check(name, cond, extra) {
     const t = text(html);
     check('S6 the Categories page shows Tops › Long Sleeve and offers Add sub category', t.includes('Long Sleeve') && t.includes('Add sub category')
       && t.indexOf('Tops') < t.lastIndexOf('Long Sleeve'), t.slice(0, 200));
+
+    // S8 Download your products (and its template) says the category and the sub apart, so the file imports back
+    // into the sub, not into a top category named after it
+    const shop = { tenantId: tid, employeeId: emp, mode: 'retail', premium: true, mra: 'off' };
+    await c.query(`insert into items (tenant_id, name, price, category_id) values ($1,'Tops tee',40000,$2)`, [tid, tops.id]);
+    const { parseCsv } = code(c, shop, 'lib/csv.ts');
+    const { toCatalogRows } = code(c, shop, 'lib/catalog-rows.ts');
+    const { parseRs } = code(c, shop, 'lib/money.ts');
+    const download = async (q) => (await (await code(c, shop, 'app/backoffice/items/export/route.ts').GET(new Request('http://localhost/backoffice/items/export' + q))).text()).replace(/^﻿/, '');
+    const csv = parseCsv(await download(''));
+    const head = csv[0] || [];
+    const cell = (product, h) => { const r = csv.find((x) => x[0] === product); return r ? r[head.indexOf(h)] : undefined; };
+    check('S8 the file has a Sub category column beside Category', head.indexOf('Sub category') === head.indexOf('Category') + 1, head.join(','));
+    check('S8 a product in a sub: Category Tops, Sub category Long Sleeve', cell('Long Sleeve Design', 'Category') === 'Tops' && cell('Long Sleeve Design', 'Sub category') === 'Long Sleeve',
+      JSON.stringify([cell('Long Sleeve Design', 'Category'), cell('Long Sleeve Design', 'Sub category')]));
+    check('S8 a product in a top category: no Sub category', cell('Tops tee', 'Category') === 'Tops' && cell('Tops tee', 'Sub category') === '',
+      JSON.stringify([cell('Tops tee', 'Category'), cell('Tops tee', 'Sub category')]));
+    const back = toCatalogRows(csv, parseRs).rows;
+    dry = await imp(back, true);
+    check('S8 the file imports back with nothing new and no problem', dry.new_categories.length === 0 && dry.problems.length === 0 && dry.new_products === 0,
+      JSON.stringify({ new_categories: dry.new_categories, problems: dry.problems, new_products: dry.new_products }));
+    const tpl = parseCsv(await download('?template=1'));
+    check('S8 the template has the Sub category column too', (tpl[0] || []).includes('Sub category') && tpl.length === 1, (tpl[0] || []).join(','));
   } finally {
     await c.query('ROLLBACK');
     await c.end();
