@@ -34,6 +34,10 @@ const KEPT = [
   'promotions',
   // what a till wrote down when it stopped: EasyPay's own, not the client's trying
   'crash_reports',
+  // the catalog's pictures (0143); what was sent to the MRA stays (0132)
+  'pictures', 'mra_records',
+  // EasyPay in Claude (0146): the owner's connections and the changes made through them
+  'assistant_codes', 'assistant_grants', 'assistant_calls', 'assistant_proposals', 'assistant_log',
 ];
 const CLEARED = [
   'bookings', 'approvals', 'drawer_counts', 'payment_corrections', 'day_closes', 'cash_movements',
@@ -332,6 +336,33 @@ const IN_PART = ['stock_movements', 'tablet_codes'];
       check('X9 a tablet set up afterwards, with the code that was kept, is T1 and starts its receipts from nothing', fresh.ok === true && fresh.code === 'T1' && Number(fresh.last_receipt_seq) === 0, JSON.stringify({ ...fresh, key: undefined }));
       const again = (await one(`select platform.clear_test_activity($1, $2) as r`, [admin, tid])).r;
       check('X9 and it can be cleared again, as often as it is tried', Number(again.receipts) === 0 && Number(again.tills) === 1 && Number(again.codes) === 1, JSON.stringify(again));
+    }
+
+    // P: a client that ran on its tablet is made Premium (0153). Until each tablet connects the server
+    // holds nothing of what it sold: nothing here may clear it or take its till away.
+    {
+      const pc = await add(solo.store);
+      const pdev = crypto.randomUUID();
+      await redeem(pc.code, pdev, 'tablet-offline');
+      // the till was made before the plan changed (one transaction: now() is the same all through)
+      await c.query(`update pos_devices set created_at = now() - interval '1 day' where id = $1`, [pdev]);
+      check('P0 (the offline client is being set up)', await settingUp(alone));
+      await c.query(`select platform.set_tenant_plan($1, $2, 'premium')`, [admin, alone]);
+      check('P1 made Premium, a client that ran on its tablet is live', !(await settingUp(alone)));
+      check('P1 and it is written down', !!(await one(`select 1 as x from platform.audit where tenant_id = $1 and action = 'tenant.live' and detail->>'by' = 'plan'`, [alone])));
+      let e = await failsWith(`select platform.clear_test_activity($1, $2)`, [admin, alone]);
+      check('P1 so Clear test activity is refused', says(e, 'client-live'), e && e.message);
+      e = await failsWith(`select platform.remove_till($1, $2)`, [admin, pdev]);
+      check('P2 its till, bare here until its tablet connects, is not removed', says(e, 'till-not-connected'), e && e.message);
+      const later = await add(solo.store);
+      const ldev = crypto.randomUUID();
+      await redeem(later.code, ldev, 'tablet-later');
+      await c.query(`select platform.remove_till($1, $2)`, [admin, ldev]);
+      check('P3 a till made after the plan changed, with nothing recorded, is removed as before', (await one(`select count(*)::int as n from pos_devices where id = $1`, [ldev])).n === 0);
+      // and back: Premium to offline to Premium again leaves a live client live
+      await c.query(`select platform.set_tenant_plan($1, $2, 'offline')`, [admin, alone]);
+      await c.query(`select platform.set_tenant_plan($1, $2, 'premium')`, [admin, alone]);
+      check('P4 a lapse and back changes nothing of it being live', !(await settingUp(alone)));
     }
   } finally {
     await c.query('ROLLBACK');
