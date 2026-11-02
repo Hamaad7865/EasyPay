@@ -64,6 +64,20 @@ class OwnSettingsTest {
         assertEquals(OwnSettings.KEYS, OwnSettings.WRITES.values.flatten().toSet())
     }
 
+    // A settings change saves one screen's keys, not all of them: a tablet
+    // whose only waiting change is its kitchen notes still takes the receipt's
+    // notes and the service charge EasyPay set for it (Fetched).
+    @Test fun a_waiting_settings_change_keeps_only_the_keys_it_sent() {
+        assertEquals(setOf("kitchenNotes"), OwnSettings.written("settings.save", """{"kitchenNotes":["No onion"]}"""))
+        assertEquals(setOf("receipt", "servicePct"), OwnSettings.written("settings.save", """{"receipt":{"footer":"x"},"servicePct":10,"plan":"premium"}"""))
+        assertEquals(setOf("company"), OwnSettings.written("company.save", """{"name":"Chez Aisha"}"""))
+        assertEquals(OwnSettings.WRITES["settings.save"], OwnSettings.written("settings.save", "not json"))
+        val from = server.replace("\"servicePct\":0", "\"servicePct\":12,\"receipt\":{\"footer\":\"See you soon\"}")
+        val kept = keys(OwnSettings.keptKeys(from, own, setOf("kitchenNotes")))
+        assertEquals("12", kept["servicePct"].toString())
+        assertEquals("""{"footer":"See you soon"}""", kept["receipt"].toString())
+    }
+
     @Test fun a_key_the_tablet_never_wrote_is_not_made_up() {
         val kept = keys(OwnSettings.kept(server, """{"plan":"offline","servicePct":5}"""))
         assertEquals("5", kept["servicePct"].toString())

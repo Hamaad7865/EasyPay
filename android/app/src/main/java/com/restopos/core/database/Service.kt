@@ -311,6 +311,10 @@ interface ServiceDao {
     @Query("UPDATE items SET price = :price WHERE id = :id")
     suspend fun setPrice(id: String, price: Long)
 
+    // its lines still at the old price go with it (server 0070, variants_follow_price)
+    @Query("UPDATE item_variants SET price = :now WHERE item_id = :id AND price = :was AND deleted_at IS NULL")
+    suspend fun variantsFollowPrice(id: String, was: Long, now: Long)
+
     @Query("SELECT COUNT(*) FROM items WHERE deleted_at IS NULL")
     fun itemCount(): Flow<Int>
 

@@ -232,6 +232,10 @@ interface OutboxDao {
     @Query("SELECT COUNT(*) FROM outbox WHERE state = 'pending' AND type IN (:types)")
     suspend fun pendingOf(types: List<String>): Long
 
+    // What those changes sent, oldest first (OwnSettings.written).
+    @Query("SELECT payload FROM outbox WHERE state = 'pending' AND type = :type ORDER BY created_at")
+    suspend fun pendingPayloads(type: String): List<String>
+
     // 'dead' = the server refused it (spec 5.4 dead-letter)
     @Query("SELECT COUNT(*) FROM outbox WHERE state = 'dead'")
     suspend fun deadCount(): Long

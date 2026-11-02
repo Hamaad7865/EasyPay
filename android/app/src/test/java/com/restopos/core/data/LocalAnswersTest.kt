@@ -59,6 +59,10 @@ class FakeAlone : AloneDao {
     override suspend fun itemsWithSku(sku: String, not: String) = items.values.count { it.sku?.lowercase() == sku.lowercase() && it.deleted_at == null && it.id != not }
     override suspend fun variantsWithSku(sku: String, not: String) = variants.count { it.sku?.lowercase() == sku.lowercase() && liveVariant(it) && it.id != not }
     override suspend fun itemsIn(category: String) = items.values.count { it.category_id == category && it.deleted_at == null }
+    override suspend fun subsIn(category: String) = categories.values.count { it.parent_id == category && it.deleted_at == null }
+    override suspend fun deviceCode(device: String): String? = null
+    override suspend fun variantsFollowPrice(item: String, was: Long, now: Long) { variants.replaceAll { if (it.item_id == item && it.price == was && it.deleted_at == null) it.copy(price = now) else it } }
+    override suspend fun variantsFollowCost(item: String, was: Long?, now: Long?) { variants.replaceAll { if (it.item_id == item && it.cost == was && it.deleted_at == null) it.copy(cost = now) else it } }
     override suspend fun itemsWithParts() = items.values.filter { it.deleted_at == null && it.parts != "[]" }
     override suspend fun partChoices() = items.values.filter { i -> i.deleted_at == null && i.parts == "[]" && variants.none { it.item_id == i.id && it.deleted_at == null } }.sortedBy { it.name.lowercase() }
     override suspend fun category(id: String) = categories[id]
@@ -249,6 +253,21 @@ class LocalAnswersTest {
         assertEquals(3000, dao.levels.values.single().reorder_point)
     }
 
+    // The server moves a product's lines that were at its old price, or cost, to the new one (0070,
+    // variants_follow_price); an offline tablet kept ringing every size at the old price for good.
+    @Test fun `a product's new price and cost take its lines that were at the old ones`() {
+        ask("item.save", fixture("item-save-full", ids))
+        val i = dao.items[id(100)]!!
+        dao.variants += ItemVariantEntity(id(300), tenant, id(100), "S", i.price, cost = i.cost)
+        dao.variants += ItemVariantEntity(id(301), tenant, id(100), "M", i.price + 500, cost = 999)
+        val save = """{"id":"${id(100)}","name":"Polo shirt","price":60000,"cost":20000,"open_price":false,"category_id":"$cat","available":true}"""
+        assertEquals("done", ask("item.save", save))
+        val (s, m) = dao.variants.sortedBy { it.id }
+        assertEquals(listOf(60000L, 20000L), listOf(s.price, s.cost))
+        // one with a price, or a cost, of its own keeps it
+        assertEquals(listOf(i.price + 500, 999L), listOf(m.price, m.cost))
+    }
+
     @Test fun `emptied, as the server's example`() {
         ask("item.save", fixture("item-save-full", ids))
         assertEquals("done", ask("item.save", fixture("item-save-cleared", ids)))
@@ -356,6 +375,19 @@ class LocalAnswersTest {
     private fun plain(n: Int, name: String, barcode: String = "") =
         """{"id":"${id(n)}","name":"$name","price":25000,"open_price":false,"category_id":"$cat","barcode":"$barcode","available":true}"""
 
+    // T2 makes its codes from 200000001 on: never one the back office (counting from 1) or T1 gave meanwhile
+    @Test fun `a tablet that knows its till makes its barcodes in that till's block`() {
+        val t2 = LocalAnswers(dao, { clock }, { id(made++) }, till = { "T2" })
+        // a code the back office gave, and one of T1's, are passed over: T2 starts its own
+        dao.items[id(690)] = ItemEntity(id(690), tenant, cat, "From the office", 100, barcode = Barcodes.ean13("200", 7))
+        dao.items[id(691)] = ItemEntity(id(691), tenant, cat, "From T1", 100, barcode = Barcodes.ean13("200", 100_000_004))
+        val made1 = runBlocking { t2.apply("item.save", obj(plain(700, "Cotton scarf")), tenant, owner) }.single().second["barcode"]!!.jsonPrimitive.content
+        assertEquals(Barcodes.ean13("200", 200_000_001), made1)
+        val made2 = runBlocking { t2.apply("item.save", obj(plain(701, "Wool scarf")), tenant, owner) }.single().second["barcode"]!!.jsonPrimitive.content
+        assertEquals(Barcodes.ean13("200", 200_000_002), made2)
+        assertEquals(listOf(0, 1, 2, 9, 1, 0), listOf(null, "T1", "T2", "T9", "T10", "X").map { Barcodes.block(it) })
+    }
+
     @Test fun `a shop's product saved with no barcode is given the next of EasyPay's, and the server is sent it`() {
         val first = kept("item.save", plain(700, "Cotton scarf")).single()
         assertEquals("item.save", first.first)
@@ -446,6 +478,10 @@ class LocalAnswersTest {
         assertEquals(listOf("Footwear", null, "[\"p1\"]", true), listOf(d.name, d.color, d.printer_ids, d.is_stock))
         assertEquals("name-required", ask("category.save", """{"id":"${id(22)}","name":""}"""))
         assertEquals("bad-payload", ask("category.save", """{"id":"${id(22)}","name":"X","color":"red"}"""))
+        // one with a sub category under it is refused, as the server refuses it (0145)
+        dao.categories[id(23)] = CategoryEntity(id(23), tenant, "Boots", parent_id = id(21))
+        assertEquals("category-not-empty", ask("category.remove", """{"category_id":"${id(21)}"}"""))
+        dao.categories[id(23)] = dao.categories[id(23)]!!.copy(deleted_at = "2026-10-11T00:00:00Z")
         dao.items[id(100)] = ItemEntity(id(100), tenant, id(21), "Boot", 1000)
         assertEquals("has-items", ask("category.remove", """{"category_id":"${id(21)}"}"""))
         dao.items[id(100)] = dao.items[id(100)]!!.copy(deleted_at = "2026-10-11T00:00:00Z")

@@ -52,7 +52,13 @@ class Refused(val code: String) : Exception(code)
 //
 // Who may is not asked here: the screen has asked already, as it does before
 // asking the server.
-class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = System::currentTimeMillis, private val newId: () -> String = Uuid7::next) {
+class LocalAnswers(
+    private val dao: AloneDao,
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val newId: () -> String = Uuid7::next,
+    // this till's code, T1, for the block its barcodes are made in (Barcodes.block)
+    private val till: suspend () -> String? = { null },
+) {
     private fun now(): String = Instant.ofEpochMilli(clock()).toString()
     private fun bad(): Nothing = throw Refused("bad-payload")
 
@@ -143,17 +149,22 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
     }
 
     // The next of EasyPay's barcodes: the one after the highest this tablet
-    // has held, and never one in use. null when no number is left.
+    // has held in its block, and never one in use. null when no number is left.
     private suspend fun mint(given: Set<String>): String? {
-        val like = Barcodes.PREFIX + "%"
-        val top = listOfNotNull(dao.topItemBarcode(like), dao.topVariantBarcode(like)).mapNotNull { Barcodes.serial(it) }.maxOrNull() ?: 0L
-        // past the last number the prefix has room for, the gaps below are looked through
-        var n = if (Barcodes.ean13(Barcodes.PREFIX, top + 1) != null) top + 1 else 1L
-        while (true) {
+        val block = Barcodes.block(till())
+        val first = if (block == 0) 1L else block * Barcodes.BLOCK + 1
+        val last = if (block == 0) Barcodes.BLOCK * 10 - 1 else block * Barcodes.BLOCK + Barcodes.BLOCK - 1
+        // the block's codes are the prefix and then its digit: 2001..., 2002...
+        val like = Barcodes.PREFIX + (if (block == 0) "" else block.toString()) + "%"
+        val top = listOfNotNull(dao.topItemBarcode(like), dao.topVariantBarcode(like)).mapNotNull { Barcodes.serial(it) }.maxOrNull() ?: (first - 1)
+        // past the last number the block has room for, the gaps below are looked through
+        var n = if (top + 1 in first..last) top + 1 else first
+        while (n <= last) {
             val code = Barcodes.ean13(Barcodes.PREFIX, n) ?: return null
             if (code !in given && dao.itemsWithBarcode(code, "") == 0 && dao.variantsWithBarcode(code, "") == 0) return code
             n++
         }
+        return null
     }
 
     // ---- push_item_save (0084, 0087, 0094, 0131) ----
@@ -223,6 +234,10 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
                 // the sheet sends a cost only when it showed one
                 cost = if ("cost" in p) cost else was.cost,
             ))
+            // its lines still at its old price, or cost, go with it, as the server's trigger moves them
+            if (price != was.price) dao.variantsFollowPrice(id, was.price, price)
+            val nowCost = if ("cost" in p) cost else was.cost
+            if (nowCost != was.cost) dao.variantsFollowCost(id, was.cost, nowCost)
             // one tax per item: the others are taken off, the chosen one put on
             if (newTax != null) { dao.dropTaxesOf(id); dao.putItemTax(ItemTaxCrossRef(id, newTax)) }
         } else {
@@ -306,6 +321,9 @@ class LocalAnswers(private val dao: AloneDao, private val clock: () -> Long = Sy
     private suspend fun categoryRemove(p: JsonObject) {
         val was = dao.category(p.id("category_id")) ?: throw Refused("bad-category")
         if (dao.itemsIn(was.id) > 0) throw Refused("has-items")
+        // its sub categories first (server 0145): taken away here alone, the subs would sit at the top
+        // on this tablet, under it on the server, for good
+        if (was.deleted_at == null && dao.subsIn(was.id) > 0) throw Refused("category-not-empty")
         if (was.deleted_at == null) dao.putCategory(was.copy(deleted_at = now()))
     }
 

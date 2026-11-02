@@ -25,6 +25,14 @@ interface AloneDao {
     @Query("SELECT COUNT(*) FROM item_variants v JOIN items i ON i.id = v.item_id WHERE LOWER(v.sku) = LOWER(:sku) AND v.deleted_at IS NULL AND i.deleted_at IS NULL AND v.id <> :not")
     suspend fun variantsWithSku(sku: String, not: String): Int
     @Query("SELECT COUNT(*) FROM items WHERE category_id = :category AND deleted_at IS NULL") suspend fun itemsIn(category: String): Int
+    @Query("SELECT COUNT(*) FROM categories WHERE parent_id = :category AND deleted_at IS NULL") suspend fun subsIn(category: String): Int
+    // this till's code, T1 (Barcodes.block)
+    @Query("SELECT code FROM pos_devices WHERE id = :device") suspend fun deviceCode(device: String): String?
+    // a line that was at its product's price, or cost, stays at it (server 0070, variants_follow_price)
+    @Query("UPDATE item_variants SET price = :now WHERE item_id = :item AND price = :was AND deleted_at IS NULL")
+    suspend fun variantsFollowPrice(item: String, was: Long, now: Long)
+    @Query("UPDATE item_variants SET cost = :now WHERE item_id = :item AND cost IS :was AND deleted_at IS NULL")
+    suspend fun variantsFollowCost(item: String, was: Long?, now: Long?)
     // the items made of others (0112)
     @Query("SELECT * FROM items WHERE deleted_at IS NULL AND parts <> '[]'") suspend fun itemsWithParts(): List<ItemEntity>
     // what an item may be made of: a live product with no variants, made of nothing itself

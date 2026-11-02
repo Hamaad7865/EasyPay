@@ -661,7 +661,7 @@ class ServiceRepository @Inject constructor(
         // are one transaction, so neither is there without the other.
         Journey.alone = PosSettings.parse(db.ops().settings()).alone
         if (Journey.alone) {
-            val local = LocalAnswers(db.alone())
+            val local = LocalAnswers(db.alone(), till = { session.deviceId()?.let { db.alone().deviceCode(it) } })
             if (!local.answers(type)) error("This tablet works on its own, and this is not something it can do by itself yet.")
             val tenant = session.tenantId() ?: error("This tablet is not set up")
             try {
@@ -711,6 +711,7 @@ class ServiceRepository @Inject constructor(
         if (item.price == price) return@runCatching
         db.withTransaction {
             db.service().setPrice(itemId, price)
+            db.service().variantsFollowPrice(itemId, item.price, price)
             // the old price is gone from the product now: written down for the Price Change report
             db.log().add(TillLogEntity(Uuid7.next(), System.currentTimeMillis(), "price", staff.id(), staff.approvedBy("items.edit", approver), item_id = itemId, was = item.price.toString(), became = price.toString()))
             db.outbox().enqueue(op("item.set_price", buildJsonObject {

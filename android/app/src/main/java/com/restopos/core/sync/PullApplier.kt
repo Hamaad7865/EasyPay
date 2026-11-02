@@ -264,8 +264,8 @@ class PullApplier @Inject constructor(private val db: TillDatabase) {
                 // What this tablet changed in its settings while it worked on
                 // its own, and has not sent yet, stays as the tablet has it:
                 // the server's copy of it is the older one (OwnSettings).
-                val waiting = OwnSettings.KINDS.filter { kind -> db.outbox().pendingOf(listOf(kind)) > 0 }
-                val data = if (waiting.isNotEmpty()) OwnSettings.kept(sent, ops.settings(), waiting) else sent
+                val waiting = OwnSettings.KINDS.flatMap { kind -> db.outbox().pendingPayloads(kind).flatMap { OwnSettings.written(kind, it) } }.toSet()
+                val data = if (waiting.isNotEmpty()) OwnSettings.keptKeys(sent, ops.settings(), waiting) else sent
                 ops.upsertSettings(SettingsEntity(str(it, "tenant_id") ?: "", data))
                 val told = com.restopos.core.data.PosSettings.parse(data)
                 com.restopos.core.common.Money.decimals = told.decimals

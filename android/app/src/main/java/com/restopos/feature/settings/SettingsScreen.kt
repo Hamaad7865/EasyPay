@@ -477,7 +477,15 @@ class SettingsViewModel @Inject constructor(
     // is asked once whether the business has been made Premium. It has: the
     // tablet syncs from now on, and what it kept goes up by itself, with the
     // till's own key and nobody signing in. It has not: nothing changes.
-    fun connect() = asked(fetching = false)
+    // Not while it is still setting up: its queue holds the sales it was tried
+    // with, and they would go up as the business's own. Go live clears them.
+    fun connect() = viewModelScope.launch {
+        if (session.settingUp.first()) {
+            com.restopos.core.ui.Toaster.say("This tablet is still setting up. Press Go live first: it clears what was tried on it. Then connect it.")
+            return@launch
+        }
+        asked(fetching = false)
+    }
 
     // "Get changes from EasyPay", on the same tablet. An offline business has
     // no back office of its own: EasyPay sets it up from its office (the

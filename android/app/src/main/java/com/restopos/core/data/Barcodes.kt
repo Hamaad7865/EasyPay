@@ -19,6 +19,17 @@ object Barcodes {
         return payload + ((10 - sum % 10) % 10)
     }
 
+    // A tablet that works on its own makes its codes in a block of its own:
+    // T1 from serial 100000001, T2 from 200000001, up to T9 (T10 shares T1's,
+    // and so on). The server counts from 1 and two tablets never meet, so a
+    // code made on a tablet is not one the back office, or another tablet,
+    // gave meanwhile: at "Connect to the cloud" the server would refuse the
+    // product as barcode-taken, and every sale of it after. 0: the till is not
+    // known, and the codes go on after the highest held, as before.
+    const val BLOCK = 100_000_000L
+    fun block(till: String?): Int =
+        till?.trim()?.removePrefix("T")?.toIntOrNull()?.takeIf { it >= 1 }?.let { (it - 1) % 9 + 1 } ?: 0
+
     // The serial of one of EasyPay's own; null for any other code.
     fun serial(code: String?, prefix: String = PREFIX): Long? {
         if (code == null || code.length != 13 || !code.all { it in '0'..'9' } || !code.startsWith(prefix)) return null

@@ -34,10 +34,24 @@ object OwnSettings {
     // changes from EasyPay", Fetched). Until that was told apart, one kept
     // change of any of the three held back all four keys, for as long as the
     // tablet worked on its own.
-    fun kept(server: String, own: String?, waiting: Collection<String> = KINDS): String {
-        val keys = waiting.flatMap { WRITES[it].orEmpty() }.toSet()
+    fun kept(server: String, own: String?, waiting: Collection<String> = KINDS): String =
+        keptKeys(server, own, waiting.flatMap { WRITES[it].orEmpty() }.toSet())
+
+    // The same, for the keys the waiting changes wrote (written).
+    fun keptKeys(server: String, own: String?, keys: Set<String>): String {
         val mine = read(own).filterKeys { it in keys }
         return if (mine.isEmpty()) server else JsonObject(read(server) + mine).toString()
+    }
+
+    // What one kept change wrote. A settings change is one screen's save and
+    // sends only that screen's keys (LocalAnswers.settingsSave): its kitchen
+    // notes waiting held back the receipt's notes and the other thirteen too,
+    // until this looked at what it sent. One that can't be read keeps them all.
+    fun written(kind: String, payload: String?): Set<String> {
+        val all = WRITES[kind].orEmpty()
+        if (kind != "settings.save") return all
+        val sent = runCatching { Json.parseToJsonElement(payload ?: "").jsonObject }.getOrNull() ?: return all
+        return sent.keys.filter { it in all }.toSet()
     }
 
     private fun read(text: String?): JsonObject =

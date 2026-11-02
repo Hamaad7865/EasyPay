@@ -37,6 +37,7 @@ object CategoryForm {
         "name-required" -> "Give it a name"
         "bad-category" -> "That category is no longer there."
         "has-items" -> "This category still has items in it. Move or remove them first."
+        "category-not-empty" -> "This category still has sub categories. Move or remove them first."
         "conflict" -> "That did not work. Close this and try again."
         "forbidden" -> "You are not allowed to change the categories. Ask a manager."
         "bad-payload" -> "Pick one of the colours and try again."
