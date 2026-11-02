@@ -2,10 +2,10 @@ import type { PoolClient } from "pg";
 import { withTenant } from "@/lib/db";
 import { saveVariantLines } from "@/lib/saves";
 import { random, sha256, type Who } from "./oauth";
-import { branches, lines, linesWhere, pieces, product, rs, sheetOf, spellings, stock, tileOf, type Branch, type Line, type Product } from "./catalog";
+import { branches, lines, linesWhere, pieces, product, rs, sheetOf, spellings, stock, tileOf, type Line, type Product } from "./catalog";
 import { read, thousandths, cents, titled } from "./words";
 import type { DoneCard, PreviewCard, Reading, Sheet, StockMove, Tile, Warning } from "./types";
-import { Ask, No, RESHAPE, STEPS, TYPO } from "./reshape";
+import { Ask, No, RESHAPE, STEPS, TYPO, branchOf } from "./reshape";
 import { SETTINGS } from "./settings";
 
 // A change through Claude (spec, The preview is the real change, undone):
@@ -42,15 +42,6 @@ const num = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" &
 
 // ----------------------------------------------------------- the shared reads
 
-export async function branchOf(x: C, said: unknown): Promise<Branch> {
-  const all = await branches(x.c, x.t);
-  if (all.length === 0) throw new No("This business has no branch to hold stock.");
-  const s = str(said).toLowerCase();
-  if (!s && all.length === 1) return all[0];
-  const hit = all.find((b) => b.name.toLowerCase() === s) ?? all.find((b) => s && b.name.toLowerCase().includes(s));
-  if (hit) return hit;
-  throw new Ask(`Which branch? ${all.map((b) => b.name).join(", ")}.`);
-}
 
 export async function productOf(x: C, id: unknown): Promise<Product> {
   const s = str(id);
@@ -565,8 +556,8 @@ async function undo(x: C, u0: unknown): Promise<void> {
     await x.c.query(`update items set deleted_at = null where tenant_id = $1 and id = any($2::uuid[])`, [x.t, u.revive ?? []]);
     for (const m of u.moves) {
       await x.c.query(`update item_variants set item_id = $3, option_values = $4, name = array_to_string($4::text[], ' / ') where tenant_id = $1 and id = $2`, [x.t, m.line, m.item, m.values]);
-      await x.c.query(`update stock_levels set item_id = $3 where tenant_id = $1 and variant_id = $2`, [x.t, m.line, m.item]);
-      await x.c.query(`update stock_movements set item_id = $3 where tenant_id = $1 and variant_id = $2`, [x.t, m.line, m.item]);
+      // its stock, its share of the products' totals and its promotion go back with it (0152)
+      await x.c.query(`select stock_rehome($1, array[$2]::uuid[], $3)`, [x.t, m.line, m.item]);
     }
     await x.c.query(
       `update items i set deleted_at = now() where tenant_id = $1 and id = any($2::uuid[]) and not exists (select 1 from item_variants v where v.item_id = i.id and v.deleted_at is null)`,
@@ -660,8 +651,11 @@ const restore: Kind = {
     return { params: { log: l.id, undo: l.undo }, readings: [{ said: "restore", is: l.summary, note: null, isNew: false }], title: `Restore: ${l.summary}`, touched: {} };
   },
   async run(x, p) {
+    // taken first, and only once: a second card for the same change, or the back office's Restore beside a
+    // card, waits on this row and then finds it restored (two would put a delete's stock back twice)
+    const first = await x.c.query(`update assistant_log set restored_at = now() where tenant_id = $1 and id = $2 and restored_at is null returning id`, [x.t, p.log]);
+    if (!first.rowCount) throw new No("That change was already restored.");
     await undo(x, p.undo);
-    await x.c.query(`update assistant_log set restored_at = now() where tenant_id = $1 and id = $2`, [x.t, p.log]);
     return { summary: "restored", lines: [] };
   },
   async view(_x, p) {
@@ -755,6 +749,8 @@ function refusal(e: unknown): Error {
 }
 
 export async function confirm(w: Who, proposalId: string, code: string | null, viaPage = false): Promise<DoneCard> {
+  // suspended between the card and its Confirm: refused here too, not only when the card was drawn
+  if (w.suspended) throw new No(`${w.tenantName} is suspended, so nothing can be changed. Questions still work.`);
   return withTenant(w.tenantId, async (c) => {
     const x: C = { c, w, t: w.tenantId };
     const p = (await c.query(`select * from assistant_proposals where tenant_id = $1 and id = $2 for update`, [w.tenantId, proposalId])).rows[0];

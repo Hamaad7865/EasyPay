@@ -481,6 +481,7 @@ export function serverFor(w: Who, origin: string): McpServer {
         }),
       ),
       existing: z.enum(["add", "set"]).optional().describe("For lines that already hold stock: add the file's quantities, or set them to it. Ask the owner when EasyPay asks."),
+      branch: z.string().optional().describe("The branch whose stock the file holds, when the shop has several"),
       asked,
     }),
   );

@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import type { Who } from "./oauth";
-import { branches, lines, pieces, product, rs, sheetOf, spellings, stock, tileOf, type Line, type Product } from "./catalog";
+import { branches, lines, pieces, product, rs, sheetOf, spellings, stock, tileOf, type Branch, type Line, type Product } from "./catalog";
 import { groups, key, read, thousandths, titled, cents } from "./words";
 import type { Reading, Sheet, StockMove, Tile, Warning } from "./types";
 import { skusForNewLines } from "@/lib/saves";
@@ -26,6 +26,17 @@ const str = (v: unknown) => (typeof v === "string" ? v.trim() : v === undefined 
 const BIG = 50;
 // more pieces of one line than a shop of this kind holds: likely a typo (thousandths)
 export const TYPO = 100_000;
+
+// the branch the owner named; the only one when there is one
+export async function branchOf(x: C, said: unknown): Promise<Branch> {
+  const all = await branches(x.c, x.t);
+  if (all.length === 0) throw new No("This business has no branch to hold stock.");
+  const s = str(said).toLowerCase();
+  if (!s && all.length === 1) return all[0];
+  const hit = all.find((b) => b.name.toLowerCase() === s) ?? all.find((b) => s && b.name.toLowerCase().includes(s));
+  if (hit) return hit;
+  throw new Ask(`Which branch? ${all.map((b) => b.name).join(", ")}.`);
+}
 
 async function productOf(x: C, id: unknown): Promise<Product> {
   const s = str(id);
@@ -466,13 +477,13 @@ export const plan: ReKind = {
     if (unknown) throw new No(`A plan's steps are ${Object.keys(STEPS).join(", ")}; not ${unknown.tool}.`);
     // each step planned on what the ones before it made; all undone after
     await x.c.query("savepoint plan_steps");
-    const done: { tool: string; params: Params; title: string; readings: Reading[] }[] = [];
+    const done: { tool: string; args: Params; params: Params; title: string; readings: Reading[] }[] = [];
     try {
       for (const s of steps) {
         const k = STEPS[s.tool];
         const pl = await k.plan(x, s.args ?? {});
         const ran = await k.run(x, pl.params);
-        done.push({ tool: s.tool, params: { ...pl.params, ...(ran.fix ?? {}) }, title: pl.title, readings: pl.readings });
+        done.push({ tool: s.tool, args: s.args ?? {}, params: { ...pl.params, ...(ran.fix ?? {}) }, title: pl.title, readings: pl.readings });
       }
     } finally {
       await x.c.query("rollback to savepoint plan_steps");
@@ -482,13 +493,19 @@ export const plan: ReKind = {
   async run(x, p) {
     const before = await census(x);
     const undo: unknown[] = [];
-    for (const s of p.steps as { tool: string; params: Params }[]) {
-      const ran = await STEPS[s.tool].run(x, s.params);
+    const merges: { barcode: string | null }[] = [];
+    // each step planned again on what the ones before it really made: the preview's new products and
+    // categories were rolled back, so their ids in the stored params name nothing
+    for (const s of p.steps as { tool: string; args?: Params; params: Params }[]) {
+      const k = STEPS[s.tool];
+      const params = s.args ? (await k.plan(x, s.args)).params : s.params;
+      const ran = await k.run(x, params);
       if (ran.undo) undo.push(ran.undo);
+      merges.push(...((params.merges as { barcode: string | null }[] | undefined) ?? []));
     }
     const after = await census(x);
     const lost = [...before.barcodes].filter((b) => !after.barcodes.has(b));
-    const merged = new Set((p.steps as { tool: string; params: Params }[]).flatMap((s) => ((s.params.merges as { barcode: string | null }[] | undefined) ?? []).map((m) => m.barcode)).filter(Boolean));
+    const merged = new Set(merges.map((m) => m.barcode).filter(Boolean));
     for (const [b, q] of before.pieces) if ((after.pieces.get(b) ?? 0) !== q) throw new No("The plan would change how many pieces a branch holds. Nothing was changed.");
     if (lost.some((b) => !merged.has(b))) throw new No("The plan would lose a barcode that isn't in a merge. Nothing was changed.");
     return { summary: "plan", lines: [], undo: undo.length ? { steps: undo } : undefined, fix: { census: { lines: [before.lines, after.lines], pieces: [...after.pieces.values()].reduce((a, q) => a + q, 0), lost: lost.length } } };
@@ -545,7 +562,8 @@ export const importRows: ReKind = {
     const rows = Array.isArray(input.rows) ? (input.rows as Params[]) : [];
     if (!rows.length) throw new Ask("Which rows? Read the file and send its rows.");
     if (rows.length > 3000) throw new No("A file of more than 3000 rows goes in through the back office's import.");
-    const store = (await branches(x.c, x.t))[0];
+    // the branch whose stock the file says, asked when the shop has several
+    const store = await branchOf(x, input.branch);
     // the import's rows: money in cents, quantities in thousandths, a product's spellings kept
     const known = new Map<string, { p: Product; spelled: ReturnType<typeof spellings> }>();
     const rules: string[] = [];
@@ -590,7 +608,8 @@ export const importRows: ReKind = {
       const vals = [r.v1, r.v2, r.v3].filter(Boolean) as string[];
       const l = vals.length ? (await lines(x.c, x.t, k.p.id)).find((y) => y.values.join("\u0001").toLowerCase() === vals.join("\u0001").toLowerCase()) : null;
       const now = (await stock(x.c, x.t, k.p.id, store.id)).get(l ? l.id : "") ?? 0;
-      const moved = (await x.c.query(`select 1 from stock_movements where tenant_id = $1 and item_id = $2 and variant_id is not distinct from $3 limit 1`, [x.t, k.p.id, l?.id ?? null])).rowCount;
+      // at this branch, as catalog_import asks before it gives an opening stock (0145)
+      const moved = (await x.c.query(`select 1 from stock_movements where tenant_id = $1 and item_id = $2 and variant_id is not distinct from $3 and store_id = $4 limit 1`, [x.t, k.p.id, l?.id ?? null, store.id])).rowCount;
       if (now !== 0 || moved) holding.push({ item: k.p.id, line: l?.id ?? null, qty: r.stock as number, now, name: l ? `${k.p.name} ${l.name}` : k.p.name });
     }
     const mode = str(input.existing);
@@ -631,7 +650,9 @@ export const importRows: ReKind = {
       reverse: [] as { store: string; item: string; line: string | null; qty: number }[],
     };
     for (const h of p.holding as { item: string; line: string | null; qty: number; now: number }[]) {
-      const move = p.mode === "set" ? h.qty - h.now : h.qty;
+      // a count is set against what the line holds now, not what it held when the card was drawn
+      const now = p.mode === "set" ? (await stock(x.c, x.t, h.item, p.store as string)).get(h.line ?? "") ?? 0 : 0;
+      const move = p.mode === "set" ? h.qty - now : h.qty;
       if (move !== 0) {
         await x.c.query(`select stock_move($1,$2,$3,$4,$5,$6,null,null,null,$7,'Imported through Claude')`, [x.t, p.store, h.item, h.line, move, p.mode === "set" ? "count" : "receive", x.w.employeeId]);
         undo.reverse.push({ store: p.store as string, item: h.item, line: h.line, qty: move });

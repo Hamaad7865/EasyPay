@@ -322,6 +322,7 @@ export const editStaff: ReKind = {
       const r = (await x.c.query(`select id, name, permissions ? '*' as owner from roles where tenant_id = $1 and deleted_at is null and lower(name) = lower($2)`, [x.t, str(input.role)])).rows[0];
       if (!r) throw new Ask(`Which role? ${(await x.c.query(`select string_agg(name, ', ' order by name) as n from roles where tenant_id = $1 and deleted_at is null`, [x.t])).rows[0].n}.`);
       if (r.owner) throw new No("Making someone an owner is done in the back office, not through Claude.");
+      if (e.owner) throw new No(`${e.name} is an owner: their role is changed in the back office, not through Claude.`);
       params.role = r.id;
       readings.push({ said: "role", is: r.name, note: `was ${e.role}`, isNew: false });
     }
