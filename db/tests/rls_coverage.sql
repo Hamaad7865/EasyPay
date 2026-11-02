@@ -7,6 +7,12 @@
 -- server_seq): a deposit's lines and payments travel inside the deposit's row
 -- (0113), an account payment and its lines stay on the server (0114). Every
 -- table, those included, still needs RLS forced and its policy.
+-- Three tables of EasyPay in Claude's sign-in (0146) are read by the owner
+-- role before a business is known, so their RLS is on and not forced, by
+-- design: assistant_clients and assistant_codes have no policy at all (the
+-- app role sees none of their rows), assistant_grants has its tenant policy
+-- for the back office's Connected apps. Of them RLS being on is asked, and
+-- of assistant_grants its policy too, not forcing.
 -- Run: psql/pg client, expect zero rows. Any row = FAIL.
 
 select t.tablename as table_name,
@@ -25,9 +31,11 @@ where t.schemaname = 'public'
   and (
     (select relrowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relname = t.tablename) is distinct from true
-    or (select relforcerowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = 'public' and c.relname = t.tablename) is distinct from true
-    or (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = t.tablename) < 1
+    or (t.tablename not in ('assistant_clients', 'assistant_codes', 'assistant_grants')
+      and (select relforcerowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public' and c.relname = t.tablename) is distinct from true)
+    or (t.tablename not in ('assistant_clients', 'assistant_codes')
+      and (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = t.tablename) < 1)
     or (exists (select 1 from information_schema.columns col
                  where col.table_schema = 'public' and col.table_name = t.tablename and col.column_name = 'server_seq')
         and (select count(*) from pg_trigger tr join pg_class c on c.oid = tr.tgrelid
