@@ -45,8 +45,12 @@ jobs:
         include:
         - language: actions
           build-mode: none
+        # manual: autobuild ran Gradle with gradle.properties' 2 GB, and the
+        # Kotlin compile under CodeQL's tracer ran out of memory every time
+        # ("GC overhead limit exceeded"). The build below gives it 4 GB, as
+        # the release does (release-apk.yml).
         - language: java-kotlin
-          build-mode: autobuild
+          build-mode: manual
         - language: javascript-typescript
           build-mode: none
         - language: python
@@ -63,11 +67,13 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v7
 
-    # Add any setup steps before running the `github/codeql-action/init` action.
-    # This includes steps like installing compilers or runtimes (`actions/setup-node`
-    # or others). This is typically only required for manual builds.
-    # - name: Setup runtime (example)
-    #   uses: actions/setup-example@v1
+    # The till is built with JDK 17, as in ci.yml.
+    - name: Set up JDK 17
+      if: matrix.language == 'java-kotlin'
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 17
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
@@ -91,13 +97,12 @@ jobs:
     - name: Run manual build steps
       if: matrix.build-mode == 'manual'
       shell: bash
+      working-directory: android
+      # no daemon, Kotlin in the same process and no build cache, so the
+      # compiler runs inside CodeQL's tracer
       run: |
-        echo 'If you are using a "manual" build mode for one or more of the' \
-          'languages you are analyzing, replace this with the commands to build' \
-          'your code, for example:'
-        echo '  make bootstrap'
-        echo '  make release'
-        exit 1
+        chmod +x gradlew
+        ./gradlew --no-daemon --no-build-cache -Pkotlin.compiler.execution.strategy=in-process "-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8" :app:compileDebugKotlin
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4
