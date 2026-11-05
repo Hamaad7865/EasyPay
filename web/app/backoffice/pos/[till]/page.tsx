@@ -192,7 +192,7 @@ export default async function TillPage({ params, searchParams }: { params: Promi
       ))}
 
       {d.tab === "general" && <General d={d} mode={ctx.mode} now={now} />}
-      {d.tab === "settings" && <Settings d={d} rename={rename} setActive={setActive} />}
+      {d.tab === "settings" && <Settings d={d} mode={ctx.mode} rename={rename} setActive={setActive} />}
       {d.tab === "none" && <div className="note warn">Your role does not include seeing reports.</div>}
       {d.tab === "cash" && <CashFlow d={d} here={here} askCashOut={askCashOut} />}
       {d.tab === "trace" && <Trace d={d} here={here} most={MOST_EVENTS} />}

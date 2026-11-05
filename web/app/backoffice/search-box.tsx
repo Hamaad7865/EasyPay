@@ -167,7 +167,7 @@ export function SearchBox({ mode, premium, mra, many = false }: { mode: Mode; pr
                 else if (e.key === "Enter") (e.preventDefault(), go(flat[on]));
                 else if (e.key === "Escape") (e.preventDefault(), hide());
               }}
-              placeholder="Search pages, items, categories, customers, tables…"
+              placeholder={mode === "retail" ? "Search pages, products, categories, customers…" : "Search pages, items, categories, customers, tables…"}
               role="combobox"
               aria-expanded="true"
               aria-controls="search-results"
@@ -212,7 +212,7 @@ export function SearchBox({ mode, premium, mra, many = false }: { mode: Mode; pr
                 })}
               </div>
             ))}
-            {!flat.length && !asking && <p className="search-none">Nothing matches “{term}”. Try a page name, an item, a category or a customer.</p>}
+            {!flat.length && !asking && <p className="search-none">Nothing matches “{term}”. Try a page name, {mode === "retail" ? "a product, a category or a customer" : "an item, a category, a customer or a table"}.</p>}
           </div>
           <div className="search-foot" aria-hidden="true">
             <span>

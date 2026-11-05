@@ -82,7 +82,7 @@ export function CategoriesTable({
         <div>
           <h2>All categories</h2>
           <p>
-            {shown.length !== rows.length ? `${shown.length} of ${rows.length}` : rows.length} {rows.length === 1 ? "category" : "categories"} · {items} {items === 1 ? "item" : "items"} in them. Tap a category
+            {shown.length !== rows.length ? `${shown.length} of ${rows.length}` : rows.length} {rows.length === 1 ? "category" : "categories"} · {items} {items === 1 ? (shop ? "product" : "item") : shop ? "products" : "items"} in them. Tap a category
             to change it.
           </p>
         </div>
@@ -97,7 +97,7 @@ export function CategoriesTable({
               <SortTh t={t} k="order" label="Sequence" num />
               {!shop && <th>Prints on</th>}
               {!shop && <th>Stock</th>}
-              <SortTh t={t} k="items" label="Items" num />
+              <SortTh t={t} k="items" label={shop ? "Products" : "Items"} num />
             </tr>
           </thead>
           <tbody>

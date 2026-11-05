@@ -79,7 +79,7 @@ export async function POST(request: Request) {
             where k.tenant_id = $1 and k.deleted_at is null and ${plain("k.name")} like $2
             order by (${plain("k.name")} like $3) desc, k.name limit ${EACH}`,
         )
-      ).map((r) => ({ title: r.name, sub: r.n === 1 ? "1 item" : `${r.n} items`, href: `/backoffice/items?category=${r.id}` })),
+      ).map((r) => ({ title: r.name, sub: shop ? (r.n === 1 ? "1 product" : `${r.n} products`) : r.n === 1 ? "1 item" : `${r.n} items`, href: `/backoffice/items?category=${r.id}` })),
     );
 
     add(

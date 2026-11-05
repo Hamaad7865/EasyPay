@@ -473,19 +473,19 @@ export default async function BackofficeHome({
   if (now.no_tax > 0)
     needs.push({
       tone: "amber", icon: Percent, chip: "No tax", go: "Set the tax", href: "/backoffice/items?status=notax",
-      title: `${plural(now.no_tax, "item has", "items have")} no tax set`,
+      title: `${plural(now.no_tax, ctx.mode === "retail" ? "product has" : "item has", ctx.mode === "retail" ? "products have" : "items have")} no tax set`,
       text: `${some(now.no_tax_names, now.no_tax)}. Pick the tax each one carries.`,
     });
   if (now.sold_out > 0)
     needs.push({
       tone: "plain", icon: ctx.mode === "retail" ? ShoppingBag : UtensilsCrossed, chip: "Off sale", go: "Open the list", href: "/backoffice/items?status=out",
-      title: `${plural(now.sold_out, "item is", "items are")} sold out`,
+      title: `${plural(now.sold_out, ctx.mode === "retail" ? "product is" : "item is", ctx.mode === "retail" ? "products are" : "items are")} sold out`,
       text: `${some(now.sold_out_names, now.sold_out)}. The tills grey them and will not sell them.`,
     });
   if (now.low > 0)
     needs.push({
       tone: "plain", icon: Boxes, chip: "Low stock", go: "Open stock", href: "/backoffice/stock?show=low",
-      title: `${plural(now.low, "item is", "items are")} running low`,
+      title: `${plural(now.low, ctx.mode === "retail" ? "product is" : "item is", ctx.mode === "retail" ? "products are" : "items are")} running low`,
       text: `${some(now.low_names, now.low)}: five or fewer left.`,
     });
 
@@ -533,18 +533,18 @@ export default async function BackofficeHome({
                   })()}
               </strong>
               <span>
-                {plural(now.today_orders, "order", "orders")} paid, {fmtQty(now.today_items)} items
+                {ctx.mode === "retail" ? `${plural(now.today_orders, "sale", "sales")} paid, ${fmtQty(now.today_items)} products` : `${plural(now.today_orders, "order", "orders")} paid, ${fmtQty(now.today_items)} items`}
               </span>
             </Link>
           )}
           <div className="home-fig">
             {/* without the right to see reports there is no amount: the count is the figure */}
-            <small>{now.open_amount != null ? "On open orders" : "Open orders"}</small>
+            <small>{now.open_amount != null ? (ctx.mode === "retail" ? "On open sales" : "On open orders") : (ctx.mode === "retail" ? "Open sales" : "Open orders")}</small>
             <strong>{now.open_amount != null ? fmtRs(now.open_amount) : now.open_n}</strong>
             <span>
               {now.open_n === 0
                 ? "Nothing is waiting to be paid"
-                : [now.open_amount != null ? plural(now.open_n, "order", "orders") : null, now.open_oldest != null ? `oldest ${age(now.open_oldest)}` : null]
+                : [now.open_amount != null ? plural(now.open_n, ctx.mode === "retail" ? "sale" : "order", ctx.mode === "retail" ? "sales" : "orders") : null, now.open_oldest != null ? `oldest ${age(now.open_oldest)}` : null]
                     .filter(Boolean)
                     .join(" · ") || "Waiting to be paid"}
             </span>
@@ -556,7 +556,7 @@ export default async function BackofficeHome({
             </Link>
             <Link href="/backoffice/items?edit=new" className="btn btn-lg">
               <Plus aria-hidden="true" />
-              Add item
+              {ctx.mode === "retail" ? "Add product" : "Add item"}
             </Link>
           </div>
         </div>
@@ -566,7 +566,7 @@ export default async function BackofficeHome({
       {now.by_branch && now.stores.length > 1 && (
         <Card title="By branch" flush>
           <table>
-            <thead><tr><th>Branch</th>{now.can && <th className="num">Sales today</th>}<th className="num">Open orders</th></tr></thead>
+            <thead><tr><th>Branch</th>{now.can && <th className="num">Sales today</th>}<th className="num">{ctx.mode === "retail" ? "Open sales" : "Open orders"}</th></tr></thead>
             <tbody>
               {now.by_branch.map((b) => (
                 <tr key={b.name}><td>{b.name}</td>{now.can && <td className="num strong">{fmtRs(b.today)}</td>}<td className="num">{b.open}</td></tr>
@@ -860,7 +860,7 @@ export default async function BackofficeHome({
             </div>
           )}
         </Card>
-        <Card title="Top sellers" lede="By what they brought in, add-ons included" action={<More href={`/backoffice/reports/items?${days}`}>Item sales</More>}>
+        <Card title="Top sellers" lede={ctx.mode === "retail" ? "By what they brought in" : "By what they brought in, add-ons included"} action={<More href={`/backoffice/reports/items?${days}`}>{ctx.mode === "retail" ? "Product sales" : "Item sales"}</More>}>
           {cur.top.length === 0 ? (
             <p className="dash-empty">Nothing sold in these days.</p>
           ) : (
@@ -895,7 +895,7 @@ export default async function BackofficeHome({
             <Shares rows={cur.dining} total={cur.gross} none="Not set" />
           </Card>
         )}
-        <Card title="Categories" lede={ctx.mode === "retail" ? "What was charged, before a discount on a whole sale" : "Menu prices, before discounts"} action={<More href={`/backoffice/reports/items?${days}&group=category`}>All</More>}>
+        <Card title="Categories" lede={ctx.mode === "retail" ? "What was charged, before a discount on a whole sale" : "What was charged, before a discount on a whole bill"} action={<More href={`/backoffice/reports/items?${days}&group=category`}>All</More>}>
           <Shares rows={cur.cats.map((r) => ({ name: r.name, n: 0, amount: r.amount }))} total={catsTotal} none="No category" count={false} />
         </Card>
       </div>

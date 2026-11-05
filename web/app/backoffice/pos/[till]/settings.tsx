@@ -1,4 +1,5 @@
 import { clock } from "@/lib/report";
+import type { Mode } from "@/lib/mode";
 import { ConfirmSubmit } from "../../../admin/confirm";
 import { Submit } from "../../busy";
 import { Card } from "../../ui";
@@ -9,13 +10,13 @@ type Change = (f: FormData) => Promise<void>;
 // Settings: the till's name, and whether it is a till at all. For a login
 // that may change how a till is set up; anyone else reads it. The code is
 // not a setting: it is in every receipt number the till has issued.
-export function Settings({ d, rename, setActive }: { d: Base & { can: boolean }; rename: Change; setActive: Change }) {
+export function Settings({ d, mode, rename, setActive }: { d: Base & { can: boolean }; mode: Mode; rename: Change; setActive: Change }) {
   const { t } = d;
   const at = clock(d.tz);
   return (
     <div>
       {!d.can && <div className="note">Your role does not include changing how a till is set up. Ask the owner to do it, or to tick it on your role.</div>}
-      <Card title="Name" lede="What this till is called here, on its own screen and on a kitchen screen. The tablet shows a new name after its next sync.">
+      <Card title="Name" lede={mode === "retail" ? "What this till is called here and on its own screen. The tablet shows a new name after its next sync." : "What this till is called here, on its own screen and on a kitchen screen. The tablet shows a new name after its next sync."}>
         <form action={rename}>
           <input type="hidden" name="till" value={t.id} />
           <label className="field">

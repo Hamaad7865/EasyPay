@@ -156,10 +156,6 @@
           "Take a line off a sale"
         ],
         [
-          "sale.void_sent_line",
-          "Void an item after it was sent"
-        ],
-        [
           "sale.refund",
           "Refund a receipt"
         ],
@@ -169,28 +165,20 @@
         ],
         [
           "payment.correct",
-          "Correct the payment type on a paid bill"
+          "Correct the payment type on a paid sale"
         ]
       ]
     },
     {
-      "title": "Orders and tables",
+      "title": "Sales",
       "perms": [
         [
           "ticket.view_all",
-          "See everyone's orders"
-        ],
-        [
-          "ticket.reassign",
-          "Change the waiter on an order"
-        ],
-        [
-          "ticket.split_merge",
-          "Transfer an order to another table"
+          "See everyone's sales"
         ],
         [
           "items.availability",
-          "Mark an item sold out or back on sale on the till"
+          "Mark a product sold out or back on sale on the till"
         ]
       ]
     },
@@ -228,7 +216,7 @@
         ],
         [
           "receipts.reprint",
-          "Reprint receipts, bills and kitchen orders"
+          "Reprint receipts and bills"
         ]
       ]
     },
@@ -257,7 +245,7 @@
         ],
         [
           "settings.device",
-          "Change settings, printers and tables; change how a till is set up and sign it out"
+          "Change settings and printers; change how a till is set up and sign it out"
         ]
       ]
     },

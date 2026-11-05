@@ -35,7 +35,8 @@ export default async function TaxReport({ searchParams }: { searchParams: Search
   const sp = await searchParams;
   const ctx = await tenantContext();
   // what a shop calls its prices: it has no menu
-  const prices = ctx.mode === "retail" ? "Prices" : "Menu prices";
+  const shop = ctx.mode === "retail";
+  const prices = shop ? "Prices" : "Menu prices";
   const d = await readTenant(ctx.tenantId, async (c) => {
     const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
     const f = { ...filters(sp, l.tz, (await pickedOf(l.stores))?.id ?? null), kind: "all" as const };
@@ -80,7 +81,7 @@ export default async function TaxReport({ searchParams }: { searchParams: Search
             <tbody>
               {rows.map((r, i) => (
                 <tr key={i}>
-                  <td className="strong">{r.name === "No tax set" ? <span className="badge amber">No tax set on the item</span> : r.name}</td>
+                  <td className="strong">{r.name === "No tax set" ? <span className="badge amber">No tax set on the {shop ? "product" : "item"}</span> : r.name}</td>
                   <td className="num">{(r.rate_bp / 100).toString()}%</td>
                   <td>{r.rate_bp === 0 ? <span className="muted">No VAT charged</span> : r.type === "added" ? "VAT added on top" : "VAT included"}</td>
                   <td className="num">{r.receipts}</td>

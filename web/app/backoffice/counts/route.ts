@@ -50,14 +50,15 @@ export async function GET() {
   const put = (href: string, n: number, one: string, many: string) => {
     counts[href] = { n, say: `${n} ${n === 1 ? one : many}` };
   };
+  const shop = ctx.mode === "retail";
   put("/backoffice/categories", r.categories, "category", "categories");
-  put("/backoffice/items", r.items, "item", "items");
+  put("/backoffice/items", r.items, shop ? "product" : "item", shop ? "products" : "items");
   put("/backoffice/addons", r.addons, "add-on group", "add-on groups");
   put("/backoffice/taxes", r.taxes, "tax", "taxes");
   put("/backoffice/discounts", r.discounts, "discount", "discounts");
   put("/backoffice/suppliers", r.suppliers, "supplier", "suppliers");
   if (r.slow > 0) put("/backoffice/promotions", r.slow, "slow mover", "slow movers");
-  put("/backoffice/stock", r.stock, "item counted", "items counted");
+  put("/backoffice/stock", r.stock, shop ? "product counted" : "item counted", shop ? "products counted" : "items counted");
   // what there is to act on: the orders that are on their way
   if (r.orders_open > 0) put("/backoffice/purchase-orders", r.orders_open, "order on its way", "orders on their way");
   // and the counts still being counted

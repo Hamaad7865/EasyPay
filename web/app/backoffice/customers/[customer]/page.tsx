@@ -105,7 +105,7 @@ export default async function CustomerHistory({ params, searchParams }: { params
   );
   if (!d.ok) return <div>{head}<Empty icon={Contact} title="Not for this login">A customer's visits and receipts are shown to those allowed to see reports.</Empty></div>;
   const sums = d.sums!;
-  if (sums.receipts === 0) return <div>{head}<Empty icon={Contact} title="Nothing bought yet">Once a cashier puts {who.name} on an order and it is paid, it shows here.</Empty></div>;
+  if (sums.receipts === 0) return <div>{head}<Empty icon={Contact} title="Nothing bought yet">Once a cashier puts {who.name} on a {shop ? "sale" : "order"} and it is paid, it shows here.</Empty></div>;
   const spent = Number(sums.spent);
   const loyal = d.s.loyalty === "on" || Number(who.points) !== 0;
   const at = clock(d.l.tz);
@@ -122,15 +122,15 @@ export default async function CustomerHistory({ params, searchParams }: { params
     <div>
       {head}
       <div className="stats">
-        <Stat label="Visits" value={String(sums.visits)} note={sums.first ? `first on ${fmtDay(sums.first)}` : undefined} />
+        <Stat label={shop ? "Sales" : "Visits"} value={String(sums.visits)} note={sums.first ? `first on ${fmtDay(sums.first)}` : undefined} />
         <Stat label="Spent" value={m(spent)} note={loyal ? `${m(who.points)} in points to spend` : undefined} />
-        <Stat label="Average per visit" value={sums.visits ? m(Math.round(spent / sums.visits)) : "None"} />
-        <Stat label="Last visit" value={sums.last ? fmtDay(sums.last) : "None"} />
+        <Stat label={shop ? "Average per sale" : "Average per visit"} value={sums.visits ? m(Math.round(spent / sums.visits)) : "None"} />
+        <Stat label={shop ? "Last sale" : "Last visit"} value={sums.last ? fmtDay(sums.last) : "None"} />
       </div>
       {d.most.length > 0 && (
         <Card title="Buys most" lede="What they took home most, what came back taken off" flush>
           <table>
-            <thead><tr><th>Item</th><th className="num">Qty</th></tr></thead>
+            <thead><tr><th>{shop ? "Product" : "Item"}</th><th className="num">Qty</th></tr></thead>
             <tbody>
               {d.most.map((x) => <tr key={x.name}><td className="strong">{x.name}</td><td className="num">{fmtQty(Number(x.qty))}</td></tr>)}
             </tbody>
@@ -142,7 +142,7 @@ export default async function CustomerHistory({ params, searchParams }: { params
         {sums.receipts > d.heads.length ? `The latest ${d.heads.length} of ${sums.receipts}, newest first.` : "Every sale and refund, newest first."} Open one to see it in full.
       </p>
       {d.heads.map((h) => (
-        <ReceiptCard key={h.id} h={h} parts={d.parts!} m={m} at={at} more={[d.stores > 1 ? h.store : null, points(h)].filter((x): x is string => Boolean(x))} />
+        <ReceiptCard key={h.id} h={h} parts={d.parts!} m={m} at={at} mode={ctx.mode} more={[d.stores > 1 ? h.store : null, points(h)].filter((x): x is string => Boolean(x))} />
       ))}
     </div>
   );

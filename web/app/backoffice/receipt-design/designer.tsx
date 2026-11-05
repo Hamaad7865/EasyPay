@@ -102,9 +102,14 @@ const SHOP_SAYS: Record<string, string> = {
   date_order: "The date and time, and the sale's own number.",
   served_by: "Who took the payment.",
   customer: "The customer's name, when the sale has one.",
+  items: "What was sold, with its price.",
   subtotal: "Only when there is a discount or rounding.",
   remark: "The sale's remark, when it has one.",
 };
+// blocks that only mean something at a restaurant
+const NOT_A_SHOP = new Set(["customer_no", "order_type", "guests", "service", "share", "bill_note"]);
+// a shop calls them products, and the date is the sale's
+const SHOP_NAMES: Record<string, string> = { date_order: "Date and sale", items: "Products" };
 
 // what the owner can set on each kind
 const WORDS = new Set(["name", "address", "phone", "brn", "vat", "header", "title", "customer_no", "bill_note", "remark", "footer", "text", "station", "heading", "pickup", "type_guests"]);
@@ -160,9 +165,11 @@ export function Designer({
   const [takeaway, setTakeaway] = useState(true);
   const [dragging, setDragging] = useState<number | null>(null);
   const [over, setOver] = useState<number | null>(null);
-  const names = NAMES[paper];
+  const names = shop ? { ...NAMES.receipt, ...SHOP_NAMES } : NAMES[paper];
+  // a shop's text has nothing to say about a waiter, guests or an order type
+  const vars = paper === "kitchen" ? KITCHEN_VARS : shop ? RECEIPT_VARS.filter((v) => !["customer_no", "waiter", "guests", "order_type"].includes(v)) : RECEIPT_VARS;
   // a block that cannot print on this business's paper is kept but not offered
-  const offered = (b: Row) => !(paper === "receipt" && ((!shop && b.k === "barcode") || (shop && b.k === "customer_no")));
+  const offered = (b: Row) => !(paper === "receipt" && ((!shop && b.k === "barcode") || (shop && NOT_A_SHOP.has(b.k))));
   const locked = (b: Row) => LOCKED[paper].includes(b.k) || (shop && b.k === "barcode");
 
   const change = (id: number, patch: Partial<Block>) => {
@@ -291,7 +298,7 @@ export function Designer({
             <textarea ref={textRef} value={b.text} rows={3} maxLength={300} placeholder={paper === "kitchen" ? "No. {customer_no}, for {order}" : "Wi-Fi: CafeTino, password 12345678"} onChange={(e) => change(id, { text: e.target.value })} disabled={!canEdit} />
             <span className="help">Click a variable to put it where the cursor is. One with nothing to say prints nothing, and an empty line is left out.</span>
             <div className="pd-vars">
-              {(paper === "kitchen" ? KITCHEN_VARS : RECEIPT_VARS).map((v) => (
+              {vars.map((v) => (
                 <button key={v} type="button" className="pd-var" onClick={() => insert(b, v)} disabled={!canEdit}>
                   {"{" + v + "}"}
                 </button>
@@ -355,11 +362,16 @@ export function Designer({
         )}
         {items && paper === "receipt" && (
           <>
-            <div className="pd-field">
-              <span>Add-ons</span>
-              {seg(`${id}-addons`, b.addons, [["line", "On one line"], ["rows", "One per row"]], (v) => change(id, { addons: v }))}
-            </div>
-            {tick("Show each add-on's price (the item then shows its own price)", b.addonPrices, (v) => change(id, { addonPrices: v }))}
+            {/* a shop sells products, not dishes with add-ons */}
+            {!shop && (
+              <>
+                <div className="pd-field">
+                  <span>Add-ons</span>
+                  {seg(`${id}-addons`, b.addons, [["line", "On one line"], ["rows", "One per row"]], (v) => change(id, { addons: v }))}
+                </div>
+                {tick("Show each add-on's price (the item then shows its own price)", b.addonPrices, (v) => change(id, { addonPrices: v }))}
+              </>
+            )}
             {tick("Show the price of one under a line of more than one (2 x 50.00)", b.unitPrice, (v) => change(id, { unitPrice: v }))}
             {tick("Show the notes", b.notes, (v) => change(id, { notes: v }))}
             {tick("Show the old price when it was changed (was 120.00, 10% off)", b.was, (v) => change(id, { was: v }))}
@@ -532,14 +544,14 @@ export function Designer({
           {seg<"80" | "58">("pd-width", String(width) as "80" | "58", [["80", "80 mm"], ["58", "58 mm"]], (v) => setWidth(v === "58" ? 58 : 80))}
         </div>
         <div className="bo-toolbar" style={{ marginTop: -4 }}>
-          {paper === "receipt" && seg<"receipt" | "bill">("pd-kind", kind, [["receipt", "Receipt"], ["bill", "Bill"]], setKind)}
+          {paper === "receipt" && !shop && seg<"receipt" | "bill">("pd-kind", kind, [["receipt", "Receipt"], ["bill", "Bill"]], setKind)}
           {!shop && seg<"t" | "s">("pd-order", takeaway ? "t" : "s", [["t", "Takeaway, No. 05"], ["s", "Table 4"]], (v) => setTakeaway(v === "t"))}
         </div>
         <div className="paper-wrap">
           <PaperPreview lines={preview.lines} columns={columns} logo={shown} logoAt={preview.logoAt} logoAlign={logoBlock?.align ?? "center"} />
         </div>
         <p className="muted" style={{ marginTop: 10 }}>
-          A made-up order, with your business&apos;s details. The paper width of each printer is set under Printers. Tills print this design from version {FROM}; a till
+          A made-up {shop ? "sale" : "order"}, with your business&apos;s details. The paper width of each printer is set under Printers. Tills print this design from version {FROM}; a till
           not yet updated prints EasyPay&apos;s own until it is.
         </p>
       </div>

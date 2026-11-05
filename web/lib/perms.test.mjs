@@ -40,8 +40,21 @@ check("a shop's selling is worded for a shop: no kitchen, no orders", () => {
   assert.match(said["sale.apply_discount"], /one line/);
   assert.equal(Object.fromEntries(permGroups("restaurant").flatMap((g) => g.perms))["sale.create"], "Take orders");
 });
-check("everything a restaurant is offered, a shop is offered too", () => {
-  assert.deepEqual(ids("restaurant").filter((p) => !ids("retail").includes(p)), []);
+check("a shop is not offered what only means something at a restaurant", () => {
+  // no waiter, no table to move an order to, and nothing is sent to a kitchen
+  assert.deepEqual(ids("restaurant").filter((p) => !ids("retail").includes(p)), [
+    "sale.void_sent_line",
+    "ticket.reassign",
+    "ticket.split_merge",
+  ]);
+  // and its group is a shop's word for what it holds
+  assert.equal(permGroups("retail").some((g) => g.title === "Orders and tables"), false);
+  assert.deepEqual(permGroups("retail").find((g) => g.title === "Sales").perms.map(([k]) => k), ["ticket.view_all", "items.availability"]);
+});
+check("a shop's labels never send anyone to a waiter, table, guest or kitchen", () => {
+  for (const [, label] of permGroups("retail").flatMap((g) => g.perms)) {
+    assert.doesNotMatch(label, /waiter|waitress|table|guest|cover|dining|kitchen/i, label);
+  }
 });
 check("no permission is offered twice", () => {
   for (const mode of ["restaurant", "retail"]) assert.equal(new Set(ids(mode)).size, ids(mode).length, mode);

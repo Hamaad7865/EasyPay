@@ -47,7 +47,7 @@ async function saveTax(f: FormData) {
       const code = String(f.get("mra_code") ?? "");
       await c.query(`update taxes set mra_code = $3 where tenant_id = $1 and id = $2 and deleted_at is null`, [ctx.tenantId, id, isMraCode(code) ? code : null]);
     }
-    return `${name} saved. Orders already open keep the tax they were rung up with.`;
+    return `${name} saved. ${ctx.mode === "retail" ? "Sales already made keep the tax they were rung up with." : "Orders already open keep the tax they were rung up with."}`;
   });
 }
 
@@ -57,8 +57,11 @@ export default async function TaxesPage({ searchParams }: { searchParams: Search
   const sp = await searchParams;
   const ctx = await tenantContext();
   const mra = onMra(ctx.mra);
-  // what a shop calls its prices: it has no menu
-  const prices = ctx.mode === "retail" ? "Prices" : "Menu prices";
+  // what a shop calls its prices and its products: it has no menu
+  const shop = ctx.mode === "retail";
+  const prices = shop ? "Prices" : "Menu prices";
+  const item = shop ? "product" : "item";
+  const items = shop ? "products" : "items";
   const rows = await readTenant(ctx.tenantId, (c) =>
     c
       .query(
@@ -74,7 +77,7 @@ export default async function TaxesPage({ searchParams }: { searchParams: Search
     <div>
       <PageHead
         title="Taxes"
-        lede="Each item carries one of these. VAT at 15% for standard items, Zero rated and Exempt for items that carry no VAT: they are kept apart because the tax report must show them separately."
+        lede={`Each ${item} carries one of these. VAT at 15% for standard ${items}, Zero rated and Exempt for ${items} that carry no VAT: they are kept apart because the tax report must show them separately.`}
       />
       <Flash sp={sp} />
       <Card title="Add a tax">
@@ -94,9 +97,9 @@ export default async function TaxesPage({ searchParams }: { searchParams: Search
             <th>Tax</th>
             <th>Rate %</th>
             <th>{prices}</th>
-            <th className="num">Items</th>
+            <th className="num">{shop ? "Products" : "Items"}</th>
             {mra && <th>MRA code</th>}
-            <th>New items</th>
+            <th>{shop ? "New products" : "New items"}</th>
             <th />
           </tr>
         </thead>
@@ -143,7 +146,7 @@ export default async function TaxesPage({ searchParams }: { searchParams: Search
           ))}
         </tbody>
       </table>
-      <p className="muted">Which tax an item carries is set on the item, under <Link href="/backoffice/items">Items</Link>.</p>
+      <p className="muted">Which tax a{shop ? " product" : "n item"} carries is set on the {item}, under <Link href="/backoffice/items">{shop ? "Products" : "Items"}</Link>.</p>
     </div>
   );
 }

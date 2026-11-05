@@ -51,7 +51,7 @@ export default async function BackofficeLayout({ children }: { children: React.R
           {ctx.admin && (
             <form action={leave} className="bo-banner warn">
               <strong>You are in {ctx.tenantName ?? "this client"}&apos;s back office, as EasyPay</strong>
-              This business is on the offline plan and runs on its tablet. What you set up here (products, prices, taxes, staff, printers, tables,
+              This business is on the offline plan and runs on its tablet. What you set up here (products, prices, taxes, staff, printers{ctx.mode === "retail" ? "" : ", tables"},
               the receipt) is on the tablet once someone taps Get changes from EasyPay on it, under Settings, Support, with the tablet online.
               Its sales and its stock are on the tablet only: reports and stock figures here are not the business&apos;s.
               <div style={{ marginTop: 10 }}>

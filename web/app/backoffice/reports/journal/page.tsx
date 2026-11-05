@@ -121,7 +121,7 @@ export default async function SalesJournal({ searchParams }: { searchParams: Sea
           </select>
         </label>
         <label className="field" style={{ margin: 0 }}>
-          With the item
+          With the {shop ? "product" : "item"}
           <select name="item" defaultValue={one(sp.item)}>
             <option value="">Any</option>
             {f.items.map((x) => <option key={x} value={x}>{x}</option>)}

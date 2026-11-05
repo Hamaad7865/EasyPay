@@ -75,16 +75,13 @@ object Perms {
             "sale.apply_restricted_discount" to "Give a discount that needs a manager",
             "sale.change_price" to "Change the price of one line of a sale",
             "sale.void_line" to "Take a line off a sale",
-            "sale.void_sent_line" to "Void an item after it was sent",
             "sale.refund" to "Refund a receipt",
             "sale.on_account" to "Sell on account",
-            "payment.correct" to "Correct the payment type on a paid bill",
+            "payment.correct" to "Correct the payment type on a paid sale",
         )),
-        Group("Orders and tables", listOf(
-            "ticket.view_all" to "See everyone's orders",
-            "ticket.reassign" to "Change the waiter on an order",
-            "ticket.split_merge" to "Transfer an order to another table",
-            "items.availability" to "Mark an item sold out or back on sale on the till",
+        Group("Sales", listOf(
+            "ticket.view_all" to "See everyone's sales",
+            "items.availability" to "Mark a product sold out or back on sale on the till",
         )),
         Group("Cash", listOf(
             "drawer.open_no_sale" to "Open the cash drawer without a sale",
@@ -95,7 +92,7 @@ object Perms {
         Group("Receipts", listOf(
             "receipts.view_all" to "See all receipts",
             "payments.view" to "See the day’s payments",
-            "receipts.reprint" to "Reprint receipts, bills and kitchen orders",
+            "receipts.reprint" to "Reprint receipts and bills",
         )),
         Group("Back office", listOf(
             "backoffice.access" to "Sign in to the back office",
@@ -103,7 +100,7 @@ object Perms {
             "reports.view" to "See reports",
             "items.edit" to "Edit the catalog, taxes and discounts",
             "employees.edit" to "Manage staff and roles",
-            "settings.device" to "Change settings, printers and tables; change how a till is set up and sign it out",
+            "settings.device" to "Change settings and printers; change how a till is set up and sign it out",
         )),
         Group("Stock", listOf(
             "stock.view" to "See stock and its movements",

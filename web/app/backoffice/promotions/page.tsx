@@ -240,7 +240,7 @@ export default async function PromotionsPage({ searchParams }: { searchParams: S
           <Empty icon={TicketPercent} title="No promotions are running">Put a product on promotion with Promote a product, or from the slow movers above.</Empty>
         ) : (
           <table>
-            <thead><tr><th>Item</th><th className="num">Was</th><th className="num">Now</th><th className="num">Off</th><th className="num">Stock</th><th>Applied</th>{d.may.ok && <th />}</tr></thead>
+            <thead><tr><th>Product</th><th className="num">Was</th><th className="num">Now</th><th className="num">Off</th><th className="num">Stock</th><th>Applied</th>{d.may.ok && <th />}</tr></thead>
             <tbody>
               {d.active.map((p) => (
                 <tr key={p.id}>
@@ -268,7 +268,7 @@ export default async function PromotionsPage({ searchParams }: { searchParams: S
       {d.may.ok && d.stale.length > 0 && (
         <Card title={`Still not selling (${d.stale.length})`} lede={`On promotion with no sale in the last ${d.s.promoStillDays} days. Reduce the price again: the original price is remembered, so lifting later still puts it all back.`} flush>
           <table>
-            <thead><tr><th>Item</th><th className="num">Was</th><th className="num">Now</th><th className="num">Idle</th><th>Reduce again</th></tr></thead>
+            <thead><tr><th>Product</th><th className="num">Was</th><th className="num">Now</th><th className="num">Idle</th><th>Reduce again</th></tr></thead>
             <tbody>
               {d.stale.map((p) => (
                 <tr key={p.promotion_id}>

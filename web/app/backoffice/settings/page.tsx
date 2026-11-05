@@ -337,7 +337,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                 <strong>Close the day automatically</strong>
                 <small>
                   A day nobody closed is closed by the till at this time, as of this time. The drawer is marked not counted, and
-                  orders still unpaid go on into the next day. Open past midnight? Pick an hour when you are closed, 05:00 say.
+                  {shop ? "sales still" : "orders still"} unpaid go on into the next day. Open past midnight? Pick an hour when you are closed, 05:00 say.
                   {notOnYet(olderThan(data.tillBuilds, AUTO_CLOSE_BUILD))}
                 </small>
               </div>
@@ -374,7 +374,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
             </div>
             <div className="setting">
               <div>
-                <strong>Bill numbers</strong>
+                <strong>{shop ? "Receipt numbers" : "Bill numbers"}</strong>
                 <small>
                   Keep counting is the safe choice: every bill has its own number for good. Starting again from 1 after each day
                   closing puts the closing number in front, so two bills still never share a number. Check with your accountant
@@ -684,7 +684,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
             <div className="setting">
               <div>
                 <strong>Lock the till when it is left alone</strong>
-                <small>After this many minutes without a touch the till goes back to its start screen, where a name and its PIN open it again. The order on screen is kept. 0 means never. The kitchen display and a payment in progress do not lock.</small>
+                <small>After this many minutes without a touch the till goes back to its start screen, where a name and its PIN open it again. The {shop ? "sale on screen is kept" : "order on screen is kept"}. 0 means never.{shop ? "" : " The kitchen display"} and a payment in progress do not lock.</small>
               </div>
               <label className="check" style={{ margin: 0 }}>
                 <input name="lockMinutes" type="number" min={0} max={120} defaultValue={s.lockMinutes} className="narrow" aria-label="Lock after minutes" />

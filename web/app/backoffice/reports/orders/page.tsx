@@ -37,8 +37,16 @@ export default async function OrderDetails({ searchParams }: { searchParams: Sea
     ).rows as ReceiptHead[];
     return { l, f, ok: true as const, s, heads, parts: await receiptParts(c, ctx.tenantId, heads.slice(0, LIMIT).map((h) => h.id)) };
   });
+  const shop = ctx.mode === "retail";
   const head = (
-    <PageHead title="Orders" lede="Every receipt in full: what was ordered, by whom, the discounts, the tax and how it was paid. Open a line to see it all.">
+    <PageHead
+      title={shop ? "Sales" : "Orders"}
+      lede={
+        shop
+          ? "Every receipt in full: what was sold, by whom, the discounts, the tax and how it was paid. Open a line to see it all."
+          : "Every receipt in full: what was ordered, by whom, the discounts, the tax and how it was paid. Open a line to see it all."
+      }
+    >
       <BranchPicker all={d.l.stores} picked={d.f.store} />
     </PageHead>
   );
@@ -62,7 +70,7 @@ export default async function OrderDetails({ searchParams }: { searchParams: Sea
             <Stat label="Total" value={m(total)} />
           </div>
           {/* All branches of an account with several: each receipt says where it was made */}
-          {shown.map((h) => <ReceiptCard key={h.id} h={h} parts={d.parts} m={m} at={at} more={d.f.store === null && d.l.stores.length > 1 && h.store_name ? [h.store_name] : []} />)}
+          {shown.map((h) => <ReceiptCard key={h.id} h={h} parts={d.parts} m={m} at={at} mode={ctx.mode} more={d.f.store === null && d.l.stores.length > 1 && h.store_name ? [h.store_name] : []} />)}
         </>
       )}
     </div>

@@ -76,7 +76,12 @@ const STOCK: PermGroup = {
 // What one kind of business is offered. For a shop, editing the catalog no
 // longer covers its stock, and is worded so; selling is worded for a counter
 // with no kitchen behind it, and has one right more: changing the price of
-// one line of a sale (migration 0077; only a shop's till offers it).
+// one line of a sale (migration 0077; only a shop's till offers it). A shop
+// has no waiters, tables or kitchen, so the permissions that only mean
+// something there are left out of its form entirely; a role that already
+// holds one keeps it (savedPerms).
+const NOT_A_SHOP = new Set(["sale.void_sent_line", "ticket.reassign", "ticket.split_merge"]);
+
 export function permGroups(mode: Mode): PermGroup[] {
   if (mode !== "retail") return GROUPS;
   const said: Record<string, string> = {
@@ -84,13 +89,27 @@ export function permGroups(mode: Mode): PermGroup[] {
     "sale.create": "Ring up sales",
     "sale.apply_discount": "Give a discount, on a sale or on one line",
     "sale.void_line": "Take a line off a sale",
+    "ticket.view_all": "See everyone's sales",
+    "items.availability": "Mark a product sold out or back on sale on the till",
+    "receipts.reprint": "Reprint receipts and bills",
+    "payment.correct": "Correct the payment type on a paid sale",
+    "settings.device": "Change settings and printers; change how a till is set up and sign it out",
   };
+  const titles: Record<string, string> = { "Orders and tables": "Sales" };
   // and one to put a sale on a customer's account (0114)
   const more: Record<string, [string, string][]> = {
     "sale.apply_restricted_discount": [["sale.change_price", "Change the price of one line of a sale"]],
     "sale.refund": [["sale.on_account", "Sell on account"]],
   };
-  return [...GROUPS.map((g) => ({ ...g, perms: g.perms.flatMap(([k, label]): [string, string][] => [[k, said[k] ?? label], ...(more[k] ?? [])]) })), STOCK];
+  return [
+    ...GROUPS.map((g) => ({
+      title: titles[g.title] ?? g.title,
+      perms: g.perms
+        .filter(([k]) => !NOT_A_SHOP.has(k))
+        .flatMap(([k, label]): [string, string][] => [[k, said[k] ?? label], ...(more[k] ?? [])]),
+    })),
+    STOCK,
+  ];
 }
 
 // What a role holds after its form is saved: the ticks among what the page

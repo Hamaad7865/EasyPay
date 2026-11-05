@@ -83,9 +83,10 @@ export const GROUPS: NavGroup[] = [
     id: "orders",
     section: "counter",
     title: "Orders",
+    retail: "Sales",
     icon: ClipboardList,
     flat: true,
-    links: [{ href: "/backoffice/reports/orders", label: "Orders", icon: ClipboardList, words: "order details tickets bills checks reports open closed" }],
+    links: [{ href: "/backoffice/reports/orders", label: "Orders", retail: "Sales", icon: ClipboardList, words: "order details tickets bills checks reports open closed" }],
   },
   {
     id: "bookings",
@@ -140,7 +141,7 @@ export const GROUPS: NavGroup[] = [
     links: [
       { href: "/backoffice/reports/sales", label: "Sales summary", icon: BarChart3, words: "reports overview revenue gross net totals payments takings" },
       { href: "/backoffice/reports/journal", label: "Sales journal", premium: true, icon: BookOpenText, words: "journal de ventes cash basis takings money received period compare taxes vat categories payments methods users accountant" },
-      { href: "/backoffice/reports/items", label: "Item sales", icon: ListOrdered, words: "reports products quantity sold categories cost profit margin" },
+      { href: "/backoffice/reports/items", label: "Item sales", retail: "Product sales", icon: ListOrdered, words: "reports products quantity sold categories cost profit margin" },
       { href: "/backoffice/reports/stock", label: "Stock reports", only: "retail", icon: PackageSearch, words: "stock value worth inventory valuation reorder list low to order losses damaged expired lost stolen shrinkage written off not selling slow dead stock" },
       { href: "/backoffice/receipts", label: "Receipts", icon: Receipt, words: "refund reprint payment correction bills paid orders" },
       { href: "/backoffice/mra", label: "MRA e-invoicing", mra: true, icon: FileCheck, words: "mra e-invoicing einvoicing fiscal fiscalised irn qr code invoices tax authority ebs connected refused training test drive" },

@@ -32,7 +32,7 @@ export default async function ItemRank({ searchParams }: { searchParams: Search 
   });
   const head = (
     <PageHead
-      title="Item sales"
+      title={shop ? "Product sales" : "Item sales"}
       lede={
         shop
           ? "What sells, ranked by what it brought in. Sales are what each line was charged (a discount on the line itself is already off), before any discount on the whole sale; refunds are taken off."

@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import type { PoolClient } from "pg";
 import { fmtQty } from "@/lib/report";
+import type { Mode } from "@/lib/mode";
 
 // A receipt in full, as the Orders report and a customer's history draw it:
 // what was ordered, the discounts, the tax and how it was paid, in a card
@@ -48,17 +49,19 @@ export async function receiptParts(c: PoolClient, tenantId: string, ids: string[
 }
 
 // `more`: what a page adds to the line under the number (a customer's history: the store, the points)
-export function ReceiptCard({ h, parts, m, at, more = [] }: {
-  h: ReceiptHead; parts: ReceiptParts; m: (v: string | number) => string; at: (v: string) => string; more?: string[];
+export function ReceiptCard({ h, parts, m, at, mode, more = [] }: {
+  h: ReceiptHead; parts: ReceiptParts; m: (v: string | number) => string; at: (v: string) => string; mode: Mode; more?: string[];
 }) {
   const refund = h.type === "refund";
-  const order = h.order_name ?? (h.table_name ? `Table ${h.table_name}` : h.dining ?? "Direct sale");
+  // a shop has no table, no dining and no waiter: its sale is its own
+  const shop = mode === "retail";
+  const order = shop ? (h.order_name ?? "Direct sale") : h.order_name ?? (h.table_name ? `Table ${h.table_name}` : h.dining ?? "Direct sale");
   return (
     <details className="card flush" style={{ marginBottom: 10 }}>
       <summary className="card-head" style={{ cursor: "pointer", listStyle: "none" }}>
         <div>
           <h2>{h.number} <span className="muted" style={{ fontWeight: 400 }}>· {order}</span></h2>
-          <p>{[at(h.at), h.cashier, h.dining, ...more].filter(Boolean).join(" · ")}</p>
+          <p>{[at(h.at), h.cashier, ...(shop ? [] : [h.dining]), ...more].filter(Boolean).join(" · ")}</p>
         </div>
         <span className="row-actions">
           {h.needs_review && <span className="badge amber">To check</span>}
@@ -69,7 +72,7 @@ export function ReceiptCard({ h, parts, m, at, more = [] }: {
       <div className="card-body">
         <div className="grid-2">
           <table>
-            <thead><tr><th>Item</th><th className="num">Qty</th><th className="num">Price</th><th className="num">Amount</th></tr></thead>
+            <thead><tr><th>{shop ? "Product" : "Item"}</th><th className="num">Qty</th><th className="num">Price</th><th className="num">Amount</th></tr></thead>
             <tbody>
               {parts.lines.filter((x) => x.receipt_id === h.id).map((x, i) => (
                 <tr key={i}>
@@ -104,7 +107,7 @@ export function ReceiptCard({ h, parts, m, at, more = [] }: {
               ))}
             </dl>
             <p className="muted" style={{ marginTop: 14 }}>
-              {h.waiter ? `Waiter: ${h.waiter}. ` : ""}{h.covers ? `Covers: ${h.covers}. ` : ""}{h.note ? `Remark: ${h.note}. ` : ""}
+              {!shop && h.waiter ? `Waiter: ${h.waiter}. ` : ""}{!shop && h.covers ? `Covers: ${h.covers}. ` : ""}{h.note ? `Remark: ${h.note}. ` : ""}
               {refund && h.refund_number ? `Refund of ${h.refund_number}.` : ""}
             </p>
           </div>
