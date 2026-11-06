@@ -63,7 +63,7 @@ const MESSAGES: Record<string, string> = {
   "client-live": "This client is live: its sales are its books, and nothing of them is cleared from here.",
   "client-offline": "This client runs on its tablet: what it sold is on the tablet, not here. Remove its tills one by one.",
   "till-has-records":
-    "That till has sales, a day, cash or clock-ins recorded, so it is not removed. While the client is being set up, Clear test activity removes it with what it recorded. A live client's till is deactivated.",
+    "That till has sales, a day, cash or clock-ins recorded, so it is not removed. Go live clears what it recorded and keeps the till; it can be removed after that. A live client's till is deactivated.",
   // an offline client made Premium (0153); a till whose tablet was signed out is removed (0156)
   "till-not-connected":
     "This till's tablet worked on its own and has not been signed out: what it sold may be on it alone. Tap Connect to the cloud on the tablet (Settings, This till) so it goes up. Once that tablet is signed out (Settings, Support), its till can be removed; one that is no longer used can be deactivated.",

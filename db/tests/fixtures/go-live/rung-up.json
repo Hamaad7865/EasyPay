@@ -1,0 +1,11 @@
+{
+  "_": "What was rung up while a business was being set up, and goes at Go live: the server drops a change of these kinds that a till made before Go live (sync_push, 0157), and a till takes them out of its queue (GoLiveRules.RUNG_UP). Held the same on both sides by db/tests/premium-go-live.test.cjs and GoLiveRulesTest.",
+  "kinds": [
+    "ticket.create", "ticket.add_line", "ticket.edit_line", "ticket.void_line", "ticket.send", "ticket.stage",
+    "ticket.place_lines", "ticket.split_line", "ticket.merge", "ticket.move_lines", "ticket.update_meta", "ticket.cancel",
+    "receipt.create", "refund.create", "payment.correct",
+    "shift.open", "shift.close", "day.close", "drawer.count", "cash.move", "timeclock.punch",
+    "kitchen.mark", "booking.upsert", "request.answer",
+    "deposit.create", "deposit.pay", "deposit.cancel", "deposit.give_back", "account.pay"
+  ]
+}

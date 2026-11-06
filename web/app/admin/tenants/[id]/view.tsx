@@ -70,7 +70,6 @@ export type TenantActions = {
   removeCode: Action;
   goLive: Action;
   backToSettingUp: Action;
-  clearTest: Action;
   setMra: Action;
   setTillMraIds: Action;
   setMraConnection: Action;
@@ -121,6 +120,10 @@ function auditNote(a: Audit): string {
   if (a.action === "till.deactivate" || a.action === "till.activate" || a.action === "tablet.move" || a.action === "till.remove") return String(d.code ?? "");
   if (a.action === "tablet.code_remove") return `ending ${String(d.hint ?? "")}`;
   if (a.action === "till.rename") return `${String(d.from_name)} (${String(d.from_code)}) to ${String(d.name)} (${String(d.code)})`;
+  // a Go live that cleared the trying (0157): from /admin, or from a till by its owner
+  if (a.action === "tenant.live" && d.cleared) {
+    return [count(Number(d.receipts ?? 0), "receipt"), count(Number(d.orders ?? 0), "order")].join(" and ") + " cleared" + (d.employee_id ? ", from a till" : "");
+  }
   if (a.action === "tenant.clear_test") {
     return [count(Number(d.receipts ?? 0), "receipt"), count(Number(d.orders ?? 0), "order"), count(Number(d.tills ?? 0), "till"), count(Number(d.codes ?? 0), "code")].join(", ");
   }
@@ -392,30 +395,16 @@ export function TenantView({
                     </span>
                   </div>
                 ) : (
-                  <form action={actions.clearTest} className="adm-part">
-                    {which}
-                    <strong>Clear test activity</strong>
+                  <div className="adm-part">
+                    <strong>What it was tried with</strong>
                     <span className="help">
-                      Removes what was rung up while it was tried: every order, receipt, refund, payment, day, cash movement, clock-in and booking, and
-                      its tills with their keys and the codes they were set up with (a code for a new tablet that nobody used yet stays). What the
-                      sales took off the shelves is put back. The menu, the stock with its deliveries
-                      and counts, suppliers, customers, tables, staff, logins, printers and settings stay. Before you clear, clear the EasyPay
-                      app&apos;s data on each tablet (the tablet&apos;s Settings, Apps, EasyPay, Storage); afterwards, set each one up again. This
-                      cannot be undone from here.
+                      Its tablets mark what is rung up TEST while it is set up. Go live, here or on a tablet (This till, the owner only), removes
+                      every order, receipt, refund, payment, day, cash movement, clock-in, booking, deposit and credit note, and puts back on
+                      the shelves what the sales took. The menu, the stock with its deliveries and counts, suppliers, customers, tables,
+                      staff, logins, printers, settings and the tills stay: each tablet stays signed in and empties itself at its next sync.
+                      A tablet older than 0.9.38 has to be updated before it syncs again.
                     </span>
-                    <label className="field">
-                      Type the client&apos;s name to confirm
-                      <input name="confirm" placeholder={tenant.name} required autoComplete="off" />
-                    </label>
-                    <ConfirmSubmit
-                      className="btn-danger"
-                      title={`Clear what ${tenant.name} was tried with?`}
-                      text={`${count(setup.receipts, "receipt")}, ${count(setup.orders, "order")} and ${count(tills.length, "till")} go for good. Its menu, stock, staff and settings stay. Every tablet has to be cleared and set up again.`}
-                      yes="Clear test activity"
-                    >
-                      Clear test activity
-                    </ConfirmSubmit>
-                  </form>
+                  </div>
                 )}
                 <form action={actions.goLive} className="adm-part">
                   {which}
@@ -424,12 +413,19 @@ export function TenantView({
                     The day it opens for real. From then on its sales are its books: nothing of them is cleared from here, and it can be taken back to
                     being set up only while it has no receipt.
                   </span>
+                  {!offline && (
+                    <label className="field">
+                      Type the client&apos;s name to confirm
+                      <input name="confirm" placeholder={tenant.name} required autoComplete="off" />
+                    </label>
+                  )}
                   <ConfirmSubmit
+                    className={offline ? undefined : "btn-danger"}
                     title={`Put ${tenant.name} live?`}
                     text={
-                      !offline && setup.receipts > 0
-                        ? `It has ${count(setup.receipts, "receipt")} from its trying, and they will stay in its books: once it is live they cannot be cleared from here. Clear test activity first if they should go.`
-                        : "From now on its sales are its books: nothing of them is cleared from here."
+                      offline
+                        ? "From now on its sales are its books. Each tablet clears what was rung up on it with its own Go live."
+                        : `${count(setup.receipts, "receipt")} and ${count(setup.orders, "order")} from its trying go for good, and what they took off the shelves is put back. Its menu, stock, staff, settings and tills stay.`
                     }
                     yes="Go live"
                   >

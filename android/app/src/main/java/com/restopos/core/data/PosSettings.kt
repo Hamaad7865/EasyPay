@@ -10,6 +10,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 
 // The restaurant's settings, as saved in the back office (POS settings,
 // Company details, Receipt design). A key that is missing means "as before",
@@ -56,6 +57,12 @@ data class PosSettings(
     // When the back office last deleted all transactions (server 0155): the
     // till empties what it rang up once for each (OfficeClear).
     val cleared: String? = null,
+    // A business in the cloud that is being set up (server 0157): what is rung
+    // up is for trying, marked TEST, and goes at Go live (SettingUp).
+    val settingUp: Boolean = false,
+    // When the business went live from being set up (server 0157, ms): a sale
+    // still in the queue from before then was trying, and goes (OfficeClear).
+    val live: Long? = null,
     // The business's first-run set-up is still open (server 0089): a tablet
     // named for it is walked through the set-up. Only a client made since
     // carries the mark; with none, as for every key here, nothing changes.
@@ -186,6 +193,8 @@ data class PosSettings(
                 alone = isAlone(d.str("plan")),
                 cloud = d.str("plan")?.trim()?.lowercase().let { it == "premium" || it == "trial" },
                 cleared = d.str("cleared")?.trim()?.takeIf { it.isNotEmpty() },
+                settingUp = d.bool("settingUp") ?: false,
+                live = runCatching { d["live"]?.jsonPrimitive?.longOrNull }.getOrNull()?.takeIf { it > 0 },
                 setupOpen = d.str("setup") == "open",
                 tableOrdering = d.bool("tableOrdering") ?: false,
                 returns = if (d.str("businessType") != "retail") "refund" else d.str("returns")?.takeIf { it == "exchange" || it == "credit" || it == "refund" } ?: "exchange",

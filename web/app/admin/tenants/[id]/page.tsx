@@ -455,17 +455,36 @@ async function renameTill(formData: FormData) {
   back(tenantId, "notice", `The till is ${name} (${code}). Its tablet shows it after its next sync, and its next receipt carries ${code}.`);
 }
 
+// Go live (migration 0157). A client in the cloud is cleared as its owner's Go
+// live on the till clears it: its test sales go, what they took off the
+// shelves is put back, its tills stay signed in and each empties itself at its
+// next sync. So its name is typed, as its own "Delete all transactions" asks.
+// An offline client's trying is on its tablets: it is only put live.
 async function goLive(formData: FormData) {
   "use server";
   const { adminId, tenantId } = await tenantOf(formData);
+  const found = await db().query(`select name, lower(btrim(coalesce(plan, ''))) = 'offline' as offline from tenants where id = $1 and deleted_at is null`, [tenantId]);
+  if (!found.rowCount) notFound();
+  const offline = found.rows[0].offline === true;
+  if (!offline && String(formData.get("confirm") ?? "").trim().toLowerCase() !== String(found.rows[0].name).trim().toLowerCase()) {
+    back(tenantId, "error", "The name you typed is not this client's name. Nothing was cleared and it is still being set up.");
+  }
   try {
     await db().query(`select platform.go_live($1, $2)`, [adminId, tenantId]);
   } catch (e) {
-    back(tenantId, "error", adminMessage(e));
+    // a till that was sending at that moment held a row: nothing was done
+    const busy = e instanceof Error && /lock timeout|deadlock/i.test(e.message);
+    back(tenantId, "error", busy ? "A till was sending its sales at that moment. Nothing was cleared: try again." : adminMessage(e));
   }
   revalidatePath(`/admin/tenants/${tenantId}`);
   revalidatePath("/admin");
-  back(tenantId, "notice", "This client is live. From now on its sales are its books: nothing of them is cleared from here.");
+  back(
+    tenantId,
+    "notice",
+    offline
+      ? "This client is live. Each of its tablets clears what was rung up on it with its own Go live."
+      : "This client is live: its test sales are gone and what they took off the shelves is back. Each till empties itself at its next sync and stays signed in. A till older than 0.9.38 has to be updated before it syncs again.",
+  );
 }
 
 async function backToSettingUp(formData: FormData) {
@@ -479,35 +498,6 @@ async function backToSettingUp(formData: FormData) {
   revalidatePath(`/admin/tenants/${tenantId}`);
   revalidatePath("/admin");
   back(tenantId, "notice", "This client is being set up again.");
-}
-
-// What a client being set up was tried with is cleared: its sales and its
-// tills go, its set-up stays (migration 0104). The client's name is typed, as
-// its own "Delete all transactions" asks: this cannot be undone from here.
-async function clearTest(formData: FormData) {
-  "use server";
-  const { adminId, tenantId } = await tenantOf(formData);
-  const found = await db().query(`select name from tenants where id = $1 and deleted_at is null`, [tenantId]);
-  if (!found.rowCount) notFound();
-  if (String(formData.get("confirm") ?? "").trim().toLowerCase() !== String(found.rows[0].name).trim().toLowerCase()) {
-    back(tenantId, "error", "The name you typed is not this client's name. Nothing was cleared.");
-  }
-  let r = { receipts: 0, orders: 0, tills: 0, codes: 0 };
-  try {
-    r = (await db().query(`select platform.clear_test_activity($1, $2) as r`, [adminId, tenantId])).rows[0].r;
-  } catch (e) {
-    // a till that was sending at that moment held a row: nothing was done
-    const busy = e instanceof Error && /lock timeout|deadlock/i.test(e.message);
-    back(tenantId, "error", busy ? "A till was sending its sales at that moment. Nothing was cleared: try again." : adminMessage(e));
-  }
-  revalidatePath(`/admin/tenants/${tenantId}`);
-  revalidatePath("/admin");
-  const n = (v: number, one: string) => `${Number(v)} ${one}${Number(v) === 1 ? "" : "s"}`;
-  back(
-    tenantId,
-    "notice",
-    `Cleared: ${n(r.receipts, "receipt")}, ${n(r.orders, "order")}, ${n(r.tills, "till")} and ${n(r.codes, "code")}. The menu, stock, staff and settings are as they were. Clear the EasyPay app's data on each tablet, then set it up again.`,
-  );
 }
 
 async function setActive(formData: FormData) {
@@ -633,7 +623,7 @@ export default async function TenantPage({
       notice={sp.notice}
       actions={{
         setDetails, setPlan, setFeatures, setBusinessType, setStatus, addStore, setTillActive, addLogin, setPassword, setPin, setActive,
-        addTablet, moveTablet, endCode, openBackOffice, removeTill, renameTill, removeCode, goLive, backToSettingUp, clearTest,
+        addTablet, moveTablet, endCode, openBackOffice, removeTill, renameTill, removeCode, goLive, backToSettingUp,
         setMra, setTillMraIds, setMraConnection,
       }}
     />

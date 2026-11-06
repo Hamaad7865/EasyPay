@@ -63,6 +63,10 @@ class GoLiveViewModel @Inject constructor(
     val settingUp: StateFlow<Boolean> = settingUpFlow(db, session).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     // a shop: what stays is its products and suppliers, not a menu and tables
     val shop: StateFlow<Boolean> = db.ops().settingsFlow().map { PosSettings.parse(it).retail }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    // a business in the cloud: the server clears every till (server 0157), and the tablet must be online
+    val cloud: StateFlow<Boolean> = db.ops().settingsFlow().map { PosSettings.parse(it).cloud }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    // the owner, whose PIN someone else typed: the server is told (approved_by)
+    private var approver: com.restopos.core.data.StaffMember? = null
     // the sheet, open with what would go
     val rung = MutableStateFlow<GoLive.Rung?>(null)
     val busy = MutableStateFlow(false)
@@ -71,7 +75,8 @@ class GoLiveViewModel @Inject constructor(
     // nobody is, and the owner's PIN is always asked for (from the start).
     fun ask(fromStart: Boolean = false) {
         val open: () -> Unit = { viewModelScope.launch { rung.value = goLive.rung() } }
-        if (!fromStart && staff.can("*")) open() else approvals.ask("*", "put this till live") { open() }
+        approver = null
+        if (!fromStart && staff.can("*")) open() else approvals.ask("*", "put this till live") { who -> approver = who; open() }
     }
     fun close() { if (!busy.value) rung.value = null }
 
@@ -100,8 +105,16 @@ class GoLiveViewModel @Inject constructor(
     fun go(then: () -> Unit) = viewModelScope.launch {
         if (busy.value) return@launch
         busy.value = true
-        goLive.go().fold(
-            { rung.value = null; Toaster.say("This till is live. Receipts start again at 1: open the day to start selling."); then() },
+        val inCloud = goLive.cloud()
+        goLive.go(approver).fold(
+            {
+                rung.value = null
+                Toaster.say(
+                    if (inCloud) "The business is live. This till empties its test sales now, and every other till at its next sync. Receipts start again at 1."
+                    else "This till is live. Receipts start again at 1: open the day to start selling.",
+                )
+                then()
+            },
             { Toaster.say(it.message ?: "That did not work.") },
         )
         busy.value = false
@@ -114,6 +127,7 @@ internal fun SettingUpCard(onLive: () -> Unit, vm: GoLiveViewModel = hiltViewMod
     val rung by vm.rung.collectAsState()
     val busy by vm.busy.collectAsState()
     val shop by vm.shop.collectAsState()
+    val cloud by vm.cloud.collectAsState()
     if (!on) return
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(V.AmberWash).padding(horizontal = 18.dp, vertical = 14.dp),
@@ -125,7 +139,7 @@ internal fun SettingUpCard(onLive: () -> Unit, vm: GoLiveViewModel = hiltViewMod
         }
         VBtn("Go live", bg = V.Blue, fg = Color.White, height = 46.dp, weight = 800) { vm.ask() }
     }
-    rung?.let { r -> GoLiveSheet(r, busy, shop, onClose = vm::close, onGo = { vm.go(onLive) }) }
+    rung?.let { r -> GoLiveSheet(r, busy, shop, cloud, onClose = vm::close, onGo = { vm.go(onLive) }) }
 }
 
 // Settings, This till, on an offline tablet that is live: the way back to
@@ -186,6 +200,7 @@ fun GoLiveFromStart(modifier: Modifier = Modifier, link: Boolean = false, color:
     val rung by vm.rung.collectAsState()
     val busy by vm.busy.collectAsState()
     val shop by vm.shop.collectAsState()
+    val cloud by vm.cloud.collectAsState()
     if (!on) return
     val key = @Composable { T("Go live", 15.sp, 600, color, Modifier.press(0.97f) { vm.ask(fromStart = true) }.padding(10.dp)) }
     if (link) key()
@@ -193,16 +208,18 @@ fun GoLiveFromStart(modifier: Modifier = Modifier, link: Boolean = false, color:
         T("This till is being set up: what is rung up on it is for trying, and goes when the business goes live.", 13.sp, 500, V.AmberText, lines = 3, align = androidx.compose.ui.text.style.TextAlign.Center)
         key()
     }
-    rung?.let { r -> GoLiveSheet(r, busy, shop, onClose = vm::close, onGo = { vm.go {} }) }
+    rung?.let { r -> GoLiveSheet(r, busy, shop, cloud, onClose = vm::close, onGo = { vm.go {} }) }
 }
 
 // `shop`: deposits, credit notes, account bills and suppliers are a shop's; the menu and the tables a restaurant's
 @Composable
-private fun GoLiveSheet(r: GoLive.Rung, busy: Boolean, shop: Boolean, onClose: () -> Unit, onGo: () -> Unit) {
+// `cloud`: a business in the cloud, cleared on every till by the server (0157); the tablet must be online
+private fun GoLiveSheet(r: GoLive.Rung, busy: Boolean, shop: Boolean, cloud: Boolean, onClose: () -> Unit, onGo: () -> Unit) {
     Sheet(onDismiss = onClose, width = 600.dp, pad = 24.dp, gap = 12.dp) {
         SheetHead("Go live?", "From now on what is sold here is real: its receipts, its days and its stock.", onClose)
-        Caps("What goes", V.Text2)
+        Caps(if (cloud) "What goes, on every till" else "What goes", V.Text2)
         T(
+            (if (cloud) "Every test sale of the business. On this till: " else "") +
             listOf(many(r.receipts, "receipt"), many(r.orders, "order"), many(r.days, "day")).joinToString(", ") +
                 if (shop) ", with their payments, refunds, cash in and out, clock-ins, deposits, credit notes and account bills."
                 else ", with their payments, refunds, cash in and out and clock-ins.",
@@ -212,10 +229,11 @@ private fun GoLiveSheet(r: GoLive.Rung, busy: Boolean, shop: Boolean, onClose: (
         T(
             (if (shop) "The products, the staff and their PINs, the printers, the settings, the customers, the suppliers and the stock."
             else "The menu, the staff and their PINs, the tables, the printers, the settings, the customers and the stock.") +
-                " What sales rung up while setting up took off the shelf goes back on it; sales from before Back to setting up do not.",
+                if (cloud) " Every till stays signed in. What the test sales took off the shelf goes back on it."
+                else " What sales rung up while setting up took off the shelf goes back on it; sales from before Back to setting up do not.",
             15.sp, 500, lines = 4,
         )
-        T("Receipts start again at 1. This cannot be undone.", 13.sp, 600, V.AmberText, lines = 2)
+        T(if (cloud) "Receipts start again at 1 on every till. This tablet must be online. This cannot be undone." else "Receipts start again at 1. This cannot be undone.", 13.sp, 600, V.AmberText, lines = 2)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f))
             VBtn("Cancel", height = 50.dp, enabled = !busy, onClick = onClose)

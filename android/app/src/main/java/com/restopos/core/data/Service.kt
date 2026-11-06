@@ -408,6 +408,26 @@ class ServiceRepository @Inject constructor(
         else -> "The server refused it ($code)."
     }
 
+    // Go live of a business in the cloud that is being set up (server 0157): the
+    // server clears the test sales of every till, puts back on the shelves what
+    // they took, and tells every till to empty itself. The owner's, or with the
+    // owner's PIN. Answered, the pull that follows empties this till (OfficeClear).
+    suspend fun goLive(approver: StaffMember?) {
+        ask("business.go_live", ::goLiveRefused, buildJsonObject {
+            session.deviceId()?.let { put("device_id", it) }
+            staff.approvedBy("*", approver)?.let { put("approved_by", it) }
+        })
+    }
+
+    private fun goLiveRefused(code: String?): String = when (code) {
+        "already-live" -> "This business is live already."
+        "forbidden" -> "Only the owner can put the business live."
+        "client-offline" -> "This business works on its tablet: it goes live there, from This till."
+        "unknown-op" -> "The server has to be updated before the business can go live from a till. Ask EasyPay."
+        null -> "The server refused it."
+        else -> "The server refused it ($code)."
+    }
+
     // The server's refusal of tables.add, in words.
     private fun tablesRefused(code: String?): String = when (code) {
         "room-exists" -> "There is already a room of that name."
@@ -684,7 +704,7 @@ class ServiceRepository @Inject constructor(
             error("This tablet is still sending what it kept while it worked on its own. Try again in a moment.")
         }
         val answer = try {
-            api.push(listOf(OutboxOp(Uuid7.next(), type, payload, staff.id()))).firstOrNull()
+            api.push(listOf(OutboxOp(Uuid7.next(), type, payload, staff.id(), at = System.currentTimeMillis()))).firstOrNull()
         } catch (e: java.io.IOException) {
             error("This needs a connection: the server has to answer first. Try again when the tablet is online.")
         } catch (e: AuthRequired) {

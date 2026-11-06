@@ -10,14 +10,16 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 // Go live, on a tablet that was setting up (SettingUp): what was rung up goes,
-// what was set up stays. One transaction for the database, then the tablet's
-// own numbers, then the flag, last: a Go live cut short is finished by
-// pressing it again. docs/superpowers/specs/2026-10-18-tablet-setting-up-design.md
+// what was set up stays. On a tablet alone: one transaction for the database,
+// then the tablet's own numbers, then the flag, last: a Go live cut short is
+// finished by pressing it again. For a business in the cloud the server does it
+// (goCloud). docs/superpowers/specs/2026-10-18-tablet-setting-up-design.md
 @Singleton
 class GoLive @Inject constructor(
     private val db: TillDatabase,
     private val session: SessionStore,
     private val printing: Printing,
+    private val service: ServiceRepository,
 ) {
     // what the sheet says goes
     data class Rung(val receipts: Int, val orders: Int, val days: Int)
@@ -34,7 +36,26 @@ class GoLive @Inject constructor(
         session.setSettingUp(true)
     }
 
-    suspend fun go(): Result<Unit> = runCatching {
+    // Whether the business is in the cloud: its Go live is the server's (goCloud).
+    suspend fun cloud(): Boolean = PosSettings.parse(db.ops().settings()).cloud
+
+    // approver: the owner, whose PIN was typed by someone else (the cloud's only:
+    // on a tablet alone the PIN was asked for on the screen, and that is all)
+    suspend fun go(approver: StaffMember? = null): Result<Unit> =
+        if (cloud()) goCloud(approver) else goAlone()
+
+    // A business in the cloud (server 0157): the server clears the test sales of
+    // every till and puts their stock back; the pull that follows empties this
+    // till, and every other till empties itself at its next sync (OfficeClear).
+    private suspend fun goCloud(approver: StaffMember?): Result<Unit> = runCatching {
+        val settings = PosSettings.parse(db.ops().settings())
+        check(settings.settingUp) { "This business is not being set up." }
+        service.goLive(approver)
+        // Try again on a test receipt would print it as a real one
+        printing.clearJobs()
+    }
+
+    private suspend fun goAlone(): Result<Unit> = runCatching {
         check(db.tryingOut(session)) { "This till is not being set up." }
         val store = session.storeId() ?: error("This tablet is not set up.")
         val device = session.deviceId() ?: error("This tablet is not set up.")

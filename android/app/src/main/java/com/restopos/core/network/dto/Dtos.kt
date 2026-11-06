@@ -119,6 +119,9 @@ data class OutboxOp(
     val payload: JsonElement,
     // the member of staff signed in at the till; absent on a till with no PINs
     @SerialName("employee_id") val employeeId: String? = null,
+    // when the change was made here (ms): the server drops a sale made before
+    // its business went live (0157), sent by a till that was off at Go live
+    val at: Long? = null,
 )
 
 @Serializable

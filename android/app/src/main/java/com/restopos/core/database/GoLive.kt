@@ -28,6 +28,8 @@ interface GoLiveDao {
     suspend fun countedAt(): List<CountedAt>
 
     @Query("DELETE FROM outbox WHERE type IN (:kinds)") suspend fun dropQueued(kinds: List<String>)
+    // a business in the cloud went live (OfficeClear.dropBefore): what was rung up before then, waiting or refused
+    @Query("DELETE FROM outbox WHERE type IN (:kinds) AND created_at < :before") suspend fun dropQueuedBefore(kinds: List<String>, before: Long): Int
     @Query("UPDATE pos_devices SET last_receipt_seq = 0 WHERE id = :device") suspend fun numbersFromOne(device: String)
 
     // children before what they belong to

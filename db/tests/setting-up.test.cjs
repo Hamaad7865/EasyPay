@@ -289,7 +289,9 @@ const IN_PART = ['stock_movements', 'tablet_codes'];
       check('X1 and only a client that is there', says(e, 'unknown-tenant'), e && e.message);
       e = await failsWith(`select platform.clear_test_activity($1, $2)`, [admin, alone]);
       check('X1 a client that runs on its tablet has nothing here to clear', says(e, 'client-offline'), e && e.message);
-      await c.query(`select platform.go_live($1, $2)`, [admin, tid]);
+      // live with its receipts, as a client that sold for real is: since 0157 /admin's Go live clears a client
+      // in the cloud first (premium-go-live.test.cjs), so the row itself goes here
+      await c.query(`delete from platform.setting_up where tenant_id = $1`, [tid]);
       e = await failsWith(`select platform.clear_test_activity($1, $2)`, [admin, tid]);
       check('X2 a live client is not cleared', says(e, 'client-live'), e && e.message);
       e = await failsWith(`select platform.back_to_setting_up($1, $2)`, [admin, tid]);
