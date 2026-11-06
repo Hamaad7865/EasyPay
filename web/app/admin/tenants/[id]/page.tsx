@@ -435,6 +435,26 @@ async function removeTill(formData: FormData) {
   );
 }
 
+// A till's name and code (migration 0158). The code is in every number the
+// till gives: once something carries it the database keeps it, and says why.
+async function renameTill(formData: FormData) {
+  "use server";
+  const { adminId, tenantId } = await tenantOf(formData);
+  const deviceId = String(formData.get("device") ?? "");
+  if (!UUID.test(deviceId)) notFound();
+  const owned = await db().query(`select 1 from pos_devices where id = $1 and tenant_id = $2`, [deviceId, tenantId]);
+  if (!owned.rowCount) back(tenantId, "error", "That till does not exist.");
+  const name = String(formData.get("name") ?? "").trim();
+  const code = String(formData.get("code") ?? "").trim().toUpperCase();
+  try {
+    await db().query(`select platform.rename_till($1, $2, $3, $4)`, [adminId, deviceId, name, code]);
+  } catch (e) {
+    back(tenantId, "error", adminMessage(e));
+  }
+  revalidatePath(`/admin/tenants/${tenantId}`);
+  back(tenantId, "notice", `The till is ${name} (${code}). Its tablet shows it after its next sync, and its next receipt carries ${code}.`);
+}
+
 async function goLive(formData: FormData) {
   "use server";
   const { adminId, tenantId } = await tenantOf(formData);
@@ -613,7 +633,7 @@ export default async function TenantPage({
       notice={sp.notice}
       actions={{
         setDetails, setPlan, setFeatures, setBusinessType, setStatus, addStore, setTillActive, addLogin, setPassword, setPin, setActive,
-        addTablet, moveTablet, endCode, openBackOffice, removeTill, removeCode, goLive, backToSettingUp, clearTest,
+        addTablet, moveTablet, endCode, openBackOffice, removeTill, renameTill, removeCode, goLive, backToSettingUp, clearTest,
         setMra, setTillMraIds, setMraConnection,
       }}
     />

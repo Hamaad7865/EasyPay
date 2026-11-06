@@ -67,6 +67,14 @@ const MESSAGES: Record<string, string> = {
   // an offline client made Premium (0153); a till whose tablet was signed out is removed (0156)
   "till-not-connected":
     "This till's tablet worked on its own and has not been signed out: what it sold may be on it alone. Tap Connect to the cloud on the tablet (Settings, This till) so it goes up. Once that tablet is signed out (Settings, Support), its till can be removed; one that is no longer used can be deactivated.",
+  // a till's name and code (0158)
+  "till-name": "Give the till a name of up to 40 characters.",
+  "till-code": "A till's code is letters and digits, up to 12, such as T1.",
+  "till-code-taken": "Another till of this store has that code. Pick another, or remove that till first if it has nothing recorded.",
+  "till-code-numbered":
+    "This till's code is on its receipts, credit notes, deposits or bills already: it keeps it, so no number is given twice. Its name can still change.",
+  "till-code-offline":
+    "This till's tablet works on its own and numbers its receipts with its code by itself, so the code stays. Its name can still change.",
   "till-of-live-offline":
     "This client runs on its tablet and is live: what that tablet sold cannot be seen from here, so its till is not removed. Deactivate it, or make a code for a replacement.",
   // Premium MRA (migration 0116)

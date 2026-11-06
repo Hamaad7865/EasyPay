@@ -1812,6 +1812,10 @@ button[aria-busy="true"]::after {
 .adm-scroll > table { min-width: 620px; }
 .adm-scroll.wide > table { min-width: 940px; }
 .adm-nowrap td { white-space: nowrap; }
+/* a till's name and code, changed on its row: the row's own height */
+.till-rename { display: flex; align-items: center; gap: 8px; }
+.bo-main .till-rename input:not([type="hidden"]) { height: 30px; width: 150px; font-size: 12.5px; }
+.bo-main .till-rename input.till-code { width: 72px; text-transform: uppercase; }
 
 /* one restaurant's page: what it has on the left, what it is on the right */
 .adm-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 4px; }

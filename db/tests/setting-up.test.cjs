@@ -341,6 +341,48 @@ const IN_PART = ['stock_movements', 'tablet_codes'];
       check('X9 and it can be cleared again, as often as it is tried', Number(again.receipts) === 0 && Number(again.tills) === 1 && Number(again.codes) === 1, JSON.stringify(again));
     }
 
+    // ---- N: a till is given another name and code from /admin (0158) ----
+    // Its code is in every number it gives (S1-T1-R000001): it changes only while nothing carries it.
+    {
+      const rename = (dev, name, code) => failsWith(`select platform.rename_till($1, $2, $3, $4)`, [admin, dev, name, code]);
+      const row = async (dev) => one(`select name, code, server_seq from pos_devices where id = $1`, [dev]);
+      const fc = await add(theirs.store);
+      const fdev = crypto.randomUUID();
+      await redeem(fc.code, fdev, 'tablet-fresh');
+      const was = await row(fdev);
+      let e = await failsWith(`select platform.rename_till($1, $2, 'Till 1', 'T9')`, [stranger, fdev]);
+      check('N1 only a platform admin renames a till', says(e, 'not-a-platform-admin'), e && e.message);
+      e = await rename(fdev, '  Till 1  ', ' t9 ');
+      const now = await row(fdev);
+      check('N2 a till that numbered nothing yet takes a new name and code, the code in capitals', !e && now.name === 'Till 1' && now.code === 'T9', e ? e.message : JSON.stringify(now));
+      check('N2 and its tablet is sent it at its next pull', Number(now.server_seq) > Number(was.server_seq), `${was.server_seq} then ${now.server_seq}`);
+      const note = await one(`select detail from platform.audit where tenant_id = $1 and action = 'till.rename'`, [other]);
+      check('N2 it is written down, from what to what', note && note.detail.device_id === fdev && note.detail.from_code === was.code && note.detail.code === 'T9' && note.detail.name === 'Till 1', JSON.stringify(note));
+      e = await rename(fdev, '   ', 'T9');
+      check('N3 a name is needed', says(e, 'till-name'), e && e.message);
+      e = await rename(fdev, 'x'.repeat(41), 'T9');
+      check('N3 of up to 40 characters', says(e, 'till-name'), e && e.message);
+      e = await rename(fdev, 'Till 1', 'T-1');
+      check('N3 a code is letters and digits, up to 12', says(e, 'till-code'), e && e.message);
+      const theirCode = (await row(otherDev)).code;
+      e = await rename(fdev, 'Till 1', theirCode);
+      check('N4 a code another till of the store has is refused', says(e, 'till-code-taken'), e && e.message);
+      // the other client's till sold in X: its receipts carry its code
+      e = await rename(otherDev, 'Front till', 'T8');
+      check('N5 a till whose receipts carry its code keeps it', says(e, 'till-code-numbered'), e && e.message);
+      e = await rename(otherDev, 'Front till', theirCode.toLowerCase());
+      check('N5 but takes a new name with the same code', !e && (await row(otherDev)).name === 'Front till', e && e.message);
+      // a client that runs on its tablet: the tablet numbers on its own and hears of no change
+      const sc = await add(solo.store);
+      const sdev = crypto.randomUUID();
+      await redeem(sc.code, sdev, 'tablet-solo-name');
+      e = await rename(sdev, 'Shop till', 'T5');
+      check('N6 a till of a client that runs on its tablet keeps its code', says(e, 'till-code-offline'), e && e.message);
+      e = await rename(sdev, 'Shop till', (await row(sdev)).code);
+      check('N6 but takes a new name', !e && (await row(sdev)).name === 'Shop till', e && e.message);
+      await c.query(`select platform.remove_till($1, $2)`, [admin, sdev]);
+    }
+
     // P: a client that ran on its tablet is made Premium (0153). Until each tablet connects the server
     // holds nothing of what it sold: nothing here may clear it or take its till away.
     {
@@ -357,6 +399,8 @@ const IN_PART = ['stock_movements', 'tablet_codes'];
       check('P1 so Clear test activity is refused', says(e, 'client-live'), e && e.message);
       e = await failsWith(`select platform.remove_till($1, $2)`, [admin, pdev]);
       check('P2 its till, bare here until its tablet connects, is not removed', says(e, 'till-not-connected'), e && e.message);
+      e = await failsWith(`select platform.rename_till($1, $2, 'Till 1', 'T6')`, [admin, pdev]);
+      check('P2 nor given another code (0158): what it sold, numbered with it, is on its tablet alone', says(e, 'till-code-offline'), e && e.message);
       // 0156: a tablet is signed out only once nothing waits on it to be sent, and the sign-out ends its key.
       // A till whose tablet was signed out holds nothing anywhere but here: bare here, it is removed.
       const pcode = (await one(`select code from pos_devices where id = $1`, [pdev])).code;

@@ -9,6 +9,7 @@ import { Password } from "../../password";
 import { type Login, LoginsTable } from "./logins";
 import { type CodeAction, type TabletCode, Tablets } from "./tablets";
 import { type MraConnection, MraPanel } from "./mra";
+import { RenameTill } from "./till-name";
 
 export type Tenant = {
   id: string;
@@ -65,6 +66,7 @@ export type TenantActions = {
   endCode: Action;
   openBackOffice: Action;
   removeTill: Action;
+  renameTill: Action;
   removeCode: Action;
   goLive: Action;
   backToSettingUp: Action;
@@ -95,6 +97,7 @@ const ACTIONS: Record<string, string> = {
   "tablet.code_end": "Code taken back",
   "backoffice.open": "Back office opened by EasyPay",
   "till.remove": "Till removed",
+  "till.rename": "Till renamed",
   "tablet.code_remove": "Code removed",
   "tenant.clear_test": "Test activity cleared",
   "tenant.live": "Put live",
@@ -117,6 +120,7 @@ function auditNote(a: Audit): string {
   if (a.action === "store.add") return `${String(d.name)} (${String(d.code)})`;
   if (a.action === "till.deactivate" || a.action === "till.activate" || a.action === "tablet.move" || a.action === "till.remove") return String(d.code ?? "");
   if (a.action === "tablet.code_remove") return `ending ${String(d.hint ?? "")}`;
+  if (a.action === "till.rename") return `${String(d.from_name)} (${String(d.from_code)}) to ${String(d.name)} (${String(d.code)})`;
   if (a.action === "tenant.clear_test") {
     return [count(Number(d.receipts ?? 0), "receipt"), count(Number(d.orders ?? 0), "order"), count(Number(d.tills ?? 0), "till"), count(Number(d.codes ?? 0), "code")].join(", ");
   }
@@ -270,6 +274,7 @@ export function TenantView({
                           </td>
                           <td>
                             <div className="row-actions">
+                              <RenameTill tenant={tenant.id} till={d.id} name={d.name} code={d.code} action={actions.renameTill} />
                               {/* Only a till with nothing recorded; and where the tablet keeps its sales to itself, only while the client is being set up. */}
                               {d.bare && (!offline || setup.settingUp) && (
                                 <form action={actions.removeTill}>
