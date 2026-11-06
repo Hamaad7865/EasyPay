@@ -19,7 +19,8 @@ function check(name, cond, extra) {
   if (!cond) failures++;
 }
 // a change as a till of this build sends it: with when it was made (`at`, ms)
-const op = (type, payload, at) => ({ op_id: crypto.randomUUID(), type, payload, ...(at === undefined ? {} : { at }) });
+// at: when the till made it, by its own clock; sent: the till's clock as it sent it
+const op = (type, payload, at, sent) => ({ op_id: crypto.randomUUID(), type, payload, ...(at === undefined ? {} : { at }), ...(sent === undefined ? {} : { sent }) });
 const RUNG_UP = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'go-live', 'rung-up.json'), 'utf8')).kinds;
 
 // Every table that holds a client's rows: Go live keeps it, clears it, or
@@ -112,15 +113,15 @@ const IN_PART = ['stock_movements'];
     const settingUp = async (t) => (await one(`select platform.is_setting_up($1) as r`, [t])).r;
     const settings = async (t) => (await one(`select data from pos_settings where tenant_id = $1`, [t]))?.data ?? {};
     let seq = 0;
-    function sale(b, dev, item, qty, at) {
+    function sale(b, dev, item, qty, at, sent) {
       const tk = crypto.randomUUID(), rc = crypto.randomUUID();
       return {
         rc,
         ops: [
-          op('ticket.create', { id: tk, store_id: b.store }, at),
-          op('ticket.add_line', { id: crypto.randomUUID(), ticket_id: tk, item_id: item.id, qty }, at),
+          op('ticket.create', { id: tk, store_id: b.store }, at, sent),
+          op('ticket.add_line', { id: crypto.randomUUID(), ticket_id: tk, item_id: item.id, qty }, at, sent),
           op('receipt.create', { id: rc, ticket_id: tk, store_id: b.store, device_id: dev, number: 'GL-' + (++seq), device_seq: seq,
-            payments: [{ payment_type_id: b.cash, amount: Math.round(Number(item.price) * qty / 1000) }], device_time: new Date(at ?? Date.now()).toISOString() }, at),
+            payments: [{ payment_type_id: b.cash, amount: Math.round(Number(item.price) * qty / 1000) }], device_time: new Date(at ?? Date.now()).toISOString() }, at, sent),
         ],
       };
     }
@@ -244,6 +245,19 @@ const IN_PART = ['stock_movements'];
       const real = sale(mine, t1.dev, x, 1000, Date.now() + 1000);
       const pr = await push(mine, real.ops);
       check('L5 a sale made after Go live is a sale', pr.every((o) => tag(o) === 'applied' && !(o.data && o.data.dropped)) && Number(await level(x)) === 99000, `${JSON.stringify(pr.map(tag))} ${await level(x)}`);
+      // a tablet's clock can be off: when a change was made is read against the till's own clock as it sent
+      // it (sent), so that it is the server's moment that is set against live
+      const slow = Date.now() - 60 * 60000;
+      const ps = await push(mine, sale(mine, t1.dev, x, 1000, slow, slow).ops);
+      check('L8 a sale made after Go live on a till whose clock is an hour slow is a sale',
+        ps.every((o) => tag(o) === 'applied' && !(o.data && o.data.dropped)) && Number(await level(x)) === 98000, `${JSON.stringify(ps.map((o) => tag(o) + ' ' + JSON.stringify(o.data)))} ${await level(x)}`);
+      // rung up a minute before Go live, on a clock that reads an hour more: "after" live by that clock
+      const pf = await push(mine, sale(mine, t2.dev, x, 1000, s.live - 60000 + 60 * 60000, Date.now() + 60 * 60000).ops);
+      check('L9 a test sale made before Go live on a till whose clock is an hour fast is dropped',
+        pf.every((o) => tag(o) === 'applied' && o.data && o.data.dropped === 'before-go-live') && Number(await level(x)) === 98000, `${JSON.stringify(pf.map(tag))} ${await level(x)}`);
+      const stored = (await one(`select result from sync_ops_applied where op_id = $1`, [late.ops[2].op_id])).result;
+      check('L10 what is dropped is kept whole on the server, and is not sent back to the till',
+        stored.dropped_op && stored.dropped_op.type === 'receipt.create' && stored.dropped_op.payload.id === late.rc && !('dropped_op' in pl[2]), JSON.stringify(Object.keys(stored)));
       // a till of an older build says nothing of when; the till service holds it back until it is updated (hello.ts)
       const old = sale(mine, t2.dev, y, 1000);
       const po = await push(mine, old.ops);

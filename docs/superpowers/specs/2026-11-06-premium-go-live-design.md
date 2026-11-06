@@ -37,6 +37,9 @@ Server, migration `0157_premium_go_live.sql` (suite `db/tests/premium-go-live.te
 - `sync_push` drops a change of a rung-up kind (`db/tests/fixtures/go-live/rung-up.json` = the till's
   `GoLiveRules.RUNG_UP`) whose `at` is before `live`: answered `applied` with `dropped: before-go-live`. That is a
   test sale from a tablet that was off at Go live. A change with no `at` (an older till) is taken as before.
+  `at` is the tablet's clock and `live` the server's, so each op also carries `sent` (the tablet's clock as it
+  sent it) and the server reads `at + (its now - sent)`: a tablet an hour slow keeps its real sales, one an hour
+  fast loses its test ones (suite L8, L9). What is dropped is kept whole in `sync_ops_applied.result.dropped_op`.
 - `hello.ts`: a business with `live` takes push and pull only from build 50 or later (426, as for the MRA).
 
 Tablet, till 0.9.38 (build 50):
@@ -45,7 +48,8 @@ Tablet, till 0.9.38 (build 50):
 - `settingUpNow`: a tablet alone by its own flag (as before), a cloud business by the server's `settingUp`. The
   strip, the TEST papers and Go live follow it. Stock is noted for a put-back only on a tablet alone.
 - Go live on a cloud business sends `business.go_live` (online, owner or owner's PIN). The pull after it, on this
-  till and every other one, first drops queued rung-up changes made before `live` (`OfficeClear.dropBefore`), then
+  till and every other one, first drops queued rung-up changes made before `live`, moved onto the tablet's clock
+  by `ApiClient.clockAhead` (`OfficeClear.dropBefore`), then
   empties the till as after Delete all transactions and pulls from nothing, so the stock comes back at 100.
 
 /admin: one Go live card for a cloud client (the client's name typed), Clear test activity gone from the page
@@ -60,6 +64,14 @@ Tablet, till 0.9.38 (build 50):
   those invoices.
 - Tills older than build 50 of a business that went live this way are held (426) until updated, rather than Go live
   being refused while such a till exists.
+
+## Edges
+
+- A sale rung up on another till after Go live but before that till's next pull is a real sale (kept by the
+  server, and back on that till after it empties itself), but it printed TEST / NOT A RECEIPT.
+- A tablet whose clock was changed between ringing a sale up and sending it is read by its clock at sending.
+- Release: after the tag, no real cloud client is put live until `/health` offers build 50; a till older than
+  50 of a business put live is held (426) until it is updated.
 
 ## Not seen
 

@@ -184,7 +184,7 @@ class PullWorker @AssistedInject constructor(
             val mark = now.cleared
             // Go live of a business in the cloud (server 0157): the test sales
             // still in the queue go first, so the till does not wait on them
-            OfficeClear.dropBefore(now.live, mark, session.officeCleared(), now.alone)?.let {
+            OfficeClear.dropBefore(now.live, mark, session.officeCleared(), now.alone, api.clockAhead.value)?.let {
                 db.goLive().dropQueuedBefore(com.restopos.core.data.GoLiveRules.RUNG_UP.toList(), it)
             }
             when (OfficeClear.step(mark, session.officeCleared(), now.alone, start == 0L, db.outbox().pendingCount(), db.outbox().deadCount())) {

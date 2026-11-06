@@ -60,6 +60,17 @@ class PremiumGoLiveTest {
         assertEquals(live, OfficeClear.dropBefore(live, at, applied = "2026-10-01T00:00:00+00:00", alone = false))
     }
 
+    // what is queued carries the tablet's clock, live the server's: a tablet an
+    // hour fast rang its test sales up to an hour "after" live, and one an hour
+    // slow rings its real sales an hour "before" it
+    @Test fun the_moment_is_moved_onto_the_tablets_clock() {
+        val hour = 3_600_000L
+        assertEquals(live + hour, OfficeClear.dropBefore(live, at, applied = null, alone = false, clockAhead = hour))
+        assertEquals(live - hour, OfficeClear.dropBefore(live, at, applied = null, alone = false, clockAhead = -hour))
+        // not heard yet: the tablet's clock is taken as right
+        assertEquals(live, OfficeClear.dropBefore(live, at, applied = null, alone = false, clockAhead = null))
+    }
+
     @Test fun nothing_is_dropped_once_acted_on_on_a_tablet_alone_or_with_no_go_live() {
         assertNull(OfficeClear.dropBefore(live, at, applied = at, alone = false))
         assertNull(OfficeClear.dropBefore(live, at, applied = null, alone = true))

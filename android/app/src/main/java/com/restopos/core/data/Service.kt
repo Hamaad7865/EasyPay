@@ -704,7 +704,7 @@ class ServiceRepository @Inject constructor(
             error("This tablet is still sending what it kept while it worked on its own. Try again in a moment.")
         }
         val answer = try {
-            api.push(listOf(OutboxOp(Uuid7.next(), type, payload, staff.id(), at = System.currentTimeMillis()))).firstOrNull()
+            api.push(listOf(System.currentTimeMillis().let { now -> OutboxOp(Uuid7.next(), type, payload, staff.id(), at = now, sent = now) })).firstOrNull()
         } catch (e: java.io.IOException) {
             error("This needs a connection: the server has to answer first. Try again when the tablet is online.")
         } catch (e: AuthRequired) {

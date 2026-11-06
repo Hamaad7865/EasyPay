@@ -28,7 +28,9 @@ internal object OfficeClear {
     // queue, waiting or refused, was trying. It goes, as at an offline tablet's
     // Go live (GoLiveRules.RUNG_UP); the server would drop it anyway. What was
     // set up goes up as ever, and so does a sale made since. The answer is the
-    // moment before which it goes, or null for nothing.
-    fun dropBefore(live: Long?, cleared: String?, applied: String?, alone: Boolean): Long? =
-        if (live == null || alone || cleared == null || cleared == applied) null else live
+    // moment before which it goes, or null for nothing. `live` is the server's
+    // clock and the queue the tablet's: clockAhead (ApiClient, null when not
+    // heard yet) moves it onto the tablet's.
+    fun dropBefore(live: Long?, cleared: String?, applied: String?, alone: Boolean, clockAhead: Long? = null): Long? =
+        if (live == null || alone || cleared == null || cleared == applied) null else live + (clockAhead ?: 0)
 }

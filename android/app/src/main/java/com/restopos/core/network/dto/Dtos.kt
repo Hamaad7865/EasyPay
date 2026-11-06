@@ -122,6 +122,9 @@ data class OutboxOp(
     // when the change was made here (ms): the server drops a sale made before
     // its business went live (0157), sent by a till that was off at Go live
     val at: Long? = null,
+    // this tablet's clock as it sends it (ms): beside the server's, it says how
+    // far this clock is off, so `at` is read on the server's clock
+    val sent: Long? = null,
 )
 
 @Serializable

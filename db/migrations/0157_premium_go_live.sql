@@ -32,6 +32,9 @@
 --     sends), is answered applied and dropped: a tablet that was off at Go live sends its test sales when it
 --     is back, and they must not land on the live books. A change that says nothing of when it was made (an
 --     older till) is taken as before: the till service holds such a till back until it is updated (hello.ts).
+--     `at` is the tablet's clock: the op's `sent` (the tablet's clock as it sent it) moves it onto the
+--     server's, so a tablet an hour slow does not lose its real sales, nor an hour fast keep its test ones.
+--     What is dropped is kept whole in sync_ops_applied (dropped_op), should it turn out to have been a sale.
 --
 -- Source: sync_push, platform.go_live and the clearing in platform.clear_test_activity as they are on dev
 -- (db/scripts/dump-function.cjs, 2026-11-06; sync_push is 0134's, clear_test_activity 0128's). sync_push has
@@ -361,7 +364,8 @@ begin
         end if;
         -- 0157: a change rung up before the business went live, sent by a till that was off at Go live:
         -- answered, so it leaves the till's queue, and not taken. A change that does not say when it was
-        -- made is taken as before.
+        -- made is taken as before. When it was made is the till's clock; how far that clock is off is
+        -- told by the till's clock as it sent it (sent), so a till an hour slow or fast is read right.
         v_drop := false;
         if v_live is not null and v_type = any (rung) and op ? 'at' then
           begin
@@ -369,6 +373,13 @@ begin
           exception when others then
             v_at := null;
           end;
+          if v_at is not null and op ? 'sent' then
+            begin
+              v_at := coalesce(v_at + (clock_timestamp() - to_timestamp((op->>'sent')::numeric / 1000)), v_at);
+            exception when others then
+              null;
+            end;
+          end if;
           v_drop := v_at is not null and v_at < v_live;
         end if;
         if v_drop then
@@ -459,8 +470,9 @@ begin
         end case;
         end if;
         v_envelope := jsonb_build_object('op_id', v_op_id, 'status', 'applied', 'data', v_data);
+        -- 0157: a dropped change is kept here whole, should it turn out to have been a sale
         insert into sync_ops_applied (op_id, tenant_id, type, result)
-          values (v_op_id, tenant, v_logtype, v_envelope);
+          values (v_op_id, tenant, v_logtype, case when v_drop then v_envelope || jsonb_build_object('dropped_op', op) else v_envelope end);
         if v_appr is not null then
           insert into approvals (tenant_id, op_id, op_type, employee_id, approved_by)
             values (tenant, v_op_id, v_logtype, v_emp, v_appr);
