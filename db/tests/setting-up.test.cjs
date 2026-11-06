@@ -4,7 +4,8 @@
 // Everything runs in one transaction that is rolled back.
 // Usage: node db/tests/setting-up.test.cjs
 //   WITH_MIGRATION=1 applies 0104 inside that transaction first, to try the
-//   migration before it is applied to the branch.
+//   migration before it is applied to the branch; WITH_MIGRATION=<file name>
+//   applies that file instead.
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -70,7 +71,9 @@ const IN_PART = ['stock_movements', 'tablet_codes'];
   const says = (e, code) => !!e && e.message === code;
   try {
     if (process.env.WITH_MIGRATION) {
-      await c.query(fs.readFileSync(path.join(__dirname, '..', 'migrations', '0104_setting_up.sql'), 'utf8'));
+      // WITH_MIGRATION=1 is 0104; a file's name tries that one
+      const file = process.env.WITH_MIGRATION === '1' ? '0104_setting_up.sql' : process.env.WITH_MIGRATION;
+      await c.query(fs.readFileSync(path.join(__dirname, '..', 'migrations', file), 'utf8'));
     }
     const admin = crypto.randomUUID(), stranger = crypto.randomUUID();
     await c.query(`insert into platform.admins (auth_user_id, email) values ($1, 'setting-up-test@example.com')`, [admin]);
@@ -354,6 +357,21 @@ const IN_PART = ['stock_movements', 'tablet_codes'];
       check('P1 so Clear test activity is refused', says(e, 'client-live'), e && e.message);
       e = await failsWith(`select platform.remove_till($1, $2)`, [admin, pdev]);
       check('P2 its till, bare here until its tablet connects, is not removed', says(e, 'till-not-connected'), e && e.message);
+      // 0156: a tablet is signed out only once nothing waits on it to be sent, and the sign-out ends its key.
+      // A till whose tablet was signed out holds nothing anywhere but here: bare here, it is removed.
+      const pcode = (await one(`select code from pos_devices where id = $1`, [pdev])).code;
+      await c.query(`select revoke_device_key($1)`, [pdev]);
+      e = await failsWith(`select platform.remove_till($1, $2)`, [admin, pdev]);
+      check('P5 its tablet signed out (its key ended): the till is removed', !e && (await one(`select count(*)::int as n from pos_devices where id = $1`, [pdev])).n === 0, e && e.message);
+      check('P5 and its code is free again', (await one(`select count(*)::int as n from pos_devices where tenant_id = $1 and code = $2`, [alone, pcode])).n === 0, pcode);
+      // a till being moved to another tablet: the move ends its key too, but what it sold may be on the old tablet or its backup
+      const mv = await add(solo.store);
+      const mdev = crypto.randomUUID();
+      await redeem(mv.code, mdev, 'tablet-moved');
+      await c.query(`update pos_devices set created_at = now() - interval '1 day' where id = $1`, [mdev]);
+      await c.query(`select platform.tablet_code_move($1, $2)`, [admin, mdev]);
+      e = await failsWith(`select platform.remove_till($1, $2)`, [admin, mdev]);
+      check('P6 a till being moved to another tablet (its key ended by the move) is still not removed', says(e, 'till-not-connected'), e && e.message);
       const later = await add(solo.store);
       const ldev = crypto.randomUUID();
       await redeem(later.code, ldev, 'tablet-later');
