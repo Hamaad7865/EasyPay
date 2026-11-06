@@ -136,7 +136,7 @@ class PullWorker @AssistedInject constructor(
             // the tables this pull brought rows of: what a tablet that asked on purpose says came (Fetched)
             val brought = sortedSetOf<String>()
             // page after page until the server has no more (PullPaging)
-            PullPaging.read(saved?.cursor ?: 0) { cursor ->
+            suspend fun pullFrom(start: Long) = PullPaging.read(start) { cursor ->
                 val page = api.pull(store, cursor)
                 val pageEpochs = page.epochs.toSortedMap().entries.joinToString(",") { "${it.key}=${it.value}" }
                 if (epochs.isNotEmpty() && pageEpochs.isNotEmpty() && pageEpochs != epochs) {
@@ -171,6 +171,34 @@ class PullWorker @AssistedInject constructor(
                     page.changes.forEach { (table, rows) -> if (rows.isNotEmpty()) brought.add(table) }
                     PullPaging.Page(page.nextCursor, page.hasMore)
                 }
+            }
+            val start = saved?.cursor ?: 0
+            pullFrom(start)
+            // Delete all transactions in the back office (server 0155): the
+            // server's receipts, orders and days are gone, and a pull never
+            // says what went. The settings say when (OfficeClear): once for
+            // each, the till empties what it rang up, its numbers start again,
+            // and it pulls from nothing, so what the server still has (a sale
+            // sent since) comes back.
+            val now = com.restopos.core.data.PosSettings.parse(db.ops().settings())
+            val mark = now.cleared
+            when (OfficeClear.step(mark, session.officeCleared(), now.alone, start == 0L, db.outbox().pendingCount(), db.outbox().deadCount())) {
+                OfficeClear.Step.NOTE -> session.noteOfficeCleared(mark!!, numbersToo = false)
+                OfficeClear.Step.CLEAR -> {
+                    val device = session.deviceId()
+                    db.withTransaction {
+                        db.goLive().clearDeletedInOffice()
+                        // a customer's points are what their receipts earned and used (0128): none are left
+                        db.customers().clearPoints()
+                        // the stock papers went too; the suppliers come again with the pull
+                        db.stock().clearFromServer()
+                        if (device != null) db.goLive().numbersFromOne(device)
+                        db.sync().saveCursor(SyncStateEntity(store, 0, epochs))
+                    }
+                    session.noteOfficeCleared(mark!!, numbersToo = true)
+                    pullFrom(0)
+                }
+                OfficeClear.Step.WAIT, OfficeClear.Step.NONE -> Unit
             }
             session.setLastPull(System.currentTimeMillis())
             // Made Premium, or a trial: the business is the cloud's from now on,
@@ -284,6 +312,7 @@ private val ACTIVE_TICKET = stringPreferencesKey("active_ticket")
 private val PENDING_DISCOUNT = stringPreferencesKey("pending_discount")
 private val NEEDS_SIGN_IN = booleanPreferencesKey("needs_sign_in")
 private val BUSINESS = stringPreferencesKey("business_name")
+private val OFFICE_CLEARED = stringPreferencesKey("office_cleared")
 private val PENDING_TABLE = stringPreferencesKey("pending_table")
 private val PENDING_COVERS = intPreferencesKey("pending_covers")
 private val PENDING_DINING = stringPreferencesKey("pending_dining")
@@ -353,11 +382,25 @@ class SessionStore(private val context: Context) {
     // more. One write, so it is all or nothing.
     suspend fun wentLive() {
         store.edit {
-            listOf(ACTIVE_TICKET, PENDING_DISCOUNT, PENDING_TABLE, PENDING_DINING, SPLIT_SHARES, SEQ_DAY, DUE_RUNG).forEach { k -> it.remove(k) }
-            listOf(PENDING_COVERS, PAY_CHECK, SEQ_CUSTOMER).forEach { k -> it.remove(k) }
-            listOf("C", "A", "D", "K").forEach { s -> it.remove(intPreferencesKey("seq_$s")) }
-            it[PERIOD_SEQ] = 0
+            numbersAgain(it)
             it.remove(SETTING_UP)
+        }
+    }
+    private fun numbersAgain(it: androidx.datastore.preferences.core.MutablePreferences) {
+        listOf(ACTIVE_TICKET, PENDING_DISCOUNT, PENDING_TABLE, PENDING_DINING, SPLIT_SHARES, SEQ_DAY, DUE_RUNG).forEach { k -> it.remove(k) }
+        listOf(PENDING_COVERS, PAY_CHECK, SEQ_CUSTOMER).forEach { k -> it.remove(k) }
+        listOf("C", "A", "D", "K").forEach { s -> it.remove(intPreferencesKey("seq_$s")) }
+        it[PERIOD_SEQ] = 0
+    }
+
+    // Delete all transactions in the back office (OfficeClear): the mark this
+    // till last acted on. Acting on one, the till's own numbers and the sale
+    // it had open start again, as at Go live, in the same write as the mark.
+    suspend fun officeCleared(): String? = store.data.map { it[OFFICE_CLEARED] }.first()
+    suspend fun noteOfficeCleared(mark: String, numbersToo: Boolean) {
+        store.edit {
+            if (numbersToo) numbersAgain(it)
+            it[OFFICE_CLEARED] = mark
         }
     }
 

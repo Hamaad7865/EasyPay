@@ -27,7 +27,8 @@ async function deleteTransactions(f: FormData) {
     }
     const r = out.rows[0].r as { receipts: number; orders: number };
     const what = ctx.mode === "retail" ? `${r.receipts} receipts` : `${r.receipts} receipts and ${r.orders} orders`;
-    return `Deleted ${what}. Sign each till out and in again before selling.`;
+    // a till of 0.9.37 on empties its Receipts at its next sync (0155); an older one only by signing out
+    return `Deleted ${what}. Each till empties its Receipts at its next sync. A till older than version 0.9.37: sign it out and in again before selling.`;
   });
 }
 

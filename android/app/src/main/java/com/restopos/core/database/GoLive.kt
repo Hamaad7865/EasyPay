@@ -38,6 +38,21 @@ interface GoLiveDao {
         accountPaymentLines(); accountPayments(); accountBills(); depositPayments(); depositLines(); depositsAll(); creditNotes()
         cash(); drawerCounts(); dayCloses(); shifts(); punches(); bookings(); requests(); guestOrders(); tillLog()
     }
+    // Delete all transactions in the back office (server 0155, OfficeClear):
+    // what the server deleted goes from here too. Go live's list but for three:
+    // the guest orders came from the relay, not the server; the server keeps
+    // the back office's requests, with what was done of them; and the till's
+    // log keeps its price changes, which are no sale's (its payment
+    // corrections went with the receipts).
+    @Transaction
+    suspend fun clearDeletedInOffice() {
+        lineMods(); lineTaxes(); lines(); receiptTaxes(); receiptMods(); receiptLines(); receiptPayments(); receiptsAll()
+        kdsParts(); kdsOut(); kdsTickets(); ticketsAll()
+        accountPaymentLines(); accountPayments(); accountBills(); depositPayments(); depositLines(); depositsAll(); creditNotes()
+        cash(); drawerCounts(); dayCloses(); shifts(); punches(); bookings(); paymentLog()
+    }
+    @Query("DELETE FROM till_log WHERE kind = 'payment'") suspend fun paymentLog()
+
     @Query("DELETE FROM ticket_line_modifiers") suspend fun lineMods()
     @Query("DELETE FROM ticket_line_taxes") suspend fun lineTaxes()
     @Query("DELETE FROM ticket_lines") suspend fun lines()
