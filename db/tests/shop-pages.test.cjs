@@ -283,7 +283,7 @@ const id = () => crypto.randomUUID();
       check('X3 the Exchange type is not among the payment options a shop edits', !p.error && p.html.includes('value="Cash"') && !p.html.includes('value="Exchange"'), p.error);
       // a sale that names a refund which is not there is flagged, and the Receipts page says why
       await shop.sale([{ item_id: mug }], 11500, { payments: [{ payment_type_id: exch, amount: 11500, reference: 'SP1-R-NOWHERE' }] });
-      p = await see(shop, '/backoffice/receipts', {});
+      p = await see(shop, '/backoffice/receipts', { view: 'check' });
       check('X4 a sale settled against a refund that is not there is on the Receipts page, with the reason', !p.error && p.says.includes('Rs 115 of it was settled as an exchange against refund SP1-R-NOWHERE, which is not there for that amount'), p.error || (p.says.match(/settled as an exchange[^.]*/) || [p.says.slice(0, 300)])[0]);
     }
 
@@ -320,7 +320,7 @@ const id = () => crypto.randomUUID();
       // two tills apart: a second sale takes Rs 50.00 off a note with Rs 25.00 left
       await shop.sale([{ item_id: mug, unit_price: 5000, list_price: 11500, price_kind: 'discount', price_label: 'Rs 65.00 off', approved_by: shop.owner }], 5000,
         { payments: [{ payment_type_id: noteType, amount: 5000, reference: noteNo }] });
-      p = await see(shop, '/backoffice/receipts', {});
+      p = await see(shop, '/backoffice/receipts', { view: 'check' });
       check('Y5 a sale that overspent a note is flagged, and the page says by how much', !p.error && p.says.includes(`credit note ${noteNo} had Rs 25 left and this sale took Rs 50: Rs 25 is not covered`), p.error || (p.says.match(/credit note [^.]*not covered[^.]*/) || [p.says.slice(0, 200)])[0]);
       p = await see(shop, '/backoffice/credit-notes', { show: 'closed' });
       const usedRow = rowsOf(p.html).find((r) => r.includes(noteNo));

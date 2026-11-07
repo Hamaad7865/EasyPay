@@ -8,13 +8,13 @@ The owner's choices:
 
 ## The list (`/backoffice/receipts`)
 
-- From and To dates, today by default; Clear goes back to today. The branch picker when the account has several branches.
+- From and To dates, today by default; a Today link goes back to today. The branch picker when the account has several branches.
 - `q` (the links from Accounts, Deposits and the Sales journal already send one) finds a receipt by number on any day; when one receipt matches, its pop-up opens.
 - `view=check`: every receipt still to check, whatever the dates. The warning counts them all, with the same `where` as the menu badge (`counts/route.ts`).
-- One line per receipt: number, order (table, order number or customer; a shop: order name or customer), date, time, till, cashier, paid by, total without tax, total. Marks: Refund, To check, corrected.
+- One line per receipt: number, order (table, order number or customer; a shop: order name or customer), the branch (all branches of several), date, time, till, cashier, paid by, total without tax, total. Marks: Refund, To check, Not counted, corrected. On the To check view a Why column gives the reasons, as the old page did.
 - The count and the totals, at the top and the foot: from `receipt_revenue` with `counts_as_sale`, refunds taken off, the store's day, so they are what Orders / Sales give for those days. A double payment is listed (it needs signing off) but not counted.
-- At most 500 lines; past that, a line says to narrow the dates.
-- Seeing receipts needs `reports.view`, as Orders does.
+- At most 500 lines; past that, a line says the figures are for all of them and to pick fewer days.
+- Seeing receipts needs `reports.view`, as Orders does, or a role that may correct payments or refund (the To check list was theirs before; they still need it).
 
 ## The pop-up (`?r=<receipt id>`, kept with the dates)
 
@@ -25,7 +25,10 @@ The owner's choices:
   - the tax lines: each line's share of the discount taken off, each tax worked out as the server and the till do (`DocBuilder.taxes`); what rounding leaves over goes on the largest, so they add up to the stored tax;
   - marked as a copy (`OrderOps.marked`): COPY, what has been refunded since, and no account balance or points balance of that day. So a copy cannot be brought back for a second refund.
 - Paid by, with Change beside each payment; the reasons to check, with Sign off.
-- Copy, WhatsApp, Email, Print, and the customer's history when the sale has a customer.
+- Copy, WhatsApp, Email, Print, and the customer's history when the sale has a customer; a refund links to its sale.
+- The text that Copy, WhatsApp and Email carry is the same paper laid out at 32 columns (58 mm), so a phone shows it without wrapping; WhatsApp gets it between three back-quotes, which keep its columns. A Mauritian number of 7 or 8 digits gets 230 in front.
+- Copy uses the browser's clipboard, and the old copy command where a browser refuses it; it says Copied, or that the browser refused.
+- Print puts the paper alone in a hidden frame at 72 mm, named after the receipt, so Save as PDF gives a file of that name.
 
 ## Changing the payment method
 
@@ -46,3 +49,13 @@ The owner's choices:
 - `web/lib/receipt-doc.test.mjs`: the tax split, the copy marks, the text.
 - `db/tests/receipt-popup.test.cjs`: a till sale with a discount, an included tax and a priced add-on, through `sync_push`; the pop-up's paper says the stored total and its tax lines add up to the stored tax; the period totals equal Orders'; the To check view; `q`; a role without reports; a correction comes back to the pop-up; special payment types not offered.
 - Type-check, `next build`, the Receipts page drawn in both looks with no sign-in.
+
+## What was run and seen (2026-11-07)
+
+- `node web/lib/receipt-doc.test.mjs`: 15 checks pass.
+- `db/tests/receipt-popup.test.cjs` on dev, one rolled-back transaction: 41 checks pass (the text sent is at most 32 columns among them). `shop-pages.test.cjs` (127) and `unapproved-kept.test.cjs` pass, now reading the reasons on `view=check`.
+- `tsc --noEmit` and `next build` pass.
+- The list and a pop-up drawn from dev with no sign-in, in both looks, looked right. In the browser, on a page with made-up rows (removed): the pop-up opens over the page, Esc and the cross close it and the address loses `r`, Print's frame holds the paper alone at 72 mm in Courier New, a real click on Copy says Copied where the clipboard is refused, and the WhatsApp and Email links carry the customer's number and address.
+- Not seen: a signed-in back office (no hosted sign-in is made for tests), WhatsApp or a mail app actually opening, a paper printer.
+- Lines rung up in one sync have no order of their own on the server, so a copy can list them in another order than the till printed them.
+

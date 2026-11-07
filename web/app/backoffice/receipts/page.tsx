@@ -1,273 +1,335 @@
-import { revalidatePath } from "next/cache";
 import Link from "next/link";
-import { Receipt } from "lucide-react";
-import { requirePerm, tenantContext } from "@/lib/tenant";
-import { readTenant, withTenant } from "@/lib/db";
-import { fmtRs } from "@/lib/money";
-import { act, Refused, uuid } from "@/lib/action";
-import { loadSettings, money } from "@/lib/settings";
-import { clock, lists } from "@/lib/report";
-import { Empty, Flash, PageHead, type Search } from "../ui";
-import { Submit } from "../busy";
+import { ChevronRight, Receipt } from "lucide-react";
+import { tenantContext } from "@/lib/tenant";
+import { readTenant } from "@/lib/db";
+import { UUID } from "@/lib/action";
+import { money } from "@/lib/settings";
+import { filters, reportStart, today } from "@/lib/report";
+import { pickedOf } from "@/lib/branch";
+import { whatsappNumber } from "@/lib/receipt-doc";
+import { Empty, Flash, one, PageHead, type Search } from "../ui";
+import { Go, Submit, Wait } from "../busy";
+import { BranchPicker } from "../branch-picker";
+import { PaperPreview } from "../receipt-design/preview";
+import { LIMIT, PLAIN, openReceipt, receiptList, type PayRow, type Row } from "./data";
+import { describe } from "./reasons";
+import { ReceiptPopup } from "./popup";
+import { correctPayment, resolveReceipt } from "./actions";
 
-type Review = {
-  reason: string;
-  detail: Record<string, unknown>;
-  resolved_at: string | null;
-  resolution: string | null;
-};
+// The receipts of the days picked, after Carfectionist's tickets (2026-11-07,
+// docs/superpowers/specs/2026-11-07-receipts-popup-design.md): a line each,
+// what they come to, and each one in a pop-up as the till prints it, to copy,
+// send, print, correct how it was paid, and sign off.
+const PATH = "/backoffice/receipts";
 
-type ReceiptRow = {
-  id: string;
-  number: string;
-  type: string;
-  total: string;
-  needs_review: boolean;
-  device_time: string | null;
-  at: string;
-  cashier: string | null;
-  reviews: Review[];
-  payments: { type: string; name: string | null; kind: string | null; ref: string | null; was: string | null; amount: number }[];
-};
-
-type DriftItem = { kind?: string; name?: string; till?: number | null; catalog?: number | null };
-
-const rs = (v: unknown) => fmtRs(Number(v ?? 0));
-
-// One plain sentence per reason, with the figures the server recorded.
-function describe(v: Review): string {
-  const d = v.detail ?? {};
-  switch (v.reason) {
-    case "double-pay":
-      return `Ticket was already paid (${rs(d.already_paid)}); another ${rs(d.received)} was taken`;
-    case "underpaid":
-      return `Short payment: ${rs(d.received)} taken for a total of ${rs(d.total)}`;
-    case "overpaid":
-      return `Overpayment: ${rs(d.received)} taken for a total of ${rs(d.total)}`;
-    case "number-collision":
-      return `Number ${String(d.requested)} was already used; stored as ${String(d.stored)}`;
-    case "price-drift": {
-      const items = (Array.isArray(d.items) ? d.items : []) as DriftItem[];
-      return items
-        .map((i) =>
-          i.kind === "unavailable"
-            ? `item sold at ${rs(i.till)} is no longer available`
-            : i.kind === "modifier-unlinked"
-              ? `a modifier (${rs(i.till)}) that this item does not offer`
-            : `${i.kind === "discount" ? `discount ${i.name ?? ""}`.trim() : (i.kind ?? "item")} charged ${rs(i.till)}, catalog ${rs(i.catalog)}`,
-        )
-        .join("; ");
-    }
-    case "exchange-unmatched": {
-      // a sale paid in part with returned goods, whose refund is not on the books as the till said (migration 0079)
-      const credits = (Array.isArray(d.credits) ? d.credits : []) as { amount?: number | null; refund?: string | null }[];
-      return credits
-        .map((x) => `${rs(x.amount)} of it was settled as an exchange against refund ${x.refund || "(not named)"}, which is not there for that amount: check that the goods came back`)
-        .join("; ");
-    }
-    case "price-unapproved": {
-      // a discount on one line, or a price typed for it, by someone whose role does not allow it (migration 0077)
-      const lines = (Array.isArray(d.lines) ? d.lines : []) as { kind?: string; listed?: number | null; charged?: number | null }[];
-      return lines
-        .map((l) => `${l.kind === "override" ? "a price changed on one line" : "a discount on one line"}, from ${rs(l.listed)} to ${rs(l.charged)}, by someone whose role does not allow it`)
-        .join("; ");
-    }
-    case "discount-unapproved": {
-      // a discount on the bill that nobody was allowed to give; the bill was paid with it, so it is kept (migration 0082)
-      const discounts = (Array.isArray(d.discounts) ? d.discounts : []) as { name?: string | null; amount?: number | null; why?: string }[];
-      return discounts
-        .map((x) =>
-          x.why === "needs-approval"
-            ? `the discount ${x.name ?? ""} (${rs(x.amount)}) needs a manager, and no one who may approve it did`
-            : `a discount of ${rs(x.amount)} (${x.name ?? "Discount"}) given by someone whose role does not allow discounts`,
-        )
-        .join("; ");
-    }
-    case "refund-unapproved":
-      // the customer had the money by the time it reached the server, so it is kept (migration 0082)
-      return "Refunded by someone whose role does not allow refunds, with no approval from someone who may";
-    case "credit-note-refused": {
-      // a sale paid in part with a credit note the server could not honour (migration 0109)
-      const notes = (Array.isArray(d.notes) ? d.notes : []) as { amount?: number; number?: string; why?: string; valid_to?: string }[];
-      return notes
-        .map((n) => `${rs(n.amount)} of it was paid with credit note ${n.number || "(not named)"}, which ${n.why === "not-found" ? "was never issued" : n.why === "void" ? "was cancelled" : n.why === "expired" ? `expired on ${n.valid_to ?? ""}` : "was already used up"}: that part of the sale is not covered`)
-        .join("; ");
-    }
-    case "credit-overspent": {
-      // two tills apart both spent one note; the second to arrive took more than was left (migration 0109)
-      const notes = (Array.isArray(d.notes) ? d.notes : []) as { amount?: number; number?: string; balance?: number; excess?: number }[];
-      return notes
-        .map((n) => `credit note ${n.number} had ${rs(n.balance)} left and this sale took ${rs(n.amount)}: ${rs(n.excess)} is not covered (two tills spent it while apart)`)
-        .join("; ");
-    }
-    case "points": {
-      // loyalty points (migration 0128): the till's figures were kept, held to what they could be
-      const flags = (Array.isArray(d.flags) ? d.flags : []) as { why?: string; used?: number; balance?: number; total?: number; left?: number; till?: string | number | null; what?: string }[];
-      return flags
-        .map((f) =>
-          f.why === "overspent"
-            ? `${rs(f.used)} of points used when the customer had ${rs(f.balance)}: their balance is below zero (two tills spent it while apart)`
-            : f.why === "no-customer"
-              ? `points earned or used for a customer this business does not know: the points were not kept (the discount on the receipt stands)`
-              : f.why === "over-earned"
-                ? `the till said ${rs(Number(f.till) || 0)} of points earned on a sale of ${rs(f.total)}: kept as the most it could be`
-                : f.why === "over-returned"
-                  ? `the refund ${f.what === "back" ? "gave back" : "took back"} more points than the sale had left (${rs(f.left)}): held to that`
-                  : `points: ${f.why ?? "flagged"}`,
-        )
-        .join("; ");
-    }
-    default:
-      return v.reason;
-  }
-}
-
-// Signing off a money discrepancy takes the same authority as refunding one.
-async function resolveReceipt(formData: FormData) {
-  "use server";
-  const ctx = await requirePerm("sale.refund");
-  const receiptId = String(formData.get("receipt") ?? "");
-  const note = String(formData.get("note") ?? "").trim();
-  if (!receiptId || !note) return;
-  await withTenant(ctx.tenantId, (c) =>
-    c.query(
-      `update receipt_reviews set resolved_at = now(), resolved_by = $1, resolution = $2
-        where receipt_id = $3 and tenant_id = $4 and resolved_at is null and deleted_at is null`,
-      [ctx.employeeId, note, receiptId, ctx.tenantId],
-    ),
-  );
-  revalidatePath("/backoffice/receipts");
-  revalidatePath("/backoffice");
-}
-
-// A bill rung up under the wrong payment type is corrected, not edited: the
-// payment stays as it was recorded and the correction is kept with who made
-// it and when. The amount never changes.
-async function correctPayment(f: FormData) {
-  "use server";
-  await act("payment.correct", "/backoffice/receipts", async (c, ctx) => {
-    const payload = { id: crypto.randomUUID(), receipt_id: uuid(f, "receipt"), from_payment_type_id: uuid(f, "from"), to_payment_type_id: uuid(f, "to") };
-    if (payload.from_payment_type_id === payload.to_payment_type_id) throw new Refused("Pick a different payment type.");
-    try {
-      await c.query(`select push_payment_correct($1, $2, $3::jsonb)`, [ctx.tenantId, ctx.employeeId, JSON.stringify(payload)]);
-    } catch (e) {
-      throw new Refused(e instanceof Error && e.message === "forbidden" ? "Your role does not include correcting a payment type." : "That payment could not be corrected. Reload the page and try again.");
-    }
-    return "Payment type corrected. The reports use the new type; the receipt keeps a note of the change.";
-  });
+// how a payment names itself on the list and in the pop-up (0079, 0109, 0113, 0114)
+function payName(p: { name: string | null; kind: string | null; ref: string | null }, refund: boolean): string {
+  if (p.kind === "credit_note") return `Credit note ${p.ref ?? ""}`.trim();
+  if (p.kind === "deposit") return `Deposit ${p.ref ?? ""}`.trim();
+  if (p.kind === "account") return refund ? "Off the bill on account" : "On account";
+  if (p.kind === "exchange") return refund ? "To the new sale" : `Returned goods${p.ref ? ", refund " + p.ref : ""}`;
+  return p.name ?? "Unknown";
 }
 
 export default async function ReceiptsPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
-  const d = await readTenant(ctx.tenantId, async (c) => ({
-    l: await lists(c, ctx.tenantId),
-    s: await loadSettings(c, ctx.tenantId),
-    types: (await c.query(`select id, name from payment_types where tenant_id = $1 and deleted_at is null and is_active order by sort_order, name`, [ctx.tenantId])).rows as { id: string; name: string }[],
-    may: (await c.query(`select has_perm($1, 'payment.correct') as ok`, [ctx.employeeId])).rows[0].ok as boolean,
-    rows: (
+  const shop = ctx.mode === "retail";
+  const q = one(sp.q).trim().slice(0, 60);
+  const view: "days" | "check" | "find" = q ? "find" : one(sp.view) === "check" ? "check" : "days";
+  const asked = UUID.test(one(sp.r)) ? one(sp.r) : null;
+  const d = await readTenant(ctx.tenantId, async (c) => {
+    const { l, ok, s } = await reportStart(c, ctx.tenantId, ctx.employeeId);
+    const f = filters(sp, l.tz, (await pickedOf(l.stores))?.id ?? null);
+    const may = (
       await c.query(
-        `select r.id, r.number, r.type, r.total, r.needs_review, r.device_time, coalesce(r.device_time, r.created_at) as at, e.name as cashier,
-                coalesce((select jsonb_agg(jsonb_build_object('reason', v.reason, 'detail', v.detail,
-                            'resolved_at', v.resolved_at, 'resolution', v.resolution) order by v.reason)
-                   from receipt_reviews v
-                  where v.tenant_id = r.tenant_id and v.receipt_id = r.id and v.deleted_at is null), '[]'::jsonb) as reviews,
-                coalesce((select jsonb_agg(jsonb_build_object('type', q.type, 'name', q.name, 'kind', q.kind, 'ref', q.ref, 'was', q.was, 'amount', q.amount))
-                   from (select p.payment_type_id as type, pt.name, pt.kind, sum(p.amount) as amount,
-                                max(case when pt.kind in ('exchange', 'credit_note', 'deposit') then p.reference end) as ref,
-                                max(case when p.payment_type_id <> p.original_payment_type_id then old.name end) as was
-                           from receipt_payments_effective p
-                           left join payment_types pt on pt.tenant_id = p.tenant_id and pt.id = p.payment_type_id
-                           left join payment_types old on old.tenant_id = p.tenant_id and old.id = p.original_payment_type_id
-                          where p.tenant_id = r.tenant_id and p.receipt_id = r.id group by p.payment_type_id, pt.name, pt.kind) q), '[]'::jsonb) as payments
-           from receipts r left join employees e on e.tenant_id = r.tenant_id and e.id = r.employee_id
-          where r.deleted_at is null and r.tenant_id = $1
-          order by coalesce(r.device_time, r.created_at) desc limit 100`,
-        [ctx.tenantId],
+        `select has_perm($1, 'payment.correct') as correct, has_perm($1, 'sale.refund') as sign,
+                (select mra = 'live' from tenants where id = $2) as mra_live`,
+        [ctx.employeeId, ctx.tenantId],
       )
-    ).rows as ReceiptRow[],
-  }));
-  const rows = d.rows;
-  const at = clock(d.l.tz);
+    ).rows[0] as { correct: boolean; sign: boolean; mra_live: boolean | null };
+    // who may see receipts: whoever sees reports, and whoever corrects or signs them off
+    if (!ok && !may.correct && !may.sign) return { l, f, s, allowed: false as const };
+    const list = await receiptList(c, ctx.tenantId, { view, from: f.from, to: f.to, store: f.store, q });
+    // a number looked for that only one receipt has: it opens
+    const r = asked ?? (view === "find" && list.rows.length === 1 ? list.rows[0].id : null);
+    const types = (
+      await c.query(`select id, name, kind from payment_types where tenant_id = $1 and deleted_at is null and is_active order by sort_order, name`, [ctx.tenantId])
+    ).rows as { id: string; name: string; kind: string }[];
+    return { l, f, s, allowed: true as const, may, list, types, opened: r ? await openReceipt(c, ctx.tenantId, r, s, l.stores, shop) : null };
+  });
+
+  const head = (
+    <PageHead title="Receipts" lede="Every receipt and refund of the days you pick. Open one to see it as the till prints it, send it, print it, or change how it was paid.">
+      <BranchPicker all={d.l.stores} picked={d.f.store} />
+    </PageHead>
+  );
+  if (!d.allowed) return <div>{head}<div className="note warn">Your role does not include seeing receipts.</div></div>;
+
   const m = (v: string | number) => money(Number(v), d.s.decimals);
-  const isOpen = (r: ReceiptRow) => r.needs_review && (r.reviews.length === 0 || r.reviews.some((v) => !v.resolved_at));
-  const open = rows.filter(isOpen).length;
+  const tz = d.l.tz;
+  const dayOf = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+  const hourOf = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const longOf = new Intl.DateTimeFormat("en-GB", { timeZone: tz, day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+  // the address of the list as it is: the days, the view, what was looked for; `r` opens a receipt over it
+  const keep = new URLSearchParams();
+  if (view === "days") {
+    keep.set("from", d.f.from);
+    keep.set("to", d.f.to);
+  } else if (view === "check") keep.set("view", "check");
+  else keep.set("q", q);
+  const listHref = PATH + "?" + keep.toString();
+  const openHref = (id: string) => {
+    const p = new URLSearchParams(keep);
+    p.set("r", id);
+    return PATH + "?" + p.toString();
+  };
+
+  const { rows, totals, open } = d.list;
+  const shown = rows.slice(0, LIMIT);
+  const branches = d.f.store === null && d.l.stores.length > 1;
+  const isToday = view === "days" && d.f.from === d.f.to && d.f.to === today(tz);
+  const o = d.opened;
+  const back = o ? openHref(o.id) : listHref;
+
   return (
     <div>
-      <PageHead title="Receipts" lede="The latest 100 receipts and refunds. Correct a payment type that was rung up wrong, and sign off the ones the system flagged.">
-        <Link href="/backoffice/reports/orders" className="btn-quiet">{ctx.mode === "retail" ? "Sales, in full" : "Orders, in full"}</Link>
-      </PageHead>
-      <Flash sp={sp} />
-      {open > 0 && <div className="note warn"><strong>{open} {open === 1 ? "receipt needs" : "receipts need"} a look</strong>The till took the money, or gave it back, and kept selling; the reason is in the last column.</div>}
-      {rows.length === 0 ? (
-        <Empty icon={Receipt} title="No receipts yet">Make a sale on the tablet and it shows here within a minute.</Empty>
+      {head}
+      {!o && <Flash sp={sp} />}
+      {open > 0 && view !== "check" && (
+        <div className="note warn">
+          <strong>{open} {open === 1 ? "receipt needs" : "receipts need"} a look</strong>
+          The till took the money, or gave it back, and kept selling. <Link href={PATH + "?view=check"}>See {open === 1 ? "it" : "them"}</Link>
+        </div>
+      )}
+
+      <div className="rc-bar">
+        <div className="tabs rc-tabs">
+          <Link href={PATH} className={view === "days" ? "on" : ""}>
+            By day<Wait />
+          </Link>
+          <Link href={PATH + "?view=check"} className={view === "check" ? "on" : ""}>
+            To check{open > 0 ? ` · ${open}` : ""}<Wait />
+          </Link>
+        </div>
+        <Go action={PATH} className="filters rc-filters no-print">
+          <label>
+            From
+            <input type="date" name="from" defaultValue={d.f.from} />
+          </label>
+          <label>
+            To
+            <input type="date" name="to" defaultValue={d.f.to} />
+          </label>
+          <Submit>Show</Submit>
+          {!isToday && (
+            <Link href={PATH} className="btn-quiet">
+              Today<Wait />
+            </Link>
+          )}
+          <span className="spacer" />
+          <label className="rc-find">
+            Receipt number
+            <input type="search" name="q" defaultValue={q} placeholder="Find a number" />
+          </label>
+        </Go>
+      </div>
+
+      <p className="rc-sum">
+        {view === "check" ? "Still to check, every day and every branch: " : view === "find" ? `Numbers with “${q}”, every day: ` : ""}
+        <strong>{totals.n} {totals.n === 1 ? "receipt" : "receipts"}</strong>
+        {" · "}
+        {m(totals.excl)} without tax · <strong>{m(totals.incl)}</strong> in all
+      </p>
+
+      {shown.length === 0 ? (
+        <Empty icon={Receipt} title={view === "check" ? "Nothing to check" : view === "find" ? "No receipt has that number" : "No receipts on these days"}>
+          {view === "check" ? "Every flagged receipt has been signed off." : view === "find" ? "Check the number, or look by day." : "Pick other days. A sale on the tablet shows here within a minute."}
+        </Empty>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Number</th>
-              <th>Type</th>
-              <th>Time</th>
-              <th>By</th>
-              <th className="num">Total</th>
-              <th>Paid by</th>
-              <th>To check</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td className="strong">{r.number}</td>
-                <td><span className={"badge " + (r.type === "refund" ? "red" : "green")}>{r.type === "refund" ? "Refund" : "Sale"}</span></td>
-                <td>{at(r.at)}</td>
-                <td>{r.cashier ?? <span className="muted">Not recorded</span>}</td>
-                <td className="num strong">{r.type === "refund" ? "-" : ""}{m(r.total)}</td>
-                <td>
-                  {r.payments.length === 0 && <span className="muted">No payment</span>}
-                  {r.payments.map((p) => (
-                    <div key={p.type} style={{ marginBottom: 4 }}>
-                      {/* a credit note names itself; an exchange names the refund the goods came back on (0079, 0109) */}
-                      {p.kind === "credit_note" ? `Credit note ${p.ref ?? ""}`.trim() : p.kind === "deposit" ? `Deposit ${p.ref ?? ""}`.trim() : p.kind === "account" ? (r.type === "refund" ? "Off the bill on account" : "On account") : p.kind === "exchange" ? (r.type === "refund" ? "To the new sale" : `Returned goods${p.ref ? ", refund " + p.ref : ""}`) : (p.name ?? "Unknown")}
-                      {" "}{r.payments.length > 1 && <span className="muted">{m(p.amount)}</span>}
-                      {p.was && <span className="sub">corrected from {p.was}</span>}
-                      {d.may && p.kind !== "exchange" && p.kind !== "credit_note" && p.kind !== "deposit" && p.kind !== "account" && (
-                        <details>
-                          <summary className="muted" style={{ cursor: "pointer", fontSize: 12.5 }}>Change</summary>
-                          <form action={correctPayment} className="inline" style={{ marginTop: 6 }}>
-                            <input type="hidden" name="receipt" value={r.id} />
-                            <input type="hidden" name="from" value={p.type} />
-                            <select name="to" defaultValue="" required aria-label="New payment type">
-                              <option value="" disabled>Paid by…</option>
-                              {d.types.filter((t) => t.id !== p.type).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                            </select>
-                            <Submit className="btn-quiet btn-sm">Correct</Submit>
-                          </form>
-                        </details>
+        <div className="card flush table-scroll">
+          <table className="rc-table">
+            <thead>
+              <tr>
+                <th>Number</th>
+                <th>{shop ? "Sale" : "Order"}</th>
+                {branches && <th>Branch</th>}
+                <th>Date</th>
+                <th>Time</th>
+                <th>Till</th>
+                <th>By</th>
+                <th>Paid by</th>
+                {view === "check" && <th>Why</th>}
+                <th className="num">Without tax</th>
+                <th className="num">Total</th>
+                <th aria-label="Open" />
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((r: Row) => {
+                const refund = r.type === "refund";
+                const sign = refund ? -1 : 1;
+                const at = new Date(r.at);
+                return (
+                  <tr key={r.id} className={(o?.id === r.id ? "on " : "") + (r.counts ? "" : "rc-out")}>
+                    <td className="strong">
+                      <Link href={openHref(r.id)} scroll={false}>
+                        {r.number}<Wait />
+                      </Link>
+                      {(refund || r.open || !r.counts) && (
+                        <span className="rc-marks">
+                          {refund && <span className="badge red">Refund</span>}
+                          {r.open && <span className="badge amber">To check</span>}
+                          {!r.counts && <span className="badge">Not counted</span>}
+                        </span>
                       )}
-                    </div>
-                  ))}
+                    </td>
+                    <td>{r.order_label ? <span className="rc-chip">{r.order_label}</span> : <span className="muted">{shop ? "Sale" : "Direct sale"}</span>}</td>
+                    {branches && <td>{r.store_name}</td>}
+                    <td className="nowrap">{dayOf.format(at)}</td>
+                    <td>{hourOf.format(at)}</td>
+                    <td>{r.till ?? <span className="muted">-</span>}</td>
+                    <td>{r.cashier ?? <span className="muted">Not recorded</span>}</td>
+                    <td>
+                      {r.payments.length === 0 ? <span className="muted">No payment</span> : r.payments.map((p) => payName(p, refund)).join(", ")}
+                      {r.payments.some((p) => p.corrected) && <span className="sub">corrected</span>}
+                    </td>
+                    {view === "check" && (
+                      <td className="rc-why">
+                        {r.reviews.length === 0 ? <span className="muted">Flagged, reason not recorded</span> : r.reviews.filter((v) => !v.resolved_at).map((v) => <div key={v.reason}>{describe(v)}</div>)}
+                      </td>
+                    )}
+                    <td className="num">{m(sign * (Number(r.total) - Number(r.tax_total)))}</td>
+                    <td className="num strong">{m(sign * Number(r.total))}</td>
+                    <td className="rc-go">
+                      <Link href={openHref(r.id)} scroll={false} aria-label={`Open ${r.number}`}>
+                        <ChevronRight aria-hidden="true" />
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={7 + (branches ? 1 : 0) + (view === "check" ? 1 : 0)}>
+                  {rows.length > LIMIT ? `The latest ${LIMIT} are shown; the figures are for all ${totals.n}. Pick fewer days to see the rest.` : ""}
                 </td>
-                <td>
-                  {r.needs_review && r.reviews.length === 0 && <span className="badge amber">Flagged, reason not recorded</span>}
-                  {r.reviews.map((v) => (
-                    <div key={v.reason} className={v.resolved_at ? "muted" : undefined}>
-                      {describe(v)}
-                      {v.resolved_at && ` (signed off: ${v.resolution ?? ""})`}
-                    </div>
-                  ))}
-                  {r.reviews.some((v) => !v.resolved_at) && (
-                    <form action={resolveReceipt} className="inline" style={{ marginTop: 6 }}>
-                      <input type="hidden" name="receipt" value={r.id} />
-                      <input name="note" placeholder="What was done" required />
+                <td className="num">{m(totals.excl)}</td>
+                <td className="num strong">{m(totals.incl)}</td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+
+      {asked && !o && <div className="note warn">That receipt is not there any more. It may have been removed.</div>}
+      {o && (
+        <ReceiptPopup
+          key={o.id}
+          title={`${o.type === "refund" ? "Refund" : "Receipt"} ${o.number}`}
+          subtitle={[longOf.format(new Date(o.at)), o.store_name, o.till, o.customer?.name].filter(Boolean).join(" · ")}
+          close={listHref}
+          text={o.text}
+          whatsapp={whatsappNumber(o.customer?.phone)}
+          email={o.customer?.email ?? null}
+          subject={`${o.type === "refund" ? "Refund" : "Receipt"} ${o.number}`}
+          foot={
+            <>
+              {o.customer && (
+                <Link href={`/backoffice/customers/${o.customer.id}`} className="btn-quiet">
+                  {o.customer.name}&apos;s history
+                </Link>
+              )}
+              {o.refund_of && (
+                <Link href={openHref(o.refund_of.id)} scroll={false} className="btn-quiet">
+                  The sale, {o.refund_of.number}<Wait />
+                </Link>
+              )}
+            </>
+          }
+        >
+          <div className="rc-paper">
+            <PaperPreview lines={o.paper.lines} columns={48} logo={o.paper.logo} logoAt={o.paper.logoAt} logoAlign={o.paper.logoAlign} />
+            <p className="muted rc-paper-note">A copy, as the till prints one{o.paper.lines.some((l) => l.t.includes("REFUNDED")) ? ", with what was refunded since" : ""}.</p>
+          </div>
+          <div className="rc-side">
+            <Flash sp={sp} />
+            <h3>{o.type === "refund" ? "Paid back by" : "Paid by"}</h3>
+            {o.pays.length === 0 && <p className="muted">No payment.</p>}
+            {o.pays.map((p) => (
+              <Payment key={p.type} p={p} refund={o.type === "refund"} receipt={o.id} back={back} m={m}
+                types={d.types} may={d.may.correct} mraLive={Boolean(d.may.mra_live)} />
+            ))}
+            {(o.needs_review || o.reviews.length > 0) && (
+              <>
+                <h3>To check</h3>
+                {o.needs_review && o.reviews.length === 0 && <p><span className="badge amber">Flagged, reason not recorded</span></p>}
+                {o.reviews.map((v) => (
+                  <p key={v.reason} className={v.resolved_at ? "muted" : undefined}>
+                    {describe(v)}
+                    {v.resolved_at && ` (signed off: ${v.resolution ?? ""})`}
+                  </p>
+                ))}
+                {o.reviews.some((v) => !v.resolved_at) &&
+                  (d.may.sign ? (
+                    <form action={resolveReceipt} className="rc-form">
+                      <input type="hidden" name="receipt" value={o.id} />
+                      <input type="hidden" name="back" value={back} />
+                      <input name="note" placeholder="What was done" required aria-label="What was done" />
                       <Submit className="btn-quiet btn-sm">Sign off</Submit>
                     </form>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  ) : (
+                    <p className="muted">Signing off needs a role that may refund.</p>
+                  ))}
+              </>
+            )}
+          </div>
+        </ReceiptPopup>
       )}
+    </div>
+  );
+}
+
+function Payment({ p, refund, receipt, back, m, types, may, mraLive }: {
+  p: PayRow; refund: boolean; receipt: string; back: string; m: (v: string | number) => string;
+  types: { id: string; name: string; kind: string }[]; may: boolean; mraLive: boolean;
+}) {
+  const plain = PLAIN.includes(p.kind ?? "");
+  const to = types.filter((t) => t.id !== p.type && PLAIN.includes(t.kind));
+  return (
+    <div className="rc-pay">
+      <div className="rc-pay-row">
+        <span>{payName({ name: p.name, kind: p.kind, ref: p.reference }, refund)}</span>
+        <strong>{m(p.amount)}</strong>
+      </div>
+      {p.was && <span className="sub">changed from {p.was}</span>}
+      {may && plain && to.length > 0 &&
+        (mraLive ? (
+          <span className="sub">Live on MRA e-invoicing: how a sale was paid is not changed. Refund it and ring it up again.</span>
+        ) : (
+          <details className="rc-change">
+            <summary>Change payment method</summary>
+            <form action={correctPayment} className="rc-form">
+              <input type="hidden" name="receipt" value={receipt} />
+              <input type="hidden" name="from" value={p.type} />
+              <input type="hidden" name="back" value={back} />
+              <select name="to" defaultValue="" required aria-label="New payment method">
+                <option value="" disabled>
+                  Paid by…
+                </option>
+                {to.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <Submit className="btn-sm">Change</Submit>
+            </form>
+          </details>
+        ))}
     </div>
   );
 }

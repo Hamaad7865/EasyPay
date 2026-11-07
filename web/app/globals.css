@@ -2014,3 +2014,63 @@ html:has(.import-dialog[open]) { overflow: hidden; }
   .statement { max-width: none; border: 0; border-radius: 0; padding: 0; }
   @page { size: A4; margin: 14mm; }
 }
+
+/* Receipts (2026-11-07, after Carfectionist's tickets): the days' list, and each
+   receipt in a pop-up as the till prints it. Every colour is a token, so both
+   looks have it. */
+.rc-bar { display: flex; flex-direction: column; gap: 0; }
+.rc-tabs { margin-bottom: 14px; }
+.rc-tabs a { display: inline-flex; align-items: center; gap: 6px; }
+.rc-filters { align-items: flex-end; margin-bottom: 12px; }
+.rc-filters .spacer { flex: 1; }
+.rc-find input { width: 190px; }
+.rc-sum { margin: 0 0 12px; color: var(--ink2); font-size: 13.5px; text-align: right; font-variant-numeric: tabular-nums; }
+.rc-sum strong { color: var(--ink); }
+.rc-table td { vertical-align: top; }
+.rc-table td.nowrap { white-space: nowrap; }
+.rc-table tbody tr.on td { background: var(--accent-soft); }
+.rc-table tbody tr.rc-out td { color: var(--ink3); }
+.rc-marks { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.rc-chip { display: inline-block; padding: 2px 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--well); color: var(--ink); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.rc-go { width: 1%; padding-left: 0 !important; }
+.rc-go a { display: inline-flex; color: var(--ink3); }
+.rc-go a:hover { color: var(--ink); }
+.rc-go svg { width: 16px; height: 16px; }
+.rc-table tfoot td:first-child { font-weight: 400; color: var(--ink3); font-size: 12.5px; }
+
+.rc-pop { width: min(820px, calc(100vw - 32px)); max-height: calc(100vh - 48px); margin: auto; padding: 0; border: 0; border-radius: 12px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); overflow: hidden; }
+.rc-pop[open] { display: flex; flex-direction: column; animation: search-in 0.22s var(--glide); }
+.rc-pop::backdrop { background: var(--scrim, rgba(17, 24, 39, 0.38)); backdrop-filter: blur(2px); }
+.rc-pop[open]::backdrop { animation: drawer-dim 0.2s ease; }
+.rc-pop .modal-head p { margin: 3px 0 0; font-size: 12.5px; }
+.rc-pop .modal-x svg { width: 18px; height: 18px; }
+.rc-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; padding: 20px; overflow: auto; background: var(--surface-2); }
+.rc-paper { display: flex; flex-direction: column; align-items: center; }
+.rc-paper .pp { max-width: none; }
+.rc-paper-note { margin: 8px 0 0; font-size: 12px; text-align: center; }
+.rc-side { min-width: 0; }
+.bo-main .rc-side h3 { margin: 0 0 8px; font-size: 13px; font-weight: 650; color: var(--ink2); text-transform: uppercase; letter-spacing: 0.04em; }
+.rc-side h3:not(:first-child) { margin-top: 20px !important; }
+.rc-side p { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; }
+.rc-side .note { margin-bottom: 12px; }
+.rc-pay { padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.rc-pay-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.rc-change { margin-top: 8px; }
+.rc-change summary { cursor: pointer; color: var(--accent); font-size: 12.5px; font-weight: 600; width: max-content; }
+.rc-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.bo-main .rc-form select, .bo-main .rc-form input { flex: 1; min-width: 140px; height: 30px; }
+.rc-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--line); background: var(--surface); }
+.rc-foot-links { display: flex; flex-wrap: wrap; gap: 8px; margin-right: auto; }
+.rc-foot svg { width: 16px; height: 16px; }
+@media (max-width: 720px) {
+  .rc-body { grid-template-columns: minmax(0, 1fr); padding: 14px; }
+  .rc-paper .pp { max-width: 100%; }
+  .rc-find input { width: 100%; }
+  .rc-sum { text-align: left; }
+  .rc-foot-links { margin-right: 0; width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rc-pop[open], .rc-pop[open]::backdrop { animation: none; }
+}
+.rc-why { min-width: 260px; font-size: 13px; line-height: 1.45; }
+.rc-why div + div { margin-top: 4px; }

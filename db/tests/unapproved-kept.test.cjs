@@ -216,7 +216,7 @@ const op = (type, payload, employee) => ({ op_id: crypto.randomUUID(), type, pay
 
       await c.query('BEGIN');
       let says = '', err;
-      try { says = text(await open(c, { tenantId: tid, employeeId: owner, mode: 'restaurant' }, '/backoffice/receipts', {})); } catch (e) { err = e.message; }
+      try { says = text(await open(c, { tenantId: tid, employeeId: owner, mode: 'restaurant' }, '/backoffice/receipts', { view: 'check' })); } catch (e) { err = e.message; }
       await c.query('ROLLBACK');
       check('U14 the Receipts page opens with them on it', !err && says.length > 500, err);
       check('U14 it says in words why a refund is to be checked', says.includes('Refunded by someone whose role does not allow refunds, with no approval from someone who may'), (says.match(/.{0,40}efunded by.{0,90}/) || [says.slice(0, 160)])[0]);
