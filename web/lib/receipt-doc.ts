@@ -55,6 +55,12 @@ export type Pay = { name: string | null; amount: number; tendered: number | null
 // what a line charges, as the till and the server round it (Calc.lineAmount)
 export const lineAmount = (price: number, qty: number) => Math.floor((price * qty + 500) / 1000);
 
+// The tax on what a line comes to after its share of the discount: added on
+// top, or the part of it that is tax when it is inside the price (0049
+// push_receipt_create; invoices use it too, 0159 invoice_figures).
+export const lineTax = (net: number, t: { rate_bp: number; type: string }) =>
+  t.type === "added" ? Math.floor((net * t.rate_bp + 5000) / 10000) : Math.floor((net * t.rate_bp + Math.floor((10000 + t.rate_bp) / 2)) / (10000 + t.rate_bp));
+
 // "Table 4" for a table named 4; a table with a name keeps it (tableLabel)
 export const tableLabel = (name: string) => (/^\d/.test(name) ? `Table ${name}` : name);
 
@@ -90,8 +96,7 @@ export function taxLines(lines: Line[], h: Pick<Head, "subtotal" | "discount_tot
   lines.forEach((l, i) => {
     const net = bases[i] - (sub > 0 ? Math.floor((h.discount_total * bases[i]) / sub) : 0);
     for (const t of l.taxes) {
-      const amount =
-        t.type === "added" ? Math.floor((net * t.rate_bp + 5000) / 10000) : Math.floor((net * t.rate_bp + Math.floor((10000 + t.rate_bp) / 2)) / (10000 + t.rate_bp));
+      const amount = lineTax(net, t);
       const key = t.tax_id ?? `${t.name}|${t.rate_bp}|${t.type}`;
       const cur = out.get(key);
       out.set(key, { name: t.name, rateBp: t.rate_bp, amount: (cur?.amount ?? 0) + amount, included: t.type !== "added" });
