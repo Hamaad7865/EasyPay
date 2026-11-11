@@ -96,16 +96,19 @@ sending by email with the PDF attached, recurring invoices.
     the terms instead.
 16. **Currency:** rupees only in slice 1.
 
-## 3. Until the owner answers
+## 3. The owner's answers (2026-11-12)
 
-- **MRA:** a client on Premium MRA in training or live can make drafts but cannot issue: the page says
-  invoices from the back office are not sent to the MRA yet. Nothing in this work talks to the MRA (the
-  owner decided each till signs in to the MRA itself; its login is never typed on our server).
-- **Plans and business types:** Invoices are on every plan that has a back office (trial and Premium;
-  the offline plan has none), for shops and restaurants. One line in `nav.ts` and one check in the pages
-  change it.
+1. **MRA: hand it to a till.** Issuing a Premium MRA client's invoice in the back office will queue it
+   for one of the client's tills, which sends it with its own MRA login on its next sync; the IRN and QR
+   come back and print on the A4. That needs a till release and its own design, so it is a piece after
+   slice 1. **Until it is built**, a client on Premium MRA in training or live can make drafts but cannot
+   issue, and the page says why. Nothing in slice 1 talks to the MRA.
+2. **Plans:** every plan with a back office (trial and Premium; the offline plan has none).
+3. **Business types:** shops and restaurants.
+4. **Payments:** recorded in the back office; the customer's total owed shows bills on account and open
+   invoices side by side. Tablet accounts are unchanged.
 
-## 4. Questions that are the owner's
+## 4. The questions as they were put
 
 1. How should a Premium MRA client's invoice be fiscalised, given that the MRA login lives on the
    tills? (a) the back office hands the issued invoice to one of the client's tills, which sends it with
