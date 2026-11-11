@@ -306,6 +306,40 @@ const op = (type, payload) => ({ op_id: id(), type, payload });
     catch (e) { restoErr = String(e && e.stack); await c.query('ROLLBACK TO SAVEPOINT rs'); }
     check("W8 a restaurant's editor finds an item, not a product", !restoErr && /Add an item: name, SKU or barcode/.test(restoHtml) && !/a product/.test(restoHtml), restoErr || text(restoHtml).slice(0, 300));
 
+    // ---- the reports and the customer's page count invoices ----
+    const custInv = await draft({ customer_id: cust, buyer_type: 'B2B', buyer_name: 'Port Louis Traders', buyer_brn: 'C99' }, small);
+    const custNo = (await call(`select invoice_issue($1, $2, $3, null) as r`, [tid, owner, custInv.id])).r.number;
+    const issuedToday = await one(`select count(*)::int as n, coalesce(sum(total), 0)::bigint as total, coalesce(sum(tax_total), 0)::bigint as tax,
+                                          coalesce(sum(total - paid), 0)::bigint as owed
+                                     from invoices where tenant_id = $1 and status = 'issued' and issued_on = $2::date`, [tid, today]);
+    const journal = await see('/backoffice/reports/journal', { from: today, to: today });
+    const jRows = rowsOf(journal.html);
+    // the journal is the money received: the invoice paid in full today is a sale under Invoices, the three not paid are on account
+    check('J1 the Sales journal counts the day\'s invoices as sales on account, under a method of their own',
+      !journal.error && jRows.some((r) => r.startsWith('Invoices | 1 | ') && r.endsWith(rsOf(total1))) &&
+      jRows.some((r) => /^On account \(not yet paid\) \(3 sales\)/.test(r) && r.endsWith(rsOf(issuedToday.owed))) &&
+      jRows.some((r) => r.startsWith(custNo + ' · Port Louis Traders')),
+      journal.error || jRows.slice(0, 30).join(' // '));
+    check('J2 and their payments as money received, by how they came; the cancelled one is not there',
+      jRows.some((r) => r.startsWith('Bank transfer') && r.includes(rsOf(100000))) &&
+      jRows.some((r) => r.startsWith('Cheque') && r.includes(rsOf(total1 - 100000))) &&
+      !jRows.some((r) => r.includes(rsOf(5000))),
+      jRows.slice(0, 30).join(' // '));
+    const tax = await see('/backoffice/reports/tax', { from: today, to: today });
+    const taxRows = rowsOf(tax.html);
+    const vatOf = (r) => Math.round(Number((r.split(' | ').slice(-2)[0] || '').replace(/[^0-9.]/g, '')) * 100);
+    const taxTotal = taxRows.find((r) => r.startsWith('Total'));
+    // the till's own receipt of the same lines (M1) is in the report too
+    const tillTax = Number((await one(`select coalesce(sum(tax_total), 0)::bigint as t from receipts where tenant_id = $1`, [tid])).t);
+    check('V1 the VAT report counts invoices the day they are dated, in a column of their own, the VAT the invoices say',
+      !tax.error && /<th class="num">Invoices<\/th>/.test(tax.html) && taxTotal && Math.abs(vatOf(taxTotal) - Number(issuedToday.tax) - tillTax) <= issuedToday.n,
+      tax.error || taxRows.join(' // ') + ' / invoices say ' + issuedToday.tax + ', the till ' + tillTax);
+    const custPage = await see('/backoffice/customers/' + cust, {}, { params: { customer: cust }, file: 'backoffice/customers/[customer]' });
+    check('C2 the customer\'s page has their invoices, and what they owe in all beside what is on account',
+      !custPage.error && /Invoices/.test(custPage.says) && custPage.says.includes(custNo) &&
+      new RegExp('Owes ' + rsOf(custInv.total).replace(/[.]/g, '\\.') + ' in all').test(custPage.says),
+      custPage.error || custPage.says.slice(0, 600));
+
     // ---- the tables are the tenant's alone ----
     const rls = (await c.query(`select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
         where n.nspname = 'public' and c.relname like 'invoice%' and c.relkind = 'r'

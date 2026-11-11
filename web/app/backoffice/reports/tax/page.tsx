@@ -8,7 +8,7 @@ import { Empty, PageHead, type Search } from "../../ui";
 import { ReportFilters, Stat } from "../parts";
 import { BranchPicker } from "../../branch-picker";
 
-type Row = { name: string; rate_bp: number; type: string; receipts: number; amount: string; tax: string };
+type Row = { name: string; rate_bp: number; type: string; receipts: number; invoices?: number; amount: string; tax: string };
 
 // Each line's share of the bill's discount comes off before the tax is worked
 // out, the same way the till and the server do it for the receipt.
@@ -31,6 +31,28 @@ const SQL = `
    where ($8::uuid is null or t.tax_id = $8::uuid)
    group by 1, 2, 3 order by 2 desc, 1`;
 
+// Invoices (0159) issued in the days, the day they are dated: the same sum line by line, after each line's share
+// of the invoice's discount. Not a refund, and no order type; $4 is who issued it.
+const INVOICES = `
+  with x as (
+    select i.id as invoice_id, l.taxes, l.base - case when i.subtotal > 0 then i.discount_total * l.base / i.subtotal else 0 end as net
+      from invoices i
+      cross join lateral (select l.taxes, line_amount(l.unit_price, l.qty)::bigint as base
+                            from invoice_lines l where l.tenant_id = i.tenant_id and l.invoice_id = i.id and l.kind = 'line') l
+     where i.tenant_id = $1 and i.status = 'issued' and i.deleted_at is null and i.issued_on between $2::date and $3::date
+       and ($4::uuid is null or i.issued_by = $4::uuid) and $5::uuid is null and $6::text <> 'refund'
+       and ($7::uuid is null or i.store_id = $7::uuid)
+  )
+  select coalesce(t->>'name', 'No tax set') as name, coalesce((t->>'rate_bp')::int, 0)::int as rate_bp, coalesce(t->>'type', 'included') as type,
+         count(distinct x.invoice_id)::int as invoices,
+         coalesce(sum(x.net), 0)::bigint as amount,
+         coalesce(sum(case when t is null then 0
+                when t->>'type' = 'added' then (x.net * (t->>'rate_bp')::int + 5000) / 10000
+                else (x.net * (t->>'rate_bp')::int + (10000 + (t->>'rate_bp')::int) / 2) / (10000 + (t->>'rate_bp')::int) end), 0)::bigint as tax
+    from x left join lateral jsonb_array_elements(x.taxes) t on true
+   where ($8::uuid is null or (t->>'tax_id')::uuid = $8::uuid)
+   group by 1, 2, 3`;
+
 export default async function TaxReport({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const ctx = await tenantContext();
@@ -42,11 +64,20 @@ export default async function TaxReport({ searchParams }: { searchParams: Search
     const f = { ...filters(sp, l.tz, (await pickedOf(l.stores))?.id ?? null), kind: "all" as const };
     if (!ok) return { l, f, ok: false as const };
     const rows = (await c.query(SQL, [...args(ctx.tenantId, f), f.tax])).rows as Row[];
+    // and the invoices of the same days, on the same rows
+    for (const v of (await c.query(INVOICES, [...args(ctx.tenantId, f), f.tax])).rows as (Row & { invoices: number })[]) {
+      const same = rows.find((r) => r.name === v.name && r.rate_bp === v.rate_bp && r.type === v.type);
+      if (same) {
+        same.amount = String(Number(same.amount) + Number(v.amount));
+        same.tax = String(Number(same.tax) + Number(v.tax));
+        same.invoices = v.invoices;
+      } else rows.push({ ...v, receipts: 0 });
+    }
     const t = (await c.query(`select name, brn, vat_number from tenants where id = $1`, [ctx.tenantId])).rows[0] as { name: string; brn: string | null; vat_number: string | null };
     return { l, f, ok: true as const, s, rows, t };
   });
   const head = (
-    <PageHead title="Tax" lede="Sales and the VAT in them, split by tax type: what the VAT return asks for. Refunds are taken off.">
+    <PageHead title="Tax" lede="Sales and the VAT in them, split by tax type: what the VAT return asks for. Refunds are taken off; invoices count the day they are dated.">
       <BranchPicker all={d.l.stores} picked={d.f.store} />
     </PageHead>
   );
@@ -57,6 +88,8 @@ export default async function TaxReport({ searchParams }: { searchParams: Search
     return { ...r, excl: r.type === "added" ? amount : amount - tax, tax, incl: r.type === "added" ? amount + tax : amount };
   });
   const sum = (k: "excl" | "tax" | "incl") => rows.reduce((a, r) => a + r[k], 0);
+  // a column for invoices only when there were some
+  const invoices = rows.some((r) => (r.invoices ?? 0) > 0);
   return (
     <div>
       {head}
@@ -76,7 +109,7 @@ export default async function TaxReport({ searchParams }: { searchParams: Search
           </div>
           <table>
             <thead>
-              <tr><th>VAT type</th><th className="num">Rate</th><th>{prices}</th><th className="num">Receipts</th><th className="num">Excluding VAT</th><th className="num">VAT</th><th className="num">Including VAT</th></tr>
+              <tr><th>VAT type</th><th className="num">Rate</th><th>{prices}</th><th className="num">Receipts</th>{invoices && <th className="num">Invoices</th>}<th className="num">Excluding VAT</th><th className="num">VAT</th><th className="num">Including VAT</th></tr>
             </thead>
             <tbody>
               {rows.map((r, i) => (
@@ -85,6 +118,7 @@ export default async function TaxReport({ searchParams }: { searchParams: Search
                   <td className="num">{(r.rate_bp / 100).toString()}%</td>
                   <td>{r.rate_bp === 0 ? <span className="muted">No VAT charged</span> : r.type === "added" ? "VAT added on top" : "VAT included"}</td>
                   <td className="num">{r.receipts}</td>
+                  {invoices && <td className="num">{r.invoices ?? 0}</td>}
                   <td className="num">{m(r.excl)}</td>
                   <td className="num strong">{m(r.tax)}</td>
                   <td className="num">{m(r.incl)}</td>
@@ -92,7 +126,7 @@ export default async function TaxReport({ searchParams }: { searchParams: Search
               ))}
             </tbody>
             <tfoot>
-              <tr><td>Total</td><td /><td /><td /><td className="num">{m(sum("excl"))}</td><td className="num">{m(sum("tax"))}</td><td className="num">{m(sum("incl"))}</td></tr>
+              <tr><td>Total</td><td /><td /><td />{invoices && <td />}<td className="num">{m(sum("excl"))}</td><td className="num">{m(sum("tax"))}</td><td className="num">{m(sum("incl"))}</td></tr>
             </tfoot>
           </table>
           <p className="muted">VAT is worked out line by line after each line&apos;s share of the bill discount, so a total can differ from the sum of the receipts by a few cents of rounding.</p>

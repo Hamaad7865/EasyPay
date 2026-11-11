@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import type { Doc, Input, Line, Money, Without } from "@/lib/journal";
+import { METHOD_WORDS } from "@/lib/invoice-money";
 
 // The database half of the sales journal (lib/journal.ts): one period's sales
 // and refunds, the money that came in on them, and the money paid in the
@@ -24,6 +25,16 @@ const DOCS = `
     left join lateral (select d.name from dining_options d where d.tenant_id = v.tenant_id
                         and d.id = coalesce(t.dining_option_id, (select x.id from dining_options x where x.tenant_id = v.tenant_id and x.is_default and x.deleted_at is null limit 1))) o on true
    where v.tenant_id = $1 and v.counts_as_sale`;
+
+// issued invoices (0159): the day it is dated, the time it was issued on the branch's clock, who issued it
+const INVOICES = `
+  select i.id, i.number, i.total, i.tax_total, i.issued_on::text as day, i.customer_id, e.name as employee,
+         coalesce((extract(hour from i.issued_at at time zone st.timezone) * 60 + extract(minute from i.issued_at at time zone st.timezone))::int, 0) as minute
+    from invoices i
+    join stores st on st.tenant_id = i.tenant_id and st.id = i.store_id
+    left join employees e on e.tenant_id = i.tenant_id and e.id = i.issued_by
+   where i.tenant_id = $1 and i.status = 'issued' and i.deleted_at is null`;
+type InvRow = { id: string; number: string; total: string; tax_total: string; day: string; customer_id: string | null; employee: string | null; minute: number };
 
 type DocRow = { id: string; number: string; type: "sale" | "refund"; total: string; tax_total: string; refund_of: string | null; day: string; minute: number; device: string | null; employee: string | null; customer_id: string | null; method: string | null };
 
@@ -63,6 +74,30 @@ export async function journalData(c: PoolClient, tenantId: string, from: string,
   const strangerIds = [...new Set(lines.map((l) => l.bill_id).filter((b) => !inPeriod.has(b)))];
   const strangers = strangerIds.length ? ((await c.query(`${DOCS} and v.id = any($2::uuid[]) and v.type = 'sale'`, [tenantId, strangerIds])).rows as DocRow[]) : [];
   const docs = [...own.map((r) => toDoc(r, true)), ...strangers.map((r) => toDoc(r, false))];
+
+  // Invoices (0159), as a sale put on account: sold the day the invoice is dated, all of it owed then, and money
+  // the day each payment is received (a cancelled one never was). An invoice issued before the period and paid in
+  // it is an earlier sale, as an account's bill is. None of it went through a till.
+  const invPays = (
+    await c.query(
+      `select p.invoice_id as doc, p.amount, p.method, e.name as by
+         from invoice_payments p
+         join invoices i on i.tenant_id = p.tenant_id and i.id = p.invoice_id and i.status = 'issued' and i.deleted_at is null
+         left join employees e on e.tenant_id = p.tenant_id and e.id = p.employee_id
+        where p.tenant_id = $1 and p.cancelled_at is null and p.paid_on between $2::date and $3::date
+          and ($4::uuid is null or i.store_id = $4::uuid)`,
+      [tenantId, from, to, store],
+    )
+  ).rows as { doc: string; amount: string; method: string; by: string | null }[];
+  const invOwn = (await c.query(`${INVOICES} and i.issued_on between $2::date and $3::date and ($4::uuid is null or i.store_id = $4::uuid)`, [tenantId, from, to, store])).rows as InvRow[];
+  const invIn = new Set(invOwn.map((r) => r.id));
+  const invEarlierIds = [...new Set(invPays.map((p) => p.doc).filter((d) => !invIn.has(d)))];
+  const invEarlier = invEarlierIds.length ? ((await c.query(`${INVOICES} and i.id = any($2::uuid[])`, [tenantId, invEarlierIds])).rows as InvRow[]) : [];
+  const invDoc = (r: InvRow, inPeriod: boolean): Doc => ({
+    id: r.id, number: r.number, type: "sale", total: Number(r.total), tax: Number(r.tax_total), day: r.day, minute: r.minute,
+    device: null, employee: r.employee, customer: r.customer_id, method: "Invoices", inPeriod,
+  });
+  docs.push(...invOwn.map((r) => invDoc(r, true)), ...invEarlier.map((r) => invDoc(r, false)));
   const held = new Set(docs.map((d) => d.id));
   const allIds = docs.map((d) => d.id);
 
@@ -99,6 +134,8 @@ export async function journalData(c: PoolClient, tenantId: string, from: string,
     }
     money.push({ doc: l.bill_id, method: l.method ?? "Unknown", amount: Number(l.amount), by: l.by, account: true });
   }
+  for (const r of invOwn) without.push({ doc: r.id, kind: "account", amount: Number(r.total) });
+  for (const p of invPays) money.push({ doc: p.doc, method: METHOD_WORDS[p.method]?.en ?? "Other", amount: Number(p.amount), by: p.by, account: true });
 
   // each sale's lines, with its share of the sale's discount, and the VAT on it: weights for the split
   const rows = allIds.length
@@ -121,6 +158,28 @@ export async function journalData(c: PoolClient, tenantId: string, from: string,
         )
       ).rows as { doc: string; name: string; category: string | null; qty: number; net: string; taxes: { name: string; rate: number; type: string }[] }[])
     : [];
+  // an invoice's lines, with their share of its discount, the same way
+  const invIds = [...invOwn, ...invEarlier].map((r) => r.id);
+  if (invIds.length) {
+    rows.push(
+      ...((
+        await c.query(
+          `select l.invoice_id as doc, l.name, cat.name as category, l.qty, x.net,
+                  coalesce((select json_agg(json_build_object('name', t->>'name', 'rate', (t->>'rate_bp')::int, 'type', t->>'type') order by t->>'name')
+                              from jsonb_array_elements(l.taxes) t), '[]'::json) as taxes
+             from invoice_lines l
+             join invoices i on i.tenant_id = l.tenant_id and i.id = l.invoice_id
+             left join items it on it.tenant_id = l.tenant_id and it.id = l.item_id
+             left join categories cat on cat.tenant_id = l.tenant_id and cat.id = it.category_id
+             cross join lateral (select line_amount(l.unit_price, l.qty)::bigint as base) b
+             cross join lateral (select b.base - case when i.subtotal > 0 then i.discount_total * b.base / i.subtotal else 0 end as net) x
+            where l.tenant_id = $1 and l.invoice_id = any($2::uuid[]) and l.kind = 'line'
+            order by l.invoice_id, l.pos`,
+          [tenantId, invIds],
+        )
+      ).rows as typeof rows),
+    );
+  }
   const out: Line[] = rows.map((r) => {
     const net = Math.max(0, Number(r.net));
     let added = 0, inside = 0;
@@ -152,8 +211,8 @@ export async function journalData(c: PoolClient, tenantId: string, from: string,
   const sorted = (s: Iterable<string>) => [...new Set(s)].sort((a, b) => a.localeCompare(b));
   const facets = {
     devices: sorted(own.map((r) => r.device).filter((x): x is string => !!x)),
-    users: sorted(own.map((r) => r.employee ?? "Not recorded")),
-    items: sorted(out.filter((l) => inPeriod.has(l.doc)).map((l) => l.name)),
+    users: sorted([...own.map((r) => r.employee ?? "Not recorded"), ...invOwn.map((r) => r.employee ?? "Not recorded")]),
+    items: sorted(out.filter((l) => inPeriod.has(l.doc) || invIn.has(l.doc)).map((l) => l.name)),
   };
   return { from, to, docs, lines: out, money, without, customers, unplaced, deposits: { taken: Number(dep.taken), back: Number(dep.back) }, facets };
 }
