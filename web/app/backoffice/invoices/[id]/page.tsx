@@ -105,17 +105,8 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   // ---- a draft, for someone who may write it ----
   if (inv.status === "draft" && d.may.manage) {
     return (
-      <div className="inv-page">
-        <PageHead title="Draft invoice" lede={`No number yet: it gets the next one, ${f.next}, when it is issued.${f.branch ? ` From ${f.branch}.` : ""}`}>
-          {back}
-        </PageHead>
+      <div className="inv-page inv-page-ed">
         <Flash sp={sp} />
-        {ctx.mra !== "off" && (
-          <p className="note warn">
-            This business sends its invoices to the MRA through its tills. This one can be written and kept as a draft; issuing it waits until a till can send it
-            to the MRA, which comes next.
-          </p>
-        )}
         <InvoiceEditor
           inv={inv}
           taxes={f.taxes}
@@ -129,6 +120,12 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
           costs={d.may.costs}
           shop={shop}
           mra={ctx.mra !== "off"}
+          seller={f.seller.name}
+          bank={
+            [f.setup.bank_name, f.setup.account_name && `Account: ${f.setup.account_name}`, f.setup.account_no && `No ${f.setup.account_no}`, f.setup.swift && `SWIFT ${f.setup.swift}`]
+              .filter(Boolean)
+              .join("\n") || null
+          }
         />
       </div>
     );

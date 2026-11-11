@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowDown, ArrowUp, Heading2, Plus, Printer, StickyNote, Trash2, UserPlus, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Copy, MoreHorizontal, Plus, Printer, Save, Send, Trash2, UserPlus, X } from "lucide-react";
 import { parseRs } from "@/lib/money";
 import { money } from "@/lib/settings";
 import { lineAmount } from "@/lib/receipt-doc";
@@ -62,6 +62,23 @@ type Head = {
   disc_type: "amount" | "percent";
   disc: string;
   remember: boolean;
+};
+
+// what a buyer may need beyond a name, an email and an address: the field, its words, an example
+type Extra = "phone" | "contact" | "cc" | "brn" | "vat" | "deliver";
+const EXTRAS: [Extra, keyof Head, string, string][] = [
+  ["phone", "buyer_phone", "Phone", "5250 1234"],
+  ["brn", "buyer_brn", "BRN", "C07012345"],
+  ["vat", "buyer_vat", "VAT number", "If they have one"],
+  ["contact", "buyer_contact", "Contact person", "Who it goes to"],
+  ["cc", "buyer_cc", "Copy the email to", "accounts@…"],
+  ["deliver", "deliver_to", "Deliver to", "If not the address"],
+];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// 2026-11-12 as 12 Nov 2026, the same on the server and in the browser
+const dayWords = (iso: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]} ${m[1]}` : iso;
 };
 
 const centsText = (c: number) => (c % 100 === 0 ? String(c / 100) : (c / 100).toFixed(2));
@@ -173,6 +190,9 @@ export function InvoiceEditor(p: {
   costs: boolean;
   shop: boolean;
   mra: boolean;
+  // the business's name as the invoice gives it, and its bank details from the set-up, as they print
+  seller: string;
+  bank: string | null;
 }) {
   const { inv, decimals, shop } = p;
   const router = useRouter();
@@ -414,6 +434,20 @@ export function InvoiceEditor(p: {
     if (w) w.location.href = `/backoffice/invoices/${inv.id}/print`;
   };
 
+  // the fields a buyer may need beyond a name, an email and an address: each shown when asked for or filled
+  const [open, setOpen] = useState<Set<Extra>>(() => new Set());
+  const shows = (k: Extra) => {
+    const f = EXTRAS.find(([x]) => x === k)![1];
+    return open.has(k) || String(head[f]).trim() !== "" || (k === "brn" && head.buyer_type !== "B2C");
+  };
+  const reveal = (k: Extra) => setOpen((o) => new Set(o).add(k));
+  const copyLine = (key: string) =>
+    setLines((ls) => {
+      const i = ls.findIndex((l) => l.key === key);
+      if (i < 0) return ls;
+      return [...ls.slice(0, i + 1), { ...ls[i], key: newKey() }, ...ls.slice(i + 1)];
+    });
+
   const said = {
     saved: "Saved",
     waiting: "Not saved yet",
@@ -421,12 +455,150 @@ export function InvoiceEditor(p: {
     error: problem || "Not saved",
     stale: problem || "Not saved",
   }[status];
-  const many = lineRows.length;
-  const word = shop ? "product" : "item";
   const aWord = shop ? "a product" : "an item";
+  const busy = issuing || status === "stale";
+  const taxIn = fig.taxes.reduce((s, t) => s + t.amount, 0);
+  let n = 0;
+  const numbers = new Map(lines.map((l) => [l.key, l.kind === "line" ? ++n : 0]));
+  const field = (k: Extra) => {
+    const [, f, label, hint] = EXTRAS.find(([x]) => x === k)!;
+    const v = String(head[f]);
+    const want = k === "brn" && head.buyer_type !== "B2C" && !v.trim();
+    const set = (s: string) => put({ [f]: s } as Partial<Head>);
+    return (
+      <label className={"field" + (k === "deliver" ? " inv-span" : "")} key={k}>
+        {label}
+        {k === "deliver" ? (
+          <textarea rows={2} value={v} onChange={(e) => set(e.target.value)} maxLength={500} placeholder={hint} autoFocus={open.has(k) && !v} />
+        ) : (
+          <input
+            value={v}
+            onChange={(e) => set(e.target.value)}
+            maxLength={k === "contact" || k === "cc" ? 200 : k === "phone" ? 60 : 40}
+            placeholder={hint}
+            inputMode={k === "phone" ? "tel" : undefined}
+            className={want ? "inv-want" : undefined}
+            autoFocus={open.has(k) && !v}
+          />
+        )}
+      </label>
+    );
+  };
 
   return (
     <div className="inv-ed">
+      {/* ---- the bar on top: what it is, where the save stands, what to do, what it comes to ---- */}
+      <header className="inv-top" role="region" aria-label="Save and issue">
+        <Link href="/backoffice/invoices" className="inv-top-back" aria-label="All invoices" title="All invoices">
+          <ArrowLeft aria-hidden="true" />
+        </Link>
+        <span className="inv-top-mark" aria-hidden="true">
+          {(p.seller.trim() || "E").charAt(0).toUpperCase()}
+        </span>
+        <div className="inv-top-id">
+          <strong className="inv-top-title">Draft invoice</strong>
+          {p.next && (
+            <span className="inv-pill inv-mono" title="The number it takes when it is issued">
+              {p.next}
+            </span>
+          )}
+          <span className={"inv-pill" + (p.mra ? " inv-pill-warn" : "")}>{p.mra ? "MRA: through a till" : "MRA: off"}</span>
+          <span className={"inv-state inv-state-" + status} role="status" aria-live="polite">
+            {said}
+            {status === "error" && (
+              <button type="button" className="btn-link" onClick={() => void saveNow()}>
+                Try again
+              </button>
+            )}
+          </span>
+        </div>
+        <div className="inv-top-do">
+          <button
+            type="button"
+            className="btn-quiet"
+            onClick={() => setAsking((a) => !a)}
+            disabled={busy || p.mra}
+            aria-expanded={asking}
+            title={p.mra ? "Issued through a till, for the MRA: comes next" : "Number it and lock it"}
+          >
+            <Send aria-hidden="true" />
+            Issue invoice
+          </button>
+          <Link href={`/backoffice/invoices/${inv.id}/print`} target="_blank" className="btn btn-quiet" onClick={printIt}>
+            <Printer aria-hidden="true" />
+            Print or PDF
+          </Link>
+          <button
+            type="button"
+            onClick={() => {
+              if (timer.current) clearTimeout(timer.current);
+              void saveNow();
+            }}
+            disabled={busy || status === "saving"}
+            title="Ctrl+S. It also saves itself as you type."
+          >
+            <Save aria-hidden="true" />
+            Save draft
+          </button>
+          <details className="inv-menu">
+            <summary className="btn btn-quiet inv-menu-btn" aria-label="More">
+              <MoreHorizontal aria-hidden="true" />
+            </summary>
+            <div className="inv-menu-pop">
+              <form
+                action={deleteDraft}
+                onSubmit={(e) => {
+                  if (!window.confirm("Delete this draft? It has no number yet, so nothing is skipped.")) e.preventDefault();
+                }}
+              >
+                <input type="hidden" name="id" value={inv.id} />
+                <button type="submit" className="btn-quiet btn-danger-quiet" disabled={issuing}>
+                  <Trash2 aria-hidden="true" />
+                  Delete draft
+                </button>
+              </form>
+            </div>
+          </details>
+        </div>
+        <div className="inv-top-total">
+          <strong className="inv-mono">{rs(fig.total)}</strong>
+          <span>{taxIn ? `with ${rs(taxIn)} tax` : "no tax on it"}</span>
+        </div>
+
+        {asking && !p.mra && (
+          <div className="inv-ask card" role="dialog" aria-label="Issue this invoice">
+            {blockers.length > 0 ? (
+              <>
+                <strong>Before it can be issued:</strong>
+                <ul className="inv-blockers">
+                  {blockers.map((b) => (
+                    <li key={b}>{b}</li>
+                  ))}
+                </ul>
+                <button type="button" className="btn-quiet" onClick={() => setAsking(false)}>
+                  Back to the invoice
+                </button>
+              </>
+            ) : (
+              <>
+                <p>
+                  Issue it as <strong>{p.next}</strong>, for <strong>{rs(fig.total)}</strong>, due {dayWords(due)}? Once issued it cannot be changed or deleted, and
+                  what is on it leaves {p.branch ? `${p.branch}'s` : "the"} stock.
+                </p>
+                <div className="inv-ask-do">
+                  <button type="button" onClick={() => void issue()} disabled={issuing} aria-busy={issuing || undefined}>
+                    <span>Issue {p.next}</span>
+                  </button>
+                  <button type="button" className="btn-quiet" onClick={() => setAsking(false)} disabled={issuing}>
+                    Not yet
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </header>
+
       {offer && (
         <div className="note warn inv-offer" role="alert">
           <span>Something typed on this invoice in this browser was not saved before the page closed.</span>
@@ -444,195 +616,167 @@ export function InvoiceEditor(p: {
           <span className="muted"> What was typed here stays in this browser, and is offered back after the reload when it can be.</span>
         </div>
       )}
-      <fieldset className="inv-ed-grid" disabled={issuing || status === "stale"}>
-        <div className="inv-ed-main">
-          {/* ---- bill to ---- */}
-          <section className="card">
-            <div className="card-head">
-              <div>
-                <h2>Bill to</h2>
+
+      <div className="inv-studio">
+        {/* ---- the invoice itself, as one sheet ---- */}
+        <fieldset className="inv-doc" disabled={busy}>
+          <div className="inv-doc-head">
+            <div>
+              <h1 className="inv-doc-title">Invoice</h1>
+              <p className="inv-doc-no">{p.next ? `No number yet: it gets the next one, ${p.next}, when it is issued.` : "No number yet: it is numbered when it is issued."}</p>
+            </div>
+            <div className="inv-doc-from">
+              <span className="badge amber">Draft</span>
+              <strong>{p.seller}</strong>
+              {p.branch && <span className="muted">{p.branch}</span>}
+            </div>
+          </div>
+
+          <div className="inv-parties">
+            <section className="inv-billto" aria-label="Bill to">
+              <h2 className="inv-label">Bill to</h2>
+              <BuyerName
+                value={head.buyer_name}
+                linked={head.customer_id ? (glance?.name ?? head.buyer_name) : null}
+                phone={head.buyer_phone}
+                email={head.buyer_email}
+                onType={(v) => put({ buyer_name: v })}
+                onPick={pickCustomer}
+                onLetGo={letGo}
+              />
+              <div className="inv-two-in">
+                <input type="email" value={head.buyer_email} onChange={(e) => put({ buyer_email: e.target.value })} maxLength={200} placeholder="Email" aria-label="Email" />
+                <textarea
+                  rows={1}
+                  className="inv-address"
+                  value={head.buyer_address}
+                  onChange={(e) => put({ buyer_address: e.target.value })}
+                  maxLength={500}
+                  placeholder="Address"
+                  aria-label="Address"
+                />
               </div>
-              <div className="seg" role="radiogroup" aria-label="Who is buying">
-                {(
-                  [
-                    ["B2C", "A person"],
-                    ["B2B", "A business"],
-                    ["B2G", "Government"],
-                  ] as const
-                ).map(([v, t]) => (
-                  <label key={v}>
-                    <input type="radio" name="buyer_type" checked={head.buyer_type === v} onChange={() => put({ buyer_type: v })} />
-                    {t}
-                  </label>
+              <div className="inv-who">
+                <div className="seg" role="radiogroup" aria-label="Who is buying">
+                  {(
+                    [
+                      ["B2C", "A person"],
+                      ["B2B", "A business"],
+                      ["B2G", "Government"],
+                    ] as const
+                  ).map(([v, t]) => (
+                    <label key={v} title={v}>
+                      <input type="radio" name="buyer_type" checked={head.buyer_type === v} onChange={() => put({ buyer_type: v })} />
+                      {t}
+                    </label>
+                  ))}
+                </div>
+                {EXTRAS.filter(([k]) => !shows(k)).map(([k, , label]) => (
+                  <button key={k} type="button" className="inv-chip" onClick={() => reveal(k)}>
+                    <Plus aria-hidden="true" />
+                    {label}
+                  </button>
                 ))}
               </div>
-            </div>
-            <div className="card-body">
-              {head.customer_id ? (
-                <p className="inv-picked">
-                  <span>
-                    Customer: <strong>{glance?.name ?? head.buyer_name}</strong>
-                  </span>
-                  <button type="button" className="btn-link" onClick={letGo}>
-                    Not this customer
-                  </button>
-                </p>
-              ) : (
-                <CustomerFind onPick={pickCustomer} />
-              )}
-              <div className="form-row">
-                <label className="field">
-                  Name on the invoice
-                  <input value={head.buyer_name} onChange={(e) => put({ buyer_name: e.target.value })} maxLength={200} placeholder="Port Louis Traders Ltd" />
-                </label>
-                {head.buyer_type !== "B2C" ? (
-                  <label className="field">
-                    BRN
-                    <input value={head.buyer_brn} onChange={(e) => put({ buyer_brn: e.target.value })} maxLength={40} placeholder="C07012345" className={head.buyer_brn.trim() ? undefined : "inv-want"} />
-                  </label>
-                ) : (
-                  <label className="field">
-                    Phone
-                    <input value={head.buyer_phone} onChange={(e) => put({ buyer_phone: e.target.value })} maxLength={60} inputMode="tel" />
-                  </label>
-                )}
-                {head.buyer_type !== "B2C" && (
-                  <>
-                    <label className="field">
-                      VAT number
-                      <input value={head.buyer_vat} onChange={(e) => put({ buyer_vat: e.target.value })} maxLength={40} placeholder="If they have one" />
-                    </label>
-                    <label className="field">
-                      Phone
-                      <input value={head.buyer_phone} onChange={(e) => put({ buyer_phone: e.target.value })} maxLength={60} inputMode="tel" />
-                    </label>
-                  </>
-                )}
-                <label className="field">
-                  Address
-                  <textarea rows={2} value={head.buyer_address} onChange={(e) => put({ buyer_address: e.target.value })} maxLength={500} />
-                </label>
-                <label className="field">
-                  Email
-                  <input type="email" value={head.buyer_email} onChange={(e) => put({ buyer_email: e.target.value })} maxLength={200} />
-                </label>
-              </div>
-              <details className="inv-more" open={!!(head.buyer_contact || head.buyer_cc || head.deliver_to) || undefined}>
-                <summary>Contact person, copy to, deliver to</summary>
-                <div className="form-row">
-                  <label className="field">
-                    Contact person
-                    <input value={head.buyer_contact} onChange={(e) => put({ buyer_contact: e.target.value })} maxLength={200} />
-                  </label>
-                  <label className="field">
-                    Copy the email to
-                    <input value={head.buyer_cc} onChange={(e) => put({ buyer_cc: e.target.value })} maxLength={200} placeholder="accounts@…" />
-                  </label>
-                  <label className="field">
-                    Deliver to, if not the address
-                    <textarea rows={2} value={head.deliver_to} onChange={(e) => put({ deliver_to: e.target.value })} maxLength={500} />
-                  </label>
-                </div>
-              </details>
+              {EXTRAS.some(([k]) => shows(k)) && <div className="inv-extras">{EXTRAS.filter(([k]) => shows(k)).map(([k]) => field(k))}</div>}
               {head.customer_id && (
                 <label className="check inv-remember">
                   <input type="checkbox" checked={head.remember} onChange={(e) => put({ remember: e.target.checked })} />
                   Keep these details for their next invoice
                 </label>
               )}
-            </div>
-          </section>
+            </section>
 
-          {/* ---- dates and terms ---- */}
-          <section className="card">
-            <div className="card-head">
-              <div>
-                <h2>Dates and terms</h2>
-              </div>
-              {p.branch && <span className="muted inv-small">From {p.branch}</span>}
-            </div>
-            <div className="card-body inv-terms">
-              <label className="field">
-                Invoice date
+            <section className="inv-sched" aria-label="Dates and terms">
+              <h2 className="inv-label">Dates and terms</h2>
+              <label className="inv-row">
+                <span>Date</span>
                 <input type="date" value={head.issued_on} max={p.today} onChange={(e) => e.target.value && put({ issued_on: e.target.value })} />
               </label>
-              <label className="field">
-                Payment terms
+              <label className="inv-row">
+                <span>Terms</span>
                 <select value={head.terms} onChange={(e) => put({ terms: e.target.value })}>
                   {[...TERMS, ...(TERMS.includes(head.terms as (typeof TERMS)[number]) ? [] : [head.terms])].map((t) => (
-                    <option key={t} value={t}>{termsWords(t)}</option>
+                    <option key={t} value={t}>
+                      {termsWords(t)}
+                    </option>
                   ))}
                 </select>
               </label>
               {head.terms === "date" ? (
-                <label className="field">
-                  Due on
+                <label className="inv-row">
+                  <span>Due</span>
                   <input type="date" value={head.due_on} min={head.issued_on} onChange={(e) => put({ due_on: e.target.value })} />
                 </label>
               ) : (
-                <div className="field">
-                  Due on
-                  <output className="inv-due">{due}</output>
+                <div className="inv-row">
+                  <span>Due</span>
+                  <output className="inv-due inv-mono">{dayWords(due)}</output>
                 </div>
               )}
-              <label className="field">
-                Their order number
+              <label className="inv-row">
+                <span>Their order no.</span>
                 <input value={head.cust_ref} onChange={(e) => put({ cust_ref: e.target.value })} maxLength={80} placeholder="PO 4471" />
               </label>
-              <label className="field">
-                Our reference
-                <input value={head.our_ref} onChange={(e) => put({ our_ref: e.target.value })} maxLength={80} />
+              <label className="inv-row">
+                <span>Our reference</span>
+                <input value={head.our_ref} onChange={(e) => put({ our_ref: e.target.value })} maxLength={80} placeholder="Job 12" />
               </label>
-              <label className="field">
-                Sold by
+              <label className="inv-row">
+                <span>Sold by</span>
                 <select value={head.rep_id} onChange={(e) => put({ rep_id: e.target.value })}>
                   <option value="">Nobody named</option>
                   {p.staff.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
                   ))}
                 </select>
               </label>
-              <label className="field">
-                On paper in
+              <label className="inv-row">
+                <span>On paper in</span>
                 <select value={head.lang} onChange={(e) => put({ lang: e.target.value === "fr" ? "fr" : "en" })}>
                   <option value="en">English</option>
                   <option value="fr">Français</option>
                 </select>
               </label>
-              <label className="check inv-excl">
-                <input type="checkbox" checked={head.show_excl} onChange={(e) => put({ show_excl: e.target.checked })} />
-                Show prices before VAT on paper
+              <label className="inv-row">
+                <span>Prices on paper</span>
+                <select value={head.show_excl ? "excl" : "incl"} onChange={(e) => put({ show_excl: e.target.value === "excl" })}>
+                  <option value="incl">With VAT</option>
+                  <option value="excl">Before VAT</option>
+                </select>
               </label>
-            </div>
-          </section>
+            </section>
+          </div>
 
-          {/* ---- lines ---- */}
-          <section className="card flush">
-            <div className="card-head">
-              <div>
-                <h2>Lines</h2>
-                <p>{many === 0 ? `Find ${aWord} below, or type a line of your own.` : many === 1 ? "1 line" : `${many} lines`}</p>
-              </div>
-            </div>
+          {/* ---- the lines ---- */}
+          <div className="inv-lines-wrap">
             <div className="table-scroll">
               <table className="inv-lines">
                 <thead>
                   <tr>
-                    <th className="inv-c-move" aria-label="Order" />
+                    <th className="inv-c-no">#</th>
                     <th>Description</th>
                     <th className="num">Qty</th>
                     <th className="num">Price</th>
                     <th className="num">Off %</th>
                     <th>Tax</th>
                     <th className="num">Amount</th>
-                    <th aria-label="Remove" />
+                    <th className="inv-c-act" aria-label="Move, copy or take off" />
                   </tr>
                 </thead>
                 <tbody>
+                  {lines.length === 0 && (
+                    <tr className="inv-empty-row">
+                      <td colSpan={8}>Nothing on it yet. Find {aWord} in the box below, or add a line of your own.</td>
+                    </tr>
+                  )}
                   {lines.map((l, i) => (
                     <LineRow
                       key={l.key}
                       l={l}
+                      no={numbers.get(l.key) ?? 0}
                       first={i === 0}
                       last={i === lines.length - 1}
                       taxes={p.taxes}
@@ -641,6 +785,7 @@ export function InvoiceEditor(p: {
                       rs={rs}
                       change={change}
                       move={move}
+                      copy={copyLine}
                       drop={drop}
                       onKey={backToFind}
                     />
@@ -660,71 +805,99 @@ export function InvoiceEditor(p: {
                 }}
                 onFree={(name) => setLines((ls) => [...ls, blank("line", name)])}
               />
+            </div>
+            <div className="inv-add-more">
+              <button type="button" className="btn-quiet btn-sm" onClick={() => setLines((ls) => [...ls, blank("line")])}>
+                <Plus aria-hidden="true" />
+                Line of your own
+              </button>
               <button type="button" className="btn-quiet btn-sm" onClick={() => setLines((ls) => [...ls, blank("heading")])}>
-                <Heading2 aria-hidden="true" />
+                <Plus aria-hidden="true" />
                 Heading
               </button>
               <button type="button" className="btn-quiet btn-sm" onClick={() => setLines((ls) => [...ls, blank("note")])}>
-                <StickyNote aria-hidden="true" />
+                <Plus aria-hidden="true" />
                 Note
               </button>
+              <span className="inv-keys">
+                <kbd>Enter</kbd> adds what is found · <kbd>Tab</kbd> moves along a line · <kbd>Ctrl</kbd>+<kbd>S</kbd> saves
+              </span>
             </div>
             {short.length > 0 && (
               <p className="note warn inv-short">
                 <AlertTriangle aria-hidden="true" />
                 <span>
-                  {short.map((l) => l.name).join(", ")}: more than {p.branch ?? "the branch"} holds. Issuing takes {short.length === 1 ? "it" : "them"} below
-                  zero, as a sale at the till would.
+                  {short.map((l) => l.name).join(", ")}: more than {p.branch ?? "the branch"} holds. Issuing takes {short.length === 1 ? "it" : "them"} below zero,
+                  as a sale at the till would.
                 </span>
               </p>
             )}
-          </section>
-
-          {/* ---- totals and note ---- */}
-          <div className="inv-bottom">
-            <section className="card">
-              <div className="card-body">
-                <label className="field inv-wide">
-                  Note on the invoice
-                  <textarea rows={3} value={head.note} onChange={(e) => put({ note: e.target.value })} maxLength={2000} placeholder="Delivery on Thursday. Warranty one year." />
-                </label>
-              </div>
-            </section>
-            <section className="card inv-totals">
-              <div className="card-body">
-                <dl className="kv">
-                  <dt>Lines</dt>
-                  <dd>{rs(fig.subtotal)}</dd>
-                  <dt className="inv-disc">
-                    Discount
-                    <select aria-label="Discount in" value={head.disc_type} onChange={(e) => put({ disc_type: e.target.value === "percent" ? "percent" : "amount", disc: "" })}>
-                      <option value="percent">%</option>
-                      <option value="amount">Rs</option>
-                    </select>
-                    <input
-                      aria-label="Discount"
-                      inputMode="decimal"
-                      value={head.disc}
-                      onChange={(e) => put({ disc: e.target.value })}
-                      placeholder="0"
-                      className={head.disc && (head.disc_type === "percent" ? !/^\d{1,3}$/.test(head.disc.trim()) : parseRs(head.disc) === null) ? "inv-bad" : undefined}
-                    />
-                  </dt>
-                  <dd>{fig.discount ? "−" + rs(fig.discount) : rs(0)}</dd>
-                  {fig.taxes.filter((t) => !t.included).map((t) => (
-                    <FragmentRow key={t.key} label={`${t.name} ${t.rateBp / 100}%`} value={rs(t.amount)} />
-                  ))}
-                  <dt className="total">Total</dt>
-                  <dd className="total">{rs(fig.total)}</dd>
-                  {fig.taxes.filter((t) => t.included).map((t) => (
-                    <FragmentRow key={t.key} label={`of which ${t.name} ${t.rateBp / 100}%`} value={rs(t.amount)} muted />
-                  ))}
-                </dl>
-              </div>
-            </section>
           </div>
-        </div>
 
+          {/* ---- payment, note, totals ---- */}
+          <div className="inv-doc-foot">
+            <div className="inv-doc-left">
+              <div className="inv-paybox">
+                <h2 className="inv-label">Payment</h2>
+                {p.bank ? (
+                  <p className="inv-pre">{p.bank}</p>
+                ) : (
+                  <p className="muted">
+                    No bank details yet. <Link href="/backoffice/invoices?setup=1">Add them in the set-up</Link> and they print on every invoice.
+                  </p>
+                )}
+              </div>
+              <label className="field inv-wide">
+                Note on the invoice
+                <textarea rows={3} value={head.note} onChange={(e) => put({ note: e.target.value })} maxLength={2000} placeholder="Delivery on Thursday. Warranty one year." />
+              </label>
+            </div>
+            <dl className="inv-sum">
+              <dt>Subtotal</dt>
+              <dd className="inv-mono">{rs(fig.subtotal)}</dd>
+              <dt className="inv-disc">
+                Discount
+                <input
+                  aria-label="Discount"
+                  inputMode="decimal"
+                  value={head.disc}
+                  onChange={(e) => put({ disc: e.target.value })}
+                  placeholder="0"
+                  className={head.disc && (head.disc_type === "percent" ? !/^\d{1,3}$/.test(head.disc.trim()) : parseRs(head.disc) === null) ? "inv-bad" : undefined}
+                />
+                <button
+                  type="button"
+                  className="inv-unit"
+                  onClick={() => put({ disc_type: head.disc_type === "percent" ? "amount" : "percent", disc: "" })}
+                  title={head.disc_type === "percent" ? "In percent: click for rupees" : "In rupees: click for percent"}
+                  aria-label={head.disc_type === "percent" ? "Discount in percent; switch to rupees" : "Discount in rupees; switch to percent"}
+                >
+                  {head.disc_type === "percent" ? "%" : "Rs"}
+                </button>
+              </dt>
+              <dd className="inv-mono">{fig.discount ? "−" + rs(fig.discount) : rs(0)}</dd>
+              {fig.taxes
+                .filter((t) => !t.included)
+                .map((t) => (
+                  <FragmentRow key={t.key} label={`${t.name} ${t.rateBp / 100}%`} value={rs(t.amount)} />
+                ))}
+              <dt className="inv-sum-total">Total due</dt>
+              <dd className="inv-sum-total inv-mono">{rs(fig.total)}</dd>
+              {fig.taxes
+                .filter((t) => t.included)
+                .map((t) => (
+                  <FragmentRow key={t.key} label={`of which ${t.name} ${t.rateBp / 100}%`} value={rs(t.amount)} muted />
+                ))}
+            </dl>
+          </div>
+          <p className="inv-doc-fine">
+            {p.mra
+              ? "This business sends its invoices to the MRA through its tills: this one can be written and kept as a draft, and issuing it through a till comes next."
+              : "MRA e-invoicing is off for this business: invoices are issued without the MRA's QR code."}
+          </p>
+        </fieldset>
+
+        {/* ---- beside it: the customer, and what they usually buy ---- */}
         <GlanceCard
           id={head.customer_id || null}
           g={head.customer_id ? glance : null}
@@ -732,74 +905,15 @@ export function InvoiceEditor(p: {
           decimals={decimals}
           shop={shop}
           loading={glancing}
-          onAdd={(o) => {
-            addProduct({ item_id: o.item_id, variant_id: o.variant_id, name: o.name, sku: o.sku, price: o.last_price, taxes: o.taxes, cost: null });
-            void fetchStock([{ item_id: o.item_id, variant_id: o.variant_id }]);
-          }}
+          onAdd={
+            busy
+              ? undefined
+              : (o) => {
+                  addProduct({ item_id: o.item_id, variant_id: o.variant_id, name: o.name, sku: o.sku, price: o.last_price, taxes: o.taxes, cost: null });
+                  void fetchStock([{ item_id: o.item_id, variant_id: o.variant_id }]);
+                }
+          }
         />
-      </fieldset>
-
-      {/* ---- the foot: where the save stands, and what to do next ---- */}
-      <div className="inv-foot">
-      {asking && !p.mra && (
-        <div className="inv-ask card" role="dialog" aria-label="Issue this invoice">
-          <div className="card-body">
-            {blockers.length > 0 ? (
-              <>
-                <strong>Before it can be issued:</strong>
-                <ul className="inv-blockers">
-                  {blockers.map((b) => <li key={b}>{b}</li>)}
-                </ul>
-                <button type="button" className="btn-quiet" onClick={() => setAsking(false)}>Back to the invoice</button>
-              </>
-            ) : (
-              <>
-                <p>
-                  Issue it as <strong>{p.next}</strong>, for <strong>{rs(fig.total)}</strong>, due {due}? Once issued it cannot be changed or deleted, and what is on
-                  it leaves {p.branch ? `${p.branch}'s` : "the"} stock.
-                </p>
-                <div className="inv-ask-do">
-                  <button type="button" onClick={() => void issue()} disabled={issuing} aria-busy={issuing || undefined}>
-                    <span>Issue {p.next}</span>
-                  </button>
-                  <button type="button" className="btn-quiet" onClick={() => setAsking(false)} disabled={issuing}>
-                    Not yet
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-      <div className="inv-bar" role="region" aria-label="Save and issue">
-        <span className={"inv-state inv-state-" + status} role="status" aria-live="polite">
-          {said}
-          {status === "error" && (
-            <button type="button" className="btn-link" onClick={() => void saveNow()}>
-              Try again
-            </button>
-          )}
-        </span>
-        <span className="spacer" />
-        <form action={deleteDraft} onSubmit={(e) => { if (!window.confirm("Delete this draft? It has no number yet, so nothing is skipped.")) e.preventDefault(); }}>
-          <input type="hidden" name="id" value={inv.id} />
-          <button type="submit" className="btn-quiet btn-danger-quiet" disabled={issuing}>
-            <Trash2 aria-hidden="true" />
-            Delete draft
-          </button>
-        </form>
-        <Link href={`/backoffice/invoices/${inv.id}/print`} target="_blank" className="btn btn-quiet" onClick={printIt}>
-          <Printer aria-hidden="true" />
-          Print or PDF
-        </Link>
-        {p.mra ? (
-          <span className="muted inv-small">Issued through a till (MRA): comes next</span>
-        ) : (
-          <button type="button" onClick={() => setAsking(true)} disabled={issuing || status === "stale"}>
-            Issue invoice
-          </button>
-        )}
-      </div>
       </div>
     </div>
   );
@@ -815,8 +929,9 @@ function FragmentRow({ label, value, muted }: { label: string; value: string; mu
 }
 
 // ---- one line ----
-function LineRow({ l, first, last, taxes, stock, costs, rs, change, move, drop, onKey }: {
+function LineRow({ l, no, first, last, taxes, stock, costs, rs, change, move, copy, drop, onKey }: {
   l: Ed;
+  no: number;
   first: boolean;
   last: boolean;
   taxes: Tax[];
@@ -825,24 +940,29 @@ function LineRow({ l, first, last, taxes, stock, costs, rs, change, move, drop, 
   rs: (c: number) => string;
   change: (key: string, patch: Partial<Ed>) => void;
   move: (key: string, by: -1 | 1) => void;
+  copy: (key: string) => void;
   drop: (key: string) => void;
   onKey: (e: React.KeyboardEvent) => void;
 }) {
-  const handles = (
-    <td className="inv-c-move">
-      <button type="button" className="inv-icon" aria-label="Move up" disabled={first} onClick={() => move(l.key, -1)}>
-        <ArrowUp aria-hidden="true" />
-      </button>
-      <button type="button" className="inv-icon" aria-label="Move down" disabled={last} onClick={() => move(l.key, 1)}>
-        <ArrowDown aria-hidden="true" />
-      </button>
-    </td>
-  );
+  const handles = <td className="inv-c-no">{no > 0 ? no : ""}</td>;
   const remove = (
-    <td className="inv-c-x">
-      <button type="button" className="inv-icon" aria-label={"Take off " + (l.name || "this line")} onClick={() => drop(l.key)}>
-        <X aria-hidden="true" />
-      </button>
+    <td className="inv-c-act">
+      <span className="inv-acts">
+        <button type="button" className="inv-icon" aria-label="Move up" title="Move up" disabled={first} onClick={() => move(l.key, -1)}>
+          <ArrowUp aria-hidden="true" />
+        </button>
+        <button type="button" className="inv-icon" aria-label="Move down" title="Move down" disabled={last} onClick={() => move(l.key, 1)}>
+          <ArrowDown aria-hidden="true" />
+        </button>
+        {l.kind === "line" && (
+          <button type="button" className="inv-icon" aria-label={"Copy " + (l.name || "this line")} title="Copy the line" onClick={() => copy(l.key)}>
+            <Copy aria-hidden="true" />
+          </button>
+        )}
+        <button type="button" className="inv-icon inv-icon-x" aria-label={"Take off " + (l.name || "this line")} title="Take it off" onClick={() => drop(l.key)}>
+          <X aria-hidden="true" />
+        </button>
+      </span>
     </td>
   );
   if (l.kind !== "line") {
@@ -1097,19 +1217,28 @@ function ProductFind({ store, shop, rs, inputRef, onPick, onFree }: {
   );
 }
 
-// ---- finding a customer, or adding one ----
-function CustomerFind({ onPick }: { onPick: (c: CustomerHit) => void }) {
-  const [q, setQ] = useState("");
+/// ---- who it is for: typing the name finds a customer, picking one fills in what is known of them ----
+// A name nobody picks stays as typed (someone buying once); the last choice saves it as a new customer.
+function BuyerName({ value, linked, phone, email, onType, onPick, onLetGo }: {
+  value: string;
+  linked: string | null;
+  phone: string;
+  email: string;
+  onType: (v: string) => void;
+  onPick: (c: CustomerHit) => void;
+  onLetGo: () => void;
+}) {
   const [hits, setHits] = useState<CustomerHit[]>([]);
   const [hitsFor, setHitsFor] = useState("");
   const [at, setAt] = useState(0);
-  const [adding, setAdding] = useState<{ name: string; phone: string; email: string } | null>(null);
+  // typed into since the last pick, and still in the box
+  const [looking, setLooking] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const asked = useRef(0);
+  const t = value.trim();
   useEffect(() => {
-    const t = q.trim();
-    if (!t) {
+    if (linked || !looking || !t) {
       setHits([]);
       setHitsFor("");
       return;
@@ -1124,88 +1253,62 @@ function CustomerFind({ onPick }: { onPick: (c: CustomerHit) => void }) {
       }
     }, 180);
     return () => clearTimeout(h);
-  }, [q]);
-  const t = q.trim();
-  const fresh = hitsFor === t && t !== "";
+  }, [t, linked, looking]);
+  const fresh = !linked && looking && hitsFor === t && t !== "";
   const options = fresh ? hits.length + 1 : 0;
-  const pick = (c: CustomerHit) => {
+  const close = () => {
     asked.current++;
-    setQ("");
+    setLooking(false);
     setHits([]);
     setHitsFor("");
+  };
+  const pick = (c: CustomerHit) => {
+    close();
+    setErr("");
     onPick(c);
   };
-  const startAdd = () => {
-    const digits = t.replace(/[\s+-]/g, "");
-    setAdding(/^\d{5,}$/.test(digits) ? { name: "", phone: t, email: "" } : t.includes("@") ? { name: "", phone: "", email: t } : { name: t, phone: "", email: "" });
-    setQ("");
-    setHits([]);
-    setHitsFor("");
+  const save = async () => {
+    close();
+    setBusy(true);
+    const r = await addCustomer(t, phone, email);
+    setBusy(false);
+    if (r.ok) {
+      setErr("");
+      onPick(r.customer);
+    } else setErr(r.error);
   };
-  if (adding) {
-    return (
-      <div className="inv-add-cust">
-        <strong className="inv-small">A new customer</strong>
-        {err && <p className="note danger">{err}</p>}
-        <div className="inv-add-row">
-          <input value={adding.name} onChange={(e) => setAdding({ ...adding, name: e.target.value })} placeholder="Name" aria-label="Customer's name" maxLength={120} autoFocus />
-          <input value={adding.phone} onChange={(e) => setAdding({ ...adding, phone: e.target.value })} placeholder="Phone" aria-label="Customer's phone" inputMode="tel" maxLength={40} />
-          <input value={adding.email} onChange={(e) => setAdding({ ...adding, email: e.target.value })} placeholder="Email" aria-label="Customer's email" type="email" maxLength={120} />
-          <button
-            type="button"
-            className="btn-sm"
-            disabled={busy || !adding.name.trim()}
-            aria-busy={busy || undefined}
-            onClick={async () => {
-              setBusy(true);
-              const r = await addCustomer(adding.name, adding.phone, adding.email);
-              setBusy(false);
-              if (r.ok) {
-                setAdding(null);
-                setErr("");
-                onPick(r.customer);
-              } else setErr(r.error);
-            }}
-          >
-            <span>Add customer</span>
-          </button>
-          <button type="button" className="btn-quiet btn-sm" onClick={() => setAdding(null)}>
-            Cancel
-          </button>
-        </div>
-        <p className="muted inv-small">A customer like any other: on the tills after their next sync.</p>
-      </div>
-    );
-  }
   return (
-    <div className="inv-find inv-cust-find">
-      <label className="table-search inv-find-box">
-        <UserPlus aria-hidden="true" />
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown" && options) {
-              e.preventDefault();
-              setAt((a) => (a + 1) % options);
-            } else if (e.key === "ArrowUp" && options) {
-              e.preventDefault();
-              setAt((a) => (a - 1 + options) % options);
-            } else if (e.key === "Enter" && fresh) {
-              e.preventDefault();
-              if (at < hits.length) pick(hits[at]);
-              else startAdd();
-            } else if (e.key === "Escape") setQ("");
-          }}
-          placeholder="Find a customer: name, phone, email or BRN"
-          aria-label="Find a customer"
-          role="combobox"
-          aria-expanded={options > 0}
-          aria-controls="inv-cust-list"
-          aria-autocomplete="list"
-          autoComplete="off"
-        />
-      </label>
+    <div className="inv-find inv-buyer">
+      <input
+        className="inv-buyer-in"
+        value={value}
+        onChange={(e) => {
+          onType(e.target.value);
+          setLooking(true);
+        }}
+        onBlur={close}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" && options) {
+            e.preventDefault();
+            setAt((a) => (a + 1) % options);
+          } else if (e.key === "ArrowUp" && options) {
+            e.preventDefault();
+            setAt((a) => (a - 1 + options) % options);
+          } else if (e.key === "Enter" && fresh) {
+            e.preventDefault();
+            if (at < hits.length) pick(hits[at]);
+            else void save();
+          } else if (e.key === "Escape") close();
+        }}
+        maxLength={200}
+        placeholder="Who is it for? A name, phone or BRN finds a customer"
+        aria-label="Bill to: name"
+        role="combobox"
+        aria-expanded={options > 0}
+        aria-controls="inv-cust-list"
+        aria-autocomplete="list"
+        autoComplete="off"
+      />
       {options > 0 && (
         <ul className="inv-pop" id="inv-cust-list" role="listbox">
           {hits.map((c, i) => (
@@ -1233,14 +1336,27 @@ function CustomerFind({ onPick }: { onPick: (c: CustomerHit) => void }) {
             className={"inv-pop-free" + (at === hits.length ? " on" : "")}
             onMouseDown={(e) => {
               e.preventDefault();
-              startAdd();
+              void save();
             }}
             onMouseEnter={() => setAt(hits.length)}
           >
-            {hits.length === 0 ? "Nobody found. " : ""}Add &ldquo;{t}&rdquo; as a new customer
+            <UserPlus aria-hidden="true" />
+            {hits.length === 0 ? "No customer by that name. " : ""}Save &ldquo;{t}&rdquo; as a new customer
           </li>
         </ul>
       )}
+      {linked ? (
+        <p className="inv-linked">
+          <span className="badge blue">Customer</span>
+          <span>{linked}</span>
+          <button type="button" className="btn-link" onClick={onLetGo}>
+            Not this customer
+          </button>
+        </p>
+      ) : busy ? (
+        <p className="inv-linked muted">Saving the customer…</p>
+      ) : null}
+      {err && <p className="note danger inv-buyer-err">{err}</p>}
     </div>
   );
 }
