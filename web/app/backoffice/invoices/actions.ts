@@ -53,7 +53,8 @@ export async function problemOf(msg: string): Promise<string> {
   return "That could not be saved. Nothing was changed.";
 }
 
-type Result<T> = ({ ok: true } & T) | { ok: false; error: string };
+// `code` is the database's own word for the refusal (invoice-changed, invoice-mra...), for the editor to act on
+type Result<T> = ({ ok: true } & T) | { ok: false; error: string; code: string };
 
 async function attempt<T>(fn: (c: import("pg").PoolClient, ctx: Awaited<ReturnType<typeof requirePerm>>) => Promise<T>, perm = PERM): Promise<Result<T>> {
   try {
@@ -62,8 +63,9 @@ async function attempt<T>(fn: (c: import("pg").PoolClient, ctx: Awaited<ReturnTy
     return { ok: true, ...out };
   } catch (e) {
     unstable_rethrow(e);
-    if (e instanceof Refused) return { ok: false, error: e.message };
-    return { ok: false, error: await problemOf(e instanceof Error ? e.message : "") };
+    if (e instanceof Refused) return { ok: false, error: e.message, code: "" };
+    const msg = e instanceof Error ? e.message : "";
+    return { ok: false, error: await problemOf(msg), code: /invoice-[a-z-]+/.exec(msg)?.[0] ?? "" };
   }
 }
 

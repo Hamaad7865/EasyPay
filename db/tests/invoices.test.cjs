@@ -11,7 +11,7 @@
 const crypto = require('crypto');
 const { Client } = require('pg');
 const devguard = require('./require-dev.cjs');
-const { open, text, rowsOf, stats } = require('./page.cjs');
+const { open, code, text, rowsOf, stats } = require('./page.cjs');
 
 let failures = 0;
 function check(name, cond, extra) {
@@ -118,6 +118,13 @@ const op = (type, payload) => ({ op_id: id(), type, payload });
       Number(r.s) === Number(s1.subtotal) && Number(r.d) === Number(s1.discount_total) && Number(r.t) === Number(s1.tax_total) && Number(r.x) === Number(s1.total),
       JSON.stringify({ receipt: r, invoice: s1 }));
     check('M2 and the figures are not all zero (the lines were counted)', Number(s1.total) > 345050 && Number(s1.tax_added) > 0, JSON.stringify(s1));
+    // the editor's own calculator (web/lib/invoice-money.ts, what the page shows as one types) on the same lines
+    const calc = code(c, { tenantId: tid, employeeId: owner, mode: 'retail' }, 'lib/invoice-money.ts');
+    const T = { [vatIn]: { tax_id: vatIn, name: 'VAT inv', rate_bp: 1500, type: 'included' }, [levy]: { tax_id: levy, name: 'Levy inv', rate_bp: 500, type: 'added' } };
+    const fig = calc.figures(lines.filter((l) => l.kind === 'line').map((l) => ({ qty: l.qty, unit_price: l.unit_price, taxes: l.tax_ids.map((t) => T[t]) })), { type: 'percent', value: 7 });
+    check('M3 the editor works the figures out as the database does: subtotal, discount, tax added, all tax, total',
+      fig.subtotal === Number(s1.subtotal) && fig.discount === Number(s1.discount_total) && fig.taxAdded === Number(s1.tax_added) &&
+      fig.taxTotal === Number(s1.tax_total) && fig.total === Number(s1.total), JSON.stringify({ fig, s1 }));
 
     // ---- a draft ----
     check('D1 a save from a page showing an older version is refused (two windows on one draft)',
@@ -238,6 +245,66 @@ const op = (type, payload) => ({ op_id: id(), type, payload });
     check('W2 the set-up opens from the address, with the bank, the terms and where each branch\'s numbers stand',
       !setupOpen.error && /Invoice set-up/.test(setupOpen.says) && /Account number/.test(setupOpen.says) && /issued\. Next:/.test(setupOpen.says),
       setupOpen.error || setupOpen.says.slice(0, 400));
+
+    const ID = 'backoffice/invoices/[id]';
+    const rsOf = (cents) => 'Rs ' + (Number(cents) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const ed = await draft({ customer_id: cust, buyer_type: 'B2B', buyer_name: 'Port Louis Traders', buyer_brn: 'C99', lang: 'fr' }, lines);
+    const edPage = await see('/backoffice/invoices/' + ed.id, {}, { params: { id: ed.id }, file: ID });
+    check('W3 a draft opens in the editor: its lines, its total as the database has it, the next number, the customer at a glance',
+      !edPage.error && /Draft invoice/.test(edPage.says) && edPage.html.includes('value="Drill"') && edPage.says.includes(rsOf(ed.total)) &&
+      /it gets the next one, INV-\d{5}/.test(edPage.says) && /Owes in all/.test(edPage.says) && /Add a product: name, SKU or barcode/.test(edPage.html),
+      edPage.error || edPage.says.slice(0, 600));
+    const iss = await see('/backoffice/invoices/' + inv1, {}, { params: { id: inv1 }, file: ID });
+    check('W4 an issued invoice is shown as it stands: its number, paid in full, its payments with the cancelled one struck, nothing to type into',
+      !iss.error && iss.says.includes('INV-00120') && /Paid in full/.test(iss.says) && /MCB 4471/.test(iss.says) && /inv-struck/.test(iss.html) &&
+      !/aria-label="Quantity"/.test(iss.html) && !/Issue invoice/.test(iss.says),
+      iss.error || iss.says.slice(0, 600));
+    await c.query(`update tenants set brn = 'C11223344' where id = $1`, [tid]);
+    await c.query(`insert into invoice_setup (tenant_id, bank_name, account_no, terms, lang, footer) values ($1, 'MCB', '000444555666', '30', 'en', 'Goods remain ours until paid')`, [tid]);
+    const paper = await see('/backoffice/invoices/' + inv1 + '/print', {}, { params: { id: inv1 }, file: ID + '/print' });
+    check("W5 on paper: the number, the business's BRN, the buyer's, the bank to pay into, the foot; no DRAFT",
+      !paper.error && paper.says.includes('INV-00120') && /BRN C11223344/.test(paper.says) && /BRN C07012345/.test(paper.says) &&
+      /000444555666/.test(paper.says) && /Goods remain ours until paid/.test(paper.says) && !/Draft/.test(paper.says),
+      paper.error || paper.says.slice(0, 600));
+    const frPaper = await see('/backoffice/invoices/' + ed.id + '/print', {}, { params: { id: ed.id }, file: ID + '/print' });
+    check('W6 a draft prints with DRAFT across it and no number, in French when the invoice says so',
+      !frPaper.error && /Brouillon/.test(frPaper.says) && /ceci n.est pas une facture/.test(frPaper.says) && /Désignation/.test(frPaper.says) &&
+      !/INV-0/.test(frPaper.says) && !/000444555666/.test(frPaper.says),
+      frPaper.error || frPaper.says.slice(0, 600));
+    // what goes to a browser: a role that may make invoices but not see cost gets no cost in the editor's data
+    const clerkRole = (await one(`insert into roles (tenant_id, name, permissions) values ($1, 'Clerk inv', '["backoffice.access","invoices.manage"]'::jsonb) returning id`, [tid])).id;
+    const clerk = (await one(`insert into employees (tenant_id, name, role_id) values ($1, 'Clerk', $2) returning id`, [tid, clerkRole])).id;
+    const propsOf = async (who) => {
+      await c.query('SAVEPOINT el');
+      try {
+        const el = await code(c, { tenantId: tid, employeeId: who, mode: 'retail', premium: true, mra: 'off' }, 'app/' + ID + '/page.tsx')
+          .default({ params: Promise.resolve({ id: ed.id }), searchParams: Promise.resolve({}) });
+        await c.query('RELEASE SAVEPOINT el');
+        const walk = (n) => {
+          if (!n || typeof n !== 'object') return null;
+          if (Array.isArray(n)) { for (const x of n) { const f = walk(x); if (f) return f; } return null; }
+          if (n.props && n.props.inv) return n.props;
+          return n.props ? walk(n.props.children) : null;
+        };
+        return walk(el);
+      } catch (e) {
+        await c.query('ROLLBACK TO SAVEPOINT el');
+        return { error: String(e && e.stack) };
+      }
+    };
+    const ownerSees = await propsOf(owner);
+    const clerkSees = await propsOf(clerk);
+    check('W7 cost reaches the editor only for a role that may see cost (the owner sees it, a clerk does not)',
+      ownerSees && ownerSees.costs === true && ownerSees.inv.lines.some((l) => l.unit_cost !== null) &&
+      clerkSees && clerkSees.costs === false && clerkSees.inv.lines.every((l) => l.unit_cost === null),
+      JSON.stringify({ owner: ownerSees && (ownerSees.error || ownerSees.inv.lines.map((l) => l.unit_cost)), clerk: clerkSees && (clerkSees.error || clerkSees.inv.lines.map((l) => l.unit_cost)) }));
+    // a restaurant has invoices too, in its own words
+    const resto = { ...ctx, mode: 'restaurant', premium: false };
+    await c.query('SAVEPOINT rs');
+    let restoHtml = '', restoErr = '';
+    try { restoHtml = await open(c, resto, '/backoffice/invoices/' + ed.id, {}, { params: { id: ed.id }, file: ID }); await c.query('RELEASE SAVEPOINT rs'); }
+    catch (e) { restoErr = String(e && e.stack); await c.query('ROLLBACK TO SAVEPOINT rs'); }
+    check("W8 a restaurant's editor finds an item, not a product", !restoErr && /Add an item: name, SKU or barcode/.test(restoHtml) && !/a product/.test(restoHtml), restoErr || text(restoHtml).slice(0, 300));
 
     // ---- the tables are the tenant's alone ----
     const rls = (await c.query(`select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace

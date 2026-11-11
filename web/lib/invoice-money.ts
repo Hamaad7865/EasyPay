@@ -103,6 +103,17 @@ export function dueOf(issued: string, terms: Terms, typed: string | null): strin
 }
 const iso = (t: Date) => t.toISOString().slice(0, 10);
 
+// how a payment came in (0159 invoice_pay), on the page and on paper; none of it goes through a till's drawer
+export const METHODS = ["bank", "cheque", "cash", "card", "mobile", "other"] as const;
+export const METHOD_WORDS: Record<string, { en: string; fr: string }> = {
+  bank: { en: "Bank transfer", fr: "Virement" },
+  cheque: { en: "Cheque", fr: "Chèque" },
+  cash: { en: "Cash", fr: "Espèces" },
+  card: { en: "Card", fr: "Carte" },
+  mobile: { en: "Mobile money", fr: "Paiement mobile" },
+  other: { en: "Other", fr: "Autre" },
+};
+
 export type InvoiceState = "draft" | "issued" | "part" | "overdue" | "paid";
 export const STATE_WORDS: Record<InvoiceState, string> = { draft: "Draft", issued: "Not paid yet", part: "Partly paid", overdue: "Overdue", paid: "Paid" };
 export const STATE_TONE: Record<InvoiceState, string> = { draft: "badge", issued: "badge blue", part: "badge amber", overdue: "badge red", paid: "badge green" };

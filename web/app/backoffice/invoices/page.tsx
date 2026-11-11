@@ -82,7 +82,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Sea
 
   if (!d.may.manage && !d.may.view) {
     return (
-      <div>
+      <div className="inv-page">
         {head}
         <Empty icon={ScrollText} title="Your role cannot see invoices">Ask the owner to tick Make and issue invoices, or See reports, on your role, under Roles and permissions.</Empty>
       </div>
@@ -98,7 +98,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Sea
   const count = (n: number) => (n === 1 ? "1 invoice" : `${n} invoices`);
   const start = startOf(sp, "q", "tab", "sort");
   return (
-    <div>
+    <div className="inv-page">
       {head}
       <Flash sp={sp} />
       {ctx.mra !== "off" && (

@@ -176,7 +176,8 @@ export async function findProducts(c: PoolClient, tenantId: string, q: string, s
               coalesce(v.sku, i.sku) as sku, coalesce(v.barcode, i.barcode) as barcode,
               coalesce(v.price, o.price, i.price)::bigint as price,
               coalesce(v.cost, i.cost) as cost,
-              (i.track_stock or coalesce(cat.is_stock, false) or jsonb_array_length(i.parts) > 0) as counted,
+              -- a made-of product is not counted itself (its parts are): no warning on it, as stockOf
+              (i.track_stock or coalesce(cat.is_stock, false)) as counted,
               (select count(*)::int from item_variants x where x.tenant_id = i.tenant_id and x.item_id = i.id and x.deleted_at is null) as variants,
               case when coalesce(v.barcode, i.barcode) = $3 or lower(coalesce(v.sku, i.sku, '')) = $3 then 0 else 1 end as exact
          from items i
@@ -385,4 +386,27 @@ export async function loadSeries(c: PoolClient, tenantId: string): Promise<Serie
 export const numberOf = (prefix: string, n: number) => prefix + String(n).padStart(5, "0");
 
 // The business on paper: as Company details keeps it, the branch's address and phone where it has its own.
-export type Seller = { name: string; address: string; phone: string; brn: string; vat: string; logo: string | null; branch: string | null };
+export type Seller = { name: string; legal: string; address: string; phone: string; brn: string; vat: string; logo: string | null; branch: string | null };
+
+export async function sellerOf(c: PoolClient, tenantId: string, store: string, company: { name: string; brn: string; vat: string; address: string; phone: string }, logo: string | null): Promise<Seller> {
+  const r = (
+    await c.query(
+      `select t.name, t.legal_name, t.brn, t.vat_number, st.name as branch, st.address, st.phone,
+              (select count(*) from stores x where x.tenant_id = t.id and x.deleted_at is null)::int as stores
+         from tenants t join stores st on st.tenant_id = t.id and st.id = $2
+        where t.id = $1`,
+      [tenantId, store],
+    )
+  ).rows[0];
+  return {
+    // as Company details shows it: the business's name, BRN and VAT on the tenant, the rest in its settings
+    name: r?.name || company.name || "",
+    legal: r?.legal_name && r.legal_name !== r.name ? r.legal_name : "",
+    address: r?.address || company.address || "",
+    phone: r?.phone || company.phone || "",
+    brn: r?.brn ?? company.brn ?? "",
+    vat: r?.vat_number ?? company.vat ?? "",
+    logo,
+    branch: r && r.stores > 1 ? r.branch : null,
+  };
+}
