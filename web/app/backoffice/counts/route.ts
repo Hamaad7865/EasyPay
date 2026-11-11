@@ -34,6 +34,10 @@ const SQL = `
          (select count(*)::int from printers where tenant_id = $1 and deleted_at is null) as printers,
          (select count(*)::int from employees where tenant_id = $1 and deleted_at is null) as staff,
          (select count(*)::int from roles where tenant_id = $1 and deleted_at is null) as roles,
+         -- invoices still owed (0159), and of them the ones past their due day
+         (select count(*)::int from invoices where tenant_id = $1 and deleted_at is null and status = 'issued' and total > paid) as inv_owed,
+         (select count(*)::int from invoices where tenant_id = $1 and deleted_at is null and status = 'issued' and total > paid
+             and invoice_due(issued_on, terms, due_on) < invoice_today(tenant_id, store_id)) as inv_late,
          -- flagged = still open: no recorded reason yet, or a reason not resolved (as the dashboard counts them)
          (select count(*)::int from receipts r
            where r.deleted_at is null and r.tenant_id = $1 and r.needs_review
@@ -70,6 +74,9 @@ export async function GET() {
   put("/backoffice/printers", r.printers, "printer", "printers");
   put("/backoffice/staff", r.staff, "member of staff", "members of staff");
   put("/backoffice/roles", r.roles, "role", "roles");
+  // what there is to act on: invoices not paid yet, in red while one is overdue
+  if (r.inv_late > 0) counts["/backoffice/invoices"] = { n: r.inv_owed, say: `${r.inv_owed} not paid, ${r.inv_late} of them overdue`, tone: "red" };
+  else if (r.inv_owed > 0) put("/backoffice/invoices", r.inv_owed, "invoice not paid yet", "invoices not paid yet");
   if (r.flagged > 0) counts["/backoffice/receipts"] = { n: r.flagged, say: `${r.flagged} ${r.flagged === 1 ? "receipt" : "receipts"} to review`, tone: "red" };
   return Response.json({ counts }, { headers: { "cache-control": "no-store" } });
 }

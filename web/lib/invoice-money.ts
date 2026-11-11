@@ -82,6 +82,16 @@ export const percentOff = (list: number, price: number) => (list > 0 && price < 
 export const TERMS = ["receipt", "7", "15", "30", "45", "60", "eom", "date"] as const;
 export type Terms = string;
 
+// the terms in words, on the page and on paper (English or French)
+export function termsWords(t: Terms, lang: "en" | "fr" = "en"): string {
+  const fr = lang === "fr";
+  if (t === "receipt") return fr ? "À réception" : "On receipt";
+  if (t === "eom") return fr ? "Fin de mois" : "End of the month";
+  if (t === "date") return fr ? "À la date indiquée" : "On a set date";
+  const n = Number(t);
+  return Number.isInteger(n) ? (fr ? `${n} jours` : `${n} days`) : t;
+}
+
 // when a bill on these terms falls due (0159 invoice_due); days are "YYYY-MM-DD"
 export function dueOf(issued: string, terms: Terms, typed: string | null): string {
   if (terms === "receipt") return issued;

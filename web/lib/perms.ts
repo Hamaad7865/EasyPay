@@ -52,6 +52,8 @@ const GROUPS: PermGroup[] = [
       // EasyPay in the person's own Claude (0146): what they may change through it is still what their role allows
       ["assistant.use", "Use the assistant: connect EasyPay to their own Claude"],
       ["reports.view", "See reports"],
+      // invoices for business customers (0159): the owner's alone until it is given to a role
+      ["invoices.manage", "Make and issue invoices, record their payments"],
       ["items.edit", "Edit the menu, taxes and stock"],
       ["employees.edit", "Manage staff and roles"],
       ["settings.device", "Change settings, printers and tables; change how a till is set up and sign it out"],

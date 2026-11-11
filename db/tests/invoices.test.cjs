@@ -11,6 +11,7 @@
 const crypto = require('crypto');
 const { Client } = require('pg');
 const devguard = require('./require-dev.cjs');
+const { open, text, rowsOf, stats } = require('./page.cjs');
 
 let failures = 0;
 function check(name, cond, extra) {
@@ -213,6 +214,30 @@ const op = (type, payload) => ({ op_id: id(), type, payload });
     check('R1 a client on Premium MRA makes drafts but cannot issue (its invoices go through a till, not built yet)',
       /invoice-mra/.test((await refused(`select invoice_issue($1, $2, $3, null)`, [tid, owner, mraDraft.id])) || ''));
     await c.query(`update tenants set mra = 'off' where id = $1`, [tid]);
+
+    // ---- the pages, as the back office draws them (db/tests/page.cjs: the real pages, no login) ----
+    const ctx = { tenantId: tid, employeeId: owner, mode: 'retail', premium: true, mra: 'off' };
+    const see = async (href, sp = {}, opts) => {
+      await c.query('SAVEPOINT pg');
+      try {
+        const html = await open(c, ctx, href, sp, opts);
+        await c.query('RELEASE SAVEPOINT pg');
+        return { html, says: text(html) };
+      } catch (e) {
+        await c.query('ROLLBACK TO SAVEPOINT pg');
+        return { html: '', says: '', error: (e && e.stack) || String(e) };
+      }
+    };
+    const list = await see('/backoffice/invoices');
+    const listRows = rowsOf(list.html);
+    check('W1 the list draws: today\'s figures, the tabs, an issued invoice with its number and the drafts',
+      !list.error && /Issued today/.test(list.says) && /Received today/.test(list.says) && /Overdue/.test(list.says) &&
+      /Not paid yet/.test(list.says) && listRows.some((r) => r.startsWith('INV-00120')) && listRows.some((r) => /^Draft/.test(r)),
+      list.error || stats(list.html).join('; ') + ' / ' + listRows.slice(0, 4).join(' // '));
+    const setupOpen = await see('/backoffice/invoices', { setup: '1' });
+    check('W2 the set-up opens from the address, with the bank, the terms and where each branch\'s numbers stand',
+      !setupOpen.error && /Invoice set-up/.test(setupOpen.says) && /Account number/.test(setupOpen.says) && /issued\. Next:/.test(setupOpen.says),
+      setupOpen.error || setupOpen.says.slice(0, 400));
 
     // ---- the tables are the tenant's alone ----
     const rls = (await c.query(`select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace

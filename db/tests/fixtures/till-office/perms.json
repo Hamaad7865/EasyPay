@@ -113,6 +113,10 @@
           "See reports"
         ],
         [
+          "invoices.manage",
+          "Make and issue invoices, record their payments"
+        ],
+        [
           "items.edit",
           "Edit the menu, taxes and stock"
         ],
@@ -234,6 +238,10 @@
         [
           "reports.view",
           "See reports"
+        ],
+        [
+          "invoices.manage",
+          "Make and issue invoices, record their payments"
         ],
         [
           "items.edit",
