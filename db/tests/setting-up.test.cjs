@@ -39,6 +39,8 @@ const KEPT = [
   'pictures', 'mra_records',
   // EasyPay in Claude (0146): the owner's connections and the changes made through them
   'assistant_codes', 'assistant_grants', 'assistant_calls', 'assistant_proposals', 'assistant_log',
+  // invoices (0159): the set-up, each branch's series (its next number back to the start) and a customer's details
+  'invoice_setup', 'invoice_series', 'invoice_customers',
 ];
 const CLEARED = [
   'bookings', 'approvals', 'drawer_counts', 'payment_corrections', 'day_closes', 'cash_movements',
@@ -50,6 +52,8 @@ const CLEARED = [
   'credit_notes', 'deposits', 'deposit_lines', 'deposit_payments',
   // its customer accounts (0114): bills and the money paid on them, made at its tills
   'account_bills', 'account_payments', 'account_payment_lines',
+  // invoices made in the back office while trying it (0159)
+  'invoices', 'invoice_lines', 'invoice_payments',
 ];
 // stock_movements: the sales, refunds and deposits go, everything else stays.
 // tablet_codes: the codes tills were set up with go, one nobody used yet stays.

@@ -41,6 +41,8 @@ const KEPT = [
   'till_requests',
   // the changes already taken: a till sending one again is answered, never given it twice
   'sync_ops_applied',
+  // invoices (0159): the set-up, each branch's series (its next number back to the start) and a customer's details
+  'invoice_setup', 'invoice_series', 'invoice_customers',
 ];
 const CLEARED = [
   'bookings', 'approvals', 'drawer_counts', 'payment_corrections', 'day_closes', 'cash_movements',
@@ -49,6 +51,7 @@ const CLEARED = [
   'timeclock_punches', 'shifts',
   'credit_notes', 'deposits', 'deposit_lines', 'deposit_payments',
   'account_bills', 'account_payments', 'account_payment_lines',
+  'invoices', 'invoice_lines', 'invoice_payments',
 ];
 // stock_movements: the sales, refunds and deposits go, the import, deliveries and counts stay
 const IN_PART = ['stock_movements'];
