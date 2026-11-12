@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Download, ScrollText } from "lucide-react";
-import { daysLate, type InvoiceState, STATE_TONE, STATE_WORDS, stateOf } from "@/lib/invoice-money";
+import { dayWords, daysLate, type InvoiceState, STATE_TONE, STATE_WORDS, stateOf } from "@/lib/invoice-money";
 import { money } from "@/lib/settings";
 import { downloadCsv, fold, NoMatch, SortTh, type Start, TableSearch, useTable } from "../table-kit";
 import { Empty } from "../ui";
@@ -95,10 +95,10 @@ export function InvoiceList({ rows, start, today, many, decimals }: { rows: List
               shown.map((r) => {
                 const late = r.state === "overdue" ? daysLate(r.due_on, today) : 0;
                 return (
-                  <tr key={r.id} className="inv-row" onClick={() => router.push(`${PATH}/${r.id}`)}>
-                    <td className="strong">
+                  <tr key={r.id} className="inv-list-row" onClick={() => router.push(`${PATH}/${r.id}`)}>
+                    <td className="strong inv-list-no">
                       <Link href={`${PATH}/${r.id}`} onClick={(e) => e.stopPropagation()}>
-                        {r.number ?? <span className="muted">Draft</span>}
+                        {r.number ?? <span className="muted">No number yet</span>}
                       </Link>
                     </td>
                     {many && <td>{r.branch}</td>}
@@ -106,9 +106,9 @@ export function InvoiceList({ rows, start, today, many, decimals }: { rows: List
                       {r.buyer_name || <span className="muted">No customer yet</span>}
                       {r.buyer_type !== "B2C" && <span className="cell-sub">{r.buyer_type === "B2B" ? "Business" : "Government"}</span>}
                     </td>
-                    <td>{r.cust_ref ?? ""}</td>
-                    <td>{r.issued_on}</td>
-                    <td>{r.status === "issued" ? r.due_on : <span className="muted">—</span>}</td>
+                    <td>{r.cust_ref || <span className="muted">—</span>}</td>
+                    <td className="inv-list-day">{dayWords(r.issued_on)}</td>
+                    <td className="inv-list-day">{r.status === "issued" ? dayWords(r.due_on) : <span className="muted">—</span>}</td>
                     <td className="num">{rs(r.total)}</td>
                     <td className="num">{r.owed > 0 ? rs(r.owed) : <span className="muted">—</span>}</td>
                     <td>

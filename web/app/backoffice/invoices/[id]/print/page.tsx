@@ -20,7 +20,7 @@ const WORDS = {
     invoice: "Invoice", vatInvoice: "VAT invoice", draft: "Draft", notInvoice: "Draft: not an invoice", number: "Number", date: "Date", due: "Due",
     terms: "Terms", billTo: "Bill to", deliverTo: "Deliver to", attn: "Attention", theirRef: "Your order", ourRef: "Our reference", soldBy: "Sold by",
     desc: "Description", qty: "Qty", price: "Unit price", priceExcl: "Unit price excl. VAT", off: "Off", amount: "Amount", amountExcl: "Amount excl. VAT",
-    lines: "Subtotal", discount: "Discount", total: "Total", totalExcl: "Total excl. VAT", ofWhich: "of which", paid: "Paid", owed: "Balance due",
+    sub: "Subtotal", subExcl: "Subtotal excl. VAT", discount: "Discount", total: "Total", paid: "Paid", owed: "Balance due",
     payTo: "Please pay to", bank: "Bank", accName: "Account name", accNo: "Account number", swift: "SWIFT / IBAN", reference: "Reference",
     payments: "Payments received", note: "Note", page: "Thank you.", branch: "Branch", tel: "Tel",
   },
@@ -28,7 +28,7 @@ const WORDS = {
     invoice: "Facture", vatInvoice: "Facture TVA", draft: "Brouillon", notInvoice: "Brouillon : ceci n’est pas une facture", number: "Numéro", date: "Date",
     due: "Échéance", terms: "Conditions", billTo: "Facturé à", deliverTo: "Livrer à", attn: "À l’attention de", theirRef: "Votre commande",
     ourRef: "Notre référence", soldBy: "Vendeur", desc: "Désignation", qty: "Qté", price: "Prix unitaire", priceExcl: "Prix unitaire HT", off: "Remise",
-    amount: "Montant", amountExcl: "Montant HT", lines: "Sous-total", discount: "Remise", total: "Total", totalExcl: "Total HT", ofWhich: "dont",
+    amount: "Montant", amountExcl: "Montant HT", sub: "Sous-total", subExcl: "Sous-total HT", discount: "Remise", total: "Total",
     paid: "Payé", owed: "Reste à payer", payTo: "Paiement à", bank: "Banque", accName: "Titulaire du compte", accNo: "Numéro de compte",
     swift: "SWIFT / IBAN", reference: "Référence", payments: "Paiements reçus", note: "Note", page: "Merci.", branch: "Succursale", tel: "Tél",
   },
@@ -224,30 +224,15 @@ export default async function InvoicePrint({ params, searchParams }: { params: P
             )}
           </div>
           <dl className="inv-p-totals">
-            {excl ? (
-              <>
-                <dt>{w.totalExcl}</dt>
-                <dd>{rs(inv.total - inv.tax_total)}</dd>
-                {fig.taxes.map((t) => (
-                  <Row key={t.key} k={`${t.name} ${t.rateBp / 100}%`} v={rs(t.amount)} />
-                ))}
-                {inv.discount_total > 0 && <Row k={`${w.discount}${inv.disc_type === "percent" ? ` ${inv.disc_value}%` : ""}`} v={"−" + rs(inv.discount_total)} note />}
-              </>
-            ) : (
-              <>
-                <dt>{w.lines}</dt>
-                <dd>{rs(inv.subtotal)}</dd>
-                {inv.discount_total > 0 && <Row k={`${w.discount}${inv.disc_type === "percent" ? ` ${inv.disc_value}%` : ""}`} v={"−" + rs(inv.discount_total)} />}
-                {fig.taxes.filter((t) => !t.included).map((t) => (
-                  <Row key={t.key} k={`${t.name} ${t.rateBp / 100}%`} v={rs(t.amount)} />
-                ))}
-              </>
-            )}
+            {/* before VAT, the discount on that, each tax, then the total: they add up as they are read */}
+            <dt>{fig.taxes.length ? w.subExcl : w.sub}</dt>
+            <dd>{rs(fig.beforeTax.subtotal)}</dd>
+            {inv.discount_total > 0 && <Row k={`${w.discount}${inv.disc_type === "percent" ? ` ${inv.disc_value}%` : ""}`} v={"−" + rs(fig.beforeTax.discount)} />}
+            {fig.taxes.map((t) => (
+              <Row key={t.key} k={`${t.name} ${t.rateBp / 100}%`} v={rs(t.amount)} />
+            ))}
             <dt className="inv-p-total">{w.total}</dt>
             <dd className="inv-p-total">{rs(inv.total)}</dd>
-            {!excl && fig.taxes.filter((t) => t.included).map((t) => (
-              <Row key={t.key} k={`${w.ofWhich} ${t.name} ${t.rateBp / 100}%`} v={rs(t.amount)} note />
-            ))}
             {!draft && inv.paid > 0 && <Row k={w.paid} v={rs(inv.paid)} />}
             {!draft && inv.paid > 0 && <Row k={w.owed} v={rs(owed)} strong />}
           </dl>

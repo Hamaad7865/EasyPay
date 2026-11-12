@@ -95,6 +95,30 @@ check("M7 shown without VAT: a price with VAT inside loses it, one with VAT on t
   assert.equal(exclOf(10000, []), 10000);
 });
 
+check("M7b the totals shown before VAT: subtotal without the VAT inside, less the discount, plus the VAT, is the total", () => {
+  // the owner's example: 100 before VAT, 15 VAT, 115 in all
+  const one = figures([{ qty: 1000, unit_price: 11500, taxes: [vat15in] }], { type: "amount", value: 0 });
+  assert.deepEqual([one.beforeTax.subtotal, one.beforeTax.discount, one.taxTotal, one.total], [10000, 0, 1500, 11500]);
+  const on = figures([{ qty: 1000, unit_price: 10000, taxes: [vat15on] }], { type: "amount", value: 0 });
+  assert.deepEqual([on.beforeTax.subtotal, on.taxTotal, on.total], [10000, 1500, 11500]);
+  // Rs 100 off Rs 675 with VAT inside: the discount shown is its part before VAT
+  const off = figures([{ qty: 1000, unit_price: 67500, taxes: [vat15in] }], { type: "amount", value: 10000 });
+  assert.equal(off.beforeTax.subtotal, exclOf(67500, [vat15in]));
+  assert.equal(off.beforeTax.subtotal - off.beforeTax.discount, exclOf(57500, [vat15in]));
+  assert.ok(off.beforeTax.discount > 0 && off.beforeTax.discount < 10000);
+  const mixed = [
+    { qty: 1000, unit_price: 33333, taxes: [vat15in] },
+    { qty: 3000, unit_price: 1999, taxes: [vat15on] },
+    { qty: 250, unit_price: 12000, taxes: [] },
+    { qty: 2500, unit_price: 3990, taxes: [zero] },
+  ];
+  for (const d of [{ type: "amount", value: 0 }, { type: "percent", value: 7 }, { type: "amount", value: 2501 }, { type: "percent", value: 100 }]) {
+    const f = figures(mixed, d);
+    assert.equal(f.beforeTax.subtotal - f.beforeTax.discount + f.taxTotal, f.total, JSON.stringify(d));
+    assert.ok(f.beforeTax.discount >= 0, JSON.stringify(d));
+  }
+});
+
 check("M8 a line's discount is a lower price, and the lower price says its percent", () => {
   assert.equal(priceAfter(10000, 1250), 8750);
   assert.equal(priceAfter(999, 1000), 899);

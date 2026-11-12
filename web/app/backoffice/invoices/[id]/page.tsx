@@ -281,22 +281,19 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
             </div>
             <div className="card-body inv-read-totals">
               <dl className="kv">
-                <dt>Lines</dt>
-                <dd>{rs(inv.subtotal)}</dd>
+                <dt>{fig.taxes.length ? `Subtotal before ${fig.taxes.length === 1 ? fig.taxes[0].name : "tax"}` : "Subtotal"}</dt>
+                <dd>{rs(fig.beforeTax.subtotal)}</dd>
                 {inv.discount_total > 0 && (
                   <>
                     <dt>Discount{inv.disc_type === "percent" ? ` ${inv.disc_value}%` : ""}</dt>
-                    <dd>−{rs(inv.discount_total)}</dd>
+                    <dd>−{rs(fig.beforeTax.discount)}</dd>
                   </>
                 )}
-                {fig.taxes.filter((t) => !t.included).map((t) => (
+                {fig.taxes.map((t) => (
                   <Pair key={t.key} k={`${t.name} ${t.rateBp / 100}%`} v={rs(t.amount)} />
                 ))}
                 <dt className="total">Total</dt>
                 <dd className="total">{rs(inv.total)}</dd>
-                {fig.taxes.filter((t) => t.included).map((t) => (
-                  <Pair key={t.key} k={`of which ${t.name} ${t.rateBp / 100}%`} v={rs(t.amount)} sub />
-                ))}
                 {inv.paid > 0 && <Pair k="Paid" v={rs(inv.paid)} />}
                 {inv.status === "issued" && <Pair k="Owed" v={rs(owed)} strong />}
               </dl>

@@ -31,7 +31,7 @@ export function SetupPanel({ open, setup, series, manage, said }: { open: boolea
       <Drawer open={shown} title="Invoice set-up" subtitle="What every invoice carries, and where its numbers start." onClose={close}>
         {said.err && <div className="note danger" role="alert">{said.err}</div>}
         {said.ok && <div className="note ok" role="status">{said.ok}</div>}
-        <p className="muted inv-setup-lede">
+        <p className="muted inv-setup-lede inv-first">
           The business&rsquo;s name, BRN, VAT number, address and logo come from <Link href="/backoffice/company">Company details</Link>.
         </p>
         <form action={saveSetup}>
@@ -77,7 +77,11 @@ export function SetupPanel({ open, setup, series, manage, said }: { open: boolea
               At the foot of every invoice
               <textarea name="footer" defaultValue={setup.footer} maxLength={600} rows={3} placeholder="Thank you for your business. Goods remain our property until paid in full." />
             </label>
-            {manage && <Submit>Save set-up</Submit>}
+            {manage && (
+              <div className="inv-setup-save">
+                <Submit>Save set-up</Submit>
+              </div>
+            )}
           </fieldset>
         </form>
 

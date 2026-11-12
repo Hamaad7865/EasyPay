@@ -18,12 +18,17 @@
 .inv-tab-n { min-width: 20px; padding: 1px 6px; border-radius: 999px; background: var(--well); color: var(--ink3); font-size: 11.5px; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
 .inv-tabs button.on .inv-tab-n { background: var(--accent-soft); color: var(--accent); }
 
-.inv-list tbody tr.inv-row { cursor: pointer; }
-.inv-list tbody tr.inv-row:hover td { background: var(--row-hover); }
-.inv-list td { vertical-align: top; }
+/* one invoice to a row; the name of the class is the list's own (the editor has rows of its own) */
+.inv-list tbody tr.inv-list-row { cursor: pointer; }
+.inv-list tbody tr.inv-list-row:hover td { background: var(--row-hover); }
+.inv-list td { vertical-align: middle; }
+.inv-list td.inv-list-no, .inv-list td.inv-list-day { white-space: nowrap; }
+.inv-list td .cell-sub { display: block; }
 
 /* ---- the set-up panel ---- */
 .inv-setup-lede { font-size: 13px; margin: 0 0 14px; }
+.inv-setup-lede.inv-first { margin-top: 12px; }
+.inv-setup-save { display: flex; align-items: center; gap: 10px; margin: 0; }
 .inv-fieldset, .inv-series-row { border: 0; padding: 0; margin: 0; min-width: 0; }
 .inv-h3 { font-size: 13px; font-weight: 700; margin: 4px 0 10px; color: var(--ink); }
 .inv-gap { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line); }
@@ -141,9 +146,9 @@
 .inv-bad { border-color: var(--red-line) !important; background: var(--red-bg) !important; }
 
 .inv-sched { padding: 14px 16px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
-.inv-row { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: 10px; padding: 4px 0; margin: 0; font-size: 13px; color: var(--ink2); }
-.bo-main .inv-row input, .bo-main .inv-row select { width: 100%; height: 32px !important; font-size: 13px !important; }
-.bo-main .inv-row input { text-align: right; }
+.inv-term { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: 10px; padding: 4px 0; margin: 0; font-size: 13px; color: var(--ink2); }
+.bo-main .inv-term input, .bo-main .inv-term select { width: 100%; height: 32px !important; font-size: 13px !important; }
+.bo-main .inv-term input { text-align: right; }
 .inv-due { display: block; padding: 6px 0; text-align: right; font-weight: 700; font-size: 13.5px; color: var(--ink); }
 
 /* the lines: a table on the sheet, its boxes showing only under the pointer or the cursor */
@@ -227,8 +232,8 @@
 .inv-doc-left { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .inv-paybox { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
 .inv-doc .inv-paybox p { margin: 0; font-size: 13px; }
-.inv-wide { max-width: none; margin-bottom: 0; }
-.inv-wide textarea { resize: vertical; }
+.inv-note-field { max-width: none; margin-bottom: 0; }
+.inv-note-field textarea { resize: vertical; }
 .inv-sum { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 16px; margin: 0; font-size: 13.5px; }
 .inv-sum dt { color: var(--ink2); }
 .inv-sum dd { margin: 0; text-align: right; white-space: nowrap; color: var(--ink); }
@@ -238,6 +243,7 @@
   height: 30px; min-width: 34px; padding: 0 8px; border: 1px solid var(--line-strong); background: var(--well); color: var(--ink); box-shadow: none; font-size: 12px;
 }
 .bo-main button.inv-unit:hover { background: var(--glass-hover); border-color: var(--line-strong); }
+.inv-sum dd.inv-sum-span { grid-column: 1 / -1; margin-top: -4px; text-align: left; white-space: normal; }
 .inv-sum .inv-sum-total { margin-top: 4px; padding-top: 12px; border-top: 2px solid var(--ink); font-weight: 700; color: var(--ink); }
 .inv-sum dd.inv-sum-total { font-size: 22px; }
 .inv-sub { color: var(--ink3) !important; font-weight: 400 !important; font-size: 12.5px; }
@@ -344,13 +350,19 @@
 .inv-p-refs { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; align-content: start; }
 .inv-p-refs dt { color: #555; }
 .inv-p-refs dd { margin: 0; font-weight: 600; }
-.inv-p-lines { width: 100%; border-collapse: collapse; background: #fff; color: #111; box-shadow: none; border: 0; }
-.inv-p-lines th { background: #f1f3f5; color: #444; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #c9d1d9; }
-.inv-p-lines th, .inv-p-lines td { padding: 7px 8px; text-align: left; border-bottom: 1px solid #e3e7eb; vertical-align: top; }
-.inv-p-lines .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* .inv-paper in front: the back office's own table look (.bo-main table, its dark rows, its hover) must never
+   reach the paper, which is white with black ink in the dark look too */
+.inv-paper .inv-p-lines {
+  width: 100%; border-collapse: collapse; background: #fff; color: #111; box-shadow: none; border: 0; border-radius: 0; overflow: visible; margin: 0;
+}
+.inv-paper .inv-p-lines tr th { background: #f1f3f5; color: #444; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #c9d1d9; }
+.inv-paper .inv-p-lines tr th, .inv-paper .inv-p-lines tr td { padding: 7px 8px; text-align: left; border-bottom: 1px solid #e3e7eb; vertical-align: top; color: #111; }
+.inv-paper .inv-p-lines tr th { color: #444; }
+.inv-paper .inv-p-lines tbody tr td, .inv-paper .inv-p-lines tbody tr:hover td { background: #fff; }
+.inv-paper .inv-p-lines tr .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .inv-p-sub { color: #666; font-size: 11.5px; margin-top: 1px; }
-.inv-p-heading td { font-weight: 700; padding-top: 12px; background: #fff; border-bottom: 1px solid #c9d1d9; }
-.inv-p-note td { color: #555; font-style: italic; }
+.inv-paper .inv-p-lines tr.inv-p-heading td { font-weight: 700; padding-top: 12px; background: #fff; border-bottom: 1px solid #c9d1d9; }
+.inv-paper .inv-p-lines tr.inv-p-note td { color: #555; font-style: italic; }
 .inv-p-foot { display: flex; justify-content: space-between; gap: 28px; margin-top: 18px; }
 .inv-p-left { flex: 1; display: flex; flex-direction: column; gap: 12px; }
 .inv-p-block { color: #333; }

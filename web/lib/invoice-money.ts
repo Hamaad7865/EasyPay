@@ -21,6 +21,9 @@ export type Figures = {
   taxes: TaxRow[];
   // each line after its share of the discount, before tax added on top
   nets: number[];
+  // the totals as the invoice shows them: the lines without the tax inside their prices, and the discount's
+  // share of that; with the tax rows they come to the total (subtotal - discount + taxTotal = total)
+  beforeTax: { subtotal: number; discount: number };
 };
 
 // The discount on the whole invoice: a percent as a receipt takes one (0..100, rounded), an amount never
@@ -53,6 +56,7 @@ export function figures(lines: MoneyLine[], d: Disc): Figures {
     }
     return net;
   });
+  const exSub = lines.reduce((s, l, i) => s + exclOf(bases[i], l.taxes), 0);
   return {
     subtotal,
     discount,
@@ -62,6 +66,7 @@ export function figures(lines: MoneyLine[], d: Disc): Figures {
     total: subtotal - discount + taxAdded,
     taxes: [...rows.values()],
     nets,
+    beforeTax: { subtotal: exSub, discount: exSub - (subtotal - discount - taxIncluded) },
   };
 }
 
@@ -102,6 +107,13 @@ export function dueOf(issued: string, terms: Terms, typed: string | null): strin
   return Number.isInteger(n) ? iso(new Date(Date.UTC(y, m - 1, d + n))) : issued;
 }
 const iso = (t: Date) => t.toISOString().slice(0, 10);
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// 2026-11-12 as 12 Nov 2026, the same on the server and in the browser
+export function dayWords(day: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]} ${m[1]}` : day;
+}
 
 // how a payment came in (0159 invoice_pay), on the page and on paper; none of it goes through a till's drawer
 export const METHODS = ["bank", "cheque", "cash", "card", "mobile", "other"] as const;

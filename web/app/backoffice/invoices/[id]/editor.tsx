@@ -7,7 +7,7 @@ import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Copy, MoreHorizontal, Plu
 import { parseRs } from "@/lib/money";
 import { money } from "@/lib/settings";
 import { lineAmount } from "@/lib/receipt-doc";
-import { dueOf, exclOf, figures, type InvTax, lineFits, parseQty, percentOff, priceAfter, qtyText, TERMS, termsWords } from "@/lib/invoice-money";
+import { dayWords, dueOf, exclOf, figures, type InvTax, lineFits, parseQty, percentOff, priceAfter, qtyText, TERMS, termsWords } from "@/lib/invoice-money";
 import { addCustomer, customerGlance, deleteDraft, issueInvoice, saveDraft, searchCustomers, searchProducts, type SentHead, type SentLine, stockFor } from "../actions";
 import type { CustomerHit, Found, Glance, Invoice } from "../data";
 import { GlanceCard } from "../glance";
@@ -74,12 +74,6 @@ const EXTRAS: [Extra, keyof Head, string, string][] = [
   ["cc", "buyer_cc", "Copy the email to", "accounts@…"],
   ["deliver", "deliver_to", "Deliver to", "If not the address"],
 ];
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-// 2026-11-12 as 12 Nov 2026, the same on the server and in the browser
-const dayWords = (iso: string) => {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]} ${m[1]}` : iso;
-};
 
 const centsText = (c: number) => (c % 100 === 0 ? String(c / 100) : (c / 100).toFixed(2));
 const offText = (bp: number) => (bp <= 0 ? "" : bp % 100 === 0 ? String(bp / 100) : (bp / 100).toFixed(2).replace(/0$/, ""));
@@ -321,6 +315,8 @@ export function InvoiceEditor(p: {
       ),
     [lines, head],
   );
+  // the totals say "before VAT" when the one tax is VAT; "before tax" when there are several
+  const taxWord = fig.taxes.length === 1 ? fig.taxes[0].name : "tax";
   const due = dueOf(head.issued_on, head.terms, head.due_on || null);
 
   // ---- lines ----
@@ -689,11 +685,11 @@ export function InvoiceEditor(p: {
 
             <section className="inv-sched" aria-label="Dates and terms">
               <h2 className="inv-label">Dates and terms</h2>
-              <label className="inv-row">
+              <label className="inv-term">
                 <span>Date</span>
                 <input type="date" value={head.issued_on} max={p.today} onChange={(e) => e.target.value && put({ issued_on: e.target.value })} />
               </label>
-              <label className="inv-row">
+              <label className="inv-term">
                 <span>Terms</span>
                 <select value={head.terms} onChange={(e) => put({ terms: e.target.value })}>
                   {[...TERMS, ...(TERMS.includes(head.terms as (typeof TERMS)[number]) ? [] : [head.terms])].map((t) => (
@@ -704,25 +700,25 @@ export function InvoiceEditor(p: {
                 </select>
               </label>
               {head.terms === "date" ? (
-                <label className="inv-row">
+                <label className="inv-term">
                   <span>Due</span>
                   <input type="date" value={head.due_on} min={head.issued_on} onChange={(e) => put({ due_on: e.target.value })} />
                 </label>
               ) : (
-                <div className="inv-row">
+                <div className="inv-term">
                   <span>Due</span>
                   <output className="inv-due inv-mono">{dayWords(due)}</output>
                 </div>
               )}
-              <label className="inv-row">
+              <label className="inv-term">
                 <span>Their order no.</span>
                 <input value={head.cust_ref} onChange={(e) => put({ cust_ref: e.target.value })} maxLength={80} placeholder="PO 4471" />
               </label>
-              <label className="inv-row">
+              <label className="inv-term">
                 <span>Our reference</span>
                 <input value={head.our_ref} onChange={(e) => put({ our_ref: e.target.value })} maxLength={80} placeholder="Job 12" />
               </label>
-              <label className="inv-row">
+              <label className="inv-term">
                 <span>Sold by</span>
                 <select value={head.rep_id} onChange={(e) => put({ rep_id: e.target.value })}>
                   <option value="">Nobody named</option>
@@ -733,14 +729,14 @@ export function InvoiceEditor(p: {
                   ))}
                 </select>
               </label>
-              <label className="inv-row">
+              <label className="inv-term">
                 <span>On paper in</span>
                 <select value={head.lang} onChange={(e) => put({ lang: e.target.value === "fr" ? "fr" : "en" })}>
                   <option value="en">English</option>
                   <option value="fr">Français</option>
                 </select>
               </label>
-              <label className="inv-row">
+              <label className="inv-term">
                 <span>Prices on paper</span>
                 <select value={head.show_excl ? "excl" : "incl"} onChange={(e) => put({ show_excl: e.target.value === "excl" })}>
                   <option value="incl">With VAT</option>
@@ -847,14 +843,14 @@ export function InvoiceEditor(p: {
                   </p>
                 )}
               </div>
-              <label className="field inv-wide">
+              <label className="field inv-note-field">
                 Note on the invoice
                 <textarea rows={3} value={head.note} onChange={(e) => put({ note: e.target.value })} maxLength={2000} placeholder="Delivery on Thursday. Warranty one year." />
               </label>
             </div>
             <dl className="inv-sum">
-              <dt>Subtotal</dt>
-              <dd className="inv-mono">{rs(fig.subtotal)}</dd>
+              <dt>{fig.taxes.length ? `Subtotal before ${taxWord}` : "Subtotal"}</dt>
+              <dd className="inv-mono">{rs(fig.beforeTax.subtotal)}</dd>
               <dt className="inv-disc">
                 Discount
                 <input
@@ -875,19 +871,17 @@ export function InvoiceEditor(p: {
                   {head.disc_type === "percent" ? "%" : "Rs"}
                 </button>
               </dt>
-              <dd className="inv-mono">{fig.discount ? "−" + rs(fig.discount) : rs(0)}</dd>
-              {fig.taxes
-                .filter((t) => !t.included)
-                .map((t) => (
-                  <FragmentRow key={t.key} label={`${t.name} ${t.rateBp / 100}%`} value={rs(t.amount)} />
-                ))}
+              <dd className="inv-mono">{fig.beforeTax.discount ? "−" + rs(fig.beforeTax.discount) : rs(0)}</dd>
+              {head.disc_type === "amount" && fig.discount > 0 && fig.beforeTax.discount !== fig.discount && (
+                <dd className="inv-sub inv-sum-span">
+                  {rs(fig.discount)} off the price with {taxWord}, so {rs(fig.beforeTax.discount)} before it
+                </dd>
+              )}
+              {fig.taxes.map((t) => (
+                <FragmentRow key={t.key} label={`${t.name} ${t.rateBp / 100}%`} value={rs(t.amount)} />
+              ))}
               <dt className="inv-sum-total">Total due</dt>
               <dd className="inv-sum-total inv-mono">{rs(fig.total)}</dd>
-              {fig.taxes
-                .filter((t) => t.included)
-                .map((t) => (
-                  <FragmentRow key={t.key} label={`of which ${t.name} ${t.rateBp / 100}%`} value={rs(t.amount)} muted />
-                ))}
             </dl>
           </div>
           <p className="inv-doc-fine">

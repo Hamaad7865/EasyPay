@@ -239,7 +239,7 @@ const op = (type, payload) => ({ op_id: id(), type, payload });
     const listRows = rowsOf(list.html);
     check('W1 the list draws: today\'s figures, the tabs, an issued invoice with its number and the drafts',
       !list.error && /Issued today/.test(list.says) && /Received today/.test(list.says) && /Overdue/.test(list.says) &&
-      /Not paid yet/.test(list.says) && listRows.some((r) => r.startsWith('INV-00120')) && listRows.some((r) => /^Draft/.test(r)),
+      /Not paid yet/.test(list.says) && listRows.some((r) => r.startsWith('INV-00120')) && listRows.some((r) => /^No number yet .* Draft$/.test(r)),
       list.error || stats(list.html).join('; ') + ' / ' + listRows.slice(0, 4).join(' // '));
     const setupOpen = await see('/backoffice/invoices', { setup: '1' });
     check('W2 the set-up opens from the address, with the bank, the terms and where each branch\'s numbers stand',
