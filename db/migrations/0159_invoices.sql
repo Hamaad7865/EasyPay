@@ -111,7 +111,8 @@ create table if not exists invoices (
   our_ref text,
   rep_id uuid,
   lang text not null default 'en' check (lang in ('en', 'fr')),
-  show_excl boolean not null default false,
+  -- prices on paper before VAT, so the lines add up to the subtotal (the owner's choice, 2026-11-12)
+  show_excl boolean not null default true,
   note text,
   -- the discount on the whole invoice: an amount in cents, or a percent 0..100 (a receipt's rule)
   disc_type text not null default 'amount' check (disc_type in ('amount', 'percent')),

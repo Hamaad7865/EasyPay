@@ -5,7 +5,7 @@ import { tenantContext } from "@/lib/tenant";
 import { readTenant } from "@/lib/db";
 import { UUID } from "@/lib/action";
 import { loadSettings, money } from "@/lib/settings";
-import { daysLate, figures, METHOD_WORDS, qtyText, stateOf, STATE_TONE, STATE_WORDS, termsWords } from "@/lib/invoice-money";
+import { daysLate, exclOf, figures, METHOD_WORDS, qtyText, stateOf, STATE_TONE, STATE_WORDS, termsWords } from "@/lib/invoice-money";
 import { lineAmount, whatsappNumber } from "@/lib/receipt-doc";
 import { Empty, Flash, one, PageHead, type Search } from "../../ui";
 import { glance, type Glance, type Invoice, loadInvoice, loadSeries, loadSetup, numberOf, sellerOf, type Seller, type Setup, stockOf } from "../data";
@@ -140,6 +140,9 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
     inv.lines.filter((l) => l.kind === "line"),
     { type: inv.disc_type, value: inv.disc_value },
   );
+  const taxWord = fig.taxes.length === 1 ? fig.taxes[0].name : "tax";
+  // "Before VAT" on paper: the lines here read the same, so they add up to the subtotal
+  const before = inv.show_excl && fig.taxes.length > 0;
   const fr = inv.lang === "fr";
   const name = inv.number ?? "Draft";
   const bank = [f.setup.bank_name, f.setup.account_name && (fr ? `Compte : ${f.setup.account_name}` : `Account: ${f.setup.account_name}`), f.setup.account_no && `No ${f.setup.account_no}`, f.setup.swift]
@@ -249,9 +252,9 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
                   <tr>
                     <th>Description</th>
                     <th className="num">Qty</th>
-                    <th className="num">Price</th>
+                    <th className="num">{before ? `Price before ${taxWord}` : "Price"}</th>
                     <th>Tax</th>
-                    <th className="num">Amount</th>
+                    <th className="num">{before ? `Amount before ${taxWord}` : "Amount"}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -264,11 +267,11 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
                         </td>
                         <td className="num">{qtyText(l.qty)}</td>
                         <td className="num">
-                          {rs(l.unit_price)}
-                          {l.list_price !== null && l.list_price > l.unit_price && <span className="cell-sub">was {rs(l.list_price)}</span>}
+                          {rs(before ? exclOf(l.unit_price, l.taxes) : l.unit_price)}
+                          {l.list_price !== null && l.list_price > l.unit_price && <span className="cell-sub">was {rs(before ? exclOf(l.list_price, l.taxes) : l.list_price)}</span>}
                         </td>
                         <td className="muted">{l.taxes.map((t) => t.name).join(", ") || "No tax"}</td>
-                        <td className="num">{rs(lineAmount(l.unit_price, l.qty))}</td>
+                        <td className="num">{rs(before ? exclOf(lineAmount(l.unit_price, l.qty), l.taxes) : lineAmount(l.unit_price, l.qty))}</td>
                       </tr>
                     ) : (
                       <tr key={l.id} className={"inv-" + l.kind}>
@@ -281,7 +284,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
             </div>
             <div className="card-body inv-read-totals">
               <dl className="kv">
-                <dt>{fig.taxes.length ? `Subtotal before ${fig.taxes.length === 1 ? fig.taxes[0].name : "tax"}` : "Subtotal"}</dt>
+                <dt>{fig.taxes.length ? `Subtotal before ${taxWord}` : "Subtotal"}</dt>
                 <dd>{rs(fig.beforeTax.subtotal)}</dd>
                 {inv.discount_total > 0 && (
                   <>

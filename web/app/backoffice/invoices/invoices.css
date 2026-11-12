@@ -178,6 +178,7 @@
 .inv-tax { min-width: 104px; max-width: 160px; }
 .inv-amount { padding-top: 13px !important; white-space: nowrap; font-weight: 650; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
 .inv-was { text-decoration: line-through; }
+.inv-before { white-space: nowrap; }
 .inv-c-act { width: 1%; white-space: nowrap; padding-top: 9px !important; }
 .inv-acts { display: inline-flex; gap: 1px; opacity: 0.4; transition: opacity 0.12s; }
 .inv-lines tr:hover .inv-acts, .inv-lines tr:focus-within .inv-acts { opacity: 1; }

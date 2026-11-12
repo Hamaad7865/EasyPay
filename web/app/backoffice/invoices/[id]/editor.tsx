@@ -317,6 +317,8 @@ export function InvoiceEditor(p: {
   );
   // the totals say "before VAT" when the one tax is VAT; "before tax" when there are several
   const taxWord = fig.taxes.length === 1 ? fig.taxes[0].name : "tax";
+  // "Before VAT" chosen: the lines show their amounts without the VAT inside, so they add up to the subtotal
+  const before = head.show_excl && fig.taxes.length > 0;
   const due = dueOf(head.issued_on, head.terms, head.due_on || null);
 
   // ---- lines ----
@@ -758,7 +760,7 @@ export function InvoiceEditor(p: {
                     <th className="num">Price</th>
                     <th className="num">Off %</th>
                     <th>Tax</th>
-                    <th className="num">Amount</th>
+                    <th className="num">{before ? `Amount before ${taxWord}` : "Amount"}</th>
                     <th className="inv-c-act" aria-label="Move, copy or take off" />
                   </tr>
                 </thead>
@@ -778,6 +780,7 @@ export function InvoiceEditor(p: {
                       taxes={p.taxes}
                       stock={l.item_id ? stock[stockKey(l.item_id, l.variant_id)] : undefined}
                       costs={p.costs}
+                      before={before}
                       rs={rs}
                       change={change}
                       move={move}
@@ -923,7 +926,7 @@ function FragmentRow({ label, value, muted }: { label: string; value: string; mu
 }
 
 // ---- one line ----
-function LineRow({ l, no, first, last, taxes, stock, costs, rs, change, move, copy, drop, onKey }: {
+function LineRow({ l, no, first, last, taxes, stock, costs, before, rs, change, move, copy, drop, onKey }: {
   l: Ed;
   no: number;
   first: boolean;
@@ -931,6 +934,7 @@ function LineRow({ l, no, first, last, taxes, stock, costs, rs, change, move, co
   taxes: Tax[];
   stock: number | null | undefined;
   costs: boolean;
+  before: boolean;
   rs: (c: number) => string;
   change: (key: string, patch: Partial<Ed>) => void;
   move: (key: string, by: -1 | 1) => void;
@@ -1039,6 +1043,7 @@ function LineRow({ l, no, first, last, taxes, stock, costs, rs, change, move, co
           autoFocus={added && !!l.name && !l.price}
         />
         {l.list !== null && price !== null && price < l.list && <span className="cell-sub inv-was">was {rs(l.list)}</span>}
+        {before && excl !== null && excl !== price && <span className="cell-sub inv-before">{rs(excl)} before {l.taxes.find((t) => t.type !== "added")?.name ?? "tax"}</span>}
       </td>
       <td className="num">
         <input
@@ -1072,7 +1077,7 @@ function LineRow({ l, no, first, last, taxes, stock, costs, rs, change, move, co
           ))}
         </select>
       </td>
-      <td className="num inv-amount">{amount === null ? <span className="inv-warn">?</span> : rs(amount)}</td>
+      <td className="num inv-amount">{amount === null ? <span className="inv-warn">?</span> : rs(before ? exclOf(amount, l.taxes) : amount)}</td>
       {remove}
     </tr>
   );
