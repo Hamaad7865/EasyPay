@@ -14,6 +14,7 @@ import { Stat } from "../parts";
 import { PrintButton } from "../print-button";
 import { Submit } from "../../busy";
 import { type Line, Payments } from "./payments";
+import { Glide } from "../../eu/glide";
 
 // The sales journal (Carfectionist's, after Cashmag's "Journal de ventes"):
 // one period, money received, broken down five ways that all foot to the
@@ -93,11 +94,11 @@ export default async function SalesJournal({ searchParams }: { searchParams: Sea
     <div>
       {head}
       <form method="get" action={PATH} className="filters no-print" style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end", marginBottom: 16 }}>
-        <span className="seg">
+        <Glide as="span" className="seg">
           {p.map((x) => (
             <Link key={x.key} href={q({ from: x.range.from, to: x.range.to })} className={d.from === x.range.from && d.to === x.range.to ? "on" : undefined}>{x.label}</Link>
           ))}
-        </span>
+        </Glide>
         <label className="field" style={{ margin: 0 }}>From<input type="date" name="from" defaultValue={d.from} /></label>
         <label className="field" style={{ margin: 0 }}>To<input type="date" name="to" defaultValue={d.to} /></label>
         <label className="field" style={{ margin: 0 }}>

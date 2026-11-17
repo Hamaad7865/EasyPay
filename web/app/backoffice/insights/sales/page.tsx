@@ -8,6 +8,7 @@ import { pickedOf } from "@/lib/branch";
 import { Card, Empty, PageHead, type Search } from "../../ui";
 import { BranchPicker } from "../../branch-picker";
 import { Figure, SpanPicker, Standouts, WEEKDAYS, change, longDay, pct, per, period, range, totals } from "../parts";
+import { Heatmap } from "../../eu/heatmap";
 
 // When the restaurant sells: which days of the week, which hours of the day,
 // and how these days stand against the same number of days before. The total
@@ -142,29 +143,27 @@ export default async function SalesPatterns({ searchParams }: { searchParams: Se
       />
 
       <Card title="Busy hours" lede="Average sales in each hour of each day of the week. The stronger the green, the busier.">
-        <div className="heat-wrap">
-          <div className="heat" style={{ "--cols": hours.length } as React.CSSProperties}>
-            <span />
-            {hours.map((h) => (
-              <span key={h} className="heat-hour">
-                {String(h).padStart(2, "0")}
-              </span>
-            ))}
-            {WEEKDAYS.map((name, i) =>
-              times[i + 1] === 0 ? null : (
-                <div key={name} className="heat-row">
-                  <span className="heat-day">{name.slice(0, 3)}</span>
-                  {hours.map((h) => {
-                    const v = avgAt(i + 1, h);
-                    const n = cell.get(`${i + 1}-${h}`)?.n ?? 0;
-                    const text = `${name} ${hh(h)}: ${v > 0 ? `${m(v)} on average, ${n} ${n === 1 ? "receipt" : "receipts"} in all` : "no sales"}`;
-                    return <i key={h} className={`h${v > 0 ? Math.max(1, Math.ceil((v / hottest) * 5)) : 0}`} role="img" title={text} aria-label={text} />;
-                  })}
-                </div>
-              ),
-            )}
-          </div>
-        </div>
+        <Heatmap
+          hours={hours.map((h) => String(h).padStart(2, "0"))}
+          rows={WEEKDAYS.flatMap((name, i) =>
+            times[i + 1] === 0
+              ? []
+              : [
+                  {
+                    day: name.slice(0, 3),
+                    cells: hours.map((h) => {
+                      const v = avgAt(i + 1, h);
+                      const n = cell.get(`${i + 1}-${h}`)?.n ?? 0;
+                      return {
+                        level: v > 0 ? Math.max(1, Math.ceil((v / hottest) * 5)) : 0,
+                        head: `${name} ${hh(h)}`,
+                        line: v > 0 ? `${m(v)} on average, ${n} ${n === 1 ? "receipt" : "receipts"} in all` : "No sales",
+                      };
+                    }),
+                  },
+                ],
+          )}
+        />
         <div className="heat-key" aria-hidden="true">
           Quieter <i className="h1" /> <i className="h2" /> <i className="h3" /> <i className="h4" /> <i className="h5" /> Busier
         </div>

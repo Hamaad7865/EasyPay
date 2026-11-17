@@ -19,6 +19,7 @@ import {
   type Size,
 } from "@/lib/papers";
 import { PaperPreview } from "./preview";
+import { Glide } from "../eu/glide";
 
 type Company = { name: string; brn: string; vat: string; address: string; phone: string };
 type Notes = { header: string; footer: string; logo: string | null; showLogo: boolean };
@@ -262,14 +263,14 @@ export function Designer({
   const logoBlock = blocks.find((b) => b.k === "logo");
 
   const seg = <T extends string>(name: string, value: T, options: [T, string][], set: (v: T) => void) => (
-    <div className="seg">
+    <Glide className="seg">
       {options.map(([v, label]) => (
         <label key={v}>
           <input type="radio" name={name} checked={value === v} onChange={() => set(v)} disabled={!canEdit} />
           {label}
         </label>
       ))}
-    </div>
+    </Glide>
   );
   const tick = (label: string, value: boolean, set: (v: boolean) => void) => (
     <label className="check">

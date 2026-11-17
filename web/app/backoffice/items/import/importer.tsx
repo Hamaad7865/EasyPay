@@ -8,6 +8,8 @@ import { parseCsv, writeCsv } from "@/lib/csv";
 import { parseRs } from "@/lib/money";
 import { readXlsx, writeXlsx } from "@/lib/xlsx";
 import type { ImportResult, ImportRow } from "./actions";
+import { Glide } from "../../eu/glide";
+import { FileDrop } from "../../eu/drop";
 
 const WHY: Record<string, string> = {
   "name-missing": "The row has no product name.",
@@ -86,6 +88,8 @@ const letter = (col: number): string => (col < 26 ? "" : letter(Math.floor(col /
 const blank = (line: string[] | undefined) => !line || line.every((c) => String(c ?? "").trim() === "");
 // the most rows of the sheet drawn at once: the ones with a problem come first, so those are the ones seen
 const DRAWN = 200;
+// the kinds of file the drop box names
+const KINDS = ["XLSX", "CSV"];
 const ACCEPT = ".xlsx,.xlsm,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const STEPS = ["The file", "Check the rows", "Import"];
 
@@ -394,8 +398,10 @@ export function Importer({ run }: { run: (rows: ImportRow[], dry: boolean) => Pr
             <p>An Excel workbook (.xlsx) or a CSV file, one line per product, or per variant of a product. Rows with the same name are one product. Its headers do not have to be EasyPay&apos;s: you say what each column is once it is read.</p>
           </div>
         </div>
+        <div className="card-body" style={{ paddingBottom: 0 }}>
+          <FileDrop accept={ACCEPT} kinds={KINDS} label="The Excel or CSV file" title="Drop the file here, or click to choose it" hint="An Excel workbook or a CSV file" disabled={busy !== ""} onFile={(f) => void choose(f)} />
+        </div>
         <div className="card-body bo-toolbar" style={{ margin: 0 }}>
-          <input type="file" accept={ACCEPT} aria-label="The Excel or CSV file" disabled={busy !== ""} onChange={(e) => { void choose(e.target.files?.[0]); e.target.value = ""; }} />
           <a className="btn btn-quiet btn-sm" href="/backoffice/items/export?template=1">Download the template</a>
           <a className="btn btn-quiet btn-sm" href="/backoffice/items/export">Download your products</a>
         </div>
@@ -465,8 +471,9 @@ export function Importer({ run }: { run: (rows: ImportRow[], dry: boolean) => Pr
                 {busy === "Reading the file" ? <p className="muted" role="status">Reading the file…</p> : (
                   <>
                     {note && <p className="note warn" role="alert">{note}</p>}
-                    <button type="button" onClick={pickAnother}>Choose a file</button>
-                    <p className="muted">An Excel workbook (.xlsx) or a CSV file, one line per product, or per variant of a product.</p>
+                    <div style={{ width: "min(560px, 100%)" }}>
+                      <FileDrop accept={ACCEPT} kinds={KINDS} label="The Excel or CSV file" title="Drop the file here, or click to choose it" hint="An Excel workbook (.xlsx) or a CSV file, one line per product, or per variant of a product." onFile={(f) => void choose(f)} />
+                    </div>
                     <div className="bo-toolbar">
                       <a className="btn btn-quiet btn-sm" href="/backoffice/items/export?template=1">Download the template</a>
                       <a className="btn btn-quiet btn-sm" href="/backoffice/items/export">Download your products</a>
@@ -491,14 +498,14 @@ export function Importer({ run }: { run: (rows: ImportRow[], dry: boolean) => Pr
                   </div>
                 )}
                 <div className="table-filters">
-                  <div className="seg" role="radiogroup" aria-label="Which rows to show">
+                  <Glide className="seg" role="radiogroup" aria-label="Which rows to show">
                     {([["all", "All"], ["errors", "Errors"], ["new", "New values"], ["ready", "Ready"]] as const).map(([key, label]) => (
                       <label key={key}>
                         <input type="radio" name="sheet-rows" checked={filter === key} onChange={() => setFilter(key)} />
                         {label} {result || key === "all" ? counts[key].toLocaleString("en-US") : ""}
                       </label>
                     ))}
-                  </div>
+                  </Glide>
                   <span className="muted" role="status">
                     {busy === "Checking" ? "Checking…" : result
                       ? `${count(result.new_products, "new product", "new products")}, ${count(result.products - result.new_products, "product updated", "products updated")}, ${count(result.new_lines, "new line", "new lines")}.`

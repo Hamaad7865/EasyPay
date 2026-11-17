@@ -6,6 +6,7 @@ import { GROUPS } from "./nav";
 import { Over, Side } from "./side";
 import { PhoneTables } from "./phone-tables";
 import { TopBar } from "./eu/topbar";
+import { SelectPop } from "./eu/select";
 import "./eu/eu.css";
 import { words } from "@/lib/mode";
 import { onMra } from "@/lib/mra";
@@ -64,6 +65,8 @@ export default async function BackofficeLayout({ children }: { children: React.R
           // the tour offers itself once to an owner new to this browser, never to EasyPay setting a client up
           tourDue={!ctx.admin && !jar.get("bo-tour")}
         />
+        {/* every drop-down of the back office opens its list in a card that springs from it */}
+        <SelectPop />
         <main className="bo-main">
           {ctx.admin && (
             <form action={leave} className="bo-banner warn">

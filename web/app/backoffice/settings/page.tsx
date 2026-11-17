@@ -7,6 +7,7 @@ import { AUTO_CLOSE_BUILD, LOYALTY_BUILD } from "@/lib/pos";
 import { PREMIUM_ONLY, TABLE_ORDERING_LIVE } from "@/lib/plan";
 import { Card, Flash, one, PageHead, type Search } from "../ui";
 import { Submit, Wait } from "../busy";
+import { Glide } from "../eu/glide";
 
 const PATH = "/backoffice/settings";
 const KINDS = [
@@ -321,14 +322,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                 <strong>Decimals</strong>
                 <small>How amounts are shown and printed. With no decimals, a total is rounded to the nearest rupee and the receipt shows the rounding.</small>
               </div>
-              <div className="seg">
+              <Glide className="seg">
                 {([0, 1, 2] as const).map((d) => (
                   <label key={d}>
                     <input type="radio" name="decimals" value={d} defaultChecked={s.decimals === d} />
                     {money(125000, d)}
                   </label>
                 ))}
-              </div>
+              </Glide>
             </div>
           </Card>
           <Card title="Closing the day">
@@ -381,7 +382,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                   that this suits the MRA before choosing it.
                 </small>
               </div>
-              <div className="seg">
+              <Glide className="seg">
                 <label>
                   <input type="radio" name="billNumbering" value="continuous" defaultChecked={s.billNumbering === "continuous"} />
                   Keep counting
@@ -390,7 +391,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                   <input type="radio" name="billNumbering" value="reset" defaultChecked={s.billNumbering === "reset"} />
                   Start again each day
                 </label>
-              </div>
+              </Glide>
             </div>
           </Card>
           {shop && (
@@ -404,7 +405,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                     spent on a later purchase. Exchange or refund: money can go back the way it was paid.
                   </small>
                 </div>
-                <div className="seg" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                <Glide className="seg" style={{ flexDirection: "column", alignItems: "stretch" }}>
                   <label>
                     <input type="radio" name="returns" value="exchange" defaultChecked={s.returns === "exchange"} />
                     Exchange only
@@ -417,7 +418,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                     <input type="radio" name="returns" value="refund" defaultChecked={s.returns === "refund"} />
                     Exchange or refund
                   </label>
-                </div>
+                </Glide>
               </div>
               <div className="setting">
                 <div>
@@ -486,7 +487,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                       <strong>When a deposit is cancelled</strong>
                       <small>What happens to the money paid and not yet used for goods. What was not collected always goes back on the shelf.</small>
                     </div>
-                    <div className="seg" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                    <Glide className="seg" style={{ flexDirection: "column", alignItems: "stretch" }}>
                       <label>
                         <input type="radio" name="depositCancel" value="credit" defaultChecked={s.depositCancel === "credit"} />
                         A credit note for it
@@ -499,7 +500,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                         <input type="radio" name="depositCancel" value="keep" defaultChecked={s.depositCancel === "keep"} />
                         Kept by the shop
                       </label>
-                    </div>
+                    </Glide>
                   </div>
                   <div className="setting">
                     <div>
@@ -515,7 +516,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                       <strong>Past the collect-by date</strong>
                       <small>Marked overdue on the till and on Deposits, or cancelled by itself after the days of grace, as a cancel by a cashier would be.</small>
                     </div>
-                    <div className="seg" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                    <Glide className="seg" style={{ flexDirection: "column", alignItems: "stretch" }}>
                       <label>
                         <input type="radio" name="depositOverdue" value="show" defaultChecked={s.depositOverdue === "show"} />
                         Mark it overdue
@@ -524,7 +525,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                         <input type="radio" name="depositOverdue" value="cancel" defaultChecked={s.depositOverdue === "cancel"} />
                         Cancel it by itself
                       </label>
-                    </div>
+                    </Glide>
                   </div>
                   <div className="setting">
                     <div>
@@ -540,7 +541,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                       <strong>Customer</strong>
                       <small>Whether the till asks for the customer's name and phone before a deposit is taken.</small>
                     </div>
-                    <div className="seg" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                    <Glide className="seg" style={{ flexDirection: "column", alignItems: "stretch" }}>
                       <label>
                         <input type="radio" name="depositCustomer" value="required" defaultChecked={s.depositCustomer === "required"} />
                         Name and phone needed
@@ -549,7 +550,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                         <input type="radio" name="depositCustomer" value="optional" defaultChecked={s.depositCustomer === "optional"} />
                         Optional
                       </label>
-                    </div>
+                    </Glide>
                   </div>
                 </>
               )}

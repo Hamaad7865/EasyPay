@@ -419,4 +419,113 @@
   .eu-stat { animation: none; }
   .eu-bell-dot.live { animation: none; }
 }
-@media print { .eu-tour, .eu-pop-card, .eu-range-card { display: none !important; } }
+/* ---- drop-downs (eu/select.tsx), after Spring Select and Combobox ---- */
+.eu-sel { position: fixed; z-index: 10000; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); box-shadow: var(--pop-shadow); font-size: 13.5px; }
+.eu-sel ul { list-style: none; margin: 0; padding: 5px; overflow-y: auto; overscroll-behavior: contain; outline: none; }
+.eu-sel-line { position: relative; display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 6px 10px; border-radius: 8px; cursor: pointer; user-select: none; color: var(--ink); }
+.eu-sel-line[aria-disabled] { opacity: 0.45; cursor: default; }
+.eu-sel-line.chosen { font-weight: 600; }
+.eu-sel-hover { position: absolute; inset: 0; z-index: 0; border-radius: 8px; background: var(--accent-soft); }
+.eu-sel-text { position: relative; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eu-sel-tick { position: relative; flex: none; width: 15px; height: 15px; color: var(--accent); }
+.eu-sel-group { padding: 9px 10px 4px; font-size: 11px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink3); }
+.eu-sel-q { display: flex; align-items: center; gap: 8px; height: 42px; margin: 0; padding: 0 12px; border-bottom: 1px solid var(--line); }
+.eu-sel-q svg { flex: none; width: 15px; height: 15px; color: var(--ink3); }
+.eu-sel-q input { flex: 1; min-width: 0; height: 100%; margin: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important; outline: none !important; background: none !important; box-shadow: none !important; color: var(--ink); font: inherit; }
+.eu-sel-none { padding: 12px 10px; color: var(--ink3); font-size: 13px; }
+
+/* ---- a switch's pill that glides (eu/glide.tsx), after Animated Tabs ---- */
+.seg.eu-glide { position: relative; isolation: isolate; }
+.eu-glide-pill { position: absolute; left: 0; top: 0; z-index: -1; border-radius: 6px; background: var(--surface); box-shadow: 0 1px 2px rgba(22, 28, 45, 0.14), 0 1px 1px rgba(22, 28, 45, 0.06); pointer-events: none; }
+/* once the pill is drawn it is the one that stands out; until then the chosen part keeps its own */
+.seg.eu-glide[data-live] label:has(input:checked), .bo-main .seg.eu-glide[data-live] a.on { background: transparent; box-shadow: none; }
+
+/* ---- banners (.note), after Alert: a mark of what kind it is, and they come in ---- */
+@keyframes eu-note-in { from { opacity: 0; transform: translateY(4px); } }
+.bo .note { position: relative; padding-left: 42px; animation: eu-note-in 0.32s cubic-bezier(0.23, 1, 0.32, 1) both; }
+.bo .note::before {
+  content: ""; position: absolute; left: 14px; top: 13px; width: 18px; height: 18px; background: var(--accent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 16v-4'/%3E%3Cpath d='M12 8h.01'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 16v-4'/%3E%3Cpath d='M12 8h.01'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.bo .note.warn::before { background: var(--amber); -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3'/%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3'/%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E"); }
+.bo .note.danger::before { background: var(--red); -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='m15 9-6 6'/%3E%3Cpath d='m9 9 6 6'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='m15 9-6 6'/%3E%3Cpath d='m9 9 6 6'/%3E%3C/svg%3E"); }
+.bo .note.ok::before { background: var(--green); -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='m9 12 2 2 4-4'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='m9 12 2 2 4-4'/%3E%3C/svg%3E"); }
+.bo .imp-notes .note::before { top: 9px; }
+.bo .note.asked::before { top: 50%; margin-top: -9px; }
+@media (max-width: 640px) { .bo .note.asked::before { top: 13px; margin-top: 0; } }
+
+/* ---- badges and chips, after Badge: a dot of their colour and a fine ring ---- */
+.bo .badge.green, .bo .badge.amber, .bo .badge.red, .bo .badge.blue, .bo .chip.red, .bo .chip.amber { box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 20%, transparent); }
+.bo .badge:is(.green, .amber, .red, .blue):not(:has(svg))::before, .bo .chip:is(.red, .amber)::before {
+  content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+}
+.bo .chip:is(.red, .amber) { gap: 6px; }
+
+/* ---- ticks and choices, after Checkbox and Radio Group: the tick pops in ---- */
+.bo-main input[type="checkbox"], .bo-main input[type="radio"], dialog input[type="checkbox"] {
+  -webkit-appearance: none; appearance: none; flex: none; cursor: pointer;
+  border: 1.5px solid var(--line-strong); background: var(--surface) no-repeat center / 0% auto;
+  transition: background-color 0.15s, border-color 0.15s, border-width 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), background-size 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.1s;
+}
+.bo-main input[type="checkbox"], dialog input[type="checkbox"] { border-radius: 5px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E"); }
+.bo-main input[type="radio"] { border-radius: 50%; }
+.bo-main input[type="checkbox"]:hover:not(:disabled), .bo-main input[type="radio"]:hover:not(:disabled), dialog input[type="checkbox"]:hover:not(:disabled) { border-color: var(--accent); }
+.bo-main input[type="checkbox"]:checked, dialog input[type="checkbox"]:checked { background-color: var(--accent-fill); border-color: var(--accent-fill); background-size: 78% auto; }
+.bo-main input[type="checkbox"]:indeterminate, dialog input[type="checkbox"]:indeterminate { background-color: var(--accent-fill); border-color: var(--accent-fill); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12h12'/%3E%3C/svg%3E"); background-size: 78% auto; }
+.bo-main input[type="radio"]:checked { border-width: 5px; border-color: var(--accent-fill); }
+.bo-main input[type="checkbox"]:active:not(:disabled), .bo-main input[type="radio"]:active:not(:disabled) { transform: scale(0.88); }
+.bo-main input[type="checkbox"]:focus-visible, .bo-main input[type="radio"]:focus-visible, dialog input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bo-main input[type="checkbox"]:disabled, .bo-main input[type="radio"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- the side panel, after Sheet: on a phone it rises from the foot, and a pull down puts it away ---- */
+@keyframes eu-sheet-up { from { transform: translateY(100%); } }
+@media (max-width: 640px) {
+  .drawer { inset: auto 0 0 0; width: 100vw; height: min(92dvh, 100dvh - 24px); border-radius: 20px 20px 0 0; box-shadow: 0 -20px 60px rgba(16, 24, 40, 0.25); }
+  .drawer[open] { animation: eu-sheet-up 0.42s cubic-bezier(0.32, 0.72, 0, 1); }
+  .drawer.leaving { transform: translateY(100%); transition: transform 0.22s cubic-bezier(0.4, 0, 1, 1); }
+  .drawer.dragging { transition: none; animation: none; }
+  .drawer-head { position: relative; padding-top: 26px; touch-action: none; cursor: grab; }
+  .drawer-head::before { content: ""; position: absolute; top: 9px; left: 50%; width: 40px; height: 5px; margin-left: -20px; border-radius: 99px; background: var(--line-strong); }
+}
+
+/* ---- the import's steps, after Stepper: the line fills, the dot springs ---- */
+.imp-steps li + li::before { background: linear-gradient(var(--accent-fill) 0 0) left / 0% 100% no-repeat, var(--line-strong) !important; transition: background-size 0.45s cubic-bezier(0.65, 0, 0.35, 1); }
+.imp-steps li.done + li::before { background-size: 100% 100%, auto !important; }
+.imp-dot { transition: background-color 0.25s, color 0.25s, box-shadow 0.25s; }
+@keyframes eu-dot-pop { 40% { transform: scale(1.18); } }
+.imp-steps li.on .imp-dot, .imp-steps li.done .imp-dot { animation: eu-dot-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* ---- a file put down (eu/drop.tsx), after File Upload ---- */
+.eu-drop {
+  position: relative; display: flex; align-items: center; gap: 14px; width: 100%; padding: 18px 20px; cursor: pointer; text-align: left;
+  border: 1.5px dashed var(--line-strong); border-radius: 14px; background: var(--surface-2); color: var(--ink2);
+  transition: border-color 0.15s, background-color 0.15s, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.eu-drop:hover { border-color: var(--accent); }
+.eu-drop:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.eu-drop.over { border-color: var(--accent); border-style: solid; background: var(--accent-soft); transform: scale(1.01); }
+.eu-drop.off { opacity: 0.6; cursor: progress; }
+.eu-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.eu-drop-mark { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 12px; background: var(--surface); color: var(--accent); box-shadow: 0 4px 14px -6px rgba(0, 0, 0, 0.25); transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.eu-drop.over .eu-drop-mark { transform: translateY(-3px); }
+.eu-drop-mark svg { width: 20px; height: 20px; }
+.eu-drop b { display: block; color: var(--ink); font-size: 14px; font-weight: 600; }
+.eu-drop small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink3); }
+.eu-drop-kinds { display: flex; gap: 6px; margin-left: auto; }
+.eu-drop-kinds span { padding: 3px 7px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); font-size: 11px; font-weight: 650; color: var(--ink3); letter-spacing: 0.03em; }
+@media (max-width: 640px) { .eu-drop-kinds { display: none; } }
+
+/* ---- the busy hours (eu/heatmap.tsx), after Activity Heatmap ---- */
+.eu-heat { position: relative; }
+.eu-heat .heat i { cursor: crosshair; transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s; }
+.eu-heat .heat i:hover { outline: none; transform: scale(1.12); box-shadow: 0 0 0 2px var(--ink); position: relative; z-index: 1; }
+.eu-heat .heat-hour, .eu-heat .heat-day { transition: color 0.15s; }
+.eu-heat .heat-hour.lit, .eu-heat .heat-day.lit { color: var(--accent); font-weight: 700; }
+.eu-heat .heat.pointing i:not(.lit) { opacity: 0.5; }
+.eu-heat-tip {
+  position: absolute; z-index: 5; left: 0; top: 0; pointer-events: none; white-space: nowrap; padding: 7px 10px; border-radius: 9px;
+  background: var(--ink); color: var(--surface); font-size: 12px; box-shadow: var(--pop-shadow);
+}
+.eu-heat-tip b { display: block; font-size: 12.5px; }
+
+@media print { .eu-tour, .eu-pop-card, .eu-range-card, .eu-sel { display: none !important; } .bo .note { padding-left: 16px; } .bo .note::before { display: none; } }

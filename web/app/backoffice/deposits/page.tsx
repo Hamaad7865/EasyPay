@@ -8,6 +8,7 @@ import { canView, clock, lists } from "@/lib/report";
 import { Card, Empty, Flash, one, PageHead, type Search } from "../ui";
 import { Submit } from "../busy";
 import { stillOpen, toPaySql } from "@/lib/deposits";
+import { Glide } from "../eu/glide";
 
 // A shop's deposits (migration 0113): goods held for a customer who paid part,
 // collected later. Taken, paid on, collected and cancelled at a till, where
@@ -181,10 +182,10 @@ export default async function DepositsPage({ searchParams }: { searchParams: Sea
             <input type="hidden" name="show" value={show} />
             <input name="q" defaultValue={q} placeholder="Number, customer or phone" aria-label="Find a deposit" />
             <Submit className="btn-quiet btn-sm">Find</Submit>
-            <span className="seg" style={{ marginLeft: 12 }}>
+            <Glide as="span" className="seg" style={{ marginLeft: 12 }}>
               <Link href={`${PATH}?show=open${q ? "&q=" + encodeURIComponent(q) : ""}`} className={show === "open" ? "on" : undefined}>Open</Link>
               <Link href={`${PATH}?show=all${q ? "&q=" + encodeURIComponent(q) : ""}`} className={show === "all" ? "on" : undefined}>All</Link>
-            </span>
+            </Glide>
           </form>
           {show === "open" && open.length > 0 && (
             <div className="note">

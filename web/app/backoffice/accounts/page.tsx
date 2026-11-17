@@ -9,6 +9,7 @@ import { ageSql, FLAG } from "@/lib/accounts";
 import { Empty, Flash, one, PageHead, type Search } from "../ui";
 import { Stat } from "../reports/parts";
 import { Submit } from "../busy";
+import { Glide } from "../eu/glide";
 
 // A shop's customer accounts (migration 0114), as Carfectionist's
 // Reconciliation: who owes the shop, how old each debt is, and what looks
@@ -121,12 +122,12 @@ export default async function AccountsPage({ searchParams }: { searchParams: Sea
         <>
           <form method="get" className="inline" style={{ marginBottom: 14 }}>
             {tab === "exceptions" && <input type="hidden" name="tab" value="exceptions" />}
-            <span className="seg" style={{ marginRight: 12 }}>
+            <Glide as="span" className="seg" style={{ marginRight: 12 }}>
               <Link href={tabHref("owed")} className={tab === "owed" ? "on" : undefined}>Owed</Link>
               <Link href={tabHref("exceptions")} className={tab === "exceptions" ? "on" : undefined}>
                 Exceptions{exceptions > 0 ? ` (${exceptions})` : ""}
               </Link>
-            </span>
+            </Glide>
             <input name="q" defaultValue={q} placeholder="Customer or phone" aria-label="Find a customer" />
             <Submit className="btn-quiet btn-sm">Find</Submit>
           </form>

@@ -9,6 +9,7 @@ import { loadSettings, money } from "@/lib/settings";
 import { clock, lists } from "@/lib/report";
 import { Empty, Flash, one, PageHead, type Search } from "../ui";
 import { Submit } from "../busy";
+import { Glide } from "../eu/glide";
 
 // A shop's credit notes (migration 0109): what an exchange left over for the
 // customer, printed as a slip at the till and spent there by its number.
@@ -110,10 +111,10 @@ export default async function CreditNotesPage({ searchParams }: { searchParams: 
         <input type="hidden" name="show" value={show} />
         <input name="q" defaultValue={q} placeholder="Number or customer" aria-label="Find a credit note" />
         <Submit className="btn-quiet btn-sm">Find</Submit>
-        <span className="seg" style={{ marginLeft: 12 }}>
+        <Glide as="span" className="seg" style={{ marginLeft: 12 }}>
           <Link href={`${PATH}?show=open${q ? "&q=" + encodeURIComponent(q) : ""}`} className={show === "open" ? "on" : undefined}>Open</Link>
           <Link href={`${PATH}?show=closed${q ? "&q=" + encodeURIComponent(q) : ""}`} className={show === "closed" ? "on" : undefined}>Used, expired, cancelled</Link>
-        </span>
+        </Glide>
       </form>
       {show === "open" && d.rows.length > 0 && (
         <div className="note"><strong>{m(open)} on {d.rows.length} open {d.rows.length === 1 ? "note" : "notes"}</strong>Money the shop owes in goods. It is in no tender on the reports; Day closing says what was issued and redeemed.</div>

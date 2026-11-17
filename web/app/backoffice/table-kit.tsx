@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronRight, ChevronsUpDown, Search } from "lucide-react";
+import { Glide } from "./eu/glide";
 
 // What every list in the back office is made of (Items, Categories, Stock,
 // Customers, Discounts): one card, a box that finds a line as you type,
@@ -119,14 +120,14 @@ export function SortTh({ t, k, label, num }: { t: Table; k: string; label: strin
 export function Seg({ t, name, label, options }: { t: Table; name: string; label: string; options: readonly (readonly [string, string])[] }) {
   const value = options.some(([v]) => v === t.get(name)) ? t.get(name) : "";
   return (
-    <div className="seg" role="radiogroup" aria-label={label}>
+    <Glide className="seg" role="radiogroup" aria-label={label}>
       {options.map(([v, text]) => (
         <label key={v}>
           <input type="radio" name={"seg-" + name} checked={value === v} onChange={() => t.set(name, v)} />
           {text}
         </label>
       ))}
-    </div>
+    </Glide>
   );
 }
 

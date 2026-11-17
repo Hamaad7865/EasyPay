@@ -35,6 +35,43 @@ export function Drawer({ open, title, subtitle, onClose, children, foot }: { ope
     }, 180);
   };
 
+  // on a phone the panel is a sheet from the foot: pulled down by its head, it follows the finger, and past a third of
+  // the way (or flicked) it goes; let go sooner and it springs back
+  const drag = useRef<{ y: number; t: number; dy: number } | null>(null);
+  const onDown = (e: React.PointerEvent) => {
+    if (!window.matchMedia("(max-width: 640px)").matches || (e.target as HTMLElement).closest("button")) return;
+    drag.current = { y: e.clientY, t: performance.now(), dy: 0 };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    ref.current?.classList.add("dragging");
+  };
+  const onMove = (e: React.PointerEvent) => {
+    const d = drag.current, el = ref.current;
+    if (!d || !el) return;
+    d.dy = Math.max(0, e.clientY - d.y);
+    el.style.transform = `translateY(${d.dy}px)`;
+  };
+  const onUp = () => {
+    const d = drag.current, el = ref.current;
+    drag.current = null;
+    if (!d || !el) return;
+    el.classList.remove("dragging");
+    const fast = d.dy / Math.max(1, performance.now() - d.t) > 0.6;
+    if (d.dy > el.offsetHeight / 3 || (fast && d.dy > 40)) {
+      // it leaves from where the finger let it go, then is put back for the next time it opens
+      el.style.transition = "transform 0.18s cubic-bezier(0.4, 0, 1, 1)";
+      el.style.transform = "translateY(100%)";
+      close();
+      setTimeout(() => {
+        el.style.transition = "";
+        el.style.transform = "";
+      }, 260);
+    } else {
+      el.style.transition = "transform 0.32s cubic-bezier(0.34, 1.4, 0.64, 1)";
+      el.style.transform = "";
+      setTimeout(() => el && (el.style.transition = ""), 340);
+    }
+  };
+
   return (
     <dialog
       ref={ref}
@@ -48,7 +85,7 @@ export function Drawer({ open, title, subtitle, onClose, children, foot }: { ope
     >
       {open && (
         <div className="drawer-panel">
-          <header className="drawer-head">
+          <header className="drawer-head" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
             <div>
               <h2>{title}</h2>
               {subtitle && <p>{subtitle}</p>}

@@ -11,6 +11,7 @@ import { dayWords, dueOf, exclOf, figures, type InvTax, lineFits, parseQty, perc
 import { addCustomer, customerGlance, deleteDraft, issueInvoice, saveDraft, searchCustomers, searchProducts, type SentHead, type SentLine, stockFor } from "../actions";
 import type { CustomerHit, Found, Glance, Invoice } from "../data";
 import { GlanceCard } from "../glance";
+import { Glide } from "../../eu/glide";
 
 // An invoice being written (docs/superpowers/specs/2026-11-12-invoices-design.md). Keyboard first: the box under
 // the lines finds a product by name, SKU or barcode and Enter adds it (a scanner works the same); Tab moves
@@ -655,7 +656,7 @@ export function InvoiceEditor(p: {
                 />
               </div>
               <div className="inv-who">
-                <div className="seg" role="radiogroup" aria-label="Who is buying">
+                <Glide className="seg" role="radiogroup" aria-label="Who is buying">
                   {(
                     [
                       ["B2C", "A person"],
@@ -668,7 +669,7 @@ export function InvoiceEditor(p: {
                       {t}
                     </label>
                   ))}
-                </div>
+                </Glide>
                 {EXTRAS.filter(([k]) => !shows(k)).map(([k, , label]) => (
                   <button key={k} type="button" className="inv-chip" onClick={() => reveal(k)}>
                     <Plus aria-hidden="true" />
