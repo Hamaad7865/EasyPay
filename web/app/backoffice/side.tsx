@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, LogOut, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Search, Sun } from "lucide-react";
+import { ChevronDown, LogOut, Menu, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Search, Sun, X } from "lucide-react";
 import { Submit, Wait } from "./busy";
 import { groupsFor, HOME, groupOf, isOn, over, sectionsFor, type NavCount } from "./nav";
 import type { Mode } from "@/lib/mode";
 import type { Theme } from "@/lib/theme";
 import { ThemeButton, useTheme } from "../theme";
 import { openSearch, SearchBox, useSearchKey } from "./search-box";
+import { onOpenMenu } from "./eu/topbar";
 
 // The way round the back office, which has two shapes.
 //
@@ -24,6 +25,11 @@ import { openSearch, SearchBox, useSearchKey } from "./search-box";
 // in and the switch that brings the menu back. A sign opens its group's
 // pages in a small card beside it, so every page is still two taps off and
 // the page has the whole width.
+//
+// On a phone or a narrow tablet there is neither: the menu is a panel that
+// slides in over the page from the left, opened by the key in the bar across
+// the top (eu/topbar.tsx, which every width has) or, on a phone, by the last
+// of the tabs along the foot, which hold the pages opened most.
 //
 // Only one of the two shows at a time: beside the open menu the signs said
 // nothing the menu did not. Which shape it was left in, and which groups were
@@ -59,6 +65,16 @@ const initials = (name: string) => {
   const two = words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? "?").slice(0, 2);
   return two.toUpperCase();
 };
+// The pages a phone has under the thumb, by address: the menu's own names and
+// icons, so a shop reads Sales and Products where a restaurant reads Orders
+// and Items. `short` is for a name too long for a tab.
+const TABS: { href: string; short?: string }[] = [
+  { href: HOME.href },
+  { href: "/backoffice/reports/orders" },
+  { href: "/backoffice/items" },
+  { href: "/backoffice/stock", short: "Stock" },
+];
+
 const shut = () => document.querySelectorAll<HTMLElement>(".rail-card:popover-open").forEach((c) => c.hidePopover());
 
 // The number beside a page: how many rows its list holds. Past 999 it is
@@ -120,9 +136,13 @@ export function Side({
   // of another group opens that one too and closes nothing.
   const [open, setOpen] = useState<Set<string>>(() => new Set([...(opened ?? []), ...(here ? [here] : [])]));
   const [seen, setSeen] = useState(path);
+  // on a narrow screen the menu is a panel over the page: is it showing?
+  const [menu, setMenu] = useState(false);
   if (seen !== path) {
     setSeen(path);
     if (here && !open.has(here)) setOpen(new Set([...open, here]));
+    // arriving on a page puts the panel away
+    setMenu(false);
   }
 
   // On a narrow screen there is no rail and the menu is never folded away,
@@ -135,6 +155,30 @@ export function Side({
     m.addEventListener("change", on);
     return () => m.removeEventListener("change", on);
   }, []);
+
+  // the key in the top bar brings the panel out
+  useEffect(() => onOpenMenu(() => setMenu(true)), []);
+
+  // The panel is put away by Esc, and by the window growing wide enough for the menu to stand beside the page.
+  useEffect(() => {
+    if (!menu) return;
+    if (!narrow) {
+      setMenu(false);
+      return;
+    }
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(false);
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [menu, narrow]);
+  const tabs = useMemo(() => {
+    const all = [HOME, ...groups.flatMap((g) => g.links)];
+    return TABS.flatMap((t) => {
+      const l = all.find((x) => x.href === t.href);
+      return l ? [{ href: l.href, label: t.short ?? l.label, icon: l.icon }] : [];
+    });
+  }, [groups]);
 
   // The list scrolls without a bar, so the page that is open is brought into
   // view once its group has finished opening; and a card beside the rail is
@@ -205,6 +249,8 @@ export function Side({
 
   return (
     <>
+      {/* what dims the page behind the panel: a tap on it puts the panel away */}
+      {menu && <button type="button" className="bo-scrim" aria-label="Close the menu" tabIndex={-1} onClick={() => setMenu(false)} />}
       {/* while developing, Next.js puts its own round badge in the bottom left corner: the rail and the menu stop short of it */}
       <nav className={"rail" + dev} aria-label="Sections" data-folded={away || undefined} data-turned={turned || undefined} inert={!away}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -267,7 +313,7 @@ export function Side({
       </nav>
 
       {/* folded away, its links are out of reach of the Tab key too */}
-      <aside className={"bo-side" + dev} id="bo-menu" data-folded={away || undefined} inert={away && !narrow}>
+      <aside className={"bo-side" + dev} id="bo-menu" data-folded={away || undefined} data-open={menu || undefined} inert={narrow ? !menu : away}>
         <div className="bo-side-in">
           <div className="bo-brand">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -275,6 +321,9 @@ export function Side({
             <span>
               Easy<span className="bo-brand-pos">Pay</span>
             </span>
+            <button type="button" className="bo-side-x" aria-label="Close the menu" onClick={() => setMenu(false)}>
+              <X aria-hidden="true" strokeWidth={1.9} />
+            </button>
           </div>
           <div className="bo-restaurant" title={restaurant}>
             <span className="bo-tile" aria-hidden="true">{initials(restaurant)}</span>
@@ -332,7 +381,8 @@ export function Side({
           </nav>
           {/* the small keys at the foot, two to a line */}
           <div className="bo-foot">
-            <button type="button" onClick={openSearch} aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K" title={`Search (${key})`}>
+            {/* on a narrow screen the menu is a panel over the page: it is put away for the search */}
+            <button type="button" onClick={() => { setMenu(false); openSearch(); }} aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K" title={`Search (${key})`}>
               <Search aria-hidden="true" strokeWidth={1.8} />
               Search
             </button>
@@ -360,6 +410,20 @@ export function Side({
           </div>
         </div>
       </aside>
+      {/* a phone: the pages opened most, under the thumb, and the menu */}
+      <nav className="bo-tabs" aria-label="Main pages">
+        {tabs.map((t) => (
+          <Link key={t.href} href={t.href} className={isOn(t.href, path) ? "on" : undefined} aria-current={isOn(t.href, path) ? "page" : undefined}>
+            <t.icon aria-hidden="true" strokeWidth={1.9} />
+            <span>{t.label}</span>
+            <Wait />
+          </Link>
+        ))}
+        <button type="button" aria-expanded={menu} aria-controls="bo-menu" onClick={() => setMenu(true)}>
+          <Menu aria-hidden="true" strokeWidth={1.9} />
+          <span>Menu</span>
+        </button>
+      </nav>
       {/* once, and outside the menu: it has to open with the menu folded away too */}
       <SearchBox mode={mode} premium={premium} mra={mra} many={many} />
     </>

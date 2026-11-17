@@ -7,8 +7,9 @@ import { isDay } from "@/lib/day";
 import { fmtRs } from "@/lib/money";
 import { clock, fmtQty, RECEIPTS, today } from "@/lib/report";
 import { lineOffSql } from "@/lib/stock-reports";
-import { Go, Submit, Wait } from "./busy";
-import { SalesChart, type Day } from "./dash-chart";
+import { AreaChart, BarChart, DonutChart } from "./eu/charts";
+import { StatCard, type Stat } from "./eu/stat";
+import { RangePicker, Stretch } from "./eu/range";
 import { Card } from "./ui";
 import { BranchPicker } from "./branch-picker";
 import { type Branch, branches, pickedOf, wanted } from "@/lib/branch";
@@ -24,6 +25,8 @@ const addDays = (s: string, n: number) => {
 const span = (from: string, to: string) => Math.round((parse(to).getTime() - parse(from).getTime()) / 86400000) + 1;
 const long = (s: string) =>
   parse(s).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric", timeZone: "UTC" }).replace(",", "");
+const short = (s: string) => parse(s).toLocaleDateString("en-US", { month: "short", day: "2-digit", timeZone: "UTC" });
+const named = (s: string) => parse(s).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 const weekday = (s: string) => parse(s).toLocaleDateString("en-GB", { weekday: "long", timeZone: "UTC" });
 const fullDate = (s: string) =>
   parse(s).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).replace(",", "");
@@ -217,6 +220,8 @@ type Now = {
 //   - the day is the day on the till's clock when the receipt was issued, in
 //     the store's time zone.
 type Split = { name: string | null; n: number; amount: number };
+// a day of the days picked: what it took, its VAT, its sales paid and its refunds (the tiles' small curves)
+type Day = { day: string; gross: number; tax: number; n: number; refunds: number };
 type Range = {
   gross: number; tax: number; discounts: number; refunds: number; accounts: number; covers: number; seated: number; days: Day[];
   top: { name: string; cat: string | null; qty: number; amount: number }[];
@@ -251,9 +256,13 @@ async function loadRange(c: PoolClient, tenantId: string, from: string, to: stri
                  'accounts', count(distinct ticket_id) filter (where type = 'sale')) from r) as totals,
               (select coalesce(sum(z.covers), 0)::int
                  from (select distinct on (ticket_id) ticket_id, covers from r where type = 'sale' and ticket_id is not null) z) as covers,
-              (select json_agg(json_build_object('day', d::date::text, 'gross', coalesce(x.gross, 0)) order by d)
+              (select json_agg(json_build_object('day', d::date::text, 'gross', coalesce(x.gross, 0), 'tax', coalesce(x.tax, 0),
+                                                 'n', coalesce(x.n, 0), 'refunds', coalesce(x.refunds, 0)) order by d)
                  from generate_series($2::date, $3::date, interval '1 day') d
-                 left join (select day, sum(signed_total) as gross from r group by day) x on x.day = d::date) as days,
+                 left join (select day, sum(signed_total) as gross, sum(sign * tax_total) as tax,
+                                   count(distinct ticket_id) filter (where type = 'sale') as n,
+                                   coalesce(sum(total) filter (where type = 'refund'), 0) as refunds
+                              from r group by day) x on x.day = d::date) as days,
               ${part(`select name, max(cat) as cat, sum(sign * qty)::int as qty, sum(sign * amount)::bigint as amount
                         from il group by name order by 4 desc, 1 limit 5`)} as top,
               ${part(`select cat as name, sum(sign * qty)::int as qty, sum(sign * amount)::bigint as amount
@@ -281,7 +290,7 @@ async function loadRange(c: PoolClient, tenantId: string, from: string, to: stri
   return {
     gross: Number(t.gross), tax: Number(t.tax), discounts: Number(t.discounts), refunds: Number(t.refunds), accounts: Number(t.accounts),
     covers: Number(row.covers), seated: Number(t.seated),
-    days: ((row.days ?? []) as { day: string; gross: number }[]).map((d) => ({ day: d.day, gross: Number(d.gross) })),
+    days: ((row.days ?? []) as Day[]).map((d) => ({ day: d.day, gross: Number(d.gross), tax: Number(d.tax), n: Number(d.n), refunds: Number(d.refunds) })),
     top: list(row.top), cats: list(row.cats), payments: list(row.payments), dining: list(row.dining), staff: list(row.staff), hours: list(row.hours),
   };
 }
@@ -393,9 +402,6 @@ function Shares({ rows, total, none, count }: { rows: Split[]; total: number; no
 // Each store's time zone as its last draw found it, so the next one knows the
 // day there before it has asked.
 const zones = new Map<string, string>();
-
-const CALENDAR =
-  "M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z";
 
 export default async function BackofficeHome({
   searchParams,
@@ -577,7 +583,7 @@ export default async function BackofficeHome({
       )}
 
       <div className="home-top">
-        <section className="pane rise" style={rise(1)}>
+        <section className="pane rise" style={rise(1)} data-tour="attention">
           <div className="pane-head">
             <div>
               <h2>
@@ -628,7 +634,7 @@ export default async function BackofficeHome({
           </div>
         </section>
 
-        <section className="pane rise" style={rise(2)}>
+        <section className="pane rise" style={rise(2)} data-tour="now">
           <div className="pane-head">
             <div>
               <h2>Right now</h2>
@@ -759,25 +765,36 @@ export default async function BackofficeHome({
   const avg = (r: Range) => (r.accounts > 0 ? Math.round(r.gross / r.accounts) : 0);
   // a shop has no accounts at tables and counts no guests: its own words, and its refunds in their place
   const shop = ctx.mode === "retail";
-  const kpis: { label: string; value: string; now: number; before: number | null | undefined; money: boolean; note: string; lower?: true }[] = [
-    { label: "Total gross sales", value: fmtRs(cur.gross), now: cur.gross, before: prev?.gross, money: true,
+  // the days that have happened, for the tiles' small curves: a day still to come is not a day of no sales
+  const past = cur.days.filter((d) => d.day <= now.today);
+  const trend = (values: number[], unit: "rs" | "n") => (past.length > 1 ? { values, labels: past.map((d) => named(d.day)), unit } : undefined);
+  const kpis: { label: string; value: string; now: number; before: number | null | undefined; money: boolean; note: string; lower?: true; trend?: Stat["trend"]; href?: string }[] = [
+    { label: "Total gross sales", value: fmtRs(cur.gross), now: cur.gross, before: prev?.gross, money: true, trend: trend(past.map((d) => d.gross), "rs"), href: `/backoffice/reports/sales?${days}`,
       note: cur.discounts !== 0 || cur.refunds !== 0 ? `After ${fmtRs(cur.discounts)} of discounts and ${fmtRs(cur.refunds)} of refunds` : "Paid by customers, after discounts and refunds" },
-    { label: "Total net sales", value: fmtRs(net(cur)), now: net(cur), before: prev && net(prev), money: true, note: "Gross sales less VAT" },
-    { label: "Total taxes", value: fmtRs(cur.tax), now: cur.tax, before: prev?.tax, money: true, note: "VAT inside those sales" },
+    { label: "Total net sales", value: fmtRs(net(cur)), now: net(cur), before: prev && net(prev), money: true, note: "Gross sales less VAT", trend: trend(past.map((d) => d.gross - d.tax), "rs"), href: `/backoffice/reports/sales?${days}` },
+    { label: "Total taxes", value: fmtRs(cur.tax), now: cur.tax, before: prev?.tax, money: true, note: "VAT inside those sales", trend: trend(past.map((d) => d.tax), "rs"), href: `/backoffice/reports/tax?${days}` },
     shop
-      ? { label: "Sales", value: String(cur.accounts), now: cur.accounts, before: prev?.accounts, money: false, note: "Sales paid in the period" }
-      : { label: "Closed accounts", value: String(cur.accounts), now: cur.accounts, before: prev?.accounts, money: false, note: "Orders paid in the period" },
+      ? { label: "Sales", value: String(cur.accounts), now: cur.accounts, before: prev?.accounts, money: false, note: "Sales paid in the period", trend: trend(past.map((d) => d.n), "n") }
+      : { label: "Closed accounts", value: String(cur.accounts), now: cur.accounts, before: prev?.accounts, money: false, note: "Orders paid in the period", trend: trend(past.map((d) => d.n), "n") },
     shop
-      ? { label: "Average per sale", value: fmtRs(avg(cur)), now: avg(cur), before: prev && avg(prev), money: true, note: "Gross sales over the sales paid" }
-      : { label: "Average per order", value: fmtRs(avg(cur)), now: avg(cur), before: prev && avg(prev), money: true, note: "Gross sales over closed accounts" },
+      ? { label: "Average per sale", value: fmtRs(avg(cur)), now: avg(cur), before: prev && avg(prev), money: true, note: "Gross sales over the sales paid", trend: trend(past.map((d) => (d.n > 0 ? Math.round(d.gross / d.n) : 0)), "rs") }
+      : { label: "Average per order", value: fmtRs(avg(cur)), now: avg(cur), before: prev && avg(prev), money: true, note: "Gross sales over closed accounts", trend: trend(past.map((d) => (d.n > 0 ? Math.round(d.gross / d.n) : 0)), "rs") },
     shop
-      ? { label: "Refunds", value: fmtRs(cur.refunds), now: cur.refunds, before: prev?.refunds, money: true, note: "Given back on refund receipts", lower: true }
+      ? { label: "Refunds", value: fmtRs(cur.refunds), now: cur.refunds, before: prev?.refunds, money: true, note: "Given back on refund receipts", lower: true, trend: trend(past.map((d) => d.refunds), "rs") }
       : { label: "Guests served", value: String(cur.covers), now: cur.covers, before: prev?.covers, money: false,
           note: cur.covers > 0 ? `${fmtRs(Math.round(cur.seated / cur.covers))} a guest, on the orders that say how many` : "Guests entered on the orders paid" },
   ];
+  const stats: Stat[] = kpis.map((k) => {
+    const d = k.before == null ? null : change(k.now, k.before);
+    return {
+      label: k.label, value: k.value, note: k.note, trend: k.trend, href: k.href,
+      before: k.before == null ? undefined : k.money ? fmtRs(k.before) : String(k.before),
+      // more refunds is worse: its rise is drawn as bad news
+      delta: d && { text: d.text, up: d.up, good: d.up !== Boolean(k.lower) },
+    };
+  });
 
   const itemsTop = Math.max(1, ...cur.top.map((r) => r.amount));
-  const catsTotal = cur.cats.reduce((a, r) => a + r.amount, 0);
   const hours = (() => {
     if (cur.hours.length === 0) return [];
     const by = new Map(cur.hours.map((h) => [h.hour, h]));
@@ -786,6 +803,8 @@ export default async function BackofficeHome({
   })();
   const peak = hours.reduce((a, h) => (h.amount > a.amount ? h : a), { hour: 0, n: 0, amount: 0 });
   const hh = (h: number) => String(h).padStart(2, "0") + ":00";
+  const slices = (rows: Split[], none: string) => rows.map((r) => ({ label: r.name ?? none, value: r.amount, sub: plural(r.n, "receipt", "receipts") }));
+  const nothing = <p className="dash-empty">Nothing sold in these days.</p>;
 
   return (
     <div className="home">
@@ -795,74 +814,47 @@ export default async function BackofficeHome({
         <span>For the days picked</span>
       </div>
       <div className="dash-controls no-print">
-        <details className="range">
-          <summary>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d={CALENDAR} />
-            </svg>
-            {long(from)} - {long(to)}
-          </summary>
-          <div className="range-menu">
-            {data.options.map((o) => (
-              <Link key={o.label} href={href(o.from, o.to, compare)} className={o.from === from && o.to === to ? "on" : undefined}>
-                {o.label}
-                <Wait />
-              </Link>
-            ))}
-            <Go action="/backoffice">
-              <input type="date" name="from" defaultValue={from} required aria-label="From" /> to{" "}
-              <input type="date" name="to" defaultValue={to} required aria-label="To" />
-              {compare && <input type="hidden" name="compare" value="1" />}
-              <Submit>Apply</Submit>
-            </Go>
-          </div>
-        </details>
+        <div data-tour="days">
+          <RangePicker from={from} to={to} presets={data.options} today={now.today} path="/backoffice" keep={compare ? "compare=1" : ""} />
+        </div>
         <span className="spacer" />
-        <Link className="compare" href={href(from, to, !compare)} role="switch" aria-checked={compare}>
-          Compare data <span className={compare ? "switch on" : "switch"} />
-          <Wait />
-        </Link>
+        <Stretch on={compare} label="Compare data" href={href(from, to, !compare)} />
       </div>
 
-      <div className="kpis six">
-        {kpis.map((k) => {
-          const delta = k.before == null ? null : change(k.now, k.before);
-          return (
-            <div className="kpi" key={k.label}>
-              <div className="kpi-label">{k.label}</div>
-              <div className="kpi-value">{k.value}</div>
-              <div className="kpi-note">{k.note}</div>
-              {k.before != null && (
-                <div className="kpi-prev">
-                  Before: {k.money ? fmtRs(k.before) : k.before}
-                  {/* more refunds is worse: its rise is drawn as a fall */}
-                  {delta && <span className={delta.up !== Boolean(k.lower) ? "up" : "down"}> {delta.text}</span>}
-                </div>
-              )}
-            </div>
-          );
-        })}
+      <div className="eu-stats" data-tour="stats">
+        {stats.map((st, i) => (
+          <StatCard key={st.label} s={st} i={i} />
+        ))}
       </div>
 
       <div className="dash-split">
-        <Card title="Gross sales by day" lede={`${long(from)} - ${long(to)}`} action={<More href={`/backoffice/reports/sales?${days}`}>Sales summary</More>}>
-          <SalesChart cur={cur.days} prev={prev?.days ?? null} upto={cur.days.filter((d) => d.day <= now.today).length} />
-          {prev && (
-            <div className="legend">
-              <span>
-                <i />
-                This period
-              </span>
-              <span>
-                <i className="prev" />
-                {long(data.prevFrom)} - {long(data.prevTo)}
-              </span>
-            </div>
-          )}
-        </Card>
+        <div data-tour="chart" className="eu-cell">
+          <Card title="Gross sales by day" lede={`${long(from)} - ${long(to)}`} action={<More href={`/backoffice/reports/sales?${days}`}>Sales summary</More>}>
+            <AreaChart
+              points={cur.days.map((d) => ({ key: d.day, label: short(d.day), long: named(d.day), value: d.gross }))}
+              before={prev ? prev.days.map((d) => d.gross) : null}
+              beforeLabel={`${long(data.prevFrom)} - ${long(data.prevTo)}`}
+              upto={past.length}
+              unit="rs"
+              label="Gross sales by day"
+            />
+            {prev && (
+              <div className="legend">
+                <span>
+                  <i />
+                  This period
+                </span>
+                <span>
+                  <i className="prev" />
+                  {long(data.prevFrom)} - {long(data.prevTo)}
+                </span>
+              </div>
+            )}
+          </Card>
+        </div>
         <Card title="Top sellers" lede={ctx.mode === "retail" ? "By what they brought in" : "By what they brought in, add-ons included"} action={<More href={`/backoffice/reports/items?${days}`}>{ctx.mode === "retail" ? "Product sales" : "Item sales"}</More>}>
           {cur.top.length === 0 ? (
-            <p className="dash-empty">Nothing sold in these days.</p>
+            nothing
           ) : (
             <ul className="rank">
               {cur.top.map((r, i) => (
@@ -888,15 +880,15 @@ export default async function BackofficeHome({
       {/* a shop's sales are all rung up at the counter: it has no order types to show */}
       <div className={ctx.mode === "retail" ? "grid-2" : "grid-3 even"}>
         <Card title="Payment methods" lede="How the money came in">
-          <Shares rows={cur.payments} total={cur.gross} none="Unknown" />
+          {cur.payments.length === 0 ? nothing : <DonutChart slices={slices(cur.payments, "Unknown")} unit="rs" centre="Taken" label="Payment methods" />}
         </Card>
         {ctx.mode !== "retail" && (
           <Card title="Order types" lede="Tables, takeaway, delivery, counter">
-            <Shares rows={cur.dining} total={cur.gross} none="Not set" />
+            {cur.dining.length === 0 ? nothing : <DonutChart slices={slices(cur.dining, "Not set")} unit="rs" centre="Sales" label="Order types" />}
           </Card>
         )}
         <Card title="Categories" lede={ctx.mode === "retail" ? "What was charged, before a discount on a whole sale" : "What was charged, before a discount on a whole bill"} action={<More href={`/backoffice/reports/items?${days}&group=category`}>All</More>}>
-          <Shares rows={cur.cats.map((r) => ({ name: r.name, n: 0, amount: r.amount }))} total={catsTotal} none="No category" count={false} />
+          {cur.cats.length === 0 ? nothing : <DonutChart slices={cur.cats.map((r) => ({ label: r.name, value: r.amount, sub: `${fmtQty(r.qty)} sold` }))} unit="rs" centre="Charged" label="Categories" />}
         </Card>
       </div>
 
@@ -906,16 +898,13 @@ export default async function BackofficeHome({
           lede={peak.amount > 0 ? `Busiest from ${hh(peak.hour)} to ${hh(peak.hour + 1)}: ${fmtRs(peak.amount)} on ${plural(peak.n, "receipt", "receipts")}` : "When the money comes in"}
         >
           {hours.length === 0 ? (
-            <p className="dash-empty">Nothing sold in these days.</p>
+            nothing
           ) : (
-            <div className="hours" role="img" aria-label="Sales by hour of the day">
-              {hours.map((h) => (
-                <div key={h.hour} title={`${hh(h.hour)}: ${fmtRs(h.amount)} on ${plural(h.n, "receipt", "receipts")}`}>
-                  <i className={h.hour === peak.hour ? "peak" : undefined} style={{ height: `calc((100% - 24px) * ${peak.amount > 0 ? Math.max(0, h.amount / peak.amount).toFixed(3) : 0})` }} />
-                  <span>{String(h.hour).padStart(2, "0")}</span>
-                </div>
-              ))}
-            </div>
+            <BarChart
+              bars={hours.map((h) => ({ label: String(h.hour).padStart(2, "0"), long: `${hh(h.hour)} to ${hh(h.hour + 1)}`, value: h.amount, sub: plural(h.n, "receipt", "receipts") }))}
+              unit="rs"
+              label="Sales by hour of the day"
+            />
           )}
         </Card>
         <Card title="Staff" lede="Who took the payments">

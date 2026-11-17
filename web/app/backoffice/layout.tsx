@@ -4,6 +4,9 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { GROUPS } from "./nav";
 import { Over, Side } from "./side";
+import { PhoneTables } from "./phone-tables";
+import { TopBar } from "./eu/topbar";
+import "./eu/eu.css";
 import { words } from "@/lib/mode";
 import { onMra } from "@/lib/mra";
 import { THEME_COOKIE, themeOf } from "@/lib/theme";
@@ -47,6 +50,20 @@ export default async function BackofficeLayout({ children }: { children: React.R
         signOut={signOut}
       />
       <div className="bo-body">
+        <TopBar
+          mode={ctx.mode}
+          premium={ctx.premium}
+          mra={onMra(ctx.mra)}
+          many={Boolean(ctx.branches)}
+          drawn={Date.now()}
+          restaurant={ctx.tenantName ?? words(ctx.mode).Place}
+          id={ctx.tenantId.slice(0, 8).toUpperCase()}
+          employee={ctx.admin ? "EasyPay admin" : ctx.employeeName}
+          role={ctx.admin ? `for ${ctx.employeeName ?? "the owner"}` : ctx.role}
+          signOut={signOut}
+          // the tour offers itself once to an owner new to this browser, never to EasyPay setting a client up
+          tourDue={!ctx.admin && !jar.get("bo-tour")}
+        />
         <main className="bo-main">
           {ctx.admin && (
             <form action={leave} className="bo-banner warn">
@@ -69,6 +86,7 @@ export default async function BackofficeLayout({ children }: { children: React.R
           <Over mode={ctx.mode} premium={ctx.premium} mra={onMra(ctx.mra)} many={Boolean(ctx.branches)} />
           {children}
         </main>
+        <PhoneTables />
       </div>
     </div>
   );

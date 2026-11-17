@@ -510,7 +510,7 @@ export function Importer({ run }: { run: (rows: ImportRow[], dry: boolean) => Pr
 
                 <div className="sheet">
                   <div className="sheet-grid" ref={gridRef} onScroll={mirror(gridRef, listRef)}>
-                    <table>
+                    <table className="keep">
                       <thead>
                         <tr>
                           <th className="sheet-no">Row</th>

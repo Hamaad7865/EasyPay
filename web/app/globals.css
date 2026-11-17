@@ -670,6 +670,63 @@ body {
 
 .bo-body { min-width: 0; display: flex; flex-direction: column; }
 
+/* ---- the frame on a phone or a narrow tablet (side.tsx) ----
+   None of these shows on a wide window; the rules that bring them in are with
+   the other narrow-screen rules, further down. */
+
+/* the bar across the top: the menu's key, whose back office this is, the search */
+.bo-top {
+  display: none; position: sticky; top: 0; z-index: 20; align-items: center; gap: 4px;
+  height: calc(52px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 6px 0;
+  background: var(--canvas); border-bottom: 1px solid var(--line);
+}
+.bo-top-key {
+  width: 44px; height: 44px; flex: none; padding: 0; display: grid; place-items: center; cursor: pointer;
+  border: 0; border-radius: 12px; background: none; color: var(--ink);
+  transition: background-color 0.15s, transform 0.2s var(--spring);
+}
+.bo-top-key svg { width: 21px; height: 21px; }
+.bo-top-key:hover { background: var(--glass-hover); }
+.bo-top-key:active { transform: scale(0.92); }
+.bo-top-key:focus-visible, .bo-top-name:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.bo-top-name { flex: 1; min-width: 0; height: 44px; display: flex; align-items: center; gap: 9px; padding: 0 4px; border-radius: 10px; color: var(--ink); text-decoration: none; }
+.bo-top-name img { height: 26px; width: auto; flex: none; display: block; }
+.bo-top-name b { font-size: 15.5px; font-weight: 650; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the key that puts the panel away, at the end of its first line */
+.bo-brand .bo-side-x {
+  display: none; width: 40px; height: 40px; margin: -6px -4px -6px auto; padding: 0; place-items: center; cursor: pointer;
+  border: 0; border-radius: 10px; background: none; color: var(--ink2);
+}
+.bo-brand .bo-side-x svg { width: 20px; height: 20px; }
+.bo-brand .bo-side-x:hover { background: var(--glass-hover); color: var(--ink); }
+.bo-brand .bo-side-x:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* what dims the page behind the panel */
+@keyframes scrim-in { from { opacity: 0; } }
+.bo-scrim { display: none; position: fixed; inset: 0; z-index: 39; padding: 0; border: 0; background: var(--scrim, rgba(17, 24, 39, 0.38)); cursor: default; animation: scrim-in 0.24s ease; }
+/* a phone's tabs along the foot: the pages opened most, then the menu */
+.bo-tabs {
+  display: none; position: fixed; inset: auto 0 0 0; z-index: 20;
+  height: calc(58px + env(safe-area-inset-bottom)); padding: 0 4px env(safe-area-inset-bottom);
+  background: var(--surface); border-top: 1px solid var(--line);
+}
+.bo-tabs a, .bo-tabs button {
+  flex: 1 1 0; min-width: 0; height: 58px; padding: 7px 2px 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer;
+  border: 0; background: none; color: var(--ink3); font: inherit; font-size: 11px; font-weight: 500; line-height: 1.1; text-decoration: none;
+  -webkit-tap-highlight-color: transparent; transition: color 0.15s;
+}
+.bo-tabs svg { width: 21px; height: 21px; flex: none; transition: transform 0.25s var(--spring); }
+.bo-tabs span:not(.wait) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bo-tabs a.on { color: var(--ink); font-weight: 650; }
+.bo-tabs a.on svg { color: var(--accent); }
+.bo-tabs a:active svg, .bo-tabs button:active svg { transform: scale(0.86); }
+.bo-tabs a:focus-visible, .bo-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: 12px; }
+.bo-tabs a:has(> .wait[data-on]) { cursor: progress; animation: wait-breathe 1.1s ease-in-out 0.12s infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .bo-top-key, .bo-tabs svg { transition: none; }
+  .bo-scrim, .bo-tabs a:has(> .wait[data-on]) { animation: none; }
+}
+@media print { .bo-top, .bo-tabs, .bo-scrim { display: none !important; } }
+
 /* ---- the search ---- */
 
 .search-foot kbd {
@@ -1528,14 +1585,32 @@ span.pd-icon { color: var(--ink3); }
 }
 
 @media (max-width: 1000px) {
-  .bo { grid-template-columns: minmax(0, 1fr); }
+  .bo { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .rail { display: none; }
-  .bo-side { position: static; height: auto; width: auto; }
-  .bo-foot button[aria-controls="bo-menu"] { display: none; }
+  /* The menu no longer stands beside the page: there is no room. It is a
+     panel that waits off the left edge and slides in over the page when its
+     key is pressed (the bar across the top, or the last tab on a phone). Put
+     away it is out of sight and out of reach (side.tsx makes it inert). */
+  .bo-side {
+    position: fixed; inset: 0 auto 0 0; z-index: 40; height: 100dvh; width: min(304px, 86vw);
+    padding-top: max(14px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom));
+    transform: translateX(-104%); visibility: hidden;
+    transition: transform 0.3s var(--glide), visibility 0s 0.3s;
+    box-shadow: none;
+  }
+  .bo-side[data-open] { transform: none; visibility: visible; transition: transform 0.34s var(--glide), visibility 0s; box-shadow: 24px 0 64px rgba(0, 0, 0, 0.28); }
+  .bo-side-in { width: auto; }
   .bo-side.dev { padding-bottom: 12px; }
-  .bo-side-in { width: auto; height: auto; display: block; }
-  .bo-nav { -webkit-mask-image: none; mask-image: none; padding-bottom: 12px; }
-  .bo-nav { overflow: visible; }
+  .bo-foot button[aria-controls="bo-menu"] { display: none; }
+  /* a line of the menu is a finger high */
+  .bo-nav a, .bo-group-head { padding-top: 11px; padding-bottom: 11px; }
+  .bo-group-list a { padding-top: 10px; padding-bottom: 10px; }
+  .bo-foot button { height: 40px; }
+  .bo-brand .bo-side-x { display: grid; }
+  .bo-scrim { display: block; }
+  /* the page behind stays where it was while the panel is over it */
+  html:has(.bo-side[data-open]) { overflow: hidden; }
+  .bo-top { display: flex; }
   .bo-main { padding: 20px 16px 40px; }
   .fd-body, .fd-body.view, .grid-2, .grid-3, .form-row, .tills { grid-template-columns: 1fr; }
   .kpis, .kpis.six, .stats, .stats.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2074,3 +2149,176 @@ html:has(.import-dialog[open]) { overflow: hidden; }
 }
 .rc-why { min-width: 260px; font-size: 13px; line-height: 1.45; }
 .rc-why div + div { margin-top: 4px; }
+
+/* ---- the back office on a phone (640px and under) ----
+   The frame is further up (the bar across the top and the menu as a panel
+   come in at 1000px); here are the tabs along the foot and every page's
+   pieces. These rules come last so that they follow the pieces they change.
+   They are the back office's alone (.bo-body is its page; the admin's page
+   has none): `.bo-body` in front where a rule must also outweigh the piece's
+   own, `:where(.bo-body)` where a piece's own special cases must still win. */
+@media (min-width: 641px) and (max-width: 1000px) {
+  /* a table wider than its card moves sideways in it and is not cut off */
+  .bo-body .card.flush { overflow-x: auto; }
+}
+@media (max-width: 640px) {
+  .bo-tabs { display: flex; }
+  /* the page ends above the tabs, and so does a Save that follows the page down */
+  .bo-body .bo-main { padding: 14px 14px calc(86px + env(safe-area-inset-bottom)); }
+  .bo-body .lines-save { bottom: calc(58px + env(safe-area-inset-bottom)); }
+
+  /* a page's head: its buttons go under its title, sharing the line */
+  .bo-body .bo-main h1 { font-size: 22px; }
+  .bo-body .bo-main .home-head h1 { font-size: 26px; }
+  .bo-body .lede { margin-bottom: 16px !important; }
+  .bo-body .page-head { flex-direction: column; align-items: stretch; gap: 12px; margin-bottom: 16px; }
+  .bo-body .page-head .lede { margin-bottom: 0 !important; }
+  .bo-body .page-actions > * { flex: 1 1 auto; }
+  .bo-body .bo-toolbar > :not(.spacer) { flex: 1 1 auto; }
+
+  /* a card: less room round it, and its head's search under its title, the width of the card */
+  .bo-body .card { margin-bottom: 14px; }
+  .bo-body .card:not(.flush) { padding: 16px; }
+  .bo-body .card-head { flex-wrap: wrap; padding: 14px 16px; }
+  .bo-body .card-head > div:first-child { flex: 1 1 180px; min-width: 0; }
+  .bo-body .card-body { padding: 16px; }
+  .bo-body .card-foot { flex-wrap: wrap; padding: 12px 16px; }
+  .bo-body .card-foot > button, .bo-body .card-foot > .btn { flex: 1 1 auto; }
+  .bo-body .table-search { flex: 1 1 100%; }
+  .bo-body .table-search input { width: 100%; }
+  .bo-body .table-filters, .bo-body .table-bulk { padding: 10px 16px; gap: 10px; }
+  .bo-body .table-filters select { max-width: 100%; }
+  /* a row of choices too long for the screen moves sideways under the finger */
+  .bo-body .seg, .bo-body .bo-chips, .bo-body .tabs { max-width: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .bo-body .seg::-webkit-scrollbar, .bo-body .bo-chips::-webkit-scrollbar, .bo-body .tabs::-webkit-scrollbar { display: none; }
+  .bo-body .seg label, .bo-body .seg a, .bo-body .bo-chips a, .bo-body .tabs a { flex: none; white-space: nowrap; }
+  .bo-body .seg label { min-height: 36px; }
+  .bo-body .bo-main .seg a { height: 36px; }
+  .bo-body .bo-chips a { padding: 9px 13px; }
+  .bo-body .tabs a { padding: 12px 0; }
+  /* a report's filters: two to a line, each the width of its half */
+  .bo-body .filters { gap: 10px; padding: 12px 14px; margin-bottom: 14px; }
+  .bo-body .filters label { flex: 1 1 130px; min-width: 0; }
+  .bo-body .filters label > input, .bo-body .filters label > select, .bo-body .branch-pick > select { width: 100%; min-width: 0; }
+  .bo-body .filters > button { flex: 1 1 auto; }
+
+  /* What is pressed is a finger high, and what is typed in is lettered at
+     16px: under that an iPhone zooms the page in on a field. A piece with a
+     size of its own (the arrow of a line, a link dressed as a button, a
+     pop-up's close) keeps it. */
+  :where(.bo-body) .bo-main button, :where(.bo-body) .btn { height: 44px; font-size: 14px; }
+  :where(.bo-body) .bo-main button.btn-quiet, :where(.bo-body) .btn-quiet { height: 44px; font-size: 14px; }
+  :where(.bo-body) .bo-main button.btn-sm, :where(.bo-body) .btn-sm { height: 38px; padding: 0 14px; font-size: 13px; }
+  :where(.bo-body) .bo-main button.btn-link { height: auto; min-height: 32px; font-size: 14px; }
+  :where(.bo-body) .bo-main input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="hidden"]):not([type="file"]),
+  :where(.bo-body) .bo-main select { height: 44px; font-size: 16px; }
+  :where(.bo-body) .bo-main textarea { font-size: 16px; }
+  :where(.bo-body) .bo-main input[type="checkbox"], :where(.bo-body) .bo-main input[type="radio"] { width: 20px; height: 20px; margin-right: 8px; }
+  :where(.bo-body) .bo-main input[type="color"] { width: 44px; height: 44px; }
+  .bo-body .check { min-height: 30px; font-size: 14px; }
+  .bo-body .field { max-width: none; font-size: 13.5px; }
+  .bo-body .setting textarea { max-width: none; }
+  .bo-body .inline { flex-wrap: wrap; max-width: 100%; }
+  .bo-body .note.asked { flex-direction: column; align-items: stretch; gap: 10px; }
+
+  /* the figures at the head of a page */
+  .bo-body .stats, .bo-body .kpis { gap: 10px; margin-bottom: 14px; }
+  .bo-body .stat, .bo-body .kpi { padding: 12px 14px; }
+  .bo-body .stat-value, .bo-body .kpi-value { font-size: 18px; }
+
+  /* A pop-up comes up from the foot of the screen, its buttons under the thumb. */
+  .bo-body .modal-backdrop { place-items: end stretch; }
+  .bo-body .modal, .bo-body .modal.wide { width: 100%; max-height: 92dvh; border-radius: 18px 18px 0 0; }
+  .bo-body .modal-row { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .bo-body .modal-foot { flex-wrap: wrap; border-radius: 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+  .bo-body .modal-foot > button { flex: 1 1 auto; }
+  .bo-body .modal-foot > .spacer { display: none; }
+  .bo-body .drawer-head { padding: 16px 16px 12px; }
+  .bo-body .drawer-body { padding: 4px 16px 20px; }
+  .bo-body .drawer-foot { flex-wrap: wrap; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .bo-body .drawer-foot > button { flex: 1 1 auto; }
+  .bo-main button.drawer-x, .bo-main button.modal-x { width: 40px; height: 40px; }
+  /* "are you sure?" (pos/ask.tsx), a receipt, and the import: the width of the screen, from its foot */
+  .bo-body .confirm { width: 100%; max-width: 100%; margin: auto 0 0; border-radius: 18px 18px 0 0; }
+  .bo-body .confirm-in { padding: 20px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .bo-body .confirm-foot > button { flex: 1 1 0; }
+  .bo-body .rc-pop { width: 100%; max-width: 100%; max-height: 94dvh; margin: auto 0 0; border-radius: 18px 18px 0 0; }
+  .bo-body .rc-foot { padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); }
+  .bo-body .rc-foot > button, .bo-body .rc-foot-links > * { flex: 1 1 auto; }
+  .bo-body .rc-find, .bo-body .rc-find input { width: 100%; }
+  .bo-body .import-dialog { width: 100%; height: 100dvh; border-radius: 0; }
+  /* A receipt as it prints is so many letters wide. On a phone its letters
+     are made as small as it takes for the whole width to show: a receipt cut
+     off at the right would lose its amounts. (A letter of this face is 0.6 of
+     its size wide; 22px is the paper's own edge, the rest what stands round it.) */
+  .bo-body .paper-wrap { padding: 10px; }
+  .bo-body .pp { font-size: min(12px, calc((100vw - 72px) / (var(--cols) * 0.6))); }
+  .bo-body .rc-paper .pp { max-width: 100%; font-size: min(12px, calc((100vw - 52px) / (var(--cols) * 0.6))); }
+  .bo-body .pp-line.big { font-size: 2em; }
+  .search-dialog { width: calc(100vw - 16px); margin-top: max(10px, env(safe-area-inset-top)); }
+  .search-results { max-height: 64dvh; }
+  .search-results a { padding: 10px; }
+  /* which key does what: a phone has no keys */
+  .search-foot { display: none; }
+
+  /* ---- a phone: a table as a list ----
+     No room for columns side by side, so a line is a short block: what the
+     line is, large, then each other cell with its column's title in front of
+     it ("On hand 12"), one after another and onto the next line as they need.
+     What can be pressed or typed in takes a line of its own. The titles come
+     from the table's head, copied onto the cells by phone-tables.tsx; until
+     that has run (a moment after the page arrives) the cells stand without
+     them. A table marked `keep` stays a grid. */
+  .bo-body .table-scroll table:not(.keep) { min-width: 0; }
+  .bo-body table:not(.keep) { display: block; font-size: 14px; }
+  .bo-body table:not(.keep) > thead { display: none; }
+  .bo-body table:not(.keep) > tbody, .bo-body table:not(.keep) > tfoot { display: block; }
+  .bo-body table:not(.keep) > * > tr {
+    position: relative; display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 16px;
+    padding: 13px 16px; border-bottom: 1px solid var(--line);
+  }
+  .bo-body table:not(.keep) > :last-child > tr:last-child { border-bottom: 0; }
+  .bo-body table:not(.keep) > * > tr > td, .bo-body table:not(.keep) > tbody > tr > th {
+    display: block; width: auto !important; max-width: 100% !important; min-width: 0;
+    padding: 0 !important; border: 0; background: none !important;
+    text-align: left; white-space: normal; overflow: visible; overflow-wrap: anywhere;
+  }
+  .bo-body table:not(.keep) > * > tr > td.num { white-space: nowrap; }
+  .bo-body table:not(.keep) > * > tr > td:empty { display: none; }
+  .bo-body table:not(.keep) > * > tr > td[data-th]::before { content: attr(data-th); margin-right: 6px; color: var(--ink3); font-size: 12px; font-weight: 400; letter-spacing: 0; }
+  /* what the line is */
+  .bo-body table:not(.keep) > * > tr > td[data-title] { flex: 1 0 100%; font-size: 15px; font-weight: 600; }
+  /* a cell across the table (a group's name, "nothing matches"), and one with something to press or type in */
+  .bo-body table:not(.keep) > * > tr > td[colspan]:not([colspan="1"]),
+  .bo-body table:not(.keep) > * > tr > td[data-wide] { flex: 1 0 100%; }
+  .bo-body table:not(.keep) > * > tr > td[data-wide][data-th]::before,
+  .bo-body table:not(.keep) > * > tr > td[data-field][data-th]::before { display: block; margin: 0 0 4px; }
+  /* one box to type in: half the line, its title over it, so a line of four boxes is two lines and not four */
+  .bo-body table:not(.keep) > * > tr > td[data-field] { flex: 1 1 calc(50% - 8px); min-width: 120px; }
+  .bo-body table:not(.keep) > * > tr > td[data-field] input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  .bo-body table:not(.keep) > * > tr > td[data-field] select,
+  .bo-body table:not(.keep) > * > tr > td[data-field] textarea { width: 100% !important; min-width: 0; }
+  /* a picture to press: in the line's corner, like the arrow */
+  .bo-body table:not(.keep) > * > tr:has(> td[data-pic]) { padding-right: 68px; min-height: 68px; }
+  .bo-body table:not(.keep) > * > tr > td[data-pic] { position: absolute; right: 14px; top: 12px; }
+  .bo-body table:not(.keep) .row-actions { justify-content: flex-start; flex-wrap: wrap; }
+  .bo-body table:not(.keep) > tfoot > tr { background: var(--surface-2); font-weight: 650; }
+  /* the tick box at the start of a line and the arrow that opens it stand in the line's corners */
+  .bo-body table:not(.keep) > * > tr:has(> td[data-tick]) { padding-left: 52px; }
+  .bo-body table:not(.keep) > * > tr > td[data-tick] { position: absolute; left: 16px; top: 13px; }
+  .bo-body table:not(.keep) > * > tr:has(> td[data-chev]) { padding-right: 52px; }
+  .bo-body table:not(.keep) > * > tr > td[data-chev] { position: absolute; right: 6px; top: 4px; }
+  .bo-body .bo-main .rows-open button.chev, .bo-body .bo-main .pay-open button.chev { width: 40px; height: 40px; }
+  .bo-body .bo-main button.pd-icon, .bo-body .pd-icon { width: 40px; height: 40px; }
+  .bo-body .bo-main button.line-chip { height: 36px; padding: 0 13px; }
+  .bo-body table:not(.keep) > * > tr.row.on { background: var(--row-hover); }
+  /* an open line's panel: the width of the screen */
+  .bo-body table:not(.keep) > * > tr.open-body { display: block; padding: 0; }
+  .bo-body table:not(.keep) > * > tr.open-body > td { display: block; }
+  .bo-body .open-panel, .bo-body .rows-open.with-ticks .open-panel { padding: 14px 16px 16px; }
+  .bo-body .open-form input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), .bo-body .open-form select,
+  .bo-body .open-form-line input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), .bo-body .open-form-line select { flex: 1 1 150px; min-width: 0; }
+}
+@media (max-width: 1000px) and (prefers-reduced-motion: reduce) {
+  .bo-side, .bo-side[data-open] { transition: none; }
+}
