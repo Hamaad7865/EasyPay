@@ -61,11 +61,18 @@ Portrait only, laid out for 1080 × 1920. It is a new layout of its own. The til
 
 **Locked.** The app pins itself (Android screen pinning) so customers cannot leave it. A long press in the top-left corner, then a manager's PIN, leaves kiosk mode. Full lock (lock task as device owner) needs the tablet provisioned and is **left for the real device**.
 
+**Opens by itself at power-up** (the owner, 2026-11-18: "on power up of the kiosk the app should open automatically on all 4 kiosks"). Every kiosk, switched on or after a power cut, comes straight to Welcome with nobody touching it.
+- The way: once set up as a kiosk, EasyPay becomes the device's **Home app** (an activity alias with the HOME category, switched on only in kiosk mode, so tills and kitchen screens are untouched). The installer picks "EasyPay, Always" once per kiosk when Android asks. Android then opens EasyPay at every start and whenever the app stops, which a start-on-boot receiver cannot promise on Android 10 and later (an app may not open a screen from the background).
+- Leaving kiosk mode with the manager's PIN switches the alias off again, so the device gets its normal Home back.
+- At start the kiosk keeps the screen on, pins itself, and connects to its till on its own. While the till is not answering yet (the kiosks are often switched on before the till), it shows Welcome with "Ordering opens in a moment" and keeps trying; it never shows a sign-in or set-up screen once paired.
+- If the maker's kiosk has its own "start this app at boot" setting, it can be used as well; nothing depends on it.
+- **Several kiosks to one till.** Four kiosks (or any number) are four `kiosk` rows paired to the same till. The till makes every number, so the four kiosks never give out the same number on one day.
+
 ## 4. Testing
 
 - JVM rule tests: the till's check of an order against its menu and prices; numbering per day; answer-then-print; Open → order; Pay sends to the kitchen once and a failed Pay sends nothing; day close cancelling the waiting orders.
 - A database suite: `kiosk` feature rules (trial yes, premium without the feature no, retail no, `bad-feature` gone for `kiosk`), and `printer.save` kind `kiosk` refused without it.
-- On my own emulators (one portrait 1080 × 1920 as the kiosk, one till), following `restopos-emulator-is-shared`: pair, order, slip (to the stand-in printer), till chime and count, Open, Pay, kitchen, Cancel, day close, till switched off.
+- On my own emulators (one portrait 1080 × 1920 as the kiosk, one till), following `restopos-emulator-is-shared`: pair, order, slip (to the stand-in printer), till chime and count, Open, Pay, kitchen, Cancel, day close, till switched off; the kiosk emulator restarted (`adb reboot`) comes back to Welcome by itself; two kiosks ordering at once get different numbers.
 - **Not testable here:** a real kiosk, its built-in printer, a real 21–32" touchscreen, full lock task.
 
 ## Not in this piece
