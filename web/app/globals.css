@@ -429,7 +429,11 @@ body {
 /* The backdrop: plain paper. The menu stands against the window's left edge
    and the page takes the rest. */
 .bo { display: grid; grid-template-columns: auto auto minmax(0, 1fr); min-height: 100vh; background: var(--canvas); }
-
+/* Nothing drawn inside the shell (a chart's hidden reading, a pop-up's
+   anchor) may stretch the page below it: that left a blank strip under the
+   menu and the page at the end of every scroll. `clip`, not `hidden`, so the
+   sticky menu and top bar keep working; fixed pop-ups are not clipped. */
+@supports (overflow: clip) { .bo { position: relative; overflow-y: clip; } }
 /* The rail: what the menu folds into. Round signs down the far left, one for
    the dashboard and one for each group of pages (the one you are in is
    filled); at its foot the search, who is signed in and the switch that
